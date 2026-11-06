@@ -1147,6 +1147,34 @@ def d_new_session(frame, env):
     return frame.on_new_session
 
 
+def d_new_session_worktree(frame, env):
+    """New Session with A new worktree and a new branch, so Start from is on
+    (#561), on a made-up repository whose remote has a main branch."""
+    import subprocess
+    import tempfile
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    base = Path(tempfile.mkdtemp(prefix="tcp-probe-"))
+    origin, clone = base / "Origin", base / "Clone"
+    origin.mkdir()
+    author = ["-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+    for args, folder in ((["init", "-q", "-b", "main"], origin),
+                         ([*author, "commit", "-q", "--allow-empty", "-m", "first"], origin),
+                         (["clone", "-q", str(origin), str(clone)], base),
+                         (["checkout", "-q", "-b", "work"], clone)):
+        subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone))
+    for _ in range(150):
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+    dialog._on_work_in()
+    dialog.branch.SetValue("fix/login")
+    dialog._sync_start_from()
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -2168,6 +2196,8 @@ SURFACES = {
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
                                 "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "new-session-worktree": ("dialog", d_new_session_worktree,
+                             "New Session making a new worktree, with Start from on"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
@@ -2303,6 +2333,7 @@ DIALOG_CLASSES = {
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "new-session-worktree": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",

@@ -244,6 +244,13 @@ STEPS = [
     # stops it and stays, as the guide says, and the next closes the dialog.
     Step('Codex side question stopped', ['Escape'], expect_dbus=['Stopped asking']),
     Step('Codex side question closed', ['Escape'], expect=['Fix the flaky upload test']),
+    # New Session's Start from (#561), on a made-up repository whose remote
+    # has a main branch, with A new worktree chosen and a new branch typed.
+    Step("New Session, a new branch in a new worktree", [], trigger="start-from",
+         expect=["Branch", "fix/orca"]),
+    Step("Start from", ["Tab"], expect=["Start from", "origin/main, fetched first"]),
+    Step("Start from, the current branch", ["Down"], expect=["work, what the folder has"]),
+    Step("New Session closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
     # mode, with Copilot asking to run npm test and npm run lint already
@@ -403,6 +410,38 @@ def chat_options(frame) -> None:
     wx.CallAfter(frame.on_chat_options)
 
 
+def new_session_start_from(frame) -> None:
+    """New Session on a made-up repository with a remote (#561): A new
+    worktree chosen and a new branch typed, so Start from is on, and the
+    focus on Branch, one Tab before it. Opened once the folder is read."""
+    import subprocess
+    import tempfile
+    import wx
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    base = Path(tempfile.mkdtemp(prefix="tcp-orca-"))
+    origin, clone = base / "Origin", base / "Clone"
+    origin.mkdir()
+    author = ["-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+    for args, folder in ((["init", "-q", "-b", "main"], origin),
+                         ([*author, "commit", "-q", "--allow-empty", "-m", "first"], origin),
+                         (["clone", "-q", str(origin), str(clone)], base),
+                         (["checkout", "-q", "-b", "work"], clone)):
+        subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=frame._feedback)
+
+    def ready(tries=100):
+        if not dialog._repo_known and tries:
+            wx.CallLater(100, ready, tries - 1)
+            return
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/orca")
+        dialog._sync_start_from()
+        dialog.branch.SetFocus()
+        frame._modal(dialog)
+    wx.CallAfter(ready)
+
+
 def _codex_dialog(name, frame, env) -> None:
     """Opens one of the probe's Codex dialogs (#467)."""
     import ui_probe
@@ -488,6 +527,7 @@ TRIGGERS = {
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
     "chat-options": lambda frame, env: chat_options(frame),
+    "start-from": lambda frame, env: new_session_start_from(frame),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "copilot": copilot_chat,
