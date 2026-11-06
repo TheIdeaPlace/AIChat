@@ -622,7 +622,8 @@ class ReadOnlyCodexConnection:
         if not self._accept_server_request(request):
             raise ValueError("Unowned Codex request")
         with self._lock:
-            if (request.thread_id, request.turn_id) in self._retired_turns:
+            if ((request.thread_id, request.turn_id) in self._retired_turns or
+                    (request.source_thread_id, request.source_turn_id) in self._retired_turns):
                 self._outgoing.put(self._encode({'id': request.request_id, 'error': {
                     'code': -32600, 'message': 'This Codex turn has ended.'}}))
                 return
@@ -630,10 +631,10 @@ class ReadOnlyCodexConnection:
                     or len(self._server_pending) >= self.MAX_EVENTS):
                 raise ValueError("Codex request limit exceeded")
             self._server_pending[request.request_id] = request
-        try:
-            self._events.put_nowait(request)
-        except queue.Full:
-            raise ValueError("Codex request queue overflow") from None
+            try:
+                self._events.put_nowait(request)
+            except queue.Full:
+                raise ValueError("Codex request queue overflow") from None
 
     def forget_turn_requests(self, thread_id, turn_id):
         """Confirmed ended turns may not emit serverRequest/resolved."""

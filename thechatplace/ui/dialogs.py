@@ -778,6 +778,14 @@ class NewSessionDialog(wx.Dialog):
     def _on_provider(self, _event=None):
         wx.CallAfter(self._refresh_rules)
         provider = self.provider()
+        from ..chat_options import ChatOptions
+        saved = self._options_by_provider = getattr(self, '_options_by_provider', {})
+        previous = self._control_provider
+        if previous in ('claude', 'codex'):
+            saved[previous] = (self._chat_options, list(self._chat_folders))
+        if previous != provider:
+            self._chat_options, self._chat_folders = saved.get(provider, (ChatOptions(), []))
+            self._update_chat_options_summary()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "codex":

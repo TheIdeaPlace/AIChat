@@ -138,7 +138,7 @@ too).
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
   **Tasks** (the task list: each step, "to do", "in progress" or "done", in the provider's
-  order) and **Subagents** (Claude chats: the work Claude handed to a subagent, "code-reviewer:
+  order) and **Subagents** (Claude and Codex chats: work handed to a subagent, "code-reviewer:
   Review the branch. Done, 34 messages, 12 tool calls, 4 minutes", or "Running" with how long so
   far; its details are the prompt it was given and its final report, and Enter or Read
   Conversation, Alt+R, opens its conversation, below). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
@@ -631,6 +631,23 @@ Quitting The Chat Place requests a stop for its running Codex replies.
 
 **More controls for Codex chats started here:**
 
+- **Chat Options** (Alt+H in New Session and Continue Here; File, Chat Options later)
+  sets instructions for each turn and additional folders. Folder editing grants writes to
+  those folders; read-only mode does not. Changes wait until the chat is idle and are verified
+  and saved before taking effect. Removing a folder removes that grant from the next turn.
+  Codex uses its own agents and styles; Claude's Agent and Output Style choices are not shown.
+- **View, Subagents** lists native child conversations, including archived children and nested
+  work. Read Conversation opens a child without making it an editable chat. Child requests
+  appear under their verified, running parent; their command approvals are one-time only.
+  A file approval without the child's own diff cannot be allowed.
+- **Show Tool Activity** (Ctrl+T) includes the reasoning summaries Codex supplies, both live
+  and in saved history. These are summaries, not private reasoning, and are not announced as replies.
+- When Codex reports a retry, its status explains the wait and the change is announced once.
+  New progress clears that status. The Chat Place does not resend the prompt.
+- Built-in session tools let Codex list, search and read sessions through The Chat Place, and
+  hide eligible sessions. The caller is tied to its owned chat; open or running sessions
+  cannot be hidden. These tools are unavailable in Ask Aside and require the app to be running.
+
 - **Attach Files** (Ctrl+Shift+F) and pasting a copied image work as for Claude. Images are
   sent as native image inputs; other files are named for Codex to read using its file tools.
   You can send attachments with an empty reply box. Queued messages keep their image and skill
@@ -746,14 +763,19 @@ the list) asks before making a new read-only copy with that server enabled or di
 The original chat keeps its tool selection: Codex loads this configuration when it opens
 a thread. Enabled MCP tools can read or change external services outside the folder sandbox;
 only enable servers you trust. TCP verifies the selected servers before each turn, persists
-the selection with the copy, and disables unselected servers. Apps and plugins remain off.
-Global Codex configuration stays unchanged. Add servers and sign in through Codex CLI;
-Sign In explains this, and Refresh and Read Status reread status. If a server a chat selected
+the selection with the copy, and disables unselected servers and apps.
+Available Codex apps also appear here; selecting one requires the same explicit copy.
+Global Codex configuration stays unchanged. Add MCP servers through Codex CLI.
+**Sign In** shows the returned web address before opening it; complete sign-in in your
+browser. When Codex supplies a login identity, keep the dialog open to hear its result;
+otherwise press **Refresh** when finished. **Reconnect** reloads MCP connections.
+For apps, Sign In opens the app page Codex supplies and Refresh reloads its availability.
+Plugin installation is not offered here because its native API is still under development. If a server a chat selected
 is later removed from Codex's configuration, turns are refused and say why; the list shows it
 first, and **Copy with Tool Off** makes a copy without it, or you can add it back. For a Codex chat
-started elsewhere the list shows only which servers are configured, read-only. Codex MCP questions that TCP
-cannot display are declined with a notice. Claude's connected-tool forms remain available
-for Claude chats.
+started elsewhere the list is read-only. **Answer** (Ctrl+Shift+A) displays standard MCP
+forms or a web address to open. Escape leaves the question waiting; Decline refuses it.
+Unsupported forms, including provider-specific verification flows, are declined with a notice.
 
 Codex keeps your own saved command rules in effect, including user rules such
 as `~/.codex/rules/default.rules` and system rules installed for your computer.

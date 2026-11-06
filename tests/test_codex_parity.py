@@ -275,7 +275,14 @@ def test_child_lookup_cannot_resurrect_a_request_after_its_lifetime(race):
     from test_codex_rpc import approval_message
     from test_codex_runtime import wait
     c, _ = child_transport()
-    entered, release = threading.Event(), threading.Event()
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    route = c._route_child_request
+    def routed(*args):
+        try:
+            route(*args)
+        finally:
+            finished.set()
+    c._route_child_request = routed
     original = c.request
     def request(method, params):
         if method == 'thread/read':
@@ -290,9 +297,9 @@ def test_child_lookup_cannot_resurrect_a_request_after_its_lifetime(race):
         c._receive({'method': 'serverRequest/resolved', 'params': {'threadId': 'child', 'requestId': 'approval'}})
     else:
         c._receive({'method': 'turn/completed', 'params': {'threadId': 'child', 'turn': {'id': 'turn', 'status': 'completed'}}})
-    release.set(); wait(lambda: c._child_workers.acquire(blocking=False))
-    # Wait for all worker slots, avoiding a transient empty pending set after resolution.
-    wait(lambda: not c._child_pending)
+    release.set()
+    assert finished.wait(5)
+    assert not c._child_pending
     assert not c._server_pending and not c.closed
 
 
@@ -319,3 +326,30 @@ def test_child_unknown_parent_is_declined_without_closing_other_chats():
     wait(lambda: not c._child_pending)
     assert not c._server_pending and not c.closed and c.owns_runtime(proof)
     assert not c._outgoing.empty()
+
+
+def test_child_source_retirement_is_checked_at_atomic_queue_insert():
+    from test_codex_rpc import approval_message
+    from thechatplace.providers.codex_requests import decode_request
+    c, _ = child_transport()
+    wire = approval_message(thread='child')
+    request = decode_request(wire['id'], wire['method'], wire['params'])
+    routed = replace(request, thread_id='owned', turn_id='parent-turn',
+                     source_thread_id='child', source_turn_id='turn')
+    c._retired_turns[('child', 'turn')] = True
+    c._receive_server_request(routed)
+    assert not c._server_pending and c._events.empty()
+
+
+def test_nullable_child_form_uses_turn_observed_at_receipt():
+    c, proof = child_transport()
+    c._runtime_threads['owned'] = replace(proof, mcp_servers=('test',))
+    c._active_turns['child'] = 'next-child-turn'
+    c._retired_turns[('child', 'turn')] = True
+    c._child_pending.add(1)
+    assert c._child_workers.acquire(False)
+    c._route_child_request({'id': 1, 'method': ELICITATION, 'params': dict(
+        threadId='child', turnId=None, serverName='test', mode='form', message='Question',
+        requestedSchema={'type': 'object', 'properties': {}})},
+        {'owned': 'parent-turn', 'child': 'turn'})
+    assert not c._server_pending

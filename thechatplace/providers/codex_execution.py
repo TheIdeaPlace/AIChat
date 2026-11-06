@@ -101,8 +101,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         try:
             request = decode_request(message['id'], message['method'], message.get('params'))
             child, ancestor, seen = request.thread_id, request.thread_id, set()
-            with self._runtime_lock:
-                child_turn = request.turn_id or self._active_turns.get(child)
+            child_turn = request.turn_id or received_turns.get(child)
             if not child_turn:
                 raise ValueError('No active child turn')
             proof = None
@@ -170,7 +169,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                             raise ValueError('Duplicate child request identity')
                         self._child_pending.add(decoded.request_id)
                     with self._runtime_lock:
-                        received = {k: v for k, v in self._active_turns.items() if k in self._runtime_threads}
+                        received = dict(self._active_turns)
                     threading.Thread(target=self._route_child_request, args=(message, received), daemon=True).start()
                 else:
                     self._decline_unsupported_request(message)
