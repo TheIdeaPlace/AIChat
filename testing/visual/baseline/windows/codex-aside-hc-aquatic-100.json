@@ -138,7 +138,7 @@
   {
    "class": "TextCtrl",
    "name": "Answer",
-   "label": "Ask a question about this chat, such as which file Codex changed or what a reply meant. The question and its answer aren't added to the chat, and Codex can read files to answer but can't change anything. Your questions stay listed for this chat until you quit The Chat Place. Each question uses your ChatGPT plan, as a message does.",
+   "label": "Ask a question about this chat, such as which file Codex changed or what a reply meant. The question and its answer aren't added to the chat, and Codex can read files to answer but can't change anything. If the chat has a turn running, that turn's work so far isn't included. Your questions stay listed for this chat until you quit The Chat Place. Each question uses your ChatGPT plan, as a message does.",
    "rect": [
     12,
     273,
