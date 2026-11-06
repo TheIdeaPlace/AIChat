@@ -156,11 +156,16 @@ def finished_cut(lines: Iterable[str]) -> str:
     * Manual (``/compact``) in an idle chat keeps its last messages
       (``compactMetadata.preservedMessages``, since 2.1.229), the finished
       reply among them. Cut there, the copy had the summary and answered
-      only the question. So that one is cut at as usual.
+      only the question. So that one is cut at as usual, as long as nothing
+      of a turn lies between the reply and the compaction: what it keeps is
+      sized in tokens, not turns, so a turn stopped before ``/compact`` can
+      be kept too, and its summary then carries that turn on.
     Otherwise it's said instead of asking."""
     compaction = None  # the newest compact_boundary passed, or True for a summary alone
+    turn_since = False  # part of a turn between that boundary and the reply
     for line in reversed(lines if isinstance(lines, list) else list(lines)):
-        if '"assistant"' not in line and "ompact" not in line:
+        if ('"assistant"' not in line and "ompact" not in line
+                and not (compaction is not None and '"user"' in line)):
             continue  # most records; not worth parsing
         try:
             record = json.loads(line)
@@ -179,10 +184,33 @@ def finished_cut(lines: Iterable[str]) -> str:
             uuid = record.get("uuid")
             if not isinstance(uuid, str) or not platform_paths.is_safe_id(uuid):
                 return ""
-            if compaction is not None and not _kept_by(compaction, uuid):
+            if compaction is not None and (turn_since or not _kept_by(compaction, uuid)):
                 return COMPACTED
             return uuid
+        if isinstance(compaction, dict) and _part_of_a_turn(record):
+            turn_since = True
     return ""  # nothing finished, compacted or not
+
+
+_LOCAL_COMMAND = re.compile(r"\s*<(command-name|local-command-(stdout|stderr|caveat))>")
+
+
+def _part_of_a_turn(record: dict) -> bool:
+    """Whether a record is Claude's or a message to Claude: anything but a
+    local slash command (``/compact`` itself, say), a meta note or Claude
+    Code's own bookkeeping."""
+    if record.get("type") == "assistant":
+        return True
+    if record.get("type") != "user" or record.get("isMeta"):
+        return False
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, list):
+        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+            return True
+        content = "\n".join(str(b.get("text") or "") for b in content
+                            if isinstance(b, dict) and b.get("type") == "text")
+    return not (isinstance(content, str) and _LOCAL_COMMAND.match(content))
 
 
 def _kept_by(boundary, uuid: str) -> bool:

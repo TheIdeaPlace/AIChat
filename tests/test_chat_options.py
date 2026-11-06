@@ -573,6 +573,34 @@ def test_a_manual_compaction_that_kept_the_last_reply_is_cut_there():
     assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*again)))) == COMPACTED
 
 
+@pytest.mark.parametrize("stopped", ["message only", "tool call, no result", "ended in an error"])
+def test_a_manual_compaction_after_a_turn_that_didnt_finish_isnt_cut_at_the_reply(stopped):
+    # What it keeps is sized in tokens, not turns: kept along with the reply,
+    # the stopped turn is one its summary carries on.
+    from records import _base, lines, user_text
+    from thechatplace.aside import COMPACTED
+    first = _first_turn()
+    hook = _base("system", subtype="stop_hook_summary", hookCount=0)
+    turn = _second_turn(stopped)
+    records = [*first, hook, *turn, user_text("<command-name>/compact</command-name>"),
+               *_compaction("manual", kept=[first[-1], hook, *turn]), _local_command()]
+    assert finished_cut(lines(*_no_parent_for_boundaries(_chained(*records)))) == COMPACTED
+
+
+def test_the_tail_reader_reads_back_past_a_manual_compaction(tmp_path):
+    from records import _base, lines, user_text
+    from thechatplace.aside import finished_cut_from_file
+    first = _first_turn()
+    hook = _base("system", subtype="stop_hook_summary", hookCount=0)
+    records = _no_parent_for_boundaries(_chained(
+        *first, hook, user_text("<command-name>/compact</command-name>"),
+        *_compaction("manual", kept=[first[-1], hook]), _local_command()))
+    path = tmp_path / "chat.jsonl"
+    path.write_text("\n".join(lines(*records)) + "\n", encoding="utf-8")
+    for limit in range(1, path.stat().st_size + 2, 5):
+        assert finished_cut_from_file(path, steps=(limit,)) == first[-1]["uuid"], limit
+
+
 def test_a_compaction_in_the_first_turn_leaves_nothing_finished():
     from records import assistant_block, lines, tool_use_block, user_text
     records = [user_text("Run the tests"),
