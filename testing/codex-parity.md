@@ -15,7 +15,7 @@ The preview checkout is not modified. `f859738` is an implementation checkpoint,
 - Focused VM GUI suite after integrating preview `c88f8be`: 318 passed.
 - Visual probe: 18 pictures across light and High Contrast, zero layout flags.
   Eight changed/new pictures reviewed; existing light-theme Connected Tools
-  focus contrast remains tracked in #181.
+  focus contrast remains tracked in #181; native border contrast is tracked in #532.
 - Real VM keyboard traversal: Chat Options starts on Instructions; Tab reaches
   More folders, Add Folder, Remove, About, OK, Cancel and wraps. Shift+Tab reverses
   and Escape closes without saving. Connected Tools supports arrow selection;
@@ -42,3 +42,5 @@ The preview checkout is not modified. `f859738` is an implementation checkpoint,
   test chat. It must exclude itself from the list and refuse to hide itself, an open chat, or running work.
 
 No live OAuth/account-dependent connector calls have been claimed as verified by automated tests.
+
+Draft integration PR: https://github.com/TheIdeaPlace/AIChat/pull/563.

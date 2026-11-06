@@ -36,7 +36,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Connected tools, 3",
+   "name": "Connected tools, 5",
    "label": "",
    "rect": [
     10,
@@ -55,7 +55,9 @@
    "items": [
     "project-notes: connected, configured Codex MCP server, 1 tool",
     "build-reports: needs sign-in, configured Codex MCP server",
-    "reference-search: off for this chat, configured Codex MCP server"
+    "reference-search: off for this chat, configured Codex MCP server",
+    "The Chat Place session tools: available while this app is running",
+    "Project documents: off for this chat, Codex app"
    ],
    "selection": 0
   },
@@ -81,15 +83,15 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "Read St&atus",
+   "label": "&Reconnect",
    "rect": [
     89,
     243,
-    82,
+    77,
     23
    ],
    "best": [
-    82,
+    77,
     23
    ],
    "depth": 0,
@@ -102,7 +104,7 @@
    "name": "button",
    "label": "Copy with Tool &Off",
    "rect": [
-    177,
+    172,
     243,
     122,
     23
@@ -121,7 +123,7 @@
    "name": "button",
    "label": "Re&fresh",
    "rect": [
-    305,
+    300,
     243,
     75,
     23
@@ -191,7 +193,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "project-notes: connected, configured Codex MCP server, 1 tool\n\nTools:\n  find_notes\n\nCodex MCP servers configured for this folder. Apps and plugins remain unavailable. Changing a tool creates a new read-only copy of this chat with that selection; the original chat is kept. Enabled tools may read or change external services, outside the folder sandbox. Add servers and sign in using the Codex CLI (co"
+   "value": "project-notes: connected, configured Codex MCP server, 1 tool\n\nTools:\n  find_notes\n\nConfigured MCP servers and available Codex apps. Plugin installation is not available here. Changing a tool creates a new read-only copy of this chat with that selection; the original chat is kept. Enabled tools may read or change external services, outside the folder sandbox. Add servers using Codex CLI (codex mcp"
   }
  ],
  "capture": "PrintWindow"
