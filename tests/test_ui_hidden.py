@@ -8430,7 +8430,7 @@ def test_new_session_in_a_new_worktree(frame, env, fake_runner, monkeypatch):
     # What was made is said (#561); with no remote, from the current branch.
     assert pump(lambda: any(f.startswith("Made worktree fix-the-thing on new branch "
                                          "fix/the-thing, from main.") for f in env["feedback"]))
-    assert any("has no remote" in f for f in env["feedback"])
+    assert any("has no origin remote" in f for f in env["feedback"])
     runner = fake_runner.instances[-1]
     assert runner.cwd == str(worktree) and runner.prompt == "Fix it"
     session_id = runner.command[runner.command.index("--session-id") + 1]

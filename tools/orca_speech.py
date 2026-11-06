@@ -248,7 +248,9 @@ STEPS = [
     # has a main branch, with A new worktree chosen and a new branch typed.
     Step("New Session, a new branch in a new worktree", [], trigger="start-from",
          expect=["Branch", "fix/orca"]),
-    Step("Start from", ["Tab"], expect=["Start from", "origin/main, fetched first"]),
+    # GTK gives an editable dropdown two Tab stops, its text and its button,
+    # so Start from is two Tabs on from Branch's text (CI on #562).
+    Step("Start from", ["Tab", "Tab"], expect=["Start from", "origin/main, fetched first"]),
     Step("Start from, the current branch", ["Down"], expect=["work, what the folder has"]),
     Step("New Session closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
