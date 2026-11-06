@@ -1149,25 +1149,18 @@ def d_new_session(frame, env):
 
 def d_new_session_worktree(frame, env):
     """New Session with A new worktree and a new branch, so Start from is on
-    (#561), on a made-up repository whose remote has a main branch."""
-    import subprocess
-    import tempfile
+    (#561). The repository is described rather than made, as the test VM has
+    no git: what the dialog would read from a clone on branch work, whose
+    remote has a main branch."""
+    from thechatplace import workplaces
     from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
-    base = Path(tempfile.mkdtemp(prefix="tcp-probe-"))
-    origin, clone = base / "Origin", base / "Clone"
-    origin.mkdir()
-    author = ["-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
-    for args, folder in ((["init", "-q", "-b", "main"], origin),
-                         ([*author, "commit", "-q", "--allow-empty", "-m", "first"], origin),
-                         (["clone", "-q", str(origin), str(clone)], base),
-                         (["checkout", "-q", "-b", "work"], clone)):
-        subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
-    dialog = NewSessionDialog(frame, str(clone))
-    for _ in range(150):
-        if dialog._repo_known:
-            break
-        wx.SafeYield()
-        time.sleep(0.1)
+    folder = str(env["folders"]["Scratch"])
+    dialog = NewSessionDialog(frame, folder)
+    info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
+                               branch="work", branches=["older"], busy=["work"],
+                               remotes=["origin/main"])
+    dialog._repo_for = folder
+    dialog._repo_read(folder, info, "origin/main", False)
     dialog.work_in.SetSelection(WORK_IN_WORKTREE)
     dialog._on_work_in()
     dialog.branch.SetValue("fix/login")

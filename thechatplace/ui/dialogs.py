@@ -675,15 +675,19 @@ class NewSessionDialog(wx.Dialog):
         info = self._repo
         here = (info.branch if info and info.branch else "the folder's current commit")
         remote = self._start_remote
-        choices = [f"{remote}, fetched first" if remote else "No remote to start from",
-                   f"{here}, what the folder has checked out"]
+        if info is None:
+            # Not a repository (or not read yet): the choices in general terms.
+            choices = [START_REMOTE_LABEL, START_HERE_LABEL]
+        else:
+            choices = [f"{remote}, fetched first" if remote else "No remote to start from",
+                       f"{here}, what the folder has checked out"]
         for index, text in enumerate(choices):
             if self.start_from.GetString(index) != text:
                 self.start_from.SetString(index, text)
         worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
         new = bool(worktree and info is not None
                    and workplaces.is_new_branch(info, self.branch.GetValue()))
-        if not self._start_chosen or not remote:
+        if info is not None and (not self._start_chosen or not remote):
             # Claude Code's own worktrees start where its baseRef says, so a
             # Claude chat here starts there too unless you choose.
             prefer_here = not remote or (self._base_ref_head and self.provider() == "claude")
