@@ -699,6 +699,14 @@ def _drive_aside(frame, monkeypatch, steps):
 
     def show(dialog):
         seen["title"] = dialog.GetTitle()
+        asks = dialog.on_ask
+
+        def on_ask():
+            # Where the copy ends is found off the UI thread first (#559).
+            count = len(FakeAside.instances)
+            asks()
+            assert pump(lambda: len(FakeAside.instances) > count or not dialog.asking)
+        dialog.on_ask = on_ask
         steps(dialog)
         return wx.ID_CANCEL
     monkeypatch.setattr(claude_extras.AskAsideDialog, "ShowModal", show)
@@ -780,24 +788,27 @@ def test_a_desktop_chat_has_no_more_folders_to_give_an_aside(frame, monkeypatch)
     assert "--add-dir" not in FakeAside.instances[-1].command
 
 
-def _mid_turn(env, folder):
-    """own-1's transcript with its second turn running: the second message
-    and a command with no result yet. Returns the first turn's last record."""
+def _mid_turn(env, folder, cli="own-1"):
+    """A transcript whose second turn is unfinished: the second message and a
+    command with no result yet. Returns the first turn's last record."""
     from records import tool_use_block
     records = [user_text("Hello"), assistant_block(text_block("Hi"), "m1"),
                user_text("Run the tests"),
                assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m2")]
     for before, record in zip(records, records[1:]):
         record["parentUuid"] = before["uuid"]
-    add_transcript(env, folder, "own-1", records)
+    add_transcript(env, folder, cli, records)
     return records[1]
 
 
-def _ask_and_wait(dialog):
+def _asked_until_read(dialog):
     dialog.question.SetValue("Which file?")
-    dialog.on_ask()
-    # The transcript is read off the UI thread before anything is asked.
-    assert pump(lambda: FakeAside.instances or not dialog.asking)
+    dialog.on_ask()  # _drive_aside's waits for the transcript to be read
+
+
+def _cut_command(end):
+    return ["--resume", "own-1", "--resume-session-at", end["uuid"], "--fork-session",
+            "--no-session-persistence"]
 
 
 def test_ask_aside_during_a_turn_leaves_the_running_turn_out(frame, env, folder, monkeypatch):
@@ -805,61 +816,54 @@ def test_ask_aside_during_a_turn_leaves_the_running_turn_out(frame, env, folder,
     end = _mid_turn(env, folder)
     frame._runners["own-1"] = FakeRunner([], "", "", None)
     select(frame, "Mine")
-    _drive_aside(frame, monkeypatch, _ask_and_wait)
-    assert FakeAside.instances[-1].command[-6:] == [
-        "--resume", "own-1", "--resume-session-at", end["uuid"], "--fork-session",
-        "--no-session-persistence"]
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    assert FakeAside.instances[-1].command[-6:] == _cut_command(end)
 
 
-def test_ask_aside_with_no_turn_running_copies_the_whole_chat(frame, env, folder, monkeypatch):
-    _mid_turn(env, folder)  # as a turn that was stopped leaves it
+def test_ask_aside_after_a_turn_was_stopped_leaves_that_turn_out(frame, env, folder, monkeypatch):
+    # Stop kills claude -p, so the transcript ends mid-command with no runner
+    # left: the transcript decides, not whether a turn is running.
+    end = _mid_turn(env, folder)
+    assert "own-1" not in frame._runners
     select(frame, "Mine")
-    _drive_aside(frame, monkeypatch, _ask_and_wait)
+    _drive_aside(frame, monkeypatch, _asked_until_read)
+    assert FakeAside.instances[-1].command[-6:] == _cut_command(end)
+
+
+def test_ask_aside_just_after_send_copies_the_whole_chat(frame, env, folder, monkeypatch):
+    # The turn is running, but claude -p hasn't written your message yet: the
+    # chat as written ends with a finished reply, and none of it is cut off.
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    select(frame, "Mine")
+    _drive_aside(frame, monkeypatch, _asked_until_read)
     command = FakeAside.instances[-1].command
     assert "--resume-session-at" not in command
     assert command[-4:] == ["--resume", "own-1", "--fork-session", "--no-session-persistence"]
 
 
-@pytest.mark.parametrize("how, cut", [("working", True), ("live waiting", True),
-                                      ("needs you after its turn", False)])
-def test_ask_aside_on_a_desktop_chat_leaves_a_running_turn_out(frame, env, folder,
-                                                               monkeypatch, how, cut):
-    import dataclasses
-    from records import tool_use_block
-    from thechatplace.sessions import IDLE, NEEDS_YOU, WORKING, LiveStatus
-    records = [user_text("Which file?"), assistant_block(text_block("main.py"), "m1"),
-               user_text("Now fix it"),
-               assistant_block(tool_use_block("Edit", {"file_path": "main.py"}), "m2")]
-    for before, record in zip(records, records[1:]):
-        record["parentUuid"] = before["uuid"]
-    add_transcript(env, folder, "cli-a", records)
+def test_ask_aside_on_a_desktop_chat_listed_idle_still_leaves_its_turn_out(frame, env, folder,
+                                                                          monkeypatch):
+    # The list's snapshot can be a refresh behind a turn that has started.
+    from thechatplace.sessions import IDLE
+    end = _mid_turn(env, folder, cli="cli-a")
     select(frame, "Desktop one")
-    # Needs You from the desktop app's summary of a turn that has ended.
-    state = {"working": WORKING, "live waiting": IDLE}.get(how, NEEDS_YOU)
-    current = dataclasses.replace(frame._selected_session(), state=state)
-    monkeypatch.setattr(frame, "_current_info", lambda key: current)
-    if how == "live waiting":  # a permission prompt, mid-turn
-        monkeypatch.setitem(frame._snapshot.live, "cli-a", LiveStatus("waiting", 4242))
-    _drive_aside(frame, monkeypatch, _ask_and_wait)
+    assert frame._selected_session().state == IDLE
+    _drive_aside(frame, monkeypatch, _asked_until_read)
     command = FakeAside.instances[-1].command
-    if cut:
-        assert command[command.index("--resume-session-at") + 1] == records[1]["uuid"]
-    else:
-        assert "--resume-session-at" not in command
+    assert command[command.index("--resume-session-at") + 1] == end["uuid"]
 
 
-def test_ask_aside_says_when_only_the_first_turn_is_running(frame, env, folder, monkeypatch):
+def test_ask_aside_says_when_only_the_first_turn_is_unfinished(frame, env, folder, monkeypatch):
     from records import tool_use_block
     from thechatplace.aside import NOTHING_FINISHED
     records = [user_text("Run the tests"),
                assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1")]
     records[1]["parentUuid"] = records[0]["uuid"]
     add_transcript(env, folder, "own-1", records)
-    frame._runners["own-1"] = FakeRunner([], "", "", None)
     seen = {}
 
     def steps(dialog):
-        _ask_and_wait(dialog)
+        _asked_until_read(dialog)
         seen["answer"] = dialog.answer.GetValue()
         seen["row"] = dialog.history.GetString(0)
     select(frame, "Mine")
@@ -870,19 +874,21 @@ def test_ask_aside_says_when_only_the_first_turn_is_running(frame, env, folder, 
 
 
 def test_stopping_an_aside_while_the_chat_is_read_asks_nothing(frame, env, folder, monkeypatch):
+    from thechatplace.ui.dialogs import AskAsideDialog
     _mid_turn(env, folder)
-    frame._runners["own-1"] = FakeRunner([], "", "", None)
     seen = {}
 
     def steps(dialog):
         dialog.question.SetValue("Which file?")
-        dialog.on_ask()
-        dialog.on_ask()  # Stop, at once
-        seen["asking"] = dialog.asking
+        AskAsideDialog.on_ask(dialog)  # not _drive_aside's, which waits
+        AskAsideDialog.on_ask(dialog)  # Stop, at once
+        seen["said_at_once"] = env["feedback"][-1]
+        assert pump(lambda: not dialog.asking)
         pump(lambda: False, timeout=0.5)
     select(frame, "Mine")
     _drive_aside(frame, monkeypatch, steps)
-    assert seen["asking"] is False
+    # "Stopped." comes later, as a runner's does, not in the middle of Stop.
+    assert seen["said_at_once"] == "Asking Claude."
     assert FakeAside.instances == []
     assert env["feedback"][-1] == "Stopped asking."
 

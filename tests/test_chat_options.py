@@ -384,6 +384,11 @@ def _chained(*records):
     return list(records)
 
 
+def _cut(*records):
+    from records import lines
+    return finished_cut(lines(*_chained(*records)))
+
+
 def _first_turn():
     from records import assistant_block, text_block, tool_use_block, tool_result, user_text
     return [user_text("Which file has the parser?"),
@@ -393,53 +398,102 @@ def _first_turn():
 
 
 def _second_turn(case):
-    from records import (agent_call, agent_launched, assistant_block, task_notification,
-                         text_block, tool_result, tool_use_block, user_text)
+    from records import (_base, assistant_block, thinking_block, tool_result, tool_use_block,
+                         user_text)
     ask = user_text("Run the tests")
     sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m3")
-    if case == "message only":
+    if case == "message only":  # also how a turn stopped before Claude answered ends
         return [ask]
-    if case == "tool call, no result":
+    if case == "tool call, no result":  # running, stopped, quit or crashed mid-command
         return [ask, sleep]
     if case == "tool result":
         return [ask, sleep, tool_result("toolu_b", "done")]
-    # A background subagent: Claude writes while it works, then hears it ended.
-    return [ask, agent_call("toolu_a", "Explore", "Look", "Look around", background=True),
-            agent_launched("toolu_a", "a1"), assistant_block(text_block("Waiting on it."), "m4"),
-            task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
+    if case == "thinking only":
+        return [ask, assistant_block(thinking_block("Hmm."), "m3")]
+    if case == "interrupted":
+        return [ask, sleep, user_text("[Request interrupted by user]")]
+    if case == "steered":
+        return [ask, sleep, tool_result("toolu_b", "done"),
+                _base("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
+                                                "prompt": "Use the fast tests"})]
+    raise AssertionError(case)
 
 
 @pytest.mark.parametrize("case", ["message only", "tool call, no result", "tool result",
-                                  "background text, then its notification"])
-def test_finished_cut_is_where_the_last_finished_turn_ends(case):
-    from thechatplace.transcript import parse_lines
-    from records import lines
+                                  "thinking only", "interrupted", "steered"])
+def test_an_unfinished_last_turn_is_cut_where_the_turn_before_it_ends(case):
     first = _first_turn()
-    records = _chained(*first, *_second_turn(case))
-    transcript = parse_lines(lines(*records))
-    assert finished_cut(transcript) == first[-1]["uuid"]
+    assert _cut(*first, *_second_turn(case)) == first[-1]["uuid"]
 
 
-def test_finished_cut_has_nothing_while_the_first_turn_runs():
-    from thechatplace.transcript import Transcript, parse_lines
-    from records import assistant_block, lines, tool_use_block, user_text
-    records = _chained(user_text("Run the tests"),
-                       assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1"))
-    assert finished_cut(parse_lines(lines(*records))) == ""
-    assert finished_cut(Transcript()) == ""
-    assert finished_cut(None) == ""
+def test_a_chat_that_ends_with_a_finished_reply_is_copied_whole():
+    from records import assistant_block, lines, sidechain, text_block, tool_use_block, user_text
+    assert _cut(*_first_turn()) is None
+    # A subagent's own records and a bad line after it change nothing.
+    records = _chained(*_first_turn())
+    tail = sidechain(assistant_block(tool_use_block("Read", {}, "toolu_s"), "s1"), "a1")
+    assert finished_cut(lines(*records, tail) + ["{not json"]) is None
+    assert finished_cut([]) is None
+    # A reply that ended the turn, then another started by your message, ended too.
+    assert _cut(*_first_turn(), user_text("Thanks"), assistant_block(text_block("OK."), "m9")) is None
 
 
-def test_finished_cut_passes_over_a_message_steered_in_mid_turn():
-    # A steer has no uuid (it isn't a place to go back to): the running turn
-    # still starts at the message before it.
-    from thechatplace.transcript import parse_lines
-    from records import _base, lines, user_text
-    first = _first_turn()
-    steer = _base("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
-                                            "prompt": "Use the fast tests"})
-    records = _chained(*first, user_text("Run the tests"), steer)
-    assert finished_cut(parse_lines(lines(*records))) == first[-1]["uuid"]
+@pytest.mark.parametrize("starts", ["task notification", "another session", "slash command"])
+def test_a_turn_started_by_something_other_than_your_message_is_cut_before_it(starts):
+    # The review's example (#559): first turn done, then a notification woke
+    # Claude, still writing. That isn't "nothing finished".
+    from records import (_base, assistant_block, task_notification, text_block, thinking_block,
+                         tool_use_block, user_text)
+    if starts == "task notification":
+        opener = [task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
+    elif starts == "another session":
+        opener = [user_text('<cross-session-message from="Build">Is it green?'
+                            '</cross-session-message>')]
+    else:
+        opener = [user_text("<command-name>/review</command-name>\n<command-message>review"
+                            "</command-message>"),
+                  _base("user", message={"role": "user", "content": "Review the change."},
+                        isMeta=True)]
+    first = [user_text("first"), assistant_block(text_block("done"), "m1")]
+    rest = [assistant_block(thinking_block("Hmm."), "m2"),
+            assistant_block(tool_use_block("Read", {"file_path": "a.py"}, "toolu_r"), "m3")]
+    assert _cut(*first, *opener, *rest) == first[-1]["uuid"]
+
+
+def test_background_text_then_its_notification_cuts_at_the_text():
+    # Claude wrote while a background subagent ran (its turn ended), then the
+    # notification started another, not yet answered.
+    from records import (agent_call, agent_launched, assistant_block, task_notification,
+                         text_block, user_text)
+    waiting = assistant_block(text_block("Waiting on it."), "m4")
+    records = [*_first_turn(), user_text("Look around"),
+               agent_call("toolu_a", "Explore", "Look", "Look around", background=True),
+               agent_launched("toolu_a", "a1"), waiting,
+               task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
+    assert _cut(*records) == waiting["uuid"]
+    assert _cut(*records[:-1]) is None  # before the notification: nothing unanswered
+
+
+def test_a_local_slash_command_leaves_nothing_unanswered():
+    from records import _base, command_stdout, user_text
+    caveat = _base("user", message={"role": "user", "content": "Caveat: local commands."},
+                   isMeta=True)
+    assert _cut(*_first_turn(), caveat, user_text("<command-name>/cost</command-name>"),
+                command_stdout("Total cost: $0.01")) is None
+
+
+def test_finished_cut_has_nothing_while_the_first_turn_is_unfinished():
+    from records import assistant_block, tool_use_block, user_text
+    assert _cut(user_text("Run the tests"),
+                assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1")) == ""
+    assert _cut(user_text("Run the tests")) == ""
+
+
+def test_finished_cut_never_hands_back_something_that_isnt_a_record_id():
+    from records import lines, user_text
+    first = _chained(*_first_turn())
+    ask = user_text("Run the tests", parentUuid="--bare")
+    assert finished_cut(lines(*first, ask)) == ""
 
 
 def test_aside_rows_and_full_text():
@@ -474,7 +528,11 @@ def test_aside_intro_says_the_right_plan():
     assert "your ChatGPT plan" in codex and "Codex plan" not in codex
     assert "which file Codex changed" in codex and "Claude" not in codex
     # #559: a running turn is left out of the copy, and the dialog says so.
-    assert "If the chat has a turn running, that turn's work so far isn't included." in codex
+    # #559: an unfinished turn is left out of the copy, for every chat that
+    # has Ask Aside, and the dialog says so.
+    for provider in ("Claude", "Codex"):
+        assert ("If the chat has a turn running, that turn's work so far isn't included."
+                in aside_intro(provider))
 
 
 def _boxes(text):

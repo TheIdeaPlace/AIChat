@@ -17,7 +17,7 @@ from ..aside import (COWORK_REFUSED, NOTHING_FINISHED, AsideEvent, AsideRunner,
                      build_aside_command, finished_cut)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
-from ..sessions import WORKING
+from ..transcript import split_jsonl
 from .dialogs import AskAsideDialog, ChatOptionsDialog
 
 
@@ -82,22 +82,6 @@ class ClaudeExtras:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
             pass
-
-    def _aside_turn_running(self, info) -> bool:
-        """Whether a Claude chat has a turn under way, for Ask Aside (#559):
-        one of ours running here, or any chat whose live file says Claude Code
-        is busy or waiting on you mid-turn (a permission, a question). Not the
-        list's Needs You as such: for a desktop chat that's also the summary
-        of a turn that has ended, and cutting then would leave that turn out."""
-        if info.cli_session_id in self._runners:
-            return True
-        live = self._snapshot.live
-        for session_id in (info.cli_session_id, info.desktop_session_id):
-            status = live.get(session_id) if session_id else None
-            if status is not None and status.status in ("busy", "waiting"):
-                return True
-        current = self._current_info(info.key) or info
-        return current.state == WORKING
 
     def _aside_history(self, info) -> list:
         """This chat's Ask Aside questions, for as long as the app is open: in
@@ -215,7 +199,7 @@ class ClaudeExtras:
                                        cowork_ids=cowork_ids, allowed_dirs=allowed_dirs,
                                        resume_at=cut)
         try:
-            command = command_at()
+            command_at()  # refused now, before the dialog opens, rather than on asking
         except (ResumeRefused, ValueError) as exc:
             self._feedback(str(exc))
             return
@@ -232,12 +216,12 @@ class ClaudeExtras:
                                                 lambda event: wx.CallAfter(on_event, event))
                 runner.start()
                 return runner
-            if not self._aside_turn_running(info):
-                return start(command)
-            # Decided as each question is asked: a turn may have started or
-            # ended since the dialog opened (#559).
+            # Where the copy ends is decided from the transcript as each
+            # question is asked (#559): not from whether a turn looks to be
+            # running, since a stopped turn leaves the same unfinished end and
+            # one just sent may not be written yet.
             try:
-                return _AsideAtFinishedTurn(lambda: self.sessions.read(info), command_at, start,
+                return _AsideAtFinishedTurn(lambda: _transcript_lines(info), command_at, start,
                                             on_event).begin(self._pool.submit)
             except RuntimeError:  # the pool is shut down: the window is closing
                 return "The Chat Place is closing, so Claude can't be asked now."
@@ -260,14 +244,19 @@ class ClaudeExtras:
         _give_focus_back(returning_to)
 
 
+def _transcript_lines(info):
+    """A Claude chat's transcript, as lines, or None when it isn't on disk.
+    Read whole each time: the open chat's reader can be a refresh behind."""
+    path = info.transcript_path()
+    return None if path is None else split_jsonl(path.read_bytes())
+
+
 class _AsideAtFinishedTurn:
-    """An aside asked while the chat has a turn running (#559). The copy has
-    to end with the last finished turn, or Claude answers the running turn's
-    message in it too, so the transcript is read afresh off the UI thread to
-    find where that is (the open chat's reader can be a refresh behind a turn
-    that has just started, which would cut a finished turn off), then the
-    copy cut there is asked. It stands in for the runner: ``cancel`` stops
-    it, and until the runner starts says "Stopped." itself, as a runner does.
+    """One aside question (#559). The copy has to end with the chat's last
+    finished turn, or Claude answers an unfinished turn's message in it too,
+    so the transcript is read off the UI thread to find where that is, then
+    the copy is asked. It stands in for the runner: ``cancel`` stops it, and
+    until the runner starts says "Stopped." itself, later, as a runner does.
     Everything after ``begin`` reaches ``on_event`` on the UI thread."""
 
     def __init__(self, read, command_at, start, on_event):
@@ -282,24 +271,24 @@ class _AsideAtFinishedTurn:
 
     def _find_cut(self):
         try:
-            transcript = self._read()
-            cut = None if transcript is None else finished_cut(transcript)
+            lines = self._read()
+            found = (True, finished_cut(lines)) if lines is not None else (False, None)
         except Exception:  # noqa: BLE001 - said in the dialog, below
-            cut = None
-        wx.CallAfter(self._ask, cut)
+            found = (False, None)
+        wx.CallAfter(self._ask, *found)
 
-    def _ask(self, cut):
+    def _ask(self, read, cut):
         if self._stopped:
             return  # stopped, or the dialog closed, while the chat was read
-        if cut is None:
+        if not read:
             self._on_event(AsideEvent("failed", "Couldn't read this chat's conversation to "
                                                 "find its last finished turn."))
             return
-        if not cut:
+        if cut == "":
             self._on_event(AsideEvent("failed", NOTHING_FINISHED))
             return
         try:
-            command = self._command_at(cut)
+            command = self._command_at(cut or "")
         except (ResumeRefused, ValueError) as exc:
             self._on_event(AsideEvent("failed", str(exc)))
             return
@@ -312,7 +301,9 @@ class _AsideAtFinishedTurn:
         if self._runner is not None:
             self._runner.cancel()
         else:
-            self._on_event(AsideEvent("failed", "Stopped."))
+            # Later, as a runner's comes: the dialog may be closing, and
+            # one said now would be spoken on the way out.
+            wx.CallAfter(self._on_event, AsideEvent("failed", "Stopped."))
 
 
 # Kept importable from here for tests that stand in for the runner.

@@ -21,14 +21,17 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   never is (``claude_cli.check_resume_allowed``).
 * It answered from the history ("the code word is ZEPHYR-42") and could read
   a file in the folder to answer.
-* While the source chat has a turn running, the copy ends with its last
-  finished turn: ``--resume-session-at`` the record before the message that
-  started the running turn, as Rewind to Here cuts (``finished_cut``, #559).
-  Without the cut the copy held the unfinished turn, the message and a tool
-  call with no result yet; Claude Code marked that work as stopped, and Claude
-  answered the chat's own message in the aside as well as, or instead of, the
-  question (checked with a ``sleep 45`` running). With the cut it answered only
-  the question. The chat's own turn was never affected either way.
+* When the chat's last turn has no finished reply (it's running, or was
+  stopped, quit or crashed part way), the copy ends with the last finished
+  turn: ``--resume-session-at`` the record before the one that started the
+  unfinished turn, as Rewind to Here cuts (``finished_cut``, #559). Without
+  the cut the copy held the unfinished turn, the message and a tool call with
+  no result yet; Claude Code marked that work as stopped, and Claude answered
+  the chat's own message in the aside as well as, or instead of, the question
+  (checked with a ``sleep 45`` running). With the cut it answered only the
+  question. The chat's own turn was never affected either way. The transcript
+  decides, not whether a turn looks to be running: a turn stopped here leaves
+  the same unfinished end, and one just sent may not be written yet.
 * ``--settings {"disableAllHooks": true}`` keeps your and the project's hooks
   from running: without it a project's Stop and UserPromptSubmit hooks ran
   (and wrote their file) on every aside.
@@ -56,16 +59,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import Callable, Collection, Dict, List, Optional
+from typing import Callable, Collection, Dict, Iterable, List, Optional
 
 from . import platform_paths
 from .claude_cli import (INIT_ANSWER_WAIT, ResumeRefused, StreamParser, api_key_problem,
                          child_environment, exit_message, fable_problem, initialize_line,
                          is_safe_dir, is_safe_model, message_line, resolved_model, _decode)
-from .transcript import USER
 
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
@@ -83,21 +86,86 @@ NOTHING_FINISHED = ("There's nothing finished in this chat to ask about yet: its
                     "still running. Ask again once it's done.")
 
 
-def finished_cut(transcript) -> str:
-    """Where an aside's copy of a chat with a turn running should end (#559):
-    the record before your message that started that turn, so the copy ends
-    with the last finished turn, as Rewind to Here cuts. "" when there's no
-    finished turn (the first one is running) or nothing to go on.
+#: How finished_cut sees a transcript record.
+_START, _DONE, _OPEN = "start", "done", "open"
+_OUTPUT = re.compile(r"\s*<local-command-(?:stdout|stderr)>")
+_INTERRUPTED = re.compile(r"\s*\[Request interrupted by user", re.IGNORECASE)
 
-    Your message, not the latest record: a running turn goes on past tool
-    calls and their results, text Claude writes while a background subagent
-    works, and the ``<task-notification>`` saying it ended, and none of those
-    starts a turn. A message steered in mid-turn has no uuid (transcript.py),
-    so it's passed over too."""
-    for message in reversed(getattr(transcript, "messages", None) or ()):
-        if message.kind == USER and message.uuid:
-            return message.parent_uuid
-    return ""
+
+def _record_role(record: dict) -> Optional[str]:
+    """_START for a record that starts a turn: anything Claude answers as a
+    new turn, whether you typed it, another session sent it, a background
+    task's ``<task-notification>`` woke Claude or a slash command ran. _DONE
+    for one that leaves nothing unanswered: Claude's text, or a local
+    command's output. _OPEN for the rest of a turn: a tool call or its result,
+    a message steered in mid-turn, Claude Code's own notes. None when it isn't
+    conversation (hook output, a summary, ...)."""
+    if record.get("isSidechain"):
+        return None
+    kind = record.get("type")
+    message = record.get("message") if isinstance(record.get("message"), dict) else {}
+    content = message.get("content")
+    if kind == "assistant":
+        blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+        if any(b.get("type") == "tool_use" for b in blocks):
+            return _OPEN
+        if isinstance(content, str) and content.strip():
+            return _DONE
+        has_text = any(b.get("type") == "text" and str(b.get("text") or "").strip()
+                       for b in blocks)
+        return _DONE if has_text else _OPEN  # thinking alone: more is coming
+    if kind == "attachment":
+        attachment = record.get("attachment")
+        queued = isinstance(attachment, dict) and attachment.get("type") == "queued_command"
+        return _OPEN if queued else None
+    if kind != "user":
+        return None
+    if record.get("isMeta") or record.get("isCompactSummary"):
+        return _OPEN
+    if isinstance(content, list):
+        blocks = [b for b in content if isinstance(b, dict)]
+        if any(b.get("type") == "tool_result" for b in blocks):
+            return _OPEN
+        text = "\n".join(str(b.get("text") or "") for b in blocks if b.get("type") == "text")
+    else:
+        text = content if isinstance(content, str) else ""
+    if _OUTPUT.match(text):
+        return _DONE
+    if _INTERRUPTED.match(text):
+        return _OPEN
+    return _START
+
+
+def finished_cut(lines: Iterable[str]) -> Optional[str]:
+    """Where an aside's copy of a Claude chat should end (#559), from its
+    transcript's lines. None when the chat ends with a finished reply: the
+    copy has it all. Otherwise the uuid of the record before the one that
+    started the unfinished last turn, so the copy ends with the last finished
+    turn, as Rewind to Here cuts; "" when there's no finished turn before it
+    (the first is the unfinished one).
+
+    Read from the end, so a long chat costs only its last turn's parsing.
+    Known gap: a turn that compacted part way through has its start before
+    the compaction, so the copy is cut before it and carries the whole
+    history from before it."""
+    unfinished = False
+    for line in reversed(list(lines)):
+        if '"type"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        role = _record_role(record) if isinstance(record, dict) else None
+        if role is None:
+            continue
+        if not unfinished and role == _DONE:
+            return None
+        unfinished = True
+        if role == _START:
+            parent = record.get("parentUuid")
+            return parent if isinstance(parent, str) and platform_paths.is_safe_id(parent) else ""
+    return "" if unfinished else None
 
 
 def build_aside_command(executable: str, source_id: str, model: str = "",
@@ -107,9 +175,9 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
     """The command that asks a side question about session ``source_id``.
     Never a plain ``--resume``: always a fork that isn't saved. ``allowed_dirs``
     are the chat's More Folders, so a question about a file in one can be
-    answered; the tools here can still only read them. ``resume_at``, while
-    the chat has a turn running, is ``finished_cut``'s record: the copy ends
-    there, leaving the running turn out (#559)."""
+    answered; the tools here can still only read them. ``resume_at``, when
+    the chat's last turn is unfinished, is ``finished_cut``'s record: the
+    copy ends there, leaving that turn out (#559)."""
     if resume_at and not platform_paths.is_safe_id(resume_at):
         raise ValueError("That isn't a place in the chat Claude Code can copy up to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):

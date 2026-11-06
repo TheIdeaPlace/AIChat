@@ -1,7 +1,8 @@
 """An ephemeral read-only Codex fork for TCP's Ask Aside dialog (#467)."""
 import threading
 
-from ..aside import AsideEvent
+from .. import platform_paths
+from ..aside import NOTHING_FINISHED, AsideEvent
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_rpc import CodexRpcError
@@ -23,14 +24,47 @@ class AsideConnection(CodexExecutionConnection):
             self._runtime_threads[proof.native_id] = proof
 
 
+_ENDED = ('completed', 'failed', 'interrupted')
+#: How far back the turn list is followed for a finished turn.
+_TURN_PAGES = 20
+
+
+def last_finished_turn(connection, native_id):
+    """(id of the newest turn that ended, whether a newer one hasn't), from
+    the thread's own turn list (#559), as Rewind's verify_anchor reads it.
+    ("", False) for a thread with no turns."""
+    cursor, seen, unfinished = None, set(), False
+    for _ in range(_TURN_PAGES):
+        params = {'threadId': native_id, 'sortDirection': 'desc', 'limit': 20,
+                  'itemsView': 'notLoaded'}
+        if cursor is not None:
+            params['cursor'] = cursor
+        page = connection.request('thread/turns/list', params)
+        turns = page.get('data') if isinstance(page, dict) else None
+        if not isinstance(turns, list):
+            raise CodexRpcError('Codex turn list unreadable')
+        for turn in turns:
+            turn_id = turn.get('id') if isinstance(turn, dict) else None
+            if not isinstance(turn_id, str) or not platform_paths.is_safe_id(turn_id):
+                raise CodexRpcError('Codex turn list unreadable')
+            if turn.get('status') in _ENDED:
+                return turn_id, unfinished
+            unfinished = True
+        cursor = page.get('nextCursor')
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            break
+        seen.add(cursor)
+    return '', unfinished
+
+
 class CodexAsideRunner:
     def __init__(self, source, question, on_event, *, factory=AsideConnection,
-                 before_turn_id=None):
+                 turn_running=False):
         self.source, self.question, self.on_event = source, question, on_event
         self.factory = factory
-        # The source's running turn, if it has one (#559): the copy ends
-        # before it, so Codex doesn't take up that turn's message in the aside.
-        self.before_turn_id = before_turn_id or None
+        # The window's view (#559): a turn sent and not yet in the list
+        # still gets the copy cut at the newest turn that ended.
+        self.turn_running = bool(turn_running)
         self._cancel = threading.Event()
         self._event_lock = threading.Lock()
         self._terminal = False
@@ -59,9 +93,21 @@ class CodexAsideRunner:
         connection = None
         try:
             connection = self._connection = self.factory()
+            # The copy ends with the newest turn that ended whenever a newer
+            # one hasn't (#559): Codex could otherwise take up that turn's
+            # message in the aside, as Claude did. Asked of the thread's own
+            # list, so a chat started elsewhere is cut too.
+            finished, unfinished = last_finished_turn(connection, self.source.cli_session_id)
+            cut = {}
+            if unfinished or self.turn_running:
+                if not finished:
+                    self._emit(AsideEvent('failed', NOTHING_FINISHED))
+                    return
+                cut = {'last_turn_id': finished}
+            if self._cancel.is_set():
+                return
             proof = CodexOwnedThreads(connection).fork(self.source, 'Ask Aside', ephemeral=True,
-                sandbox='read-only', approval_policy='never', passive=True,
-                before_turn_id=self.before_turn_id)
+                sandbox='read-only', approval_policy='never', passive=True, **cut)
             if self._cancel.is_set():
                 return
             connection.accept_aside(proof)
