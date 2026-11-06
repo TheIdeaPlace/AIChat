@@ -390,6 +390,7 @@ def _cut(*records):
 
 
 def _first_turn():
+    """A finished first turn; its last record is the reply a cut keeps."""
     from records import assistant_block, text_block, tool_use_block, tool_result, user_text
     return [user_text("Which file has the parser?"),
             assistant_block(tool_use_block("Grep", {"pattern": "parse"}, "toolu_g"), "m1"),
@@ -397,9 +398,24 @@ def _first_turn():
             assistant_block(text_block("parser.py."), "m2")]
 
 
+def _api_error(text="API Error: Connection error."):
+    """How Claude Code closes a turn that failed: synthetic text, not a reply."""
+    from records import assistant_block, text_block
+    record = assistant_block(text_block(text), "m_err", isApiErrorMessage=True)
+    record["message"]["model"] = "<synthetic>"
+    return record
+
+
+def _local_command():
+    """A local slash command's output, as current Claude Code writes it."""
+    from records import _base
+    return _base("system", subtype="local_command", level="info",
+                 content="<local-command-stdout>Total cost: $0.01</local-command-stdout>")
+
+
 def _second_turn(case):
-    from records import (_base, assistant_block, thinking_block, tool_result, tool_use_block,
-                         user_text)
+    from records import (assistant_block, task_notification, text_block, thinking_block,
+                         tool_result, tool_use_block, user_text)
     ask = user_text("Run the tests")
     sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}, "toolu_b"), "m3")
     if case == "message only":  # also how a turn stopped before Claude answered ends
@@ -410,59 +426,61 @@ def _second_turn(case):
         return [ask, sleep, tool_result("toolu_b", "done")]
     if case == "thinking only":
         return [ask, assistant_block(thinking_block("Hmm."), "m3")]
+    if case == "text, then a tool call":
+        # Text that went on to a tool call says so: it didn't end the turn.
+        said = assistant_block(text_block("Running them now."), "m3")
+        said["message"]["stop_reason"] = "tool_use"
+        return [ask, said]
     if case == "interrupted":
         return [ask, sleep, user_text("[Request interrupted by user]")]
-    if case == "steered":
+    if case == "a message sent mid-turn":
+        # The desktop app writes it as a plain user record after the result,
+        # and the same turn carries on.
         return [ask, sleep, tool_result("toolu_b", "done"),
-                _base("attachment", attachment={"type": "queued_command", "commandMode": "prompt",
-                                                "prompt": "Use the fast tests"})]
+                user_text("Use the fast tests", origin={"kind": "human"}),
+                assistant_block(tool_use_block("Bash", {"command": "make fast"}, "toolu_c"), "m4")]
+    if case == "started by another session":
+        return [user_text('<cross-session-message from="Build">Is it green?'
+                          '</cross-session-message>', isMeta=True, origin={"kind": "peer"}),
+                assistant_block(thinking_block("Checking."), "m3")]
+    if case == "started by a task notification":
+        return [task_notification("t1", "completed", "Found it.", tool_id="toolu_a"),
+                assistant_block(tool_use_block("Read", {"file_path": "a.py"}, "toolu_r"), "m3")]
+    if case == "ended in an error":
+        return [ask, sleep, tool_result("toolu_b", "done"), _api_error()]
+    if case == "a local command after it":
+        return [user_text("<command-name>/cost</command-name>"), _local_command()]
     raise AssertionError(case)
 
 
-@pytest.mark.parametrize("case", ["message only", "tool call, no result", "tool result",
-                                  "thinking only", "interrupted", "steered"])
-def test_an_unfinished_last_turn_is_cut_where_the_turn_before_it_ends(case):
+SECOND_TURNS = ["message only", "tool call, no result", "tool result", "thinking only",
+                "text, then a tool call", "interrupted", "a message sent mid-turn",
+                "started by another session", "started by a task notification",
+                "ended in an error", "a local command after it"]
+
+
+@pytest.mark.parametrize("case", SECOND_TURNS)
+def test_the_copy_ends_with_the_newest_finished_reply(case):
+    # #559: a copy holding an unfinished turn had Claude answer its message too.
     first = _first_turn()
     assert _cut(*first, *_second_turn(case)) == first[-1]["uuid"]
 
 
-def test_a_chat_that_ends_with_a_finished_reply_is_copied_whole():
+def test_a_chat_that_ends_with_a_finished_reply_is_still_cut_there():
+    # Claude Code reads the chat again a moment later: whatever's written in
+    # between mustn't get into the copy unanswered.
     from records import assistant_block, lines, sidechain, text_block, tool_use_block, user_text
-    assert _cut(*_first_turn()) is None
+    first = _first_turn()
+    assert _cut(*first) == first[-1]["uuid"]
+    later = assistant_block(text_block("OK."), "m9")
+    assert _cut(*first, user_text("Thanks"), later) == later["uuid"]
     # A subagent's own records and a bad line after it change nothing.
+    tail = sidechain(assistant_block(text_block("Done."), "s1"), "a1")
     records = _chained(*_first_turn())
-    tail = sidechain(assistant_block(tool_use_block("Read", {}, "toolu_s"), "s1"), "a1")
-    assert finished_cut(lines(*records, tail) + ["{not json"]) is None
-    assert finished_cut([]) is None
-    # A reply that ended the turn, then another started by your message, ended too.
-    assert _cut(*_first_turn(), user_text("Thanks"), assistant_block(text_block("OK."), "m9")) is None
-
-
-@pytest.mark.parametrize("starts", ["task notification", "another session", "slash command"])
-def test_a_turn_started_by_something_other_than_your_message_is_cut_before_it(starts):
-    # The review's example (#559): first turn done, then a notification woke
-    # Claude, still writing. That isn't "nothing finished".
-    from records import (_base, assistant_block, task_notification, text_block, thinking_block,
-                         tool_use_block, user_text)
-    if starts == "task notification":
-        opener = [task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
-    elif starts == "another session":
-        opener = [user_text('<cross-session-message from="Build">Is it green?'
-                            '</cross-session-message>')]
-    else:
-        opener = [user_text("<command-name>/review</command-name>\n<command-message>review"
-                            "</command-message>"),
-                  _base("user", message={"role": "user", "content": "Review the change."},
-                        isMeta=True)]
-    first = [user_text("first"), assistant_block(text_block("done"), "m1")]
-    rest = [assistant_block(thinking_block("Hmm."), "m2"),
-            assistant_block(tool_use_block("Read", {"file_path": "a.py"}, "toolu_r"), "m3")]
-    assert _cut(*first, *opener, *rest) == first[-1]["uuid"]
+    assert finished_cut(lines(*records, tail) + ["{not json"]) == records[-1]["uuid"]
 
 
 def test_background_text_then_its_notification_cuts_at_the_text():
-    # Claude wrote while a background subagent ran (its turn ended), then the
-    # notification started another, not yet answered.
     from records import (agent_call, agent_launched, assistant_block, task_notification,
                          text_block, user_text)
     waiting = assistant_block(text_block("Waiting on it."), "m4")
@@ -471,29 +489,45 @@ def test_background_text_then_its_notification_cuts_at_the_text():
                agent_launched("toolu_a", "a1"), waiting,
                task_notification("t1", "completed", "Found it.", tool_id="toolu_a")]
     assert _cut(*records) == waiting["uuid"]
-    assert _cut(*records[:-1]) is None  # before the notification: nothing unanswered
 
 
-def test_a_local_slash_command_leaves_nothing_unanswered():
-    from records import _base, command_stdout, user_text
-    caveat = _base("user", message={"role": "user", "content": "Caveat: local commands."},
-                   isMeta=True)
-    assert _cut(*_first_turn(), caveat, user_text("<command-name>/cost</command-name>"),
-                command_stdout("Total cost: $0.01")) is None
-
-
-def test_finished_cut_has_nothing_while_the_first_turn_is_unfinished():
+@pytest.mark.parametrize("case", ["message only", "tool call, no result", "ended in an error"])
+def test_finished_cut_has_nothing_until_a_turn_has_finished(case):
     from records import assistant_block, tool_use_block, user_text
-    assert _cut(user_text("Run the tests"),
-                assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1")) == ""
-    assert _cut(user_text("Run the tests")) == ""
+    sleep = assistant_block(tool_use_block("Bash", {"command": "sleep 45"}), "m1")
+    records = {"message only": [user_text("Run the tests")],
+               "tool call, no result": [user_text("Run the tests"), sleep],
+               "ended in an error": [user_text("Run the tests"), _api_error()]}[case]
+    assert _cut(*records) == ""
+    assert finished_cut([]) == ""
 
 
 def test_finished_cut_never_hands_back_something_that_isnt_a_record_id():
-    from records import lines, user_text
+    from records import assistant_block, lines, text_block, user_text
+    reply = assistant_block(text_block("Hi"), "m1")
+    reply["uuid"] = "--bare"
+    assert finished_cut(lines(user_text("Hello"), reply)) == ""
+
+
+def test_the_cut_is_found_from_the_end_of_a_file(tmp_path):
+    # Read a growing tail at a time, as the tail reader does (#146); the
+    # answer is the same as reading it all.
+    from records import assistant_block, lines, text_block, tool_result, tool_use_block, user_text
+    from thechatplace.aside import finished_cut_from_file
     first = _chained(*_first_turn())
-    ask = user_text("Run the tests", parentUuid="--bare")
-    assert finished_cut(lines(*first, ask)) == ""
+    busy = [assistant_block(tool_use_block("Bash", {"command": "x" * 300}, f"toolu_{n}"), f"b{n}")
+            for n in range(20)]
+    records = _chained(*first, user_text("Run the tests"), *busy, tool_result("toolu_19", "y" * 500))
+    path = tmp_path / "chat.jsonl"
+    path.write_text("\n".join(lines(*records)) + "\n", encoding="utf-8")
+    assert finished_cut_from_file(path, steps=(200, 2000)) == first[-1]["uuid"]
+    assert finished_cut_from_file(path) == first[-1]["uuid"]
+    path.write_text("\n".join(lines(*records[:4])), encoding="utf-8")  # no last newline
+    assert finished_cut_from_file(path, steps=(10,)) == first[-1]["uuid"]
+    path.write_text("\n".join(lines(user_text("Run the tests"), *busy)), encoding="utf-8")
+    assert finished_cut_from_file(path, steps=(200,)) == ""
+    with pytest.raises(OSError):
+        finished_cut_from_file(tmp_path / "gone.jsonl")
 
 
 def test_aside_rows_and_full_text():
@@ -527,12 +561,10 @@ def test_aside_intro_says_the_right_plan():
     codex = aside_intro("Codex")
     assert "your ChatGPT plan" in codex and "Codex plan" not in codex
     assert "which file Codex changed" in codex and "Claude" not in codex
-    # #559: a running turn is left out of the copy, and the dialog says so.
-    # #559: an unfinished turn is left out of the copy, for every chat that
-    # has Ask Aside, and the dialog says so.
+    # #559: a turn that's running or didn't finish is left out of the copy,
+    # for every chat that has Ask Aside, and the dialog says so.
     for provider in ("Claude", "Codex"):
-        assert ("If the chat has a turn running, that turn's work so far isn't included."
-                in aside_intro(provider))
+        assert "A turn that's running or didn't finish isn't included." in aside_intro(provider)
 
 
 def _boxes(text):

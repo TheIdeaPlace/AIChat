@@ -14,10 +14,9 @@ import wx
 
 from .. import announce, platform_paths
 from ..aside import (COWORK_REFUSED, NOTHING_FINISHED, AsideEvent, AsideRunner,
-                     build_aside_command, finished_cut)
+                     build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
-from ..transcript import split_jsonl
 from .dialogs import AskAsideDialog, ChatOptionsDialog
 
 
@@ -221,7 +220,7 @@ class ClaudeExtras:
             # running, since a stopped turn leaves the same unfinished end and
             # one just sent may not be written yet.
             try:
-                return _AsideAtFinishedTurn(lambda: _transcript_lines(info), command_at, start,
+                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, start,
                                             on_event).begin(self._pool.submit)
             except RuntimeError:  # the pool is shut down: the window is closing
                 return "The Chat Place is closing, so Claude can't be asked now."
@@ -244,16 +243,17 @@ class ClaudeExtras:
         _give_focus_back(returning_to)
 
 
-def _transcript_lines(info):
-    """A Claude chat's transcript, as lines, or None when it isn't on disk.
-    Read whole each time: the open chat's reader can be a refresh behind."""
+def _finished_cut(info):
+    """Where an aside's copy of a Claude chat ends (``aside.finished_cut``),
+    or None when its transcript isn't on disk. Read from the file each time:
+    the open chat's reader can be a refresh behind."""
     path = info.transcript_path()
-    return None if path is None else split_jsonl(path.read_bytes())
+    return None if path is None else finished_cut_from_file(path)
 
 
 class _AsideAtFinishedTurn:
-    """One aside question (#559). The copy has to end with the chat's last
-    finished turn, or Claude answers an unfinished turn's message in it too,
+    """One aside question (#559). The copy has to end with the chat's newest
+    finished reply, or Claude answers an unfinished turn's message in it too,
     so the transcript is read off the UI thread to find where that is, then
     the copy is asked. It stands in for the runner: ``cancel`` stops it, and
     until the runner starts says "Stopped." itself, later, as a runner does.
@@ -271,24 +271,23 @@ class _AsideAtFinishedTurn:
 
     def _find_cut(self):
         try:
-            lines = self._read()
-            found = (True, finished_cut(lines)) if lines is not None else (False, None)
+            cut = self._read()
         except Exception:  # noqa: BLE001 - said in the dialog, below
-            found = (False, None)
-        wx.CallAfter(self._ask, *found)
+            cut = None
+        wx.CallAfter(self._ask, cut)
 
-    def _ask(self, read, cut):
+    def _ask(self, cut):
         if self._stopped:
             return  # stopped, or the dialog closed, while the chat was read
-        if not read:
+        if cut is None:
             self._on_event(AsideEvent("failed", "Couldn't read this chat's conversation to "
-                                                "find its last finished turn."))
+                                                "find its last finished reply."))
             return
-        if cut == "":
+        if not cut:
             self._on_event(AsideEvent("failed", NOTHING_FINISHED))
             return
         try:
-            command = self._command_at(cut or "")
+            command = self._command_at(cut)
         except (ResumeRefused, ValueError) as exc:
             self._on_event(AsideEvent("failed", str(exc)))
             return

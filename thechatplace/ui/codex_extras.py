@@ -66,14 +66,11 @@ class CodexExtras:
         if not self._require_capability('aside', info):
             return
         from ..providers.codex_aside import CodexAsideRunner
-        from .. import announce, rewind
+        from .. import announce
         def ask(question, on_event):
-            # The thread's turn list decides where the copy ends (#559); this
-            # adds a turn sent here that may not be listed yet.
-            running = rewind.turn_in_progress(self._codex_states.get(info.key))
+            # The thread's turn list decides where the copy ends (#559).
             return CodexAsideRunner(info, question,
-                lambda event: wx.CallAfter(on_event, event),
-                turn_running=running).start()
+                lambda event: wx.CallAfter(on_event, event)).start()
         focus = wx.Window.FindFocus()
         dialog = AskAsideDialog(self, info.title, ask, provider='Codex',
             say=lambda text, failed=False: self._say(text if failed else

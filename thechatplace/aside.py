@@ -21,17 +21,16 @@ Checked with Claude Code 2.1.296 and real Haiku runs:
   never is (``claude_cli.check_resume_allowed``).
 * It answered from the history ("the code word is ZEPHYR-42") and could read
   a file in the folder to answer.
-* When the chat's last turn has no finished reply (it's running, or was
-  stopped, quit or crashed part way), the copy ends with the last finished
-  turn: ``--resume-session-at`` the record before the one that started the
-  unfinished turn, as Rewind to Here cuts (``finished_cut``, #559). Without
-  the cut the copy held the unfinished turn, the message and a tool call with
-  no result yet; Claude Code marked that work as stopped, and Claude answered
-  the chat's own message in the aside as well as, or instead of, the question
-  (checked with a ``sleep 45`` running). With the cut it answered only the
-  question. The chat's own turn was never affected either way. The transcript
-  decides, not whether a turn looks to be running: a turn stopped here leaves
-  the same unfinished end, and one just sent may not be written yet.
+* The copy always ends with the chat's newest finished reply:
+  ``--resume-session-at`` that record (``finished_cut``, #559). Without it, a
+  copy of a chat with a turn running, or stopped, quit or crashed part way,
+  held the unfinished turn, the message and a tool call with no result yet;
+  Claude Code marked that work as stopped, and Claude answered the chat's own
+  message in the aside as well as, or instead of, the question (checked with
+  a ``sleep 45`` running, and with the turn killed as Stop does). With the cut
+  it answered only the question. The chat's own turn was never affected. The
+  transcript decides, not whether a turn looks to be running: a turn stopped
+  here leaves the same unfinished end, and one just sent may not be written.
 * ``--settings {"disableAllHooks": true}`` keeps your and the project's hooks
   from running: without it a project's Stop and UserPromptSubmit hooks ran
   (and wrote their file) on every aside.
@@ -81,91 +80,103 @@ COWORK_REFUSED = ("Ask Aside isn't available for Cowork sessions: their conversa
                   "the desktop app's own files. Open the session in Claude to ask there.")
 
 
-#: Said instead of asking when the only turn in a chat is the one running (#559).
-NOTHING_FINISHED = ("There's nothing finished in this chat to ask about yet: its first turn is "
-                    "still running. Ask again once it's done.")
+#: Said instead of asking when no turn in a chat has finished (#559).
+NOTHING_FINISHED = ("There's nothing finished in this chat to ask about yet: its first turn "
+                    "hasn't finished.")
+
+#: An assistant record's stop reason when its message went on to call a tool.
+_TOOL_USE_STOP = "tool_use"
 
 
-#: How finished_cut sees a transcript record.
-_START, _DONE, _OPEN = "start", "done", "open"
-_OUTPUT = re.compile(r"\s*<local-command-(?:stdout|stderr)>")
-_INTERRUPTED = re.compile(r"\s*\[Request interrupted by user", re.IGNORECASE)
+def is_finished_reply(record) -> bool:
+    """Whether a transcript record is Claude's text that ended a turn (#559):
+    text and no tool call, from a message that didn't stop to call one. Not a
+    subagent's, and not the synthetic text Claude Code closes a failed turn
+    with (``isApiErrorMessage``, model ``<synthetic>``: a session limit, the
+    API out of reach), which leaves your message unanswered.
 
-
-def _record_role(record: dict) -> Optional[str]:
-    """_START for a record that starts a turn: anything Claude answers as a
-    new turn, whether you typed it, another session sent it, a background
-    task's ``<task-notification>`` woke Claude or a slash command ran. _DONE
-    for one that leaves nothing unanswered: Claude's text, or a local
-    command's output. _OPEN for the rest of a turn: a tool call or its result,
-    a message steered in mid-turn, Claude Code's own notes. None when it isn't
-    conversation (hook output, a summary, ...)."""
-    if record.get("isSidechain"):
-        return None
-    kind = record.get("type")
-    message = record.get("message") if isinstance(record.get("message"), dict) else {}
+    Checked against every local transcript (structure only): of the text
+    records, those followed by a tool call in the same message say
+    ``stop_reason`` "tool_use"; the record before each message you typed
+    after a finished turn was one of these."""
+    if not isinstance(record, dict) or record.get("type") != "assistant":
+        return False
+    if record.get("isSidechain") or record.get("isApiErrorMessage"):
+        return False
+    message = record.get("message")
+    if not isinstance(message, dict) or message.get("model") == "<synthetic>":
+        return False
+    if message.get("stop_reason") == _TOOL_USE_STOP:
+        return False
     content = message.get("content")
-    if kind == "assistant":
-        blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
-        if any(b.get("type") == "tool_use" for b in blocks):
-            return _OPEN
-        if isinstance(content, str) and content.strip():
-            return _DONE
-        has_text = any(b.get("type") == "text" and str(b.get("text") or "").strip()
-                       for b in blocks)
-        return _DONE if has_text else _OPEN  # thinking alone: more is coming
-    if kind == "attachment":
-        attachment = record.get("attachment")
-        queued = isinstance(attachment, dict) and attachment.get("type") == "queued_command"
-        return _OPEN if queued else None
-    if kind != "user":
-        return None
-    if record.get("isMeta") or record.get("isCompactSummary"):
-        return _OPEN
-    if isinstance(content, list):
-        blocks = [b for b in content if isinstance(b, dict)]
-        if any(b.get("type") == "tool_result" for b in blocks):
-            return _OPEN
-        text = "\n".join(str(b.get("text") or "") for b in blocks if b.get("type") == "text")
-    else:
-        text = content if isinstance(content, str) else ""
-    if _OUTPUT.match(text):
-        return _DONE
-    if _INTERRUPTED.match(text):
-        return _OPEN
-    return _START
+    if isinstance(content, str):
+        return bool(content.strip())
+    if not isinstance(content, list):
+        return False
+    blocks = [block for block in content if isinstance(block, dict)]
+    if any(block.get("type") == "tool_use" for block in blocks):
+        return False
+    return any(block.get("type") == "text" and str(block.get("text") or "").strip()
+               for block in blocks)
 
 
-def finished_cut(lines: Iterable[str]) -> Optional[str]:
-    """Where an aside's copy of a Claude chat should end (#559), from its
-    transcript's lines. None when the chat ends with a finished reply: the
-    copy has it all. Otherwise the uuid of the record before the one that
-    started the unfinished last turn, so the copy ends with the last finished
-    turn, as Rewind to Here cuts; "" when there's no finished turn before it
-    (the first is the unfinished one).
+def finished_cut(lines: Iterable[str]) -> str:
+    """Where an aside's copy of a Claude chat ends (#559), from its
+    transcript's lines: the uuid of the newest finished reply
+    (``is_finished_reply``), or "" when there's none.
 
-    Read from the end, so a long chat costs only its last turn's parsing.
-    Known gap: a turn that compacted part way through has its start before
-    the compaction, so the copy is cut before it and carries the whole
-    history from before it."""
-    unfinished = False
-    for line in reversed(list(lines)):
-        if '"type"' not in line:
-            continue
+    Always a cut, even when the chat ends with that reply: Claude Code reads
+    the transcript again a moment after this does, and anything written in
+    between (a message sent as a turn ends, a background task's notification)
+    would otherwise be in the copy unanswered. And never where an unfinished
+    turn starts: a message sent mid-turn is a plain user record too, and
+    another session's message is a meta one, so cutting at the reply is what
+    holds for every way a turn starts or goes on.
+
+    Known gap: if the chat compacted after its newest finished reply, the
+    copy goes back to before the compaction and carries the history from
+    then (none of the local transcripts checked had that)."""
+    for line in reversed(lines if isinstance(lines, list) else list(lines)):
+        if '"assistant"' not in line:
+            continue  # most records; not worth parsing
         try:
             record = json.loads(line)
         except ValueError:
             continue
-        role = _record_role(record) if isinstance(record, dict) else None
-        if role is None:
-            continue
-        if not unfinished and role == _DONE:
-            return None
-        unfinished = True
-        if role == _START:
-            parent = record.get("parentUuid")
-            return parent if isinstance(parent, str) and platform_paths.is_safe_id(parent) else ""
-    return "" if unfinished else None
+        if is_finished_reply(record):
+            uuid = record.get("uuid")
+            return uuid if isinstance(uuid, str) and platform_paths.is_safe_id(uuid) else ""
+    return ""
+
+
+#: How much of a transcript's end finished_cut_from_file reads at a time:
+#: most chats end with a finished reply, found in the first.
+CUT_STEPS = (64 * 1024, 1024 * 1024, 16 * 1024 * 1024)
+
+
+def finished_cut_from_file(path, steps=CUT_STEPS) -> str:
+    """``finished_cut`` for a transcript on disk, reading only as much of its
+    end as it takes (as transcript.py's tail reader does, #146): a long chat
+    can be tens of megabytes, read for every question otherwise. Raises
+    OSError when it can't be read."""
+    from .transcript import split_jsonl
+    with open(path, "rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        for limit in (*steps, size):
+            start = max(0, size - limit)
+            handle.seek(start)
+            data = handle.read(size - start)
+            if start > 0:
+                # The first line is cut off, unless it started right here; a
+                # record cut off is read whole at the next step.
+                handle.seek(start - 1)
+                if handle.read(1) != b"\n":
+                    newline = data.find(b"\n")
+                    data = data[newline + 1:] if newline >= 0 else b""
+            cut = finished_cut(split_jsonl(data))
+            if cut or start == 0:
+                return cut
+    return ""
 
 
 def build_aside_command(executable: str, source_id: str, model: str = "",
@@ -175,9 +186,9 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
     """The command that asks a side question about session ``source_id``.
     Never a plain ``--resume``: always a fork that isn't saved. ``allowed_dirs``
     are the chat's More Folders, so a question about a file in one can be
-    answered; the tools here can still only read them. ``resume_at``, when
-    the chat's last turn is unfinished, is ``finished_cut``'s record: the
-    copy ends there, leaving that turn out (#559)."""
+    answered; the tools here can still only read them. ``resume_at`` is
+    ``finished_cut``'s record: the copy ends there, so a turn that's running
+    or didn't finish is left out (#559)."""
     if resume_at and not platform_paths.is_safe_id(resume_at):
         raise ValueError("That isn't a place in the chat Claude Code can copy up to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
@@ -563,8 +574,8 @@ def aside_intro(provider: str = "Claude") -> str:
     plan = _PLAN_NAMES.get(provider, f"{provider} plan")
     return (f"Ask a question about this chat, such as which file {provider} changed or what a "
             f"reply meant. The question and its answer aren't added to the chat, and {provider} "
-            "can read files to answer but can't change anything. If the chat has a turn "
-            "running, that turn's work so far isn't included. Your questions stay listed "
+            "can read files to answer but can't change anything. A turn that's running or "
+            "didn't finish isn't included. Your questions stay listed "
             f"for this chat until you quit The Chat Place. Each question uses your {plan}, "
             "as a message does.")
 

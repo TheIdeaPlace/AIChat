@@ -1256,22 +1256,24 @@ def _turn(turn_id, status):
     return {'id': turn_id, 'status': status, 'items': []}
 
 
-@pytest.mark.parametrize('turns, running, cut', [
+@pytest.mark.parametrize('turns, cut', [
     # Newest first, as thread/turns/list gives them.
-    ([_turn('turn-2', 'inProgress'), _turn('turn-1', 'completed')], False, 'turn-1'),
-    # Sending: the window says working, but the new turn isn't listed yet.
-    ([_turn('turn-1', 'completed')], True, 'turn-1'),
-    # A chat started elsewhere, running: the list alone says so.
+    ([_turn('turn-2', 'inProgress'), _turn('turn-1', 'completed')], 'turn-1'),
+    # Always cut, even with nothing running: a turn that starts before the
+    # fork is left out too (and the moment after sending, before it's listed).
+    ([_turn('turn-1', 'completed')], 'turn-1'),
+    # A chat started elsewhere, running, after one you stopped.
     ([_turn('turn-3', 'inProgress'), _turn('turn-2', 'interrupted'), _turn('turn-1', 'completed')],
-     False, 'turn-2'),
-    ([_turn('turn-2', 'failed'), _turn('turn-1', 'completed')], False, None),
-    ([], False, None),
+     'turn-1'),
+    # A turn that failed can leave your message unanswered.
+    ([_turn('turn-2', 'failed'), _turn('turn-1', 'completed')], 'turn-1'),
+    ([], None),
 ])
-def test_an_aside_forks_up_to_the_newest_turn_that_ended(turns, running, cut):
-    # #559: in Claude, a copy holding the unfinished turn had its message
+def test_an_aside_forks_up_to_the_newest_completed_turn(turns, cut):
+    # #559: in Claude, a copy holding an unfinished turn had its message
     # answered in the aside too.
     connection = AsideFake(answer=list(_DONE), turns=turns)
-    _runner, events = _aside_run(connection, turn_running=running)
+    _runner, events = _aside_run(connection)
     assert events[-1].kind == 'done'
     fork = next(p for m, p in connection.calls if m == 'thread/fork')
     assert fork.get('lastTurnId') == cut and 'beforeTurnId' not in fork
@@ -1287,9 +1289,10 @@ def test_an_aside_follows_the_turn_list_past_its_first_page():
     assert fork['lastTurnId'] == 'turn-2'
 
 
-def test_an_aside_says_when_codex_has_nothing_finished_yet():
+@pytest.mark.parametrize('status', ['inProgress', 'failed', 'interrupted'])
+def test_an_aside_says_when_codex_has_nothing_finished_yet(status):
     from thechatplace.aside import NOTHING_FINISHED
-    connection = AsideFake(answer=list(_DONE), turns=[_turn('turn-1', 'inProgress')])
+    connection = AsideFake(answer=list(_DONE), turns=[_turn('turn-1', status)])
     _runner, events = _aside_run(connection)
     assert events[-1].kind == 'failed' and events[-1].text == NOTHING_FINISHED
     assert not any(m == 'thread/fork' for m, _p in connection.calls)
