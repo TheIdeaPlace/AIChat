@@ -27,7 +27,7 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 - **High Contrast Desert:** High Contrast Desert (hc-desert-100) is the light version of the same thing: a cream background (#FFFAEF) everywhere with near-black text (#202020, 15.7:1) and thin black outlines. Selected rows and the default button are rust brown (#903909) with cream text (7.3:1). Its formatted message has dark grey text (#3D3D3D), dark grey table lines and a dark teal link (#1C5E75, 6.9:1). In Desert the title bars are mid-grey with pale grey title text (1.2:1), so the window titles almost vanish; the probe pictures windows while they aren't the active window, and this is how Windows draws an inactive title in that theme.
 - **150% and 175% scaling:** At 150% and 175% display scaling (light-150, light-175), the app draws itself at the screen's scaling, so the letters are as sharp as at 100% (#185 fixed this: Windows used to stretch a 100% picture, and the text was soft). Sizes grow with the scaling: the main window is 1500 by 968 at 150% and 1750 by 956 at 175%, each as big as the screen allows less a 40-pixel margin, and no window or dialog runs under the taskbar (#186). The gaps between controls are still the 100% ones, so controls sit a little closer together than at 100%.
 
-**Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's ends "Subagents, not available".
+**Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's reads "Subagents (0)", as the probe's Codex chats have none (#558).
 
 **Since #564, in every Lists picture:** Kinds has an eighth row, Approvals, last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Approvals, not available"; a Codex chat started here ends "Approvals" and a count.
 
@@ -657,7 +657,7 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 Reviewed from light-100 and hc-aquatic-100 screenshots on 2026-10-27. The 820 by
 660 dialog is titled "Lists: Codex history preview". Show items from is set to
 This message. The seven-row Kinds list (788 by 111) has Changed Files (4) selected,
-and its last row reads "Subagents, not available" (#468).
+and its Subagents row reads "Subagents (0)" (#468).
 Below an empty Filter box, the 788 by 120 file list shows upload.py with two lines
 added and one removed, notes.txt created with one line, unused.txt deleted, and
 test_upload.py renamed. The first file is selected. Its 788 by 170 Details box
@@ -695,7 +695,7 @@ shows only that label changing; the task list, details and layout are unchanged.
 
 The 820 by 660 Lists dialog, titled "Lists: Codex history preview", uses the same
 layout as Claude's Tasks. A scope dropdown is above the seven-row Kinds list (788 by
-111), whose last row reads "Subagents, not available" (#468). Tasks (3) is selected.
+111), whose Subagents row reads "Subagents (0)" (#468). Tasks (3) is selected.
 Below Filter is the 788 by 120 task list with a done
 step, an in-progress step and a to-do step. The first step is selected; the Details
 box (788 by 170) says "Find why the upload test fails" and "Done. Task 1 of 3."
@@ -716,7 +716,7 @@ There are no new clipping, overlap or theme problems in these pictures.
 The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The task's unavailable message, disabled Copy button and layout are unchanged.
 
-The same 820 by 660 layout. Kinds says "Tasks, not available" and, below it, "Subagents, not available" (#468), and the list label
+The same 820 by 660 layout. Kinds says "Tasks, not available" and, below it, "Subagents (0)" (#468), and the list label
 says "Tasks (0)". The single selected row reads "No task list. Task lists are kept
 only for Codex chats run in The Chat Place." It fits fully on one line. Details is empty,
 Copy is disabled, and Close remains enabled. High Contrast Aquatic changes the
@@ -758,7 +758,7 @@ The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The empty task list, details and button positions are unchanged.
 
 The same 820 by 660 dialog uses the shared empty-list wording. Kinds says
-"Tasks (0)" without an unavailable warning, and "Subagents, not available" below it
+"Tasks (0)" without an unavailable warning, and "Subagents (0)" below it
 (#468). The selected row in the 788 by 120
 list says "No tasks in this chat." The 788 by 170 Details box is empty. Copy is
 disabled and Close is enabled. Both light and High Contrast Aquatic keep the
@@ -1002,7 +1002,7 @@ captured in this review.
 
 ## lists-codex-approvals: View, Lists: Approvals in a Codex chat (#564)
 
-The Lists dialog for "Codex history preview", on "Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands, Decisions and Subagents say "not available". "List: Approvals (5):" holds five rows, newest first: "Allowed: git diff. Saved rule for this chat." (selected), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog for "Codex history preview", on "Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands and Decisions say "not available", and Subagents reads "Subagents (0)" (#558). "List: Approvals (5):" holds five rows, newest first: "Allowed: git diff. Saved rule for this chat." (selected), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
 
 **What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
 
