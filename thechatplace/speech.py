@@ -230,13 +230,15 @@ class SpeechSettings:
     sounds_on: bool = False
     sounds_muted: bool = False
     sound_volume: int = 80
-    sound_style: str = "glass"
+    #: The sound scheme playing: a pack's id (glass, softbell, wood) or one of your own.
+    sound_scheme: str = "glass"
     #: Which chats' tools make a sound, and whether others' other sounds play:
     #: values from ``sound_events``.
     sound_tools: str = "loaded"
     sound_others: str = "all"
-    #: Event id -> sound reference, only where it isn't the default.
-    sound_choices: dict = field(default_factory=dict)
+    #: Schemes by id, as ``sound_events.save_schemes`` writes them: a built-in one only
+    #: with what you changed, one of your own with every event (app-kit's SCHEMES.md).
+    sound_schemes: dict = field(default_factory=dict)
     #: Windows notifications without Windows' own sound. Only if you choose it: what Windows does
     #: for your notifications is yours to change, and turning on these sounds doesn't change it.
     sound_silent_notifications: bool = False
@@ -319,15 +321,19 @@ class SpeechSettings:
         volume = raw.get("sound_volume")
         settings.sound_volume = (volume if type(volume) is int and volume in sound_events.VOLUMES
                                  else sound_events.DEFAULT_VOLUME)
-        style = raw.get("sound_style")
-        settings.sound_style = style if isinstance(style, str) and style in sound_events.STYLES else sound_events.DEFAULT_STYLE
+        if "sound_scheme" in raw or "sound_schemes" in raw:
+            scheme_id, saved = raw.get("sound_scheme"), raw.get("sound_schemes")
+        else:  # a 0.5 preview's style and choices
+            scheme_id, saved = sound_events.migrate(raw.get("sound_style"), raw.get("sound_choices"))
+        schemes = sound_events.load_schemes(saved)
+        settings.sound_schemes = sound_events.save_schemes(schemes)
+        settings.sound_scheme = sound_events.find(schemes, scheme_id if isinstance(scheme_id, str) else "").id
         tools = raw.get("sound_tools")
         settings.sound_tools = (tools if isinstance(tools, str) and tools in sound_events.TOOLS_LABELS
                                 else sound_events.TOOLS_LOADED)
         others = raw.get("sound_others")
         settings.sound_others = (others if isinstance(others, str) and others in sound_events.OTHERS_LABELS
                                  else sound_events.OTHERS_ALL)
-        settings.sound_choices = sound_events.clean_choices(raw.get("sound_choices"))
         settings.sound_silent_notifications = raw.get("sound_silent_notifications") is True
         return settings
 

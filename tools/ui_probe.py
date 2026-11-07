@@ -1119,6 +1119,49 @@ def d_sounds(frame, env):
     return frame.on_sounds
 
 
+def d_sounds_own_scheme(frame, env):
+    """File, Sounds on a scheme of your own (#250): some events silent, others in other tones."""
+    frame.speech.sound_scheme = "user-" + "a" * 32
+    frame.speech.sound_schemes = {frame.speech.sound_scheme: {"name": "Quiet evenings", "events": {
+        "ToolRan": "builtin:softbell/tap", "ReplyFinished": "builtin:wood/arrived",
+        "NeedsYou": "builtin:glass/attention", "TurnFailed": "builtin:failed"}}}
+    return frame.on_sounds
+
+
+class _ProbeGallery:
+    """A gallery answering at once with made-up schemes, one of them already added."""
+
+    def __init__(self, entries):
+        self.entries = entries
+
+    def schemes(self):
+        return self.entries
+
+
+def d_sound_gallery(frame, env):
+    """File, Sounds, Browse Gallery (#250): two made-up schemes, the second already added."""
+    from theideaplace_appkit import soundgallery
+    from thechatplace import sound_events
+    from thechatplace.ui.sound_gallery_dialog import SoundGalleryDialog
+    entries = [soundgallery.Entry("rain-at-night", "Rain at Night", "Synthetic Author", "CC0-1.0",
+                                  "Soft, low sounds for working late, with a quiet tap for tools.",
+                                  "rain-at-night-" + "a" * 16 + ".tcpsounds", 1000, "a" * 64, 12),
+               soundgallery.Entry("bright-bells", "Bright Bells", "Another Author", "CC-BY-4.0",
+                                  "Clear bells.", "bright-bells-" + "b" * 16 + ".tcpsounds",
+                                  1000, "b" * 64, 15)]
+    added = sound_events.Scheme("user-" + "b" * 32, "Bright Bells", False,
+                                source={"gallery": "bright-bells", "sha256": "b" * 64})
+
+    def show():
+        dialog = SoundGalleryDialog(frame, sound_events.load_schemes({}) + [added],
+                                    lambda: _ProbeGallery(entries), frame._say)
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+    return show
+
+
 def d_settings_codex(frame, env):
     from thechatplace import platform_paths
     platform_paths.find_codex = lambda: "synthetic-native-codex"
@@ -2241,6 +2284,8 @@ SURFACES = {
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
     "sounds": ("dialog", d_sounds, "File, Sounds"),
+    "sounds-own-scheme": ("dialog", d_sounds_own_scheme, "File, Sounds on a scheme of your own"),
+    "sound-gallery": ("dialog", d_sound_gallery, "File, Sounds, Browse Gallery: two schemes, one added"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
@@ -2383,6 +2428,8 @@ DIALOG_CLASSES = {
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
     "sounds": "SoundsDialog",
+    "sounds-own-scheme": "SoundsDialog",
+    "sound-gallery": "SoundGalleryDialog",
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",

@@ -176,7 +176,8 @@ isn't a letter or digit turned into `-`) was checked against every transcript on
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Rewind to Here and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
-| `thechatplace/sound_events.py`, `thechatplace/ui/sound_host.py`, `thechatplace/ui/sounds_dialog.py` | Sounds: each event's sound, what the window plays, and File, Sounds. `thechatplace/assets/sounds` holds copies of app-kit's WAVs; app-kit plays them |
+| `thechatplace/sound_events.py`, `thechatplace/ui/sound_host.py`, `thechatplace/ui/sounds_dialog.py` | Sounds: each event's sound, sound schemes, what the window plays, and File, Sounds. `thechatplace/assets/sounds` holds copies of app-kit's WAVs; app-kit plays them. Schemes, scheme files and the gallery follow app-kit's `sounds/SCHEMES.md`, through its `soundschemes` and `soundgallery`; app-kit's `apps.json` is bundled with `--collect-data theideaplace_appkit` |
+| `thechatplace/sound_gallery.py`, `thechatplace/ui/sound_gallery_dialog.py` | File, Sounds, Browse Gallery: the signed gallery of sound schemes. `--sound-gallery <folder or address>` points it at a gallery of your own for testing |
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |
 | `thechatplace/speech.py`, `thechatplace/speech/` | Speech, adapted from Image Description Toolkit (ClaudeSpeak's engine scripts) |
 | `thechatplace/screen_readers.py` | Speaking through JAWS and NVDA on Windows |

@@ -320,7 +320,7 @@ with a screen reader. User Guide, **Sounds** lists every sound.
 1. Choose File, **Sounds**. Tab through it both ways. Expect: each control is named, and the
    **Sound events** list reads each row as the event and its sound. Turn on **Play sounds** and
    choose OK.
-2. In **Sound events**, arrow to a few events and choose **Preview**. Try each **Style**
+2. In **Sound events**, arrow to a few events and choose **Preview**. Try each **Sound scheme**
    (Glass, Soft bell, Wood) and a lower **Volume**. Expect: each plays at the volume showing, and
    none is harsh or clipped.
 3. In a disposable chat, with **Show Tool Activity** off (**Ctrl+T**), ask for something that
@@ -337,6 +337,15 @@ with a screen reader. User Guide, **Sounds** lists every sound.
    while you're in another program, then select the notification. Expect: only The Chat Place's
    sound, and its chat opens. Nobody has checked that the chat still opens with this setting on.
 8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
+9. **Sound schemes.** Press **Alt+A** (Scheme Actions). Expect: a menu of New, Copy, Rename,
+   Delete, Reset, Export and Import Scheme, with Rename and Delete turned off on Glass, and each
+   read as turned off. Choose **New Scheme**, name it, and check that the events list says "0 of
+   15 events have a sound" and that **Sound** offers tones such as "Arrived (Soft bell)". Give
+   two events a sound, then **Export Scheme** and **Import Scheme** the file. Expect: "Added the
+   sound scheme ..." is said, and the copy has the same sounds.
+10. **Browse Gallery** (**Alt+B**). The gallery isn't open yet. Expect: "Loading the sound
+    scheme gallery…", then "The gallery could not be reached", with focus on **Reload**. Escape
+    closes it and you're back on Browse Gallery.
 
 ## Remaining listening checks and reporting
 

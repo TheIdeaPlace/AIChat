@@ -82,13 +82,13 @@ def test_muted_nothing_plays(frame, env):
 
 
 def test_an_event_set_to_none_is_silent(frame, env):
-    frame.speech.sound_choices = {se.TOOL: se.NONE_REF}
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": se.NONE_REF}}}
     turn(frame, TurnEvent("tool", text="Bash"))
     assert env["sounds"] == []
 
 
 def test_volume_and_style_reach_the_player(frame, env):
-    frame.speech.sound_volume, frame.speech.sound_style = 50, "wood"
+    frame.speech.sound_volume, frame.speech.sound_scheme = 50, "wood"
     turn(frame, TurnEvent("tool", text="Bash"))
     last = env["players"][0].last
     assert last["volume"] == 0.5 and Path(last["path"]).parts[-2:] == ("wood", "tap.wav")
@@ -521,7 +521,7 @@ def select_event(dialog, event_id):
 def test_dialog_shows_the_settings_and_its_rows(frame, dialog):
     assert dialog.play_sounds.GetValue() is True
     assert dialog.volume.GetStringSelection() == "80%"
-    assert dialog.style.GetStringSelection() == "Glass"
+    assert dialog.scheme.GetStringSelection() == "Glass"
     assert dialog.events.GetString(0) == "Tool ran: Tap"
     assert dialog.sound.GetStringSelection() == "Tap"
 
@@ -531,21 +531,22 @@ def test_choosing_a_sound_changes_the_row_and_only_ok_keeps_it(frame, dialog):
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert frame.speech.sound_choices == {}
-    assert dialog.get_settings().sound_choices == {se.FINISHED: se.NONE_REF}
+    assert frame.speech.sound_schemes == {}
+    assert dialog.get_settings().sound_schemes == {"glass": {"events": {"ReplyFinished": se.NONE_REF}}}
 
 
 def test_preview_uses_what_is_showing_even_when_muted(frame, dialog, env):
     frame.speech.sounds_muted = True
     dialog.volume.SetStringSelection("30%")
-    dialog.style.SetStringSelection("Wood")
+    dialog.scheme.SetStringSelection("Wood")
+    dialog._scheme_chosen()
     dialog._preview()
     path, volume = env["previews"][-1]
     assert volume == 0.3 and Path(path).parts[-2:] == ("wood", "tap.wav")
 
 
 def test_preview_of_your_own_file_can_fall_back_as_real_playback_does(frame, dialog, env):
-    dialog._choices[se.TOOL] = se.custom_ref("gone.wav")
+    dialog.current().events["ToolRan"] = se.custom_ref("gone.wav")
     dialog._preview()
     assert Path(env["players"][0].preview_fallback).name == "tap.wav"
 
@@ -650,7 +651,7 @@ def test_choose_file_failure_says_why_and_keeps_the_choice(frame, dialog, env, t
     monkeypatch.setattr(wx, "FileDialog", Picker)
     dialog._choose_file()
     assert any("can't be used" in str(box) for box in env["boxes"])
-    assert dialog.get_settings().sound_choices == {}
+    assert dialog.get_settings().sound_schemes == {}
 
 
 def test_choose_file_uses_it_and_lists_it(frame, dialog, env, tmp_path, monkeypatch):
@@ -676,6 +677,238 @@ def test_choose_file_uses_it_and_lists_it(frame, dialog, env, tmp_path, monkeypa
     monkeypatch.setattr(dialog.sound, "SetFocus", lambda: focused.append(True))
     dialog._choose_file()
     assert focused, "focus goes where it's read that it worked"
-    assert dialog.get_settings().sound_choices == {se.TOOL: se.custom_ref("mine.wav")}
+    assert dialog.get_settings().sound_schemes == {"glass": {"events": {"ToolRan": se.custom_ref("mine.wav")}}}
     assert dialog.sound.GetStringSelection() == "Your file, mine.wav"
     assert dialog.events.GetString(0) == "Tool ran: Your file, mine.wav"
+
+
+# ---------------------------------------------------------------- sound schemes
+
+
+class _Ask:
+    """wx.TextEntryDialog answering with each of ``answers`` in turn (None: Cancel)."""
+    answers: list = []
+    asked: list = []
+
+    def __init__(self, parent, message, title, value):
+        _Ask.asked.append((title, value))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def SetMaxLength(self, n):
+        pass
+
+    def ShowModal(self):
+        self._answer = _Ask.answers.pop(0)
+        return wx.ID_CANCEL if self._answer is None else wx.ID_OK
+
+    def GetValue(self):
+        return self._answer
+
+
+@pytest.fixture
+def ask(monkeypatch):
+    _Ask.answers, _Ask.asked = [], []
+    monkeypatch.setattr(wx, "TextEntryDialog", _Ask)
+    return _Ask
+
+
+def _picker(monkeypatch, path):
+    class Picker:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def ShowModal(self):
+            return wx.ID_OK if path else wx.ID_CANCEL
+
+        def GetPath(self):
+            return str(path)
+    monkeypatch.setattr(wx, "FileDialog", Picker)
+
+
+def test_each_built_in_scheme_keeps_its_own_changes(dialog):
+    select_event(dialog, se.FINISHED)
+    dialog.sound.SetStringSelection("None")
+    dialog._sound_chosen()
+    dialog.scheme.SetStringSelection("Wood")
+    dialog._scheme_chosen()
+    assert "Reply finished: Arrived" in dialog.events.GetItems()
+    assert dialog.events_label.GetLabelText() == "Sound events (15 of 15 events have a sound):"
+    dialog.scheme.SetStringSelection("Glass")
+    dialog._scheme_chosen()
+    assert "Reply finished: None" in dialog.events.GetItems()
+    assert dialog.events_label.GetLabelText() == "Sound events (14 of 15 events have a sound):"
+    settings = dialog.get_settings()
+    assert settings.sound_scheme == "glass"
+    assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
+
+
+def test_a_new_scheme_starts_silent_and_offers_every_tone(dialog, ask, env):
+    ask.answers = ["  ", "Glass", "Quiet"]  # empty and taken names are asked again
+    dialog.on_new()
+    assert [title for title, _ in ask.asked] == ["New Sound Scheme"] * 3
+    assert any("Type a name" in str(b) for b in env["boxes"])
+    assert any("already a scheme called Glass" in str(b) for b in env["boxes"])
+    assert dialog.scheme.GetStringSelection() == "Quiet"
+    assert dialog.events.GetString(0) == "Tool ran: None"
+    assert "Arrived (Soft bell)" in dialog.sound.GetItems()
+    settings = dialog.get_settings()
+    assert settings.sound_scheme.startswith("user-")
+    assert settings.sound_schemes[settings.sound_scheme]["name"] == "Quiet"
+
+
+def test_copy_rename_delete_and_reset(dialog, ask, env):
+    dialog.scheme.SetStringSelection("Soft bell")
+    dialog._scheme_chosen()
+    ask.answers = [None]
+    dialog.on_copy()  # cancelled
+    assert [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
+    ask.answers = ["Bells"]
+    dialog.on_copy()
+    assert ask.asked[-1] == ("Copy Sound Scheme", "Soft bell copy")
+    assert dialog.current().events["ToolRan"] == "builtin:softbell/tap"  # pinned to its tone
+    ask.answers = ["Chimes"]
+    dialog.on_rename()
+    assert dialog.scheme.GetStringSelection() == "Chimes"
+    dialog.on_delete()
+    assert dialog.scheme.GetStringSelection() == "Glass"
+    assert [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
+    select_event(dialog, se.TOOL)
+    dialog.sound.SetStringSelection("None")
+    dialog._sound_chosen()
+    dialog.on_reset()
+    assert dialog.events.GetString(0) == "Tool ran: Tap"
+    assert dialog.get_settings().sound_schemes == {}
+
+
+def test_a_built_in_scheme_cant_be_renamed_or_deleted(dialog, ask):
+    dialog.on_rename()
+    dialog.on_delete()
+    assert ask.asked == [] and [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
+
+
+def test_export_then_import_brings_the_scheme_back(dialog, env, tmp_path, monkeypatch):
+    select_event(dialog, se.TOOL)
+    dialog.sound.SetStringSelection("Stopped")
+    dialog._sound_chosen()
+    target = tmp_path / "Glass"
+    _picker(monkeypatch, target)
+    said = []
+    dialog._say = lambda text, **k: said.append(text)
+    dialog.on_export()
+    exported = tmp_path / "Glass.tcpsounds"
+    assert exported.is_file() and said[-1] == "Exported Glass."
+    _picker(monkeypatch, exported)
+    dialog.on_import()
+    assert dialog.scheme.GetStringSelection() == "Glass 2"
+    assert said[-1] == "Added the sound scheme Glass 2. Choose OK to keep it."
+    assert dialog.events.GetString(0) == "Tool ran: Stopped (Glass)"
+
+
+def test_importing_another_apps_scheme_says_whose_it_is(dialog, env, tmp_path, monkeypatch):
+    import zipfile
+    path = tmp_path / "mail.tcpsounds"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("scheme.json", json.dumps({"format": 1, "name": "Mail", "events": {}}))
+    _picker(monkeypatch, path)
+    dialog.on_import()
+    assert "for QuickMail, so The Chat Place can't use it" in env["boxes"][-1]
+    assert [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
+
+
+def test_remove_file_says_what_uses_it_and_deletes_it(frame, dialog, env, tmp_path, monkeypatch):
+    good = make_wav(tmp_path / "mine.wav")
+    _picker(monkeypatch, good)
+    dialog._choose_file()
+    kept = platform_paths.custom_sounds_dir() / "mine.wav"
+    assert kept.is_file() and dialog.remove_file.IsEnabled()
+    dialog.on_remove_file()
+    assert "Glass uses it" in env["boxes"][-1] and "deleted now" in env["boxes"][-1]
+    assert not kept.exists()
+    assert dialog.events.GetString(0) == "Tool ran: Your file, mine.wav (missing)"
+    assert not dialog.remove_file.IsEnabled()
+
+
+class _FakeGallery:
+    def __init__(self, entries=None, data=b"", problem=None):
+        self.entries, self.data, self.problem = entries or [], data, problem
+
+    def schemes(self):
+        if self.problem:
+            raise self.problem
+        return self.entries
+
+    def download(self, entry):
+        return self.data
+
+
+def _gallery_entry(data, sid="rain", name="Rain"):
+    import hashlib
+    from theideaplace_appkit import soundgallery
+    sha = hashlib.sha256(data).hexdigest()
+    return soundgallery.Entry(sid, name, "Someone", "CC0-1.0", "Soft.", f"{sid}-{sha[:16]}.tcpsounds",
+                              len(data), sha, 2)
+
+
+def _gallery_dialog(frame, schemes, gallery):
+    from thechatplace.ui.sound_gallery_dialog import SoundGalleryDialog
+    said = []
+    dialog = SoundGalleryDialog(frame, schemes, lambda: gallery, lambda text, **k: said.append(text))
+    return dialog, said
+
+
+def test_the_gallery_lists_and_says_what_you_have(frame):
+    entry = _gallery_entry(b"x")
+    mine = se.Scheme("user-" + "a" * 32, "Rain", False, source={"gallery": "rain", "sha256": "f" * 64})
+    dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
+    try:
+        assert pump(lambda: dialog.list.GetCount() == 1)
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 15 events have a sound. "
+                                            "Update available.")
+        assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
+        assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
+        assert said == ["Loading the sound scheme gallery…"]
+    finally:
+        dialog.Destroy()
+
+
+def test_the_gallery_says_when_it_cant_be_reached(frame):
+    from theideaplace_appkit import soundgallery
+    dialog, said = _gallery_dialog(frame, se.load_schemes({}), _FakeGallery(problem=soundgallery.Unreachable()))
+    try:
+        assert pump(lambda: len(said) == 2)
+        assert said[-1] == soundgallery.UNREACHABLE
+        assert dialog.status.GetLabel() == soundgallery.UNREACHABLE
+        assert dialog.list.GetCount() == 0 and not dialog.add.IsEnabled()
+    finally:
+        dialog.Destroy()
+
+
+def test_adding_from_the_gallery_remembers_where_it_came_from(frame, dialog, monkeypatch):
+    exported = se.export(se.built_in_scheme("wood"))
+    entry = _gallery_entry(exported, "woody", "Woody")
+    dialog._make_gallery = lambda: _FakeGallery([entry], exported)
+    from thechatplace.ui import sound_gallery_dialog
+
+    class Shown(sound_gallery_dialog.SoundGalleryDialog):
+        def ShowModal(self):
+            assert pump(lambda: self.list.GetCount() == 1)
+            self.on_add()
+            assert pump(lambda: self.result is not None)
+            return wx.ID_OK
+    monkeypatch.setattr(sound_gallery_dialog, "SoundGalleryDialog", Shown)
+    dialog.on_browse()
+    added = dialog.current()
+    assert added.name == "Wood 2" and added.source == {"gallery": "woody", "sha256": entry.sha256}
+    saved = dialog.get_settings().sound_schemes[added.id]
+    assert saved["source"]["gallery"] == "woody"
