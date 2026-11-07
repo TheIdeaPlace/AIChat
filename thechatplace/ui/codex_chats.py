@@ -943,7 +943,10 @@ class CodexChats(CodexExtras):
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
                                     provider=provider_name(info.provider), said=said)
         else:
-            detail = request.file_detail if request.source_thread_id else dict(state.file_changes).get(request.item_id, '')
+            # Copilot shares this dialog but has no Codex child-thread fields.
+            # A child must use its pinned diff, never a same-ID parent diff.
+            detail = (request.file_detail if info.provider == 'codex' and request.source_thread_id
+                      else dict(state.file_changes).get(request.item_id, ''))
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,
                                            provider=provider_name(info.provider))
         keep = False
