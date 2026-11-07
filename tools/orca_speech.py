@@ -180,7 +180,7 @@ STEPS = [
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
     Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),
     Step("Chat Options, Add Folder", ["Tab"], expect=["Add Folder"]),
-    Step("Add Folder's picker", ["space"], expect=["Choose a folder Claude may also work in"]),
+    Step("Add Folder's picker", ["space"], expect=["Choose an additional folder for this chat"]),
     Step("picker closed, back on Add Folder", ["Escape"], expect=["Add Folder"]),
     Step("Chat Options closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
