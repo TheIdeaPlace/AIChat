@@ -142,11 +142,11 @@ too).
   Review the branch. Done, 34 messages, 12 tool calls, 4 minutes", or "Running" with how long so
   far; its details are the prompt it was given and its final report, and Enter or Read
   Conversation, Alt+R, opens its conversation, below) and **Approvals** (Codex chats started here:
-  each request automatic review or a saved rule allowed, and each it didn't, for the whole chat,
+  each request automatic review or a saved rule allowed, and each it didn't, always for the whole chat,
   with the reviewer's reason; Copy copies the command). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
   **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions,
   tasks and subagents, "this message" is the selected message's turn, from your message to Claude's reply (for
-  tasks, the ones added or changed in it). Links,
+  tasks, the ones added or changed in it); approvals are always the whole chat's. Links,
   commands, decisions and subagents list the newest first; code blocks and files are in the order they appear.
   The kinds are a list of their own, **Kinds**
   (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
@@ -745,7 +745,7 @@ approval. Your saved Codex command rules still apply. Chat Permissions explains
 these boundaries and TCP's overrides. A request automatic review doesn't allow
 (denied, timed out or stopped) is announced once and shown in the chat. Allowed requests,
 by automatic review or a saved rule, are announced and shown in the chat only with **Show
-Tool Activity** on (Ctrl+T), like tool calls; Lists, **Approvals** (Ctrl+Shift+I, then Ctrl+8)
+Tool Activity** on (Ctrl+T), like tool calls; Lists, **Approvals** (Ctrl+Shift+I, then Ctrl+8 on Windows)
 always lists them, and Turn Status counts this turn's. The most recent 128 decisions are kept
 locally for that chat and can be read again in Lists and Chat Permissions, including after
 restarting.

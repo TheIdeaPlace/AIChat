@@ -80,3 +80,54 @@ def test_saved_rule_notices_fit_the_history_file(tmp_path):
     store.remember('owned', 'turn-1', [(approvals.history_identity(7), RULE)])
     store.remember('owned', 'turn-1', [(approvals.history_identity('auto-review:1'), 'Codex automatic review allowed the request.')])
     assert [row[1] for row in store.load('owned')] == ['saved-rule:7', 'auto-review:1']
+
+
+def test_a_command_over_several_lines_is_kept_whole():
+    """The review's finding on #567: a heredoc or a commit body was cut to
+    its first line, and a line starting "Reason: " was taken as the reason."""
+    command = 'git commit -F - <<END\nFix the list\nReason: not the reviewer\nEND'
+    identity, text = review('approved', command=command, reason='Commits in the workspace.')
+    parsed = approvals.parse(identity, text)
+    assert parsed.command == command and parsed.reason == 'Commits in the workspace.'
+    assert '\n' not in parsed.row()
+    assert lists.approval_items([('t', identity, text)])[0].copy_text == command
+
+
+def _runtime(tmp_path):
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    runtime = object.__new__(CodexChatRuntime)  # only the history-saving part is used
+    runtime.review_store, runtime._saved_reviews = CodexReviewStore(tmp_path), {}
+    return runtime, lambda notices: runtime._save_for_later(
+        'owned', SimpleNamespace(permission_notices=tuple(notices), plan_received=False))
+
+
+def test_a_long_session_keeps_the_newest_128_in_order(tmp_path):
+    """The review's finding on #567: 100 saved-rule approvals over 100
+    turns, then 40 reviews in one turn, scrambled the file and lost new ones."""
+    runtime, save = _runtime(tmp_path)
+    notices = [(f'turn-{n}', n, f'Allowed git status {n}, as you said for this chat.') for n in range(100)]
+    save(notices)
+    for number in range(40):
+        notices.append(('turn-last', *review('approved', review_id=str(number))))
+        save(notices)
+    kept = runtime.review_store.load('owned')
+    expected = [approvals.history_identity(row[1]) for row in notices][-128:]
+    assert [row[1] for row in kept] == expected
+
+
+def test_saving_the_same_notices_again_writes_nothing(tmp_path, monkeypatch):
+    runtime, save = _runtime(tmp_path)
+    notices = [('turn', *review('approved'))]
+    save(notices)
+    writes = []
+    monkeypatch.setattr(runtime.review_store, 'remember', lambda *a: writes.append(a))
+    save(notices)
+    assert writes == []
+
+
+def test_rows_the_history_file_would_refuse_are_left_out(tmp_path):
+    runtime, save = _runtime(tmp_path)
+    save([('', 1, 'Allowed x, as you said for this chat.'), ('turn', 2, ''), ('turn', 3, 'y' * 10001),
+          ('turn', 4, 'Allowed git log, as you said for this chat.')])
+    assert [row[1] for row in runtime.review_store.load('owned')] == ['saved-rule:4']

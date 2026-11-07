@@ -1052,12 +1052,18 @@ class CodexChatRuntime:
         reviews = tuple((str(row[0]), history_identity(row[1]), row[2])
                         for row in state.permission_notices
                         if row[0] and isinstance(row[2], str) and row[2] and len(row[2]) <= 10000)
-        if reviews and self._saved_reviews.get(native_id) != reviews:
+        # Only rows this run hasn't written yet: passing them all again
+        # would add back rows the file had trimmed, out of order, and
+        # rewrite it on every change. Written as they arrive, the file
+        # stays in the order things happened (#564 review).
+        written = self._saved_reviews.setdefault(native_id, set())
+        fresh = [row for row in reviews if row[:2] not in written]
+        if fresh:
             try:
-                for turn in dict.fromkeys(row[0] for row in reviews):
+                for turn in dict.fromkeys(row[0] for row in fresh):
                     self.review_store.remember(native_id, turn,
-                                               [(row[1], row[2]) for row in reviews if row[0] == turn])
-                self._saved_reviews[native_id] = reviews
+                                               [(row[1], row[2]) for row in fresh if row[0] == turn])
+                written.update(row[:2] for row in fresh)
             except (OSError, ValueError):
                 pass  # Never interrupt execution to save display history.
         if state.plan_received:

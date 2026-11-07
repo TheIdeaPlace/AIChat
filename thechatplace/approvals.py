@@ -48,7 +48,8 @@ class Approval:
 
     def row(self) -> str:
         """"Allowed: git status. Automatic review." for the list."""
-        what = self.command if len(self.command) <= 120 else self.command[:119] + "…"
+        what = " ".join(self.command.split())  # one line, even for a heredoc
+        what = what if len(what) <= 120 else what[:119] + "…"
         who = "Automatic review" if self.by == BY_REVIEW else "Saved rule for this chat"
         head = self.outcome.capitalize()
         return f"{head}: {what}. {who}." if what else f"{head}, a request. {who}."
@@ -69,12 +70,13 @@ def parse(identity, text: str) -> Approval:
         command = first[len(_RULE_START):-len(_RULE_END)]
         return Approval(ALLOWED, BY_RULE, command, "", text)
     outcome = next((o for phrase, o in _REVIEW_OUTCOMES if phrase in first), "")
-    command = reason = ""
-    for line in rest.split("\n"):
-        if line.startswith("Command: ") and not command:
-            command = line[len("Command: "):]
-        elif line.startswith("Reason: ") and not reason:
-            reason = line[len("Reason: "):]
+    # The command can span lines (a heredoc, a commit message's body), so
+    # it runs to the last "Reason: " line, which codex_events puts last.
+    body = "\n" + rest
+    reason_at = body.rfind("\nReason: ")
+    reason = body[reason_at + len("\nReason: "):] if reason_at >= 0 else ""
+    head = body[:reason_at] if reason_at >= 0 else body
+    command = head[len("\nCommand: "):] if head.startswith("\nCommand: ") else ""
     return Approval(outcome or "noted", BY_REVIEW, command, reason, text)
 
 

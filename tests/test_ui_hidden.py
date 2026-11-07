@@ -10431,12 +10431,18 @@ def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeyp
     frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
     info = frame.store.get("owned").to_info()
     notices = _heavy_turn(4)
-    saved = tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
-    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record: saved)
+    # The history has an earlier turn's decision this run no longer holds.
+    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.
+Command: git fetch')
+    saved = (earlier,) + tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
+    asked = []
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record: asked.append((action, record.provider)) or saved)
     frame._codex_states[info.key] = CodexChatState("owned", "idle", "turn", "completed",
                                                    permission_notices=notices)
     rows, problem = frame._approvals_for(info)
-    assert problem == "" and len(rows) == 5 and rows[-1][1] == 'saved-rule:7'
+    assert asked == [("review_history", "codex")]
+    assert problem == "" and len(rows) == 6 and rows[0] == earlier and rows[-1][1] == 'saved-rule:7'
     items = lists.approval_items(rows)
     assert items[0].row == 'Allowed: git status. Saved rule for this chat.'
     frame._codex_states.clear()

@@ -2769,15 +2769,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         from .. import approvals
         state = self._codex_states.get(info.key)
         live = getattr(state, "permission_notices", ()) if state is not None else ()
-        record = self.store.get(info.cli_session_id)
+        record = self.store.get(info.cli_session_id, provider="codex")
         try:
             saved = self.sessions.owned_action("review_history", record) if record is not None else ()
         except Exception as exc:  # noqa: BLE001 - this run's are still worth listing
             from ..codex_diagnostics import record_failure
             record_failure(exc)
-            saved = ()
+            backend = getattr(self.sessions, "_providers", {}).get("codex")
+            if backend is not None and getattr(backend, "runtime", None) is None:
+                return [], "Approvals can't be listed until Codex is available."
             if not live:
                 return [], "The approval history couldn't be read. Its file was kept as it was."
+            # Said as Lists opens, so a short list isn't taken for all of them.
+            self._feedback("The approval history couldn't be read, so only this session's "
+                           "approvals are listed. Its file was kept as it was.")
+            saved = ()
         return approvals.merge(saved, live), ""
 
     def _show_lists(self, dialog):

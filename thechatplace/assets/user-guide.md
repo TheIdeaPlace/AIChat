@@ -749,8 +749,8 @@ session list, the messages or the reply box:
   "Failed" or "Stopped". Its details are the prompt Claude gave it and its final report. **Enter**
   (or **Read Conversation**, Alt+R) opens its conversation (see "Subagent conversations" below).
 - **Approvals** (Codex chats started here): each request Codex's automatic review allowed or
-  didn't, and each one a rule you saved with Allow for This Chat allowed, newest first, for the
-  whole chat: "Allowed: git log --oneline. Automatic review." Its details have the reviewer's
+  didn't, and each one a rule you saved with Allow for This Chat allowed, newest first. It always
+  lists the whole chat, whichever Show items from says: "Allowed: git log --oneline. Automatic review." Its details have the reviewer's
   reason, and **Copy** copies the command.
 
 Code Blocks and Links work in every chat. A kind that isn't available for a chat's provider says
@@ -2200,7 +2200,7 @@ approval.
 - A request that isn't allowed (denied, timed out or stopped) is said once and shown in the
   chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
   with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Approvals**
-  (Ctrl+Shift+I, then Ctrl+8) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
+  (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
 - The latest 128 decisions for each chat, including those your saved rules made, are kept on
   this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running.
