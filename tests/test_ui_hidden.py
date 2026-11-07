@@ -10911,10 +10911,11 @@ def test_codex_create_and_fork_forward_selected_options_through_controller(frame
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: action())
     source = SessionInfo('external', 'codex:source', 'Source', '/', 'source', provider='codex')
     policy = {'sandbox': sandbox, 'approval_policy': 'on-request', 'approvals_reviewer': reviewer}
+    chat_options = {'instructions': None, 'extra_roots': ()}
     frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort', **policy)
     frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high', **policy)
-    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **policy}),
-                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **policy})]
+    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **chat_options, **policy}),
+                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **chat_options, **policy})]
 
 
 @pytest.mark.parametrize('continuing', [False, True])

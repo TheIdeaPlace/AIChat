@@ -74,6 +74,9 @@ class Window(CodexChats, RelayChats):
         self._runners, self._codex_states = {}, {}
         self.copied = []
 
+    def _session_tools_config(self, caller):
+        return None
+
     # what the relay calls on the window
     def _selected_message(self):
         return self.selected
