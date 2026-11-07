@@ -10432,8 +10432,7 @@ def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeyp
     info = frame.store.get("owned").to_info()
     notices = _heavy_turn(4)
     # The history has an earlier turn's decision this run no longer holds.
-    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.
-Command: git fetch')
+    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.' + chr(10) + 'Command: git fetch')
     saved = (earlier,) + tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
     asked = []
     monkeypatch.setattr(frame.sessions, "owned_action",

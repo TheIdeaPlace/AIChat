@@ -83,7 +83,7 @@ def test_saved_rule_notices_fit_the_history_file(tmp_path):
 
 
 def test_a_command_over_several_lines_is_kept_whole():
-    """The review's finding on #567: a heredoc or a commit body was cut to
+    """The review's finding on #564: a heredoc or a commit body was cut to
     its first line, and a line starting "Reason: " was taken as the reason."""
     command = 'git commit -F - <<END\nFix the list\nReason: not the reviewer\nEND'
     identity, text = review('approved', command=command, reason='Commits in the workspace.')
@@ -103,7 +103,7 @@ def _runtime(tmp_path):
 
 
 def test_a_long_session_keeps_the_newest_128_in_order(tmp_path):
-    """The review's finding on #567: 100 saved-rule approvals over 100
+    """The review's finding on #564: 100 saved-rule approvals over 100
     turns, then 40 reviews in one turn, scrambled the file and lost new ones."""
     runtime, save = _runtime(tmp_path)
     notices = [(f'turn-{n}', n, f'Allowed git status {n}, as you said for this chat.') for n in range(100)]
@@ -131,3 +131,10 @@ def test_rows_the_history_file_would_refuse_are_left_out(tmp_path):
     save([('', 1, 'Allowed x, as you said for this chat.'), ('turn', 2, ''), ('turn', 3, 'y' * 10001),
           ('turn', 4, 'Allowed git log, as you said for this chat.')])
     assert [row[1] for row in runtime.review_store.load('owned')] == ['saved-rule:4']
+
+
+def test_a_cut_short_command_copies_without_the_display_note():
+    identity, text = review('approved', command='x' * 5000)
+    parsed = approvals.parse(identity, text)
+    assert 'Display truncated' not in parsed.command and parsed.command.startswith('x' * 4000)
+    assert 'Display truncated' in parsed.text

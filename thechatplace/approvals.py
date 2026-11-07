@@ -77,6 +77,11 @@ def parse(identity, text: str) -> Approval:
     reason = body[reason_at + len("\nReason: "):] if reason_at >= 0 else ""
     head = body[:reason_at] if reason_at >= 0 else body
     command = head[len("\nCommand: "):] if head.startswith("\nCommand: ") else ""
+    # A command codex_events cut short ends in its display note: Copy
+    # copies only the command (the detail still has the note).
+    from .providers.codex_events import DISPLAY_NOTE
+    if command.endswith(DISPLAY_NOTE):
+        command = command[:-len(DISPLAY_NOTE)]
     return Approval(outcome or "noted", BY_REVIEW, command, reason, text)
 
 

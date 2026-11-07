@@ -2780,9 +2780,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return [], "Approvals can't be listed until Codex is available."
             if not live:
                 return [], "The approval history couldn't be read. Its file was kept as it was."
-            # Said as Lists opens, so a short list isn't taken for all of them.
-            self._feedback("The approval history couldn't be read, so only this session's "
-                           "approvals are listed. Its file was kept as it was.")
+            # Said once Lists has focus, so a short list isn't taken for all
+            # of them; said before, a screen reader drops it as focus moves.
+            wx.CallLater(700, self._feedback,
+                         "The approval history couldn't be read, so only this session's "
+                         "approvals are listed. Its file was kept as it was.")
             saved = ()
         return approvals.merge(saved, live), ""
 
