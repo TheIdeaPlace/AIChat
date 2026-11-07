@@ -138,7 +138,7 @@
   {
    "class": "TextCtrl",
    "name": "Answer",
-   "label": "Ask a question about this chat, such as which file Claude changed or what a reply meant. The question and its answer aren't added to the chat, and Claude can read files to answer but can't change anything. Your questions stay listed for this chat until you quit The Chat Place. Each question uses your Claude plan, as a message does.",
+   "label": "Ask a question about this chat, such as which file Claude changed or what a reply meant. The question and its answer aren't added to the chat, and Claude can read files to answer but can't change anything. Claude answers from the chat up to its last finished reply, so a turn that's running or didn't finish isn't included. Your questions stay listed for this chat until you quit The Chat Place. Each question uses your Claude plan, as a message does.",
    "rect": [
     12,
     273,

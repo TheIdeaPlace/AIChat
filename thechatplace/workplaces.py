@@ -545,12 +545,82 @@ def _remote_for(info: RepoInfo, branch: str) -> str:
     return candidates[0] if candidates else ""
 
 
+#: A folder inside Claude Code's and The Chat Place's worktrees folder.
+WORKTREE_FOLDER_PATTERN = re.compile(r"[\\/]\.claude[\\/]worktrees[\\/][^\\/]+")
+
+#: Where a new branch in a new worktree starts (#561): the remote's default
+#: branch, fetched first, as Claude Code's own worktrees do, or what the
+#: chosen folder has checked out now.
+START_REMOTE = "remote"
+START_HERE = "here"
+
+
+@dataclass
+class WorktreeMade:
+    """What New Session made, so it can be said rather than guessed (#561)."""
+    folder: Path            # the folder to work in (the chosen subfolder, if any)
+    worktree: Path          # the worktree's own top folder
+    branch: str
+    how: str                # "new", "existing" or "tracking"
+    base: str = ""          # a new branch's starting point, as named to you
+    note: str = ""          # why it didn't start where you asked, if it didn't
+
+    def said(self) -> str:
+        where = f"Made worktree {self.worktree.name}"
+        if self.how == "existing":
+            text = f"{where} on existing branch {self.branch}."
+        elif self.how == "tracking":
+            text = f"{where} on branch {self.branch}, tracking {self.base}."
+        else:
+            text = f"{where} on new branch {self.branch}, from {self.base}."
+        return f"{text} {self.note}".strip()
+
+
+def is_new_branch(info: RepoInfo, branch: str) -> bool:
+    """Whether ``branch`` would be made new: Start from applies only then."""
+    name = (branch or "").strip()
+    if not name:
+        return False
+    if name in info.remotes or name in info.branches or name in info.busy:
+        return False
+    return not _remote_for(info, name)
+
+
+def default_remote_branch(git: str, info: RepoInfo) -> str:
+    """The remote's default branch, such as ``origin/main``, or "" when the
+    repository has no remote to start from."""
+    try:
+        named = _run([git, "-C", info.top, "symbolic-ref", "--quiet", "--short",
+                      "refs/remotes/origin/HEAD"], timeout=10).strip()
+        if named.startswith("origin/"):
+            return named
+    except ToolError:
+        pass
+    for candidate in ("origin/main", "origin/master"):
+        if candidate in info.remotes:
+            return candidate
+    return ""
+
+
+def _current(info: RepoInfo) -> str:
+    return info.branch or "the folder's current commit"
+
+
 def add_worktree(git: str, info: RepoInfo, branch: str) -> Path:
-    """Make a worktree for ``branch`` and return the folder to work in: the
-    same folder inside it as the one chosen. An existing branch is checked
-    out there; a branch only a remote has is made to track it; a new one is
-    made from what the chosen folder has checked out now. ToolError with
-    git's words if it can't."""
+    """The folder to work in, made as ``create_worktree`` makes it, with a
+    new branch starting from what the chosen folder has checked out."""
+    return create_worktree(git, info, branch, START_HERE).folder
+
+
+def create_worktree(git: str, info: RepoInfo, branch: str,
+                    start: str = START_REMOTE) -> WorktreeMade:
+    """Make a worktree for ``branch``. Its ``folder`` is the same folder
+    inside it as the one chosen. An existing branch is checked out there; a
+    branch only a remote has is made to track it; a new one starts from
+    ``start``: the remote's default branch, fetched just before (falling back
+    to the current branch, and saying so, with no remote or a failed fetch,
+    never an old copy), or what the chosen folder has checked out now.
+    ToolError with git's words if it can't."""
     branch = check_branch_name(git, branch)
     remote = ""
     if branch in info.remotes and branch not in info.branches:
@@ -562,12 +632,22 @@ def add_worktree(git: str, info: RepoInfo, branch: str) -> Path:
                         "can be in only one. Choose another branch, or type a new name.")
     folder = worktree_folder(info.main, branch)
     remote = remote or _remote_for(info, branch)
+    base, note = "", ""
     if branch in info.branches:
-        argv = ["--", str(folder), branch]
+        how, argv = "existing", ["--", str(folder), branch]
     elif remote:
+        how, base = "tracking", remote
         argv = ["--track", "-b", branch, "--", str(folder), remote]
     else:
-        argv = ["-b", branch, "--", str(folder)]
+        how = "new"
+        if start == START_REMOTE:
+            base, note = _fetched_default(git, info)
+        if base:
+            # Not tracking origin/main: pushing the new branch must never go to main.
+            argv = ["--no-track", "-b", branch, "--", str(folder), base]
+        else:
+            base = _current(info)
+            argv = ["-b", branch, "--", str(folder), *([info.branch] if info.branch else [])]
     try:
         _run([git, "-C", info.top, "worktree", "add", *argv], timeout=600)
     except ToolError as exc:
@@ -575,7 +655,88 @@ def add_worktree(git: str, info: RepoInfo, branch: str) -> Path:
         raise ToolError(said) from None
     _exclude_worktrees(git, info)
     inside = folder / info.rel if info.rel else folder
-    return inside if inside.is_dir() else folder
+    return WorktreeMade(folder=inside if inside.is_dir() else folder, worktree=folder,
+                        branch=branch, how=how, base=base, note=note)
+
+
+def _fetched_default(git: str, info: RepoInfo) -> tuple:
+    """``(origin/main, "")`` once fetched, or ``("", why not)``."""
+    remote_branch = default_remote_branch(git, info)
+    if not remote_branch:
+        return "", (f"This repository has no origin remote to start from, so it starts "
+                    f"from {_current(info)}.")
+    remote, name = remote_branch.split("/", 1)
+    try:
+        _run([git, "-C", info.top, "fetch", "--quiet", "--no-recurse-submodules", remote,
+              f"+refs/heads/{name}:refs/remotes/{remote}/{name}"], timeout=120)
+    except ToolError:
+        return "", (f"{remote_branch} couldn't be fetched, so it starts from "
+                    f"{_current(info)} instead.")
+    return remote_branch, ""
+
+
+def branch_facts(git: str, folder: str) -> List[tuple]:
+    """``(name, value)`` lines about the branch a folder is on, for
+    Properties (#331, #561): the branch, the worktree it's in, and what the
+    branch started from when git still records it."""
+    info = repo_info(git, folder)
+    if info is None:
+        return []
+    lines = [("Branch", info.branch or "none (detached)")]
+    if os.path.normcase(info.top) != os.path.normcase(info.main):
+        lines.append(("Worktree", f"{info.top}, of {info.main}"))
+    if info.branch:
+        start = branch_start(git, info)
+        if start:
+            lines.append(("Branch started from", start))
+    return lines
+
+
+def branch_start(git: str, info: RepoInfo) -> str:
+    """What ``info.branch`` was made from, from its reflog's first entry
+    ("branch: Created from origin/main"), as a name where git can give one.
+    "" when git no longer records it."""
+    try:
+        log = _run([git, "-C", info.top, "reflog", "show", "--format=%gs",
+                    f"refs/heads/{info.branch}", "--"], timeout=10)
+    except ToolError:
+        return ""
+    entries = [line for line in log.splitlines() if line.strip()]
+    if not entries:
+        return ""
+    first = entries[-1]
+    match = re.match(r"branch: Created from (.+)$", first.strip())
+    if not match:
+        return ""
+    source = match.group(1).strip()
+    if source == "HEAD":
+        return ""
+    commit = re.fullmatch(r"([0-9a-f]{7,64})(\^\{commit\})?", source)
+    if commit:
+        # Claude Code records the commit, not its name: name it if a branch
+        # has it. The remote's default branch first, as that's what its
+        # worktrees start from, then any remote branch, then a local one.
+        default = default_remote_branch(git, info)
+        if default:
+            try:
+                tip = _run([git, "-C", info.top, "rev-parse", "--verify", "--quiet",
+                            f"{default}^{{commit}}"], timeout=10).strip()
+            except ToolError:
+                tip = ""
+            if tip and tip.startswith(commit.group(1)):
+                return default
+        for refs in ("refs/remotes/*", "refs/heads/*"):
+            try:
+                named = _run([git, "-C", info.top, "name-rev", "--name-only", "--no-undefined",
+                              "--exclude=refs/remotes/*/HEAD",
+                              f"--refs={refs}", commit.group(1)], timeout=10).strip()
+            except ToolError:
+                continue
+            named = re.sub(r"^(remotes/|heads/)", "", named)
+            if named and not re.search(r"[~^]", named):
+                return named
+        return f"commit {commit.group(1)[:7]}"
+    return re.sub(r"^refs/(remotes|heads)/", "", source)
 
 
 def _exclude_worktrees(git: str, info: RepoInfo) -> None:

@@ -25,6 +25,8 @@ class CodexEvent:
     #: A file change's paths, once Codex says it was made (agent
     #: conversations pass them on with the reply).
     paths: tuple = ()
+    part: int = 0
+    sequence: int = 0
     #: A tool starting, as against Codex thinking or writing (#250).
     tool: bool = False
 
@@ -51,6 +53,32 @@ def decode_event(method, params):
     rather than assuming deltas describe the final reply. Backend error bodies
     are not copied into these displayable events.
     """
+    if method == 'item/reasoning/summaryTextDelta':
+        try:
+            if not isinstance(params, dict) or type(params.get('summaryIndex')) is not int or not 0 <= params['summaryIndex'] < 128:
+                return None
+            return CodexEvent('reasoning_delta', _id(params.get('threadId')), _id(params.get('turnId')),
+                _id(params.get('itemId')), _text(params.get('delta')), part=params['summaryIndex'])
+        except ValueError:
+            return None
+    if method == 'error':
+        if not isinstance(params, dict) or type(params.get('willRetry')) is not bool:
+            return None
+        try:
+            thread, turn = _id(params.get('threadId')), _id(params.get('turnId'))
+            error = params.get('error')
+            if not isinstance(error, dict):
+                return None
+            # Fixed classifications only: server error messages can contain secrets.
+            reason = error.get('codexErrorInfo')
+            words = {'serverOverloaded': 'the service is busy',
+                     'rateLimitExceeded': 'the service is limiting requests',
+                     'usageLimitExceeded': 'a usage limit was reached'}
+            reason = words.get(reason, 'the service request failed') if isinstance(reason, str) else 'the connection was interrupted'
+            text = ('Codex is retrying: ' if params['willRetry'] else 'Codex reported an error: ') + reason + '.'
+            return CodexEvent('retry' if params['willRetry'] else 'service_error', thread, turn, text=text)
+        except ValueError:
+            return None
     if method in ('item/autoApprovalReview/started', 'item/autoApprovalReview/completed'):
         # Display only: these notifications never authorize a local answer.
         # The installed app-server's experimental schema calls the payload
@@ -128,6 +156,10 @@ def decode_event(method, params):
                 return CodexEvent('context_compacted', thread_id, _id(params.get('turnId')), _id(item.get('id')))
             except ValueError:
                 return None
+        if item.get('type') == 'reasoning' and method == 'item/completed':
+            summary = item.get('summary')
+            text = '\n\n'.join(s for s in summary if isinstance(s, str)) if isinstance(summary, list) else ''
+            return CodexEvent('reasoning_completed', thread_id, _id(params.get('turnId')), _id(item.get('id')), _text(text))
         activity = {"reasoning": "Thinking.", "mcpToolCall": "Using an MCP tool.",
                     "webSearch": "Searching the web.", "commandExecution": "Running a command.",
                     "agentMessage": "Writing a reply."}
@@ -207,6 +239,9 @@ class CodexTurnBuffer:
         self.truncated = False
         self.started_at = time.monotonic()
         self.activity = "Codex is working."
+        self.retry = ""
+        self._reasoning = {}
+        self._reasoning_final = set()
         self.tasks = ()
         self.plan_received = False
         self.review_notices = {}
@@ -217,6 +252,11 @@ class CodexTurnBuffer:
     @property
     def replies(self):
         return tuple(self._texts.items()) + ((("display-limit", DISPLAY_NOTE.strip()),) if self.truncated else ())
+
+    @property
+    def reasoning(self):
+        return tuple((identity, '\n\n'.join(parts[i] for i in sorted(parts)))
+                     for identity, parts in self._reasoning.items())
 
     @property
     def file_changes(self):
@@ -248,6 +288,30 @@ class CodexTurnBuffer:
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
                 or self.status != "inProgress"):
             return False
+        if event.kind in ('reasoning_delta', 'reasoning_completed'):
+            if event.item_id in self._reasoning_final:
+                return False
+            if event.item_id not in self._reasoning and len(self._reasoning) >= 128:
+                return False
+            parts = self._reasoning.setdefault(event.item_id, {})
+            previous = dict(parts)
+            if event.kind == 'reasoning_completed':
+                parts.clear()
+                self._reasoning_final.add(event.item_id)
+            part = event.part if event.kind == 'reasoning_delta' else 0
+            if type(part) is not int or not 0 <= part < 128:
+                return False
+            used = sum(len(s) for p in self._reasoning.values() for s in p.values())
+            parts[part] = parts.get(part, '') + event.text[:max(0, self.MAX_TEXT - used)]
+            self.retry = ''
+            self.activity = 'Thinking.'
+            return parts != previous
+        if event.kind in ('retry', 'service_error'):
+            changed = self.activity != event.text
+            self.activity = event.text
+            self.retry = event.text if event.kind == 'retry' else ''
+            return changed
+        self.retry = ''
         if event.kind == 'plan_updated':
             # There are no native step IDs. Text plus occurrence survives a
             # reorder without inventing continuity for renamed steps (#318).

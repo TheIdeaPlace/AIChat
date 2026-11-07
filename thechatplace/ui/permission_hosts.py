@@ -149,6 +149,9 @@ class CodexPermissions:
         reviewer = 'automatic approval review' if options.get('approvals_reviewer') == 'auto_review' else 'human review'
         files = ('Can read files and edit the chat folder: ' + self.record.cwd
                  if options.get('sandbox') == 'workspace-write' else 'Can read files; changes require approval.')
+        if options.get('extra_roots'):
+            files += (' Additional writable folders: ' if options.get('sandbox') == 'workspace-write'
+                      else ' Additional folders saved for folder editing: ') + '; '.join(options['extra_roots'])
         return (f'Selected reviewer: {reviewer}. {files}\n' + CODEX_REVIEW_NOTE + '\n\n'
                 'Removal applies before the next approval is sent; work already approved may finish. '
                 'Changing mode clears remembered approvals. ' + NOTICE)
@@ -186,7 +189,7 @@ class CodexPermissions:
                 if failed:
                     done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
                 elif reviews:
-                    done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
+                    done(text + '\n\nRecent approval decisions, from automatic review and your saved rules (oldest first):\n\n'
                          + '\n\n'.join(row[2] for row in reviews))
                 else:
                     done(text)

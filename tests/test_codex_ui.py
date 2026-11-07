@@ -42,6 +42,9 @@ class Window(CodexChats):
         self.notified = []
         self.work = []
         self.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    def _session_tools_config(self, caller):
+        return None
+
     def _apply_tasks(self, tasks, first_load):
         from thechatplace.ui.main_frame import MainFrame
         MainFrame._apply_tasks(self, tasks, first_load)

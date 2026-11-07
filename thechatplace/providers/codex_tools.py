@@ -25,12 +25,24 @@ class CodexTool:
     error: str = ''
     #: A chat started elsewhere: only that it's configured is known.
     read_only: bool = False
+    app_id: str = ''
+    display_name: str = ''
+    install_url: str = ''
+
+    @property
+    def can_be_denied(self):
+        return not self.is_session_tools
 
     @property
     def label(self):
-        return self.name
+        return self.display_name or self.name
 
     def text(self):
+        if self.is_session_tools:
+            return 'The Chat Place session tools: available while this app is running'
+        if self.app_id:
+            state = 'off for this chat' if self.off_for_chat else self.status
+            return f'{self.label}: {state}, Codex app'
         if self.read_only:
             return f'{self.name}: {self.status}, configured Codex MCP server'
         if self.missing:
@@ -69,7 +81,10 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
     # has been removed refuses every turn, and this list is where it gets said
     # and where a copy without it is made, so it mustn't refuse too.
     codex_tool_overrides(config, ())
-    names = config.get('mcp_servers') or {}
+    names = dict(config.get('mcp_servers') or {})
+    if 'ccd_session_mgmt' in allowed:
+        names['ccd_session_mgmt'] = {}
+    allowed = tuple(n for n in allowed if n != 'codex_apps')
     try:
         result = connection.request('mcpServerStatus/list', {
             'threadId': info.cli_session_id, 'limit': 100, 'detail': 'toolsAndAuthOnly'})
@@ -90,5 +105,82 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
         status = {'connected': 'connected', 'authenticationRequired': 'needs-auth',
                   'starting': 'still connecting', 'failed': 'failed'}.get(row.get('runtimeStatus'),
                       'not connected; refresh or reopen the chat')
-        rows.append(CodexTool(name, status, tools, name not in allowed))
+        rows.append(CodexTool(name, status, tools, name not in allowed,
+                             is_session_tools=name == "ccd_session_mgmt" and name in allowed))
+    return rows
+
+
+def app_ids(values):
+    values = server_names(values)
+    if any(v == '_default' or not all(c.isascii() and (c.isalnum() or c in '_-') for c in v) for v in values):
+        raise ValueError('Invalid Codex app selection')
+    return values
+
+
+def app_overrides(config, selected):
+    selected = app_ids(selected)
+    configured = config.get('apps') or {}
+    if not isinstance(configured, dict):
+        raise ValueError('Invalid Codex app configuration')
+    # Configured per-app enables would otherwise override the false default.
+    result = {key: {'enabled': False} for key in configured if key != '_default'}
+    result['_default'] = {'enabled': False}
+    for identity in selected:
+        result[identity] = {'enabled': True}
+    return result
+
+
+def verify_apps(connection, thread_id, selected):
+    from .codex_rpc import CodexRpcError
+    selected = app_ids(selected)
+    if not selected:
+        return  # features.apps is false and the MCP inventory is verified.
+    rows = connection.request('app/installed', {'threadId': thread_id, 'forceRefresh': True}).get('apps')
+    if (not isinstance(rows, list) or len(rows) > 1000 or
+            any(not isinstance(r, dict) or not isinstance(r.get('id'), str) or
+                type(r.get('enabled')) is not bool or type(r.get('callable')) is not bool for r in rows)):
+        raise CodexRpcError('Codex app permissions could not be verified')
+    if (len({r['id'] for r in rows}) != len(rows) or
+            any((r['enabled'] or r['callable']) and r['id'] not in selected for r in rows) or
+            any(not any(r['id'] == identity and r['enabled'] for r in rows) for identity in selected)):
+        raise CodexRpcError('Codex app permissions do not match this chat')
+
+
+def app_inventory(connection, info, selected=(), *, read_only=False):
+    from .codex_rpc import CodexRpcError
+    rows, seen, cursor = [], set(), None
+    for _ in range(100):
+        params = {'limit': 100, 'forceRefetch': True}
+        if cursor:
+            params['cursor'] = cursor
+        page = connection.request('app/list', params)
+        data = page.get('data')
+        if not isinstance(data, list) or len(data) > 100:
+            raise CodexRpcError('Codex app list is unavailable')
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            identity = entry.get('id')
+            try:
+                app_ids([identity])
+            except ValueError:
+                continue
+            label = entry.get('name')
+            if not isinstance(label, str) or not label:
+                label = identity
+            rows.append(CodexTool('app:' + identity,
+                'available' if entry.get('isAccessible') is True else 'needs sign-in or installation',
+                off_for_chat=not read_only and identity not in selected, read_only=read_only,
+                app_id=identity, display_name=label[:200], install_url=entry.get('installUrl') or ''))
+        cursor = page.get('nextCursor')
+        if cursor is None:
+            break
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise CodexRpcError('Invalid Codex app list cursor')
+        seen.add(cursor)
+    else:
+        raise CodexRpcError('Codex app list is too large')
+    known = {r.app_id for r in rows}
+    rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
+        app_id=identity, display_name=identity) for identity in selected if identity not in known)
     return rows

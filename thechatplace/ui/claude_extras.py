@@ -13,7 +13,8 @@ import time
 import wx
 
 from .. import announce, platform_paths, sound_events
-from ..aside import COWORK_REFUSED, AsideRunner, build_aside_command
+from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHED, AsideEvent,
+                     AsideRunner, build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
 from .dialogs import AskAsideDialog, ChatOptionsDialog
@@ -102,6 +103,9 @@ class ClaudeExtras:
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.provider == "codex":
+            self._change_codex_settings(info, "chat options")
+            return
         if ((info.provider != "claude" or info.source == "kept")
                 and not self._require_capability("chat_options", info)):
             return  # another provider's chat, or a kept copy: says why
@@ -189,10 +193,15 @@ class ClaudeExtras:
             wx.MessageBox(lookup.problem, "Ask Aside", wx.OK | wx.ICON_ERROR, self)
             return
         model = own.model if own is not None else ""
+        cowork_ids = self._snapshot.cowork_cli_ids
+        allowed_dirs = own.allowed_dirs if own is not None else ()
+
+        def command_at(cut=""):
+            return build_aside_command(lookup.path, info.cli_session_id, model,
+                                       cowork_ids=cowork_ids, allowed_dirs=allowed_dirs,
+                                       resume_at=cut)
         try:
-            command = build_aside_command(lookup.path, info.cli_session_id, model,
-                                          cowork_ids=self._snapshot.cowork_cli_ids,
-                                          allowed_dirs=own.allowed_dirs if own is not None else ())
+            command_at()  # refused now, before the dialog opens, rather than on asking
         except (ResumeRefused, ValueError) as exc:
             self._feedback(str(exc))
             return
@@ -204,10 +213,20 @@ class ClaudeExtras:
         from . import main_frame
 
         def ask(question, on_event):
-            runner = main_frame.AsideRunner(command, cwd, question,
-                                            lambda event: wx.CallAfter(on_event, event))
-            runner.start()
-            return runner
+            def start(at):
+                runner = main_frame.AsideRunner(at, cwd, question,
+                                                lambda event: wx.CallAfter(on_event, event))
+                runner.start()
+                return runner
+            # Where the copy ends is decided from the transcript as each
+            # question is asked (#559): not from whether a turn looks to be
+            # running, since a stopped turn leaves the same unfinished end and
+            # one just sent may not be written yet.
+            try:
+                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, start,
+                                            on_event).begin(self._pool.submit)
+            except RuntimeError:  # the pool is shut down: the window is closing
+                return "The Chat Place is closing, so Claude can't be asked now."
 
         def say(answer, failed=False):
             # The answer to a key press: it may cut in (#468), as the reply
@@ -226,6 +245,68 @@ class ClaudeExtras:
             dialog.settle()
             dialog.Destroy()
         _give_focus_back(returning_to)
+
+
+def _finished_cut(info):
+    """Where an aside's copy of a Claude chat ends (``aside.finished_cut``),
+    or None when its transcript isn't on disk. Read from the file each time:
+    the open chat's reader can be a refresh behind."""
+    path = info.transcript_path()
+    return None if path is None else finished_cut_from_file(path)
+
+
+class _AsideAtFinishedTurn:
+    """One aside question (#559). The copy has to end with the chat's newest
+    finished reply, or Claude answers an unfinished turn's message in it too,
+    so the transcript is read off the UI thread to find where that is, then
+    the copy is asked. It stands in for the runner: ``cancel`` stops it, and
+    until the runner starts says "Stopped." itself, later, as a runner does.
+    Everything after ``begin`` reaches ``on_event`` on the UI thread."""
+
+    def __init__(self, read, command_at, start, on_event):
+        self._read, self._command_at, self._start = read, command_at, start
+        self._on_event = on_event
+        self._runner = None
+        self._stopped = False
+
+    def begin(self, submit):
+        submit(self._find_cut)
+        return self
+
+    def _find_cut(self):
+        try:
+            cut = self._read()
+        except Exception:  # noqa: BLE001 - said in the dialog, below
+            cut = None
+        wx.CallAfter(self._ask, cut)
+
+    def _ask(self, cut):
+        if self._stopped:
+            return  # stopped, or the dialog closed, while the chat was read
+        if cut is None:
+            self._on_event(AsideEvent("failed", "Couldn't read this chat's conversation to "
+                                                "find its last finished reply."))
+            return
+        if not cut or cut == COMPACTED:
+            self._on_event(AsideEvent("failed", COMPACTED_SINCE if cut else NOTHING_FINISHED))
+            return
+        try:
+            command = self._command_at(cut)
+        except (ResumeRefused, ValueError) as exc:
+            self._on_event(AsideEvent("failed", str(exc)))
+            return
+        self._runner = self._start(command)
+
+    def cancel(self):
+        if self._stopped:
+            return
+        self._stopped = True
+        if self._runner is not None:
+            self._runner.cancel()
+        else:
+            # Later, as a runner's comes: the dialog may be closing, and
+            # one said now would be spoken on the way out.
+            wx.CallAfter(self._on_event, AsideEvent("failed", "Stopped."))
 
 
 # Kept importable from here for tests that stand in for the runner.

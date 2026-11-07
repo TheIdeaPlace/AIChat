@@ -13,7 +13,7 @@ from typing import Optional
 import wx
 from theideaplace_appkit import difftext
 
-from .. import chat_permissions, lists, workplaces, platform_paths
+from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
@@ -103,6 +103,10 @@ def _end_modal(dialog: wx.Dialog, code: int) -> None:
 
 #: The two places a new session can work in (#154).
 WORK_IN_FOLDER, WORK_IN_WORKTREE = 0, 1
+#: New Session's Start from (#561), before the folder's repository is read.
+START_FROM_REMOTE, START_FROM_HERE = 0, 1
+START_REMOTE_LABEL = "The remote's main branch, fetched first"
+START_HERE_LABEL = "What the folder has checked out"
 
 
 def _copilot_session_modes():
@@ -204,6 +208,11 @@ class NewSessionDialog(wx.Dialog):
         self._repo_for = None       # the folder being read, or read
         self._repo_known = False    # whether _repo is the answer for _repo_for
         self._worktree = ""         # made by Start
+        #: What Start made, as it's said ("Made worktree …, from origin/main.", #561).
+        self.worktree_said = ""
+        self._start_remote = ""     # the remote's default branch, such as origin/main
+        self._base_ref_head = False  # Claude Code's worktree.baseRef is "head"
+        self._start_chosen = False  # you chose Start from, so it isn't reset
         self._making = False        # a worktree is being made
         self._folder_timer = None   # reads a folder chosen from the list, shortly
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -295,7 +304,18 @@ class NewSessionDialog(wx.Dialog):
         self.branch = wx.ComboBox(self, style=wx.CB_DROPDOWN)
         set_accessible_name(self.branch, "Branch (choose one, or type a new name)")
         grid.Add(self.branch, 1, wx.EXPAND)
-        for control in (self.work_in_label, self.work_in, self.branch_label, self.branch):
+
+        # Where a new branch starts (#561). Only for a new branch: an
+        # existing one is checked out as it is.
+        self.start_label = wx.StaticText(self, label="Start from:" if continue_from
+                                         else "St&art from:")
+        grid.Add(self.start_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.start_from = wx.Choice(self, choices=[START_REMOTE_LABEL, START_HERE_LABEL])
+        self.start_from.SetSelection(START_FROM_REMOTE)
+        set_accessible_name(self.start_from, "Start from")
+        grid.Add(self.start_from, 1, wx.EXPAND)
+        for control in (self.work_in_label, self.work_in, self.branch_label, self.branch,
+                        self.start_label, self.start_from):
             control.Show(not continue_from)
             control.Enable(not continue_from)
 
@@ -392,6 +412,7 @@ class NewSessionDialog(wx.Dialog):
         #: Each field whose control can be turned off, with its label's words.
         self._keyed_labels = (
             (self.branch_label, self.branch, "B&ranch (choose one, or type a new name):"),
+            (self.start_label, self.start_from, "St&art from:"),
             (self.model_label, self.model, "Mo&del:"),
             (self.effort_label, self.effort_choice, "&Effort:"),
             (self.mode_label, self.mode, "Permission m&ode:"))
@@ -401,6 +422,9 @@ class NewSessionDialog(wx.Dialog):
             self.folder.Bind(wx.EVT_KILL_FOCUS, self._on_folder_left)
             self.folder.Bind(wx.EVT_KEY_DOWN, self._on_folder_key)
             self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
+            self.branch.Bind(wx.EVT_TEXT, lambda e: self._sync_start_from())
+            self.branch.Bind(wx.EVT_COMBOBOX, lambda e: self._sync_start_from())
+            self.start_from.Bind(wx.EVT_CHOICE, self._on_start_from)
             self.refresh_repo()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         if self.provider_choice is not None:
@@ -607,12 +631,15 @@ class NewSessionDialog(wx.Dialog):
     def _read_repo(self, folder: str):
         git = workplaces.find_git()
         info = workplaces.repo_info(git, folder) if git else None
-        wx.CallAfter(self._repo_read, folder, info)
+        remote = workplaces.default_remote_branch(git, info) if info else ""
+        head = claude_settings.worktree_base_ref(folder) == "head"
+        wx.CallAfter(self._repo_read, folder, info, remote, head)
 
-    def _repo_read(self, folder: str, info):
+    def _repo_read(self, folder: str, info, remote: str = "", head: bool = False):
         if not self or folder != self._repo_for:
             return  # closed, or the folder has changed since
         self._repo, self._repo_known = info, True
+        self._start_remote, self._base_ref_head = remote, head
         typed = self.branch.GetValue()
         self.branch.Set(info.branches if info else [])
         self.branch.ChangeValue(typed)
@@ -634,7 +661,58 @@ class NewSessionDialog(wx.Dialog):
         worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
         self.branch.Enable(worktree)
         self.branch_label.Enable(worktree)
+        self._sync_start_from()
+
+    def _on_start_from(self, _event=None):
+        self._start_chosen = True
+        self._sync_start_from()
+
+    def _sync_start_from(self):
+        """Start from (#561): on only for a new branch in a new worktree,
+        with its choices named, and why it's off in its name when it is."""
+        if self.continuing:
+            return
+        info = self._repo
+        here = (info.branch if info and info.branch else "the folder's current commit")
+        remote = self._start_remote
+        if info is None:
+            # Not a repository (or not read yet): the choices in general terms.
+            choices = [START_REMOTE_LABEL, START_HERE_LABEL]
+        else:
+            choices = [f"{remote}, fetched first" if remote else "No remote to start from",
+                       f"{here}, what the folder has checked out"]
+        for index, text in enumerate(choices):
+            if self.start_from.GetString(index) != text:
+                self.start_from.SetString(index, text)
+        worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
+        new = bool(worktree and info is not None
+                   and workplaces.is_new_branch(info, self.branch.GetValue()))
+        if info is not None and (not self._start_chosen or not remote):
+            # Claude Code's own worktrees start where its baseRef says, so a
+            # Claude chat here starts there too unless you choose.
+            prefer_here = not remote or (self._base_ref_head and self.provider() == "claude")
+            self.start_from.SetSelection(START_FROM_HERE if prefer_here else START_FROM_REMOTE)
+        on = new and bool(remote)
+        self.start_from.Enable(on)
+        self.start_label.Enable(on)
+        if on:
+            name = "Start from"
+        elif not worktree:
+            name = "Start from (for a new branch in a new worktree)"
+        elif info is None:
+            name = "Start from (not a git repository)"
+        elif not new:
+            name = ("Start from (not used: that branch exists, so it's used as it is, or "
+                    "tracked if only the remote has it)")
+        else:
+            name = f"Start from (no remote, so {here})"
+        set_accessible_name(self.start_from, name)
         self._sync_access_keys()
+
+    def start_point(self) -> str:
+        """``workplaces.START_REMOTE`` or ``START_HERE``, as chosen."""
+        return (workplaces.START_HERE if self.start_from.GetSelection() == START_FROM_HERE
+                else workplaces.START_REMOTE)
 
     # -- choosing the folder
 
@@ -699,9 +777,13 @@ class NewSessionDialog(wx.Dialog):
                        "be a worktree. Choose The folder as it is, or install Git.", self.work_in)
             return
         folder, branch = self.folder.GetValue().strip(), self.branch.GetValue()
+        start = self.start_point()
         self._making = True
         self.start_btn.Enable(False)
-        self._feedback("Making the worktree.")
+        fetching = (start == workplaces.START_REMOTE and self._start_remote and self._repo
+                    and workplaces.is_new_branch(self._repo, branch))
+        self._feedback(f"Fetching {self._start_remote}, then making the worktree."
+                       if fetching else "Making the worktree.")
 
         def make():
             focus = self.branch
@@ -713,7 +795,7 @@ class NewSessionDialog(wx.Dialog):
                                          "have a worktree. Choose The folder as it is, or "
                                          "another folder.")
                 else:
-                    made, error = workplaces.add_worktree(git, info, branch), ""
+                    made, error = workplaces.create_worktree(git, info, branch, start), ""
             except workplaces.ToolError as exc:
                 made, error = None, f"Couldn't make the worktree. {exc}"
             except Exception as exc:  # noqa: BLE001 - always come back to the dialog
@@ -729,7 +811,8 @@ class NewSessionDialog(wx.Dialog):
         if made is None:
             self._warn(error, focus or self.branch)
             return
-        self._worktree = str(made)
+        self._worktree = str(made.folder)
+        self.worktree_said = made.said()
         _end_modal(self, wx.ID_OK)
 
     def values(self):
@@ -778,6 +861,14 @@ class NewSessionDialog(wx.Dialog):
     def _on_provider(self, _event=None):
         wx.CallAfter(self._refresh_rules)
         provider = self.provider()
+        from ..chat_options import ChatOptions
+        saved = self._options_by_provider = getattr(self, '_options_by_provider', {})
+        previous = self._control_provider
+        if previous in ('claude', 'codex'):
+            saved[previous] = (self._chat_options, list(self._chat_folders))
+        if previous != provider:
+            self._chat_options, self._chat_folders = saved.get(provider, (ChatOptions(), []))
+            self._update_chat_options_summary()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "codex":
@@ -836,7 +927,9 @@ class NewSessionDialog(wx.Dialog):
             self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
         self._control_provider = provider
         self._sync_access_keys()
-        claude = provider == "claude"
+        if not self.continuing:
+            self._sync_start_from()  # Claude's own worktree.baseRef can change its default
+        claude = provider in ("claude", "codex")
         if self.chat_options_btn.IsShown() != claude:
             # Disabled too: hidden, Alt+H still opened Claude's Chat Options
             # for another provider's chat, and left the focus on the button.
@@ -864,7 +957,7 @@ class NewSessionDialog(wx.Dialog):
         dialog = ChatOptionsDialog(self, self.title_text.GetValue().strip(), folder,
                                    options=self._chat_options, folders=self._chat_folders,
                                    load_choices=self._load_chat_choices,
-                                   feedback=self._feedback, model=self.values()[4])
+                                   feedback=self._feedback, model=self.values()[4], provider=self.provider())
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 self._chat_options = dialog.options()
@@ -881,9 +974,12 @@ class NewSessionDialog(wx.Dialog):
     def chat_options(self):
         """(ChatOptions, more folders) for a Claude chat; nothing otherwise."""
         from ..chat_options import ChatOptions
-        if self.provider() != "claude":
+        if self.provider() not in ("claude", "codex"):
             return ChatOptions(), []
-        return self._chat_options, list(self._chat_folders)
+        options = self._chat_options
+        if self.provider() == "codex":
+            options = ChatOptions(instructions=options.instructions)
+        return options, list(self._chat_folders)
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
@@ -4377,7 +4473,7 @@ class ListsPage(wx.Panel):
                 button.Enable(item is not None)
         if self.category == lists.SUBAGENTS and self.open_btn is not None:
             self.open_btn.Enable(item is not None and item.subagent is not None
-                                 and item.subagent.path is not None)
+                                 and item.subagent.readable)
 
     def activate(self):
         """Enter: a link opens, a subagent's conversation opens (#468), as
@@ -4400,7 +4496,7 @@ class ListsPage(wx.Panel):
             self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
                                 else lists.empty_text(self.category, self.owner.scope))
             return
-        if item.subagent.path is None:
+        if not item.subagent.readable:
             self.owner.feedback(f"{item.subagent.name}'s conversation isn't on disk.")
             return
         if self.owner.open_subagent is None:
@@ -4493,7 +4589,7 @@ class ListsDialog(wx.Dialog):
     below; Enter goes to its list. From anywhere in the dialog, the next or
     previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
     on Windows, and Cmd+Shift+] / Cmd+Shift+[ or Cmd+Page Down / Page Up on a
-    Mac; on Windows, Ctrl+1 to Ctrl+7 go straight to one. Each leaves you on
+    Mac; on Windows, Ctrl+1 to Ctrl+8 go straight to one. Each leaves you on
     that kind's list.
 
     "Show items from" chooses this message or the whole chat.
@@ -4679,7 +4775,7 @@ class ListsDialog(wx.Dialog):
             return ("by", 1)
         if command and event.ShiftDown() and key in (ord("["), ord("{")):
             return ("by", -1)
-        # Ctrl+1 to Ctrl+7 jump to a kind on Windows. On a Mac, Cmd+1 to
+        # Ctrl+1 to Ctrl+8 jump to a kind on Windows. On a Mac, Cmd+1 to
         # Cmd+3 are the main window's Go To keys, and the menu bar takes
         # them before the dialog (real keys, #282), so none are used there.
         if ((platform or sys.platform) != "darwin" and command and not event.ShiftDown()
@@ -5792,13 +5888,16 @@ class ChatOptionsDialog(wx.Dialog):
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
                  choices=None, load_choices=None, existing: bool = False, feedback=None,
-                 model: str = ""):
+                 model: str = "", provider: str = "claude"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._provider = provider
         self._folder = folder
         self._options = options or ChatOptions()
+        if provider == "codex":
+            self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
         self._feedback = feedback or (lambda text: None)
@@ -5816,6 +5915,9 @@ class ChatOptionsDialog(wx.Dialog):
         set_accessible_name(self.style, "Output style")
         grid.Add(self.style, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        if provider == "codex":
+            grid.ShowItems(False)
+            sizer.Hide(grid)
 
         sizer.Add(wx.StaticText(self, label="&Instructions for this chat:"), 0, wx.LEFT, 10)
         # Enter starts a new line, as in the reply box; Ctrl+Enter is OK.
@@ -5849,7 +5951,10 @@ class ChatOptionsDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALL, 10)
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
-        note = CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else "")
+        note = ("Instructions are sent with each Codex turn. Additional folders are writable only "
+                "in Folder edits mode. Removing a folder removes that grant from the next turn. "
+                "Changes apply after you save these options." if provider == "codex" else
+                CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
@@ -5869,13 +5974,13 @@ class ChatOptionsDialog(wx.Dialog):
         self.remove_folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.remove_folder())
         self.folders.Bind(wx.EVT_KEY_DOWN, self._on_folders_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        if load_choices is not None:
+        if load_choices is not None and provider == "claude":
             if folder and os.path.isdir(folder):
                 wx.CallAfter(load_choices, folder, self._choices_loaded)
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and self.agent.SetFocus())
+        wx.CallAfter(lambda: self and (self.instructions if provider == "codex" else self.agent).SetFocus())
 
     # -- the agent and style choices
 
@@ -5956,7 +6061,7 @@ class ChatOptionsDialog(wx.Dialog):
             return False
         same = workplaces.folder_key
         if self._folder and same(folder) == same(self._folder):
-            self._feedback("That's the chat's own folder; Claude works there already.")
+            self._feedback("That's the chat's own folder; the AI works there already.")
             return False
         if any(same(folder) == same(f) for f in self._folders):
             self._feedback(f"{folder} is in the list already.")
@@ -5967,7 +6072,7 @@ class ChatOptionsDialog(wx.Dialog):
         return True
 
     def on_add_folder(self):
-        with wx.DirDialog(self, "Choose a folder Claude may also work in",
+        with wx.DirDialog(self, "Choose an additional folder for this chat",
                           defaultPath=self._folder if os.path.isdir(self._folder) else "",
                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
             if dlg.ShowModal() == wx.ID_OK:

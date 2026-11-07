@@ -11,28 +11,32 @@ class CodexPolicy:
     approval: str = 'on-request'
     workspace_root: str = ''
     reviewer: str = 'user'
+    extra_roots: tuple = ()
 
     @classmethod
-    def choose(cls, cwd, sandbox='read-only', approval='on-request', reviewer='user'):
+    def choose(cls, cwd, sandbox='read-only', approval='on-request', reviewer='user', extra_roots=()):
         if sandbox not in ('read-only', 'workspace-write') or approval not in ('on-request', 'never'):
             raise ValueError('Unsupported Codex sandbox or approval policy')
         if reviewer not in ('user', 'auto_review') or reviewer == 'auto_review' and approval != 'on-request':
             raise ValueError('Automatic review requires Codex on-request approvals')
         root = platform_paths.codex_workspace_root(cwd) if sandbox == 'workspace-write' else ''
-        return cls(sandbox, approval, root, reviewer)
+        if not isinstance(extra_roots, (list, tuple)) or len(extra_roots) > 32:
+            raise ValueError('Choose at most 32 additional folders')
+        roots = tuple(dict.fromkeys(platform_paths.codex_workspace_root(p) for p in extra_roots))
+        return cls(sandbox, approval, root, reviewer, roots)
 
     def config(self):
         if self.sandbox == 'read-only':
             return {}
         # Workspace-write already includes cwd. These are additional roots;
-        # pin an empty list instead of inheriting any broader configured roots.
-        return {'sandbox_workspace_write': {'writable_roots': [],
+        # pin the chosen list instead of inheriting broader configured roots.
+        return {'sandbox_workspace_write': {'writable_roots': list(self.extra_roots),
             'network_access': False, 'exclude_slash_tmp': True, 'exclude_tmpdir_env_var': True}}
 
     def turn_policy(self):
         if self.sandbox == 'read-only':
             return {'type': 'readOnly'}
-        return {'type': 'workspaceWrite', 'writableRoots': [self.workspace_root],
+        return {'type': 'workspaceWrite', 'writableRoots': list(dict.fromkeys((self.workspace_root, *self.extra_roots))),
                 'networkAccess': False, 'excludeSlashTmp': True, 'excludeTmpdirEnvVar': True}
 
     def verify(self, result):
@@ -44,7 +48,7 @@ class CodexPolicy:
             valid = (valid and actual.get('type') == 'workspaceWrite'
                      and actual.get('networkAccess', False) is False
                      and actual.get('excludeSlashTmp') is True and actual.get('excludeTmpdirEnvVar') is True
-                     and actual.get('writableRoots') in ([], [self.workspace_root]))
+                     and actual.get('writableRoots') in (list(self.extra_roots), list(dict.fromkeys((self.workspace_root, *self.extra_roots)))))
             try:
                 valid = valid and platform_paths.codex_workspace_root(result.get('cwd')) == self.workspace_root
             except (ValueError, OSError):
@@ -73,7 +77,8 @@ class CodexPolicy:
     def verify_workspace(self, cwd):
         if self.sandbox == 'workspace-write':
             try:
-                if platform_paths.codex_workspace_root(cwd) == self.workspace_root:
+                if (platform_paths.codex_workspace_root(cwd) == self.workspace_root and
+                        all(platform_paths.codex_workspace_root(p) == p for p in self.extra_roots)):
                     return
             except (ValueError, OSError):
                 pass

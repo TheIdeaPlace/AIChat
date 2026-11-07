@@ -29,6 +29,8 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 
 **Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's ends "Subagents, not available".
 
+**Since #564, in every Lists picture:** Kinds has an eighth row, Approvals, last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Approvals, not available"; a Codex chat started here ends "Approvals" and a count.
+
 ## main-start: Main window as it opens: session list, no session loaded
 
 The window is split into two columns. On the left, "Session list:" heads a white list box 378 wide that runs the full height (590 tall), about 38% of the width. It holds four one-line sessions, the last with a deliberately long title ("A session whose title goes on and on to show what a very long title doe..."). The first is selected in blue with the dotted focus outline, and long rows are cut off at the list's right edge with no horizontal scroll bar. On the right, after a 16-pixel gap, "Messages:" heads a white list 574 wide and 512 tall. Its only row, "No session loaded. Choose one in the session list and press Enter.", is also selected in blue. Below that list are a "Show tool activity" check box and, side by side, "New Session..." and "Refresh" buttons. The status bar is split into three parts: "4 sessions: 1 need you, 0 working." on the left (464 wide), "No session loaded" in the middle (312 wide), and a button "1 session needs you" on the right (146 wide).
@@ -256,7 +258,7 @@ No new visual defect was found.
 
 ## new-session: File, New Session
 
-This is a 680 by 620 dialog laid out as a two-column form. The labels on the left are Folder, Work in, Branch, Title, Model, Effort (#189) and Permission mode. Every field starts at x=241, because the Branch label, "Branch (choose one, or type a new name):", is long. The Folder dropdown is 413 wide, as wide as the other fields, showing a long path highlighted in blue; "Browse..." and "From GitHub..." sit on their own row under it, lined up with the field (#178 moved them there from beside it). Work in shows "The folder as it is (not a git repository, so no worktree)". Branch and its field are greyed out, and the greyed label has no underlined letter (#515): #A0A0A0 on #F0F0F0, 2.3:1, and #A6A6A6 on #202020, 6.7:1, in High Contrast Aquatic. Effort's dropdown shows "Default (your Claude Code setting)", like Model's, and Permission mode shows "Auto: Claude decides what is safe to run without asking". Under Permission mode, lined up with the fields, is a "Chat Options..." button (h underlined) with "None chosen" beside it (#468). Below the form, "About permissions:" heads a read-only box 72 tall, which shows its whole four-line explanation, effort included, with a scroll bar. "First message:" heads an empty box (644 by 117) that takes about a fifth of the dialog, room for seven lines (it was 148 tall). "Start" (default) and "Cancel" are at the bottom right.
+This is a 680 by 635 dialog laid out as a two-column form. The labels on the left are Folder, Work in, Branch, Start from (#561), Title, Model, Effort (#189) and Permission mode. Start from sits between Branch and Title, greyed out like Branch until a new worktree and a new branch are chosen, showing "The remote's main branch, fetched first". The row makes the dialog 15 pixels taller, and the First message box 16 pixels shorter, 87 high. Every field starts at x=241, because the Branch label, "Branch (choose one, or type a new name):", is long. The Folder dropdown is 413 wide, as wide as the other fields, showing a long path highlighted in blue; "Browse..." and "From GitHub..." sit on their own row under it, lined up with the field (#178 moved them there from beside it). Work in shows "The folder as it is (not a git repository, so no worktree)". Branch and its field are greyed out, and the greyed label has no underlined letter (#515): #A0A0A0 on #F0F0F0, 2.3:1, and #A6A6A6 on #202020, 6.7:1, in High Contrast Aquatic. Effort's dropdown shows "Default (your Claude Code setting)", like Model's, and Permission mode shows "Auto: Claude decides what is safe to run without asking". Under Permission mode, lined up with the fields, is a "Chat Options..." button (h underlined) with "None chosen" beside it (#468). Below the form, "About permissions:" heads a read-only box 72 tall, which shows its whole four-line explanation, effort included, with a scroll bar. "First message:" heads an empty box (644 by 117) that takes about a fifth of the dialog, room for seven lines (it was 148 tall). "Start" (default) and "Cancel" are at the bottom right.
 
 **What looks off:** The label column is about 230 wide for mostly one-word labels, which leaves a wide empty gutter. A long path still shows only its end in the Folder box. The Title box is 2 pixels right of the dropdowns above and below it (243 against 241); that is how Windows draws a text box beside a dropdown (#178 leaves it).
 
@@ -398,9 +400,30 @@ At 175% the dialog is 1190 by 956, as tall as the screen allows. The About box g
 
 ## codex-models: New Codex chat with the models Codex offers
 
-The same dialog after Codex has sent its models: Model is now enabled and shows "Synthetic Codex model", and Effort shows "Extra high"; both labels have their underlined letters back (d and E), and Branch, still greyed, has none (#515). The About permissions paragraph is the codex-new one with "Saved command rules have not been checked." in place of the rule-file count, and ends with "Project-supplied command rules are refused."; its eight lines fill the 132-tall box. The dialog is 680 by 635 and First message 72 tall, and at 175% the About box scrolls and First message is 141 tall, as in codex-new.
+Updated from the 2026-11-06 light-100 and hc-aquatic-100 pictures. The dialog is
+680 by 697, 62 pixels taller than the prior 680 by 635 baseline. Provider, with
+Codex selected and a dotted focus rectangle, is at the top. Then come Folder,
+Browse and From GitHub, Work in, Branch, and the new Start from dropdown,
+which is greyed out and reads "The remote's main branch, fetched first".
+Title, Model ("Synthetic Codex model"), Effort ("Extra high") and Permission
+mode follow. Under Permission mode, Chat Options and "None chosen" occupy a
+new row. The two added rows each take 31 pixels. The About permissions box
+remains 132 tall, with all eight lines visible; the empty First message box
+remains 72 tall. Start and Cancel sit at the bottom right. The lower content
+and buttons moved down 62 pixels. No controls overlap or run outside the window.
 
-**What looks off:** As in codex-new.
+Light uses black text on white (21:1) and light grey #F0F0F0 (18.4273:1).
+Provider's dotted focus is #020202 on #FDFDFD (20.3974:1). High Contrast Aquatic
+uses white text and outlines on #202020 (16.2933:1), with a light #DFDFDF focus
+mark (12.2263:1) and an aqua Start button. Disabled rows remain subdued.
+
+**What looks off:** The long folder path is clipped at its dropdown edge, as
+before. Native light text-box borders remain #ABADB3 against #F0F0F0 (1.9687:1)
+and white (2.2436:1), below the review's 3:1 target; this is the existing native
+border limitation tracked in [#532](https://github.com/TheIdeaPlace/AIChat/issues/532).
+No new layout defect was observed. The resized pictures cannot produce a pixel
+diff, so the new pictures and prior baselines were inspected directly. Higher
+display scales were not recaptured for these changes.
 
 ## codex-auto-review: New Codex chat with automatic approval review selected (#374)
 
@@ -412,9 +435,29 @@ Light mode is black on #F0F0F0 and white, the selected folder text white on #007
 
 ## codex-continue: Continue Here from a Codex chat that may still be working
 
-A 680 by 620 dialog titled "Continue Here: Codex still working". Rows: "Folder" (a one-line read-only box with the full path, light grey with no arrows, as in continue-here, #468), "Title" ("Codex still working (continued)"), Model and Effort greyed out, their black labels with no underlined letter (#515), and "Permission mode" ("Read-only; asks before allowing changes"). "About continuing:" heads a box that opens with "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.", a blank line, and the permissions paragraph of codex-models (with human and automatic approval review, #374), filling the box, which is 177 tall (it was 147). "First message:" heads an empty box 136 tall (it was 166). At 175% the About box is 351 tall and shows the whole text, and First message is 149 tall. "Start" (default) and "Cancel" are at the bottom right.
+Updated from the 2026-11-06 light-100 and hc-aquatic-100 pictures. This remains
+a 680 by 620 dialog titled "Continue Here: Codex still working". Folder is a
+one-line read-only box showing its full path. Below are Title ("Codex still
+working (continued)"), greyed Model and Effort, and Permission mode ("Read-only;
+asks before allowing changes"). The new Chat Options button and "None chosen"
+row sit under Permission mode. About continuing moved down 31 pixels; its
+177-tall read-only box shows both paragraphs in full, including the note about
+copying the last saved point and the permissions explanation. First message
+also moved down 31 pixels and shrank from 136 to 105 tall. Start and Cancel
+remain at the bottom right. The new row fits without overlap or clipped text.
 
-**What looks off:** Nothing.
+Light uses black text on white (21:1) or light grey #F0F0F0 (18.4273:1). Folder
+has a grey interior while Title is white. High Contrast Aquatic uses white
+text and outlines on #202020 (16.2933:1), grey disabled dropdown text and an
+aqua Start button. Native light text-box borders are #ABADB3 against #F0F0F0
+(1.9687:1) and white (2.2436:1), the existing below-target limitation in
+[#532](https://github.com/TheIdeaPlace/AIChat/issues/532).
+
+**What looks off:** No new layout or theme defect. Neither static capture
+shows a caret in First message, so these pictures alone cannot establish its
+focus visibility; keyboard observation is separate. Both new pictures, their
+prior baselines and pixel diffs were inspected. Higher display scales were
+not recaptured for these changes.
 
 ## codex-change-mode: Change permissions for a Codex chat
 
@@ -439,6 +482,12 @@ The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print
 The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372), before any Copilot chat here has listed its models. "Provider" shows "Copilot" with the focus outline. "Model" and "Effort" are greyed out and read "Copilot's configured model" and "Copilot's own setting" (#6D6D6D on #FAFAFA, 5.0:1); their labels and Branch's have no underlined letter (#515). Since #424 "Permission mode" is enabled and reads "Agent: asks before running commands or changing files", black on white (20.6:1); its other choice is Plan. "About permissions:" heads a read-only box, 644 by 117 since #424 (30 taller), that shows its whole seven-line paragraph, with a scroll bar: Copilot uses your GitHub Copilot sign-in and your plan's requests; Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs, with Copilot's own choice first, and File, Change Model changes it later; effort is Copilot's own; Permission mode chooses agent mode, which can change your files, or plan mode, which plans first and doesn't edit them, and File, Change Permission Mode switches it later; in both, Copilot asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny); and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph's text is black on white (21:1). "First message:" heads an empty box, 644 by 72 (30 shorter since #424), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic Permission mode is white on #202020 (16.3:1), the greyed text is #A6A6A6 on #202020 (6.7:1), the paragraph white on #202020 (16.3:1), and Start is filled light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
 
 **What looks off:** Nothing.
+
+## new-session-worktree: New Session making a new worktree, with Start from on
+
+The same 680 by 635 dialog as new-session, with a described repository (the test VM has no git): Work in shows "A new worktree", Branch "fix/login", and Start from (#561), now enabled with its label in full black and "St&art from" underlined, shows "origin/main, fetched first". The other choice, read from the list, is "work, what the folder has checked out". Everything else matches new-session. In High Contrast Aquatic the enabled Start from field is white text on black with the same white border as the fields around it.
+
+**What looks off:** nothing new; the label column's gutter is as in new-session.
 
 ## new-session-copilot: New Session for Copilot, with the models Copilot offered
 
@@ -808,16 +857,22 @@ short list shows reference-diagram.png and requirements.txt. The attachment list
 takes space from the conversation area without overlapping the tool-activity
 checkbox or bottom buttons. Long session and history rows scroll horizontally.
 
-**codex-tools:** The 700 by 540 Connected Tools dialog has three server rows
-above Sign In, Read Status, Copy with Tool Off, Refresh and Close. A large
-read-only Details box fills its lower half, showing the chosen tool, its tools,
-and the copy/external-service scope. All buttons and wrapped scope text fit.
-Since #468 the first row and Details say "1 tool" (it was "1 tools"), the second
-row says "needs sign-in" (it was "needs-auth"), and the note's last sentence says
-"The Chat Place" (it was "TCP"). A row that isn't connected gives no tool count (it
-said "0 tools"). The note says to add servers "using the Codex CLI (codex mcp), not
-here", and is still four lines, the last starting "Chat Place cannot display". Rows are black on white (21:1), the selected row white on #0078D4
-(4.5:1); in High Contrast Aquatic white on #202020 (16.3:1) and dark on aqua.
+**codex-tools (2026-11-06, #558):** The 700 by 540 Connected Tools dialog has
+five rows in a 668 by 211 list: project-notes (connected, 1 tool), build-reports
+(needs sign-in), reference-search (off), The Chat Place session tools (available
+while running), and Project documents (off, Codex app). Below are Sign In,
+Reconnect, Copy with Tool Off, Refresh and Close. A large read-only Details box
+fills the lower half; its four lines and all button labels fit. Compared with
+the previous pictures, two rows were added, Reconnect replaced Read Status,
+and Copy with Tool Off and Refresh moved 5 pixels left. No controls overlap.
+
+Light has black text on white (21:1), with white selected text on blue #0078D4
+(4.5285:1). The existing dotted focus mark remains #FF872B on that blue,
+1.8874:1, below 3:1 ([#181](https://github.com/TheIdeaPlace/AIChat/issues/181)).
+High Contrast Aquatic uses white on #202020 (16.2933:1), selected text #263B50
+on aqua #8EE3F0 (7.8933:1), and focus #711C0F on aqua (7.6773:1). The native
+focus defect is unchanged from the prior baseline; accepting this layout does
+not mark that defect fixed.
 
 **codex-commands:** Search at the top, a large command/skill list below, and
 Insert/Cancel at the lower right. The twelve synthetic rows include /plan,
@@ -926,3 +981,34 @@ A 640 by 460 dialog titled "Rewind Visual probe to before your message: Make the
 The same 640 by 460 dialog and title as rewind, with "Conversation and files" chosen and carrying the dotted focus outline. "What happens:" heads the same 608 by 259 box, with three paragraphs. The first is rewind's. The second, on four lines: "Every file Claude changed with its edit tools anywhere in this chat goes back to the last version Claude Code saved before your message, which is usually Claude's own. Anything you edited by hand since Claude last changed that file is lost, even edits from before this message. Files Claude created since your message are removed, and files Claude never touched stay as they are. This can't be undone." The third, on two lines: "Claude changed 1 file since this message: uploader.py. Changes made by commands it ran (a build, a script) are never put back." All of it fits, with about 90 pixels of the box empty below it, and the words read whole with nothing cut off. Rewind (the default) and Cancel are at the bottom right. The text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), the group's frame is white and Rewind is filled aqua with #263B50 text.
 
 **What looks off:** Nothing. "This can't be undone." sits at the end of the second paragraph in the same plain text as the rest.
+
+## codex-chat-options: Codex instructions and additional folders (#558)
+
+Reviewed on 2026-11-06 in light-100 and hc-aquatic-100. This 620 by 600 dialog
+has an Instructions for this chat label and a 584 by 261 text box at the top.
+Two short instruction lines sit at its top left, with a visible insertion caret
+and generous blank space below. More folders labels a 584 by 70 list with one
+selected full path, ending Projects\Website. Add Folder and Remove sit below
+it on the left. About these options labels a 584 by 90 read-only box explaining
+per-turn instructions and the folder-editing permission scope in two lines.
+OK and Cancel sit at the lower right. There are no Claude agent or output-style
+fields. All labels and the full folder path fit; no controls overlap.
+
+Light has black text on white (21:1) and light grey #F0F0F0 (18.4273:1).
+The selected path is white on blue #0078D4 (4.5285:1). Its native text-box border
+is #ABADB3: 1.9687:1 against the outer #F0F0F0 and 2.2436:1 against inner white,
+below the review's 3:1 border target (the same native-border limitation tracked
+in [#532](https://github.com/TheIdeaPlace/AIChat/issues/532)). These are unmodified Windows control
+colours, for which WCAG's native-control exception is relevant; this measurement
+does not establish an application-specific regression. High Contrast Aquatic
+uses white text and outlines on near-black #202020 (16.2933:1), dark #263B50 text
+on the selected aqua #8EE3F0 row (7.8933:1), and a visible light caret (12.2263:1).
+No new layout or theme defect was observed. Higher display scales were not
+captured in this review.
+
+## lists-codex-approvals: View, Lists: Approvals in a Codex chat (#564)
+
+The Lists dialog for "Codex history preview", on "Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands, Decisions and Subagents say "not available". "List: Approvals (5):" holds five rows, newest first: "Allowed: git diff. Saved rule for this chat." (selected), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+
+**What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
+

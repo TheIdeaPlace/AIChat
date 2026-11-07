@@ -7,7 +7,7 @@ from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
 from .codex_rpc import (check_startable, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
                         CodexSteerRefused)
-from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS
+from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS, ELICITATION
 from .codex_input import input_items, validate_input
 
 
@@ -29,6 +29,8 @@ class CodexTurnState:
     review_notices: tuple = field(default=(), repr=False)
     #: A turn /compact started, which ends with no reply to announce.
     compaction: bool = False
+    retry: str = ''
+    reasoning: tuple = field(default=(), repr=False)
     #: This turn's tools started and file changes made, for sounds (#250).
     tools_started: int = 0
     edits_made: int = 0
@@ -36,7 +38,7 @@ class CodexTurnState:
 
 class CodexExecutionConnection(CodexLifecycleConnection):
     from .codex_features import ACTION_METHODS, READ_METHODS
-    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt'} | ACTION_METHODS | READ_METHODS
+    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt', 'mcpServer/oauth/login', 'config/mcpServer/reload'} | ACTION_METHODS | READ_METHODS
 
     def request(self, method, params):
         from .codex_features import ACTION_METHODS, READ_METHODS, validate_action, CodexFeatureError
@@ -58,8 +60,15 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         return super().request(method, params)
 
     def __init__(self, *args, **kwargs):
+        self.session_tools = kwargs.pop("session_tools", False)
         self._runtime_lock = threading.Lock()
         self._runtime_threads = {}
+        self._active_turns = {}
+        self._oauth_results = {}
+        self._child_workers = threading.BoundedSemaphore(8)
+        self._child_routing_lock = threading.RLock()
+        self._child_pending = set()
+        self._child_files = {}
         kwargs['receive_events'] = True
         kwargs['receive_requests'] = True
         super().__init__(*args, **kwargs)
@@ -70,6 +79,11 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         with self._runtime_lock:
             self._runtime_threads[proof.native_id] = proof
 
+    def loaded_caller(self, native_id):
+        with self._runtime_lock:
+            proof = self._runtime_threads.get(native_id)
+            return proof.session_tool_caller if proof is not None and not self.closed else ""
+
     def owns_runtime(self, proof):
         with self._runtime_lock:
             return (not self.closed and proof.connection is self
@@ -78,13 +92,178 @@ class CodexExecutionConnection(CodexLifecycleConnection):
     def _allowed_codex_tools(self, thread_id):
         with self._runtime_lock:
             proof = self._runtime_threads.get(thread_id)
-            return proof.mcp_servers if proof is not None else ()
+            return proof.allowed_tools if proof is not None else ()
+
+    def oauth_result(self, thread_id, name, login_id):
+        with self._runtime_lock:
+            return self._oauth_results.pop((thread_id, name, login_id), None)
+
+    def _route_child_request(self, message, received_turns):
+        """Metadata proves ancestry for display routing, never execution ownership."""
+        from .codex_requests import decode_request
+        try:
+            request = decode_request(message['id'], message['method'], message.get('params'))
+            child, ancestor, seen = request.thread_id, request.thread_id, set()
+            child_turn = request.turn_id or received_turns.get(child)
+            if not child_turn:
+                raise ValueError('No active child turn')
+            proof = None
+            for _ in range(32):
+                if ancestor in seen:
+                    break
+                seen.add(ancestor)
+                with self._runtime_lock:
+                    proof = self._runtime_threads.get(ancestor)
+                if proof is not None:
+                    break
+                thread = self.request('thread/read', {'threadId': ancestor, 'includeTurns': False}).get('thread')
+                if (not isinstance(thread, dict) or thread.get('id') != ancestor or
+                        thread.get('modelProvider') != 'openai'):
+                    raise ValueError('Unverified child ancestry')
+                ancestor = thread.get('parentThreadId')
+                if not isinstance(ancestor, str) or not ancestor:
+                    break
+            if proof is None or not self.owns_runtime(proof):
+                raise ValueError('No owned ancestor')
+            parent_turn = received_turns.get(proof.native_id)
+            with self._child_routing_lock:
+                if request.request_id not in self._child_pending:
+                    return
+                with self._runtime_lock:
+                    if not parent_turn or self._active_turns.get(proof.native_id) != parent_turn:
+                        raise ValueError('The original parent turn ended')
+                    detail = self._child_files.get((child, child_turn, request.item_id), '')
+                with self._lock:
+                    if (child, child_turn) in self._retired_turns:
+                        raise ValueError('Child turn ended')
+                routed = replace(request, thread_id=proof.native_id, turn_id=parent_turn,
+                    source_thread_id=child, source_turn_id=child_turn, file_detail=detail,
+                    reason='Request from a Codex subagent. ' + request.reason)
+                self._receive_server_request(routed)
+        except (ValueError, CodexRpcError):
+            try:
+                with self._child_routing_lock:
+                    if message["id"] in self._child_pending:
+                        self._decline_unsupported_request(message)
+            except (ValueError, CodexRpcError):
+                pass  # connection closed or the native request already resolved
+        finally:
+            with self._child_routing_lock:
+                self._child_pending.discard(message["id"])
+            self._child_workers.release()
+
+    def _receive(self, message):
+        if isinstance(message, dict) and 'id' in message and 'method' in message:
+            params = message.get('params')
+            child = params.get('threadId') if isinstance(params, dict) else None
+            with self._runtime_lock:
+                owned = child in self._runtime_threads if isinstance(child, str) else False
+            if child and not owned:
+                from .codex_requests import decode_request
+                try:
+                    decoded = decode_request(message['id'], message['method'], params)
+                except ValueError:
+                    self._decline_unsupported_request(message)
+                    return
+                if self._child_workers.acquire(blocking=False):
+                    with self._child_routing_lock:
+                        if decoded.request_id in self._child_pending:
+                            self._child_workers.release()
+                            raise ValueError('Duplicate child request identity')
+                        self._child_pending.add(decoded.request_id)
+                    with self._runtime_lock:
+                        received = dict(self._active_turns)
+                    threading.Thread(target=self._route_child_request, args=(message, received), daemon=True).start()
+                else:
+                    self._decline_unsupported_request(message)
+                return
+        if isinstance(message, dict) and message.get('method') == 'serverRequest/resolved':
+            params = message.get('params')
+            if isinstance(params, dict):
+                with self._child_routing_lock:
+                    self._child_pending.discard(params.get('requestId'))
+                    with self._lock:
+                        pending = self._server_pending.get(params.get('requestId'))
+                    if pending is not None and pending.source_thread_id == params.get('threadId'):
+                        message = dict(message, params=dict(params, threadId=pending.thread_id))
+                    return super()._receive(message)
+        if isinstance(message, dict) and message.get('method') in ('item/started', 'item/completed'):
+            from .codex_events import decode_event
+            event = decode_event(message['method'], message.get('params'))
+            if event is not None and event.kind == 'file_changes':
+                with self._runtime_lock:
+                    if event.thread_id not in self._runtime_threads:
+                        if len(self._child_files) >= 128:
+                            self._child_files.pop(next(iter(self._child_files)))
+                        self._child_files[(event.thread_id, event.turn_id, event.item_id)] = event.text
+        if isinstance(message, dict) and message.get('method') == 'mcpServer/oauthLogin/completed':
+            params = message.get('params')
+            if isinstance(params, dict) and type(params.get('success')) is bool:
+                key = (params.get('threadId'), params.get('name'), params.get('loginId'))
+                if all(isinstance(k, str) and k for k in key):
+                    with self._runtime_lock:
+                        if len(self._oauth_results) >= 100:
+                            self._oauth_results.pop(next(iter(self._oauth_results)))
+                        self._oauth_results[key] = params['success']
+            return
+
+        # MCP turn IDs are optional. Bind them to the observed native turn now,
+        # before queuing: a later turn must never inherit an unanswered form.
+        if isinstance(message, dict) and message.get('method') in ('turn/started', 'turn/completed'):
+            params = message.get('params')
+            if isinstance(params, dict) and isinstance(params.get('turn'), dict):
+                thread, turn = params.get('threadId'), params['turn'].get('id')
+                if isinstance(thread, str) and isinstance(turn, str):
+                    with self._runtime_lock:
+                        if message['method'] == 'turn/started':
+                            if len(self._active_turns) >= 512:
+                                self._active_turns.pop(next(iter(self._active_turns)))
+                            self._active_turns[thread] = turn
+                        elif self._active_turns.get(thread) == turn:
+                            self._active_turns.pop(thread, None)
+                    if message['method'] == 'turn/completed':
+                        with self._lock:
+                            ended = [r for r in self._server_pending.values()
+                                     if r.source_thread_id == thread and r.source_turn_id == turn]
+                            if len(self._retired_turns) >= 128:
+                                self._retired_turns.pop(next(iter(self._retired_turns)))
+                            self._retired_turns[(thread, turn)] = True
+                        for request in ended:
+                            super()._receive({'method': 'serverRequest/resolved', 'params': {
+                                'threadId': request.thread_id, 'requestId': request.request_id}})
+        return super()._receive(message)
+
+    def _bind_server_request(self, request):
+        if request.method == ELICITATION and not request.turn_id:
+            with self._runtime_lock:
+                turn = self._active_turns.get(request.thread_id)
+            if turn is None:
+                raise ValueError('No active Codex turn for this form')
+            return replace(request, turn_id=turn)
+        return request
+
+    def forget_turn_requests(self, thread_id, turn_id):
+        with self._runtime_lock:
+            if self._active_turns.get(thread_id) == turn_id:
+                self._active_turns.pop(thread_id, None)
+        return super().forget_turn_requests(thread_id, turn_id)
+
+    def respond_request(self, request, result, *, dispatch_guard=None):
+        if request.source_thread_id:
+            with self._lock:
+                if (request.source_thread_id, request.source_turn_id) in self._retired_turns:
+                    raise CodexApprovalNotSent('The Codex subagent turn has ended')
+            with self._runtime_lock:
+                if self._active_turns.get(request.thread_id) != request.turn_id:
+                    raise CodexApprovalNotSent('The parent Codex turn has ended')
+        return super().respond_request(request, result, dispatch_guard=dispatch_guard)
 
     def _accept_server_request(self, request):
         with self._runtime_lock:
             proof = self._runtime_threads.get(request.thread_id)
             return (proof is not None
-                    and (proof.policy.approval != 'never' or request.method == QUESTIONS))
+                    and (proof.policy.approval != 'never' or request.method in (QUESTIONS, ELICITATION))
+                    and (request.method != ELICITATION or request.server in proof.allowed_tools))
 
     def _verify_turn_route(self, params):
         with self._runtime_lock:
@@ -100,12 +279,16 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                     'sandboxPolicy': proof.policy.turn_policy()}
         if proof.effort is not None:
             expected['effort'] = proof.effort
+        if proof.instructions is not None:
+            expected['additionalContext'] = instruction_context(proof)
         if proof.collaboration is not None:
             expected['collaborationMode'] = collaboration_options(proof)
         if set(params) != set(expected) | {'input'} or any(params[k] != v for k, v in expected.items()):
             raise CodexRpcError('Codex turn options do not match the owned chat')
         self._verify_text_input(params['input'])
         super()._verify_turn_route(params)
+        from .codex_tools import verify_apps
+        verify_apps(self, proof.native_id, proof.apps)
         metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
         thread = metadata.get('thread')
         if not isinstance(thread, dict) or thread.get('id') != proof.native_id:
@@ -134,6 +317,8 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         self._verify_text_input(params['input'])
         # Pinned to the owned chat's folder; the copy is never sent.
         super()._verify_turn_route({**params, 'cwd': proof.cwd})
+        from .codex_tools import verify_apps
+        verify_apps(self, proof.native_id, proof.apps)
         metadata = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False})
         thread = metadata.get('thread')
         if (not isinstance(thread, dict) or thread.get('id') != proof.native_id
@@ -144,6 +329,10 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 
 #: JSON-RPC's invalid-request code, which app-server gives a steer it refuses.
 INVALID_REQUEST = -32600
+
+
+def instruction_context(proof):
+    return {'tcp_chat_instructions': {'kind': 'application', 'value': proof.instructions}}
 
 
 def collaboration_options(proof):
@@ -226,6 +415,8 @@ class CodexTurnExecutor:
                 'input': inputs}
             if proof.effort is not None:
                 params['effort'] = proof.effort
+            if proof.instructions is not None:
+                params['additionalContext'] = instruction_context(proof)
             if proof.collaboration is not None:
                 params['collaborationMode'] = collaboration_options(proof)
             verify_frame_size('turn/start', params)
@@ -385,8 +576,8 @@ class CodexTurnExecutor:
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
                                   buffer.changed_paths, tuple(buffer.review_notices.items()),
-                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id,
-                                  buffer.tools_started, buffer.edits_made)
+                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, buffer.reasoning,
+                                  tools_started=buffer.tools_started, edits_made=buffer.edits_made)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):
@@ -465,20 +656,20 @@ class CodexTurnExecutor:
                     pending = self._pending_events.get(event.thread_id)
                     if pending is not None:
                         presentation = isinstance(event, CodexEvent) and event.kind in (
-                            'text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated', 'display_truncated')
+                            'text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated', 'display_truncated', 'reasoning_delta', 'reasoning_completed')
                         if presentation:
                             for index, old in enumerate(pending):
                                 if (isinstance(old, CodexEvent) and old.turn_id == event.turn_id
-                                        and old.item_id == event.item_id and old.kind in (
+                                        and old.item_id == event.item_id and old.part == event.part and old.kind in (
                                             ('text_delta', 'text_completed') if event.kind in ('text_delta', 'text_completed') else (event.kind,))):
                                     if event.kind == 'text_delta' and old.kind == 'text_completed':
                                         break
                                     pending[index] = (replace(event, text=_text(old.text + event.text))
-                                        if event.kind == old.kind == 'text_delta' else event)
+                                        if event.kind == old.kind and event.kind in ('text_delta', 'reasoning_delta') else event)
                                     break
                             else:
                                 displays = [i for i, old in enumerate(pending) if isinstance(old, CodexEvent)
-                                            and old.kind in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated')]
+                                            and old.kind in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated', 'reasoning_delta', 'reasoning_completed')]
                                 if len(displays) >= 128:
                                     pending.pop(displays[0])
                                     if not any(getattr(e, 'kind', '') == 'display_truncated' for e in pending):

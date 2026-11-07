@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import wx
 
-from ..providers.codex_requests import QUESTIONS
+from ..providers.codex_requests import QUESTIONS, ELICITATION
 from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
 from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
@@ -74,10 +74,11 @@ class CodexChats(SoundHost, CodexExtras):
                      else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
-        notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-        if notices:
-            count = len(notices)
-            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
+        # Counts only: the commands are in Lists, Approvals (#564).
+        from ..approvals import count_text
+        counted = count_text([n for n in getattr(state, 'permission_notices', ()) if n[0] == state.turn_id])
+        if counted:
+            text += ' ' + counted
         return text
 
     def _codex_work(self, action, done):
@@ -116,7 +117,7 @@ class CodexChats(SoundHost, CodexExtras):
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
                             approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None,
-                            copilot_mode=''):
+                            copilot_mode='', instructions=None, extra_roots=()):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
@@ -130,6 +131,9 @@ class CodexChats(SoundHost, CodexExtras):
                    ('sandbox', sandbox), ('approval_policy', approval_policy),
                    ('approvals_reviewer', approvals_reviewer), ('copilot_mode', copilot_mode))
                    if value}
+        if provider == 'codex':
+            self._session_tools_config('')
+            options.update(instructions=instructions, extra_roots=extra_roots)
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
@@ -440,6 +444,8 @@ class CodexChats(SoundHost, CodexExtras):
             return
         key = info.key
         self._codex_preparation_running.add(key)
+        if provider == 'codex':
+            self._session_tools_config('')
         def prepare():
             self.sessions.owned_action('prepare', record)
         def done(_result, error):
@@ -780,6 +786,9 @@ class CodexChats(SoundHost, CodexExtras):
             if asks:
                 self._say(f"{record.title}: {asks}", interrupt=False)
         self._sound_tools_since(provider, previous, state)
+        retry = getattr(state, 'retry', '')
+        if retry and (previous is None or previous.turn_id != state.turn_id or getattr(previous, 'retry', '') != retry):
+            self._say(f'{record.title}: {retry}', interrupt=False)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
         if seen is None:
@@ -788,7 +797,14 @@ class CodexChats(SoundHost, CodexExtras):
             identity = (provider, state.native_id, notice[0], notice[1])
             if identity not in seen:
                 seen.add(identity)
-                self._say(f'{record.title}: {notice[2]}', interrupt=False)
+                # Allowed requests are said only with the chat's tool activity
+                # on, like its tool calls: a long turn has dozens. One that
+                # wasn't allowed is always said once, after what's being said
+                # (#564).
+                from ..approvals import is_routine
+                activity = self._show_activity if loaded else key in self.tool_activity
+                if activity or not is_routine(notice[1], notice[2]):
+                    self._say(f'{record.title}: {notice[2]}', interrupt=False)
         if loaded and (state.token_usage is not None or previous is not None and previous.token_usage is not None):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
@@ -928,7 +944,7 @@ class CodexChats(SoundHost, CodexExtras):
         # a command, letter for letter (#426): the provider says whether this
         # one can be kept.
         from ..providers.copilot_runtime import COMMAND as COPILOT_COMMAND
-        if ((request.method != QUESTIONS and info.provider == 'codex')
+        if ((request.method not in (QUESTIONS, ELICITATION) and info.provider == 'codex')
                 or (request.method == COPILOT_COMMAND and info.provider == 'copilot')):
             pending = getattr(self, '_codex_answer_checks', None)
             if pending is None:
@@ -946,7 +962,10 @@ class CodexChats(SoundHost, CodexExtras):
         self._show_codex_answer(info, record, request, state, None)
 
     def _show_codex_answer(self, info, record, request, state, chat_rule):
-        if request.method == QUESTIONS:
+        if request.method == ELICITATION:
+            from .dialogs import ElicitationDialog
+            dialog = ElicitationDialog(self, info.title, request.elicitation(), feedback=self._feedback)
+        elif request.method == QUESTIONS:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
@@ -957,7 +976,10 @@ class CodexChats(SoundHost, CodexExtras):
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
                                     provider=provider_name(info.provider), said=said)
         else:
-            detail = dict(state.file_changes).get(request.item_id, '')
+            # Copilot shares this dialog but has no Codex child-thread fields.
+            # A child must use its pinned diff, never a same-ID parent diff.
+            detail = (request.file_detail if info.provider == 'codex' and request.source_thread_id
+                      else dict(state.file_changes).get(request.item_id, ''))
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,
                                            provider=provider_name(info.provider))
         keep = False
@@ -965,7 +987,10 @@ class CodexChats(SoundHost, CodexExtras):
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
-            if request.method == QUESTIONS:
+            if request.method == ELICITATION:
+                choice = dialog.action
+                result = request.elicitation_answer(choice, dialog.content)
+            elif request.method == QUESTIONS:
                 if dialog.declined:
                     self._stop_codex_owned(info)
                     return
@@ -985,6 +1010,12 @@ class CodexChats(SoundHost, CodexExtras):
             self._feedback((_result or f'This {name} request could not be answered. It may no longer be waiting.')
                            if error else not_kept or (f'Approval kept for this chat and answer sent to {name}.'
                                                       if keep else f'Answer sent to {name}.'))
+            if not error and request.method == ELICITATION and choice == 'accept' and request.elicitation().is_url:
+                from ..platform_paths import open_url
+                try:
+                    open_url(request.elicitation().url)
+                except (OSError, ValueError):
+                    self._feedback('The answer was sent, but your browser could not open. Open this address: ' + request.elicitation().url)
             agent_answered = getattr(self, '_agent_member_answered', None)
             if not error and agent_answered is not None:
                 # An approval or an answer lets an agent conversation's

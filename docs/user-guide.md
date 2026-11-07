@@ -141,7 +141,8 @@ failing test that reproduces it, then fix it".
   understand this, then write it up in a file". Then start a new chat to build from that file, so
   the building starts clean.
 - **When words won't do it,** show it: **Ctrl+Shift+F** (File, Attach Files) adds files and pictures
-  to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard.
+  to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard or
+  files you copied.
 - **When you keep typing the same message,** save it: **Ctrl+Shift+P** (File, Prompts) lists saved
   messages, and **Ctrl+Shift+Enter** in the reply box saves what you've typed and sends it.
 - **When you've corrected the same thing twice and it's still wrong,** start again. A new chat
@@ -385,7 +386,7 @@ Much of "Getting more out of Claude" is true of Codex too: say what it can't fin
 how to check the work, and use one chat for one job. These sections are what's different in a Codex
 chat started here. See also OpenAI's [Codex documentation](https://developers.openai.com/codex).
 
-Some of the Claude part doesn't apply: Chat Options, output styles, Claude Code's own commands such
+Some of the Claude part doesn't apply: Claude's Agent and Output Style choices, Claude Code's own commands such
 as `/init` and `/code-review`, restoring files, editing a queued message and Remote Control.
 
 ### Codex: agree the approach first
@@ -413,6 +414,25 @@ For a procedure you keep explaining, make a skill. **Ctrl+/** lists your enabled
 you choose goes in as `$name` and is sent with your next message. If one chat shouldn't use or add to
 memories, choose `/memories off` from Ctrl+/ and send it.
 
+For this chat alone, use **Chat Options** (Alt+H in New Session or Continue Here;
+File, Chat Options later). Instructions accompany each turn. More folders grants
+writes only in Folder edits mode; read-only stays read-only. Changes are saved
+while idle, and removing a folder removes its grant from the next turn.
+
+### Codex: follow delegated work and progress
+
+**View, Subagents** lists child conversations, including nested and archived work.
+Read Conversation opens their history. Child approvals identify the subagent and
+are tied to its running parent; command approvals are one-time only.
+
+**Show Tool Activity** (Ctrl+T) includes reasoning summaries supplied by Codex,
+live and in history. They are not announced as final replies. Retry status is
+announced when it changes and clears with new progress; your prompt is not resent.
+
+Built-in session tools let Codex list, search and read chats through The Chat Place
+and hide eligible idle chats. They cannot hide the caller, open chats or running
+work. They require the app to be running and are unavailable in Ask Aside.
+
 ### Codex: change course or go back
 
 - **Heading the wrong way:** **Ctrl+Alt+Enter** steers the running turn. **Ctrl+Period** stops it, and
@@ -430,8 +450,12 @@ memories, choose `/memories off` from Ctrl+/ and send it.
 
 - **A long chat:** choose `/compact` from Ctrl+/ and send it while the chat is idle. **Ctrl+Shift+U**
   shows how full the context is and your account's limits.
-- **Other services:** **View, Connected Tools (MCP)** lists the servers set up for the folder. Add them
-  with `codex mcp` in a terminal. Turning one on or off makes a new copy of the chat.
+- **Other services:** **View, Connected Tools (MCP)** lists configured servers and available apps.
+  Add servers with `codex mcp` in a terminal. Changing a selection makes a new read-only copy;
+  the original keeps its tools. Sign In confirms the web address before opening it. Complete
+  sign-in in the browser, then Refresh if needed. Reconnect reloads configured servers.
+  Standard form and URL questions use the Answer dialog. Plugin installation and provider-specific
+  verification forms are unsupported; unsupported questions are declined.
 - **A harder or lighter job:** File, **Change Model** and **Change Effort** work while the chat is idle.
   See [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
 - **Pictures and files:** **Ctrl+Shift+F** (File, Attach Files) adds them to your next message.
@@ -798,6 +822,10 @@ session list, the messages or the reply box:
   4 minutes". One still working says "Running" and how long so far; one that ended early says
   "Failed" or "Stopped". Its details are the prompt Claude gave it and its final report. **Enter**
   (or **Read Conversation**, Alt+R) opens its conversation (see "Subagent conversations" below).
+- **Approvals** (Codex chats started here): each request Codex's automatic review allowed or
+  didn't, and each one a rule you saved with Allow for This Chat allowed, newest first. It always
+  lists the whole chat, whichever Show items from says: "Allowed: git log --oneline. Automatic review." Its details have the reviewer's
+  reason, and **Copy** copies the command.
 
 Code Blocks and Links work in every chat. A kind that isn't available for a chat's provider says
 so, such as "Commands aren't listed for Codex chats yet."
@@ -818,8 +846,8 @@ these change the kind and leave you on its list:
   **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
   uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
   Cmd+Page Down and Page Up.
-- **On Windows, Ctrl+1** to **Ctrl+7** go straight to Code Blocks, Links, Changed Files, Commands,
-  Decisions, Tasks or Subagents. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
+- **On Windows, Ctrl+1** to **Ctrl+8** go straight to Code Blocks, Links, Changed Files, Commands,
+  Decisions, Tasks, Subagents or Approvals. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
@@ -1210,7 +1238,8 @@ editable.
 ### More controls for Codex chats started here
 
 - **Attach Files** (Ctrl+Shift+F) adds files and pictures to your next message. **Ctrl+V** in the
-  reply box attaches a picture on the clipboard, such as a screenshot. Pictures reach Codex as
+  reply box attaches a picture on the clipboard, such as a screenshot, or files you copied in
+  File Explorer (the Finder on a Mac). Pictures reach Codex as
   images; other files are named for it to read. You can send attachments with an empty reply box,
   and queued messages keep their image and skill inputs. If a send fails, the recovered draft
   names its files; attach images again to resend them as images.
@@ -1559,12 +1588,14 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
 - **Work in** (Alt+I): **The folder as it is** (it says which branch the folder is on), or
   **A new worktree**. A **worktree** is a separate copy of the repository on a branch of its
   own, so the chat's changes stay apart from the folder and from your other chats. With a
-  worktree, choose a branch in **Branch** (Alt+R), or type a new name to make that branch from
-  the folder's current one. A branch that's already checked out somewhere isn't offered, since a
-  branch can be in only one place. When you press Start, you hear "Making the worktree", and
-  the chat starts once it's made, inside the repository's .claude folder where Claude Code
-  and the desktop app make theirs. It stays there when you're done; remove it with git worktree
-  remove.
+  worktree, choose a branch in **Branch** (Alt+R), or type a new name. A branch that's already
+  checked out somewhere isn't offered, since a branch can be in only one place. For a new name,
+  **Start from** (Alt+A) chooses where the branch starts: the remote's main branch, such as
+  origin/main, fetched first, or what the folder has checked out. When you press Start, you hear
+  "Making the worktree", then what was made, such as "Made worktree fix-login on new branch
+  fix/login, from origin/main." The chat starts inside the repository's .claude folder, where
+  Claude Code and the desktop app make theirs. It stays there when you're done; remove it with
+  git worktree remove. See "Branches and worktrees".
 - **Title:** optional; without one, it's made from the first words of your message.
 - **Model:**
     - Claude: Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
@@ -1598,6 +1629,44 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
 Press **Ctrl+Enter** from anywhere in the dialog (or Start). For Codex, the model and effort
 are checked again as the chat starts. If the first message never reaches Claude (Claude Code
 isn't signed in, for example), it goes back into the reply box, and Send starts the chat again.
+
+### Branches and worktrees
+
+A new branch starts from some point in the repository's history, and where depends on how you
+asked for it. This is where each way starts, and how to say which you want.
+
+- **New Session, A new worktree, with a new branch name:** **Start from** (Alt+A) chooses.
+    - **The remote's main branch, fetched first**, such as origin/main, is chosen to begin with.
+      It's fetched just before the worktree is made, so the branch starts from the newest main,
+      not an old copy. It's what Claude Code's own worktrees do.
+    - **What the folder has checked out**, named, such as "work, what the folder has checked
+      out", starts from the branch the folder is on now, with any changes it has that main
+      doesn't.
+    - For a Claude chat, if your Claude Code settings say `"worktree": {"baseRef": "head"}`, the
+      folder's branch is chosen to begin with instead.
+    - If the repository has no remote, or the fetch fails, the branch starts from the folder's
+      branch, and you hear that and why. It never starts from an old copy of main.
+    - Start from is off for a branch that already exists, which is used as it is, and for one
+      only the remote has, which tracks it. Its name says why it's off. If the fetch takes a
+      while, you hear "Fetching origin/main, then making the worktree."
+    - The new branch doesn't track main, so pushing it never goes to main.
+    - This works whichever AI the chat is with: The Chat Place makes the worktree.
+- **Asking Claude for a new worktree during a chat,** such as "make a new worktree called fix-x":
+  Claude Code makes `.claude\worktrees\fix-x` on a branch called `worktree-fix-x`, from the
+  remote's main branch (or the current branch with `"baseRef": "head"`). The chat carries on
+  there in later turns, and The Chat Place follows it: you hear "Fix it moved to worktree fix-x,
+  on branch worktree-fix-x, from origin/main." The chat's folder in the list changes to match.
+  Asking Claude to leave the worktree moves the chat back, and you hear that too. A command that
+  only changes folder, such as cd, doesn't move the chat.
+- **Asking any AI for a new branch, without a worktree:** it starts from the branch the folder is
+  on now, in the same folder.
+- **Codex and Copilot** run git themselves for a worktree, so where it starts depends on the
+  command they run. The Chat Place doesn't follow a Codex or Copilot chat into a worktree yet.
+
+To be sure, say which you want, such as "make a new worktree called fix-x from origin/main" or
+"...from the current branch". To check afterwards, **Properties** (Alt+Enter) lists the chat's
+**Branch**, its **Worktree** if it's in one, and what the branch **started from**, when git
+still records it.
 
 ### Changing a chat's model, effort or permission mode
 
@@ -1683,9 +1752,14 @@ instructions.
 To ask Claude something about a chat without adding to it, such as "which file did you change
 for the login bug?", press **Ctrl+Shift+Y** (File, Ask Aside, or Ask Aside on a chat's menu in
 the list). It's like Claude Code's /btw. It works for Claude chats started here, desktop app
-chats and terminal chats, even while a turn is running, when Claude answers from what the chat
-holds so far. It also works for local Codex chats, including chats started elsewhere. It isn't
-available for Cowork chats, kept copies or Copilot chats.
+chats and terminal chats, even while a turn is running. Claude answers from the chat up to its
+last finished reply, so a turn that's running or didn't finish (it was stopped, or ended in an
+error) isn't included, and until something in the chat has finished, there's nothing to ask
+about. A chat compacted after its last finished reply (during a long turn, or by /compact
+after a turn that didn't finish) can be asked about again after Claude's next reply.
+It also works for local Codex chats,
+including chats started elsewhere. It isn't available for Cowork chats, kept copies or Copilot
+chats.
 
 - Type in **Your question** (Alt+Q). Enter starts a new line; **Ctrl+Enter** asks, as does
   **Ask** (Alt+A). You hear which provider is answering, such as "Asking Codex."
@@ -1708,7 +1782,9 @@ starting with a slash is just a question). Each question uses your Claude plan, 
 
 For Codex, each question uses a temporary read-only copy in a separate Codex process and your
 ChatGPT plan. Commands, connected tools, hooks, memories, Goals and delegation are disabled in
-that copy. Closing the dialog cancels it. Its questions and answers aren't saved to the source.
+that copy. It holds the chat up to its last completed turn, so a turn that's running or didn't
+finish is left out.
+Closing the dialog cancels it. Its questions and answers aren't saved to the source.
 
 ### Replying
 
@@ -1792,7 +1868,8 @@ These are for Claude and Codex chats started here:
   chat, the same picker offers enabled skills and chat controls, such as `/plan` and `/compact`;
   see "More controls for Codex chats started here". Copilot doesn't have this picker yet.
 - **Ctrl+Shift+F** (or Attach Files) adds files and pictures to your next message, and **Ctrl+V**
-  in the reply box attaches a picture on the clipboard, such as a screenshot. The attachments are
+  in the reply box attaches a picture on the clipboard, such as a screenshot, or files you
+  copied. The attachments are
   listed under the reply box, and Delete there removes one (on a Mac, Delete or Fn+Delete).
   The provider sees pictures as pictures, and reads other files from where they are. Queued
   Codex messages keep their image and skill inputs. If a failed send returns a Codex message
@@ -2194,8 +2271,12 @@ approval.
 - The chat can read files; folder editing covers its own folder. Network access, and temporary
   folders outside its folder, still need approval, and your saved Codex command rules still
   apply. Chat Permissions explains these limits.
-- Each review decision is announced and shown in the chat. The latest 128 for each chat are kept
-  on this computer, so Chat Permissions can show them after a restart, even if Codex isn't
+- A request that isn't allowed (denied, timed out or stopped) is said once and shown in the
+  chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
+  with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Approvals**
+  (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
+- The latest 128 decisions for each chat, including those your saved rules made, are kept on
+  this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running.
 
 **Allow for This Chat** remembers a Git command for this chat and its exact working folder:
@@ -2212,8 +2293,9 @@ working folder is where it starts, not a limit on what it can do. A plain push f
 repository's own settings, which can themselves force or delete.
 
 Approvals survive restarting the app. A Continue Here copy starts with none. The Chat Place
-answers Codex for you when a remembered approval covers a request, and says so once. The
-current turn's approvals given this way appear after the conversation and in Turn Status. Codex
+answers Codex for you when a remembered approval covers a request. Like automatic review's,
+these approvals are said and shown with Show Tool Activity on, and always listed in Lists,
+**Approvals**; Turn Status counts the current turn's. Codex
 itself keeps none of them, and neither Codex's nor Claude's settings are changed.
 
 **Chat Permissions** lists each kept approval and its date, with **Remove** (or Delete in the

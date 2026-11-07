@@ -134,10 +134,21 @@ SEPARATE_PROVIDERS = ("copilot",)
 #: provider-sessions.json over a provider option it doesn't know, and then
 #: saves nothing. It ignores a field it doesn't know. In memory they're
 #: ordinary provider options.
-CODEX_EXTRAS = ("collaboration", "mcp_servers")
+CODEX_EXTRAS = ("collaboration", "mcp_servers", "instructions", "extra_roots", "apps")
 
 
 def _valid_codex_extra(name: str, value) -> bool:
+    if name == 'instructions':
+        return isinstance(value, str) and len(value) <= 8000 and '\x00' not in value
+    if name == 'apps':
+        from .providers.codex_tools import app_ids
+        try:
+            app_ids(value)
+            return isinstance(value, list)
+        except ValueError:
+            return False
+    if name == 'extra_roots':
+        return isinstance(value, list) and len(value) <= 32 and all(isinstance(p, str) and p and '\x00' not in p for p in value)
     if name == "collaboration":
         return value in ("default", "plan")
     return (isinstance(value, list) and len(value) <= 100

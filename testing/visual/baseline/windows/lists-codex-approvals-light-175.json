@@ -1,0 +1,308 @@
+{
+ "title": "Lists: Codex history preview",
+ "class": "ListsDialog",
+ "size": [
+  1435,
+  956
+ ],
+ "client": [
+  1411,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Show items from:",
+   "rect": [
+    8,
+    11,
+    162,
+    31
+   ],
+   "best": [
+    162,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Show items from",
+   "label": "",
+   "rect": [
+    176,
+    8,
+    182,
+    38
+   ],
+   "best": [
+    182,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The whole chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Kinds:",
+   "rect": [
+    8,
+    54,
+    56,
+    31
+   ],
+   "best": [
+    56,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Kinds",
+   "label": "",
+   "rect": [
+    10,
+    87,
+    1395,
+    251
+   ],
+   "best": [
+    304,
+    251
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Code Blocks (1)",
+    "Links (1)",
+    "Changed Files (0)",
+    "Commands, not available",
+    "Decisions, not available",
+    "Tasks (0)",
+    "Subagents, not available",
+    "Approvals (5)"
+   ],
+   "selection": 7
+  },
+  {
+   "class": "BookCtrlBase",
+   "name": "",
+   "label": "",
+   "rect": [
+    0,
+    336,
+    1411,
+    498
+   ],
+   "best": [
+    766,
+    801
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Panel",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    336,
+    1411,
+    498
+   ],
+   "best": [
+    695,
+    801
+   ],
+   "depth": 1,
+   "parent": 4,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Filter:",
+   "rect": [
+    8,
+    344,
+    51,
+    31
+   ],
+   "best": [
+    51,
+    31
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Filter approvals",
+   "label": "",
+   "rect": [
+    10,
+    377,
+    1395,
+    38
+   ],
+   "best": [
+    192,
+    38
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&List: Approvals (5):",
+   "rect": [
+    8,
+    421,
+    169,
+    31
+   ],
+   "best": [
+    169,
+    31
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Approvals (5)",
+   "label": "",
+   "rect": [
+    10,
+    454,
+    1395,
+    168
+   ],
+   "best": [
+    679,
+    168
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Allowed: git diff. Saved rule for this chat.",
+    "Allowed: rg -n \"def build\" thechatplace. Automatic review.",
+    "Denied: curl https://example.com/install.sh. Automatic review.",
+    "Allowed: python -m pytest -q tests/test_lists.py. Automatic review.",
+    "Allowed: git status --short. Automatic review."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    8,
+    628,
+    69,
+    31
+   ],
+   "best": [
+    69,
+    31
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Approval",
+   "label": "",
+   "rect": [
+    10,
+    661,
+    1395,
+    125
+   ],
+   "best": [
+    222,
+    298
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": [],
+   "value": "Allowed git diff, as you said for this chat."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    1270,
+    792,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 2,
+   "parent": 5,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Clos&e",
+   "rect": [
+    1270,
+    842,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

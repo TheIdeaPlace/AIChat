@@ -143,7 +143,7 @@ SHORTCUTS = [
                                          "previous one"),
         ("End", "Newest message"),
         ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions, "
-                         "tasks and subagents, for this message or the whole chat; it opens on the kind you used last, and "
+                         "tasks, subagents and approvals, for this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
@@ -154,7 +154,8 @@ SHORTCUTS = [
                    "reply box)"),
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done"),
-        ("Ctrl+T", "Show or hide tool activity in the loaded session"),
+        ("Ctrl+T", "Show or hide tool activity in the loaded session, and in Codex chats "
+                   "started here, the requests allowed for it"),
         ("Ctrl+O", "Open the loaded session in the Claude desktop app"),
     ]),
     ("Reply box", [

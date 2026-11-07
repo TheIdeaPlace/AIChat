@@ -1151,6 +1151,41 @@ def d_new_session(frame, env):
     return frame.on_new_session
 
 
+def d_new_session_worktree(frame, env):
+    """New Session with A new worktree and a new branch, so Start from is on
+    (#561). The repository is described rather than made, as the test VM has
+    no git: what the dialog would read from a clone on branch work, whose
+    remote has a main branch."""
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    folder = str(env["folders"]["Scratch"])
+    dialog = NewSessionDialog(frame, folder)
+    info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
+                               branch="work", branches=["older"], busy=["work"],
+                               remotes=["origin/main"])
+    # Every read of the folder, now and when the dialog opens and the folder
+    # box loses the focus, answers with that description.
+    def described(folder):
+        wx.CallAfter(dialog._repo_read, folder, info, "origin/main", False)
+        wx.CallAfter(choose)
+
+    def choose():
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        if dialog.branch.GetValue() != "fix/login":
+            dialog.branch.SetValue("fix/login")
+        dialog._sync_start_from()
+    for _ in range(150):  # its first, real read finishes first, so it can't land after
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog._read_repo = described
+    dialog._repo_for = ""
+    dialog.refresh_repo()
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -1429,6 +1464,16 @@ def d_codex_permission(frame, env):
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 
+def d_codex_chat_options(frame, env):
+    from thechatplace.chat_options import ChatOptions
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    dialog = ChatOptionsDialog(frame, 'Codex review', str(env['folders']['Scratch']),
+        options=ChatOptions(instructions='Use concise explanations.\nRun the affected tests.'),
+        folders=[str(env['folders']['Website'])], provider='codex', existing=True,
+        feedback=frame._feedback)
+    return lambda: frame._modal(dialog)
+
+
 def d_chat_options(frame, env):
     """File, Chat Options on a Claude chat with an agent, instructions, an
     output style and a more folder (#468), the folder's choices known."""
@@ -1508,7 +1553,9 @@ def d_codex_tools(frame, env):
     host = CodexConnectedTools(frame, frame._open)
     host.load = lambda done: done([CodexTool('project-notes', 'connected', ('find_notes',), False),
                                   CodexTool('build-reports', 'needs-auth', (), False),
-                                  CodexTool('reference-search', 'off', (), True)], '')
+                                  CodexTool('reference-search', 'off', (), True),
+                                  CodexTool('ccd_session_mgmt', 'connected', off_for_chat=False, is_session_tools=True),
+                                  CodexTool('app:demo', 'available', app_id='demo', display_name='Project documents')], '')
     return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
 
 
@@ -1870,6 +1917,32 @@ def d_lists_codex_owned_no_tasks(frame, env):
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
 
+def d_lists_codex_approvals(frame, env):
+    """Lists, Approvals (#564): automatic review's decisions and a saved rule's."""
+    import dataclasses
+    from thechatplace import lists
+    from thechatplace.providers.codex_events import decode_event
+    s_main_codex_owned(frame, env)
+    notices = []
+    for number, (status, command, reason) in enumerate([
+            ('approved', 'git status --short', 'Reads the working tree only.'),
+            ('approved', 'python -m pytest -q tests/test_lists.py', 'Runs the project tests in the workspace.'),
+            ('denied', 'curl https://example.com/install.sh', 'Downloads and runs a script from the network.'),
+            ('approved', 'rg -n "def build" thechatplace', 'Searches files in the workspace.')]):
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'probe', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': command},
+            'review': {'status': status, 'rationale': reason}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git diff, as you said for this chat.'))
+    from thechatplace.providers.codex_runtime import CodexChatState
+    info = frame._open
+    state = frame._codex_states.get(info.key) or CodexChatState(info.cli_session_id, "idle", "turn", "completed")
+    frame._codex_states[info.key] = dataclasses.replace(state, permission_notices=tuple(notices))
+    frame.sessions.owned_action = lambda action, record, *a: ()
+    return lambda: frame.on_lists(lists.APPROVALS, lists.SCOPE_CHAT)
+
+
 def d_properties_codex_tasks(frame, env):
     _codex_plan_preview(frame, env)
     frame.session_list.SetFocus()
@@ -2173,6 +2246,8 @@ SURFACES = {
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
                                 "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "new-session-worktree": ("dialog", d_new_session_worktree,
+                             "New Session making a new worktree, with Start from on"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
@@ -2203,6 +2278,7 @@ SURFACES = {
     "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
                                  "Chat Permissions: a Copilot chat in Auto, with commands kept"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "codex-chat-options": ("dialog", d_codex_chat_options, "Codex chat instructions and additional folders"),
     "chat-options": ("dialog", d_chat_options,
                      "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
@@ -2246,6 +2322,7 @@ SURFACES = {
     "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
     "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
+    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Approvals in a Codex chat"),
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
@@ -2309,6 +2386,7 @@ DIALOG_CLASSES = {
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "new-session-worktree": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
@@ -2333,6 +2411,7 @@ DIALOG_CLASSES = {
     "chat-permissions-copilot-moved": "ChatPermissionsDialog",
     "chat-permissions-copilot": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
+    "codex-chat-options": "ChatOptionsDialog",
     "chat-options": "ChatOptionsDialog",
     "ask-aside": "AskAsideDialog",
     "codex-aside": "AskAsideDialog",
@@ -2368,6 +2447,7 @@ DIALOG_CLASSES = {
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
     "lists-codex-owned-no-tasks": "ListsDialog",
+    "lists-codex-approvals": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-breakdown": "UsageDialog",
