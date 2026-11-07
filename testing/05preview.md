@@ -1,7 +1,8 @@
 # The Chat Place 0.5 preview: testing guide
 
 The 0.5 preview is the combined Claude (#468) and Codex (#467) feature work on the branch
-`05preview`, for the planned 0.5.0 release. Test a build made from the latest commit on that
+`05preview`, for the planned 0.5.0 release. It also has Sounds (#250) and the Codex parity work
+(#558), whose checks are in `testing/codex-parity.md`. Test a build made from the latest commit on that
 branch. The app reports **0.4.0** until the release commit bumps the version, so Help, About
 doesn't tell you which preview you have.
 
@@ -272,7 +273,7 @@ wait for about 90 seconds, and report when both are running without waiting for 
    doesn't count: it still opens.
 3. On the source turn's message menu, try **Subagent Conversations**. If you separately ask a
    subagent to edit a disposable file, Changed Files should include the change and its author.
-   Codex subagent conversations aren't supplied by this preview.
+   Codex subagents are listed too: `testing/codex-parity.md` has their checks.
 4. In New Session or Continue Here, press **Alt+H** for **Chat Options**. Try instructions such
    as "End each reply with the word previewcheck", then start a chat and send a short question.
    Expect: the instructions take effect. An agent or output style can be chosen if configured;
@@ -310,6 +311,33 @@ wait for about 90 seconds, and report when both are running without waiting for 
    announcements. Retries should include their attempt and delay; memory-save announcements
    need the Full announcement level. You don't need to disconnect your PC to force these.
 
+## Sounds
+
+Sounds are off until turned on. Nobody has heard them yet: their levels and timing were measured
+in a VM through a virtual sound card, so what's left is whether they're pleasant and how they sit
+with a screen reader. User Guide, **Sounds** lists every sound.
+
+1. Choose File, **Sounds**. Tab through it both ways. Expect: each control is named, and the
+   **Sound events** list reads each row as the event and its sound. Turn on **Play sounds** and
+   choose OK.
+2. In **Sound events**, arrow to a few events and choose **Preview**. Try each **Style**
+   (Glass, Soft bell, Wood) and a lower **Volume**. Expect: each plays at the volume showing, and
+   none is harsh or clipped.
+3. In a disposable chat, with **Show Tool Activity** off (**Ctrl+T**), ask for something that
+   runs a few commands and edits a test file. Expect: a soft tap per tool, Changed when the edit
+   works, and Arrived when the reply finishes. Listen for whether the taps get in the way of
+   speech or are hard to hear under it.
+4. Ask for something that needs your permission. Expect: the Attention sound with the
+   announcement, not instead of it. Stop a turn (**Ctrl+Period**). Expect: Stopped.
+5. While a turn runs in another chat, stay in this one. Expect: the softer Elsewhere when it
+   finishes.
+6. Press **Ctrl+Shift+X**. Expect: "Sounds muted", and silence, including a sound already
+   playing. Press it again for "Sounds on".
+7. With **No Windows sound for The Chat Place's notifications** turned on, let a chat finish
+   while you're in another program, then select the notification. Expect: only The Chat Place's
+   sound, and its chat opens. Nobody has checked that the chat still opens with this setting on.
+8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
+
 ## Remaining listening checks and reporting
 
 With JAWS, and with NVDA if available, pay particular attention to the command picker, attachment
@@ -320,8 +348,9 @@ both Tab directions and Escape, and note any focus that lands somewhere unexpect
 CI runs the full test suite on the branch's pull request (#468). Real model responses, third-party
 authentication and these listening checks still need verification by a person.
 
-Still outside this preview: starting/resuming autonomous Codex Goals, Codex subagent history,
-native dedicated review, apps/plugins, cloud/remote execution and multi-folder scope controls.
+Still outside this preview: starting/resuming autonomous Codex Goals, native dedicated review,
+plugin installation, and cloud/remote execution. Codex subagents, app connectors and extra
+folders for a chat came with the parity work; see `testing/codex-parity.md`.
 Existing appearance issue #181 about native list focus indicators is still open.
 
 For each finding, record the provider, section and step, chat type, what you did, expected
