@@ -2224,6 +2224,8 @@ approval.
   chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
   with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Approvals**
   (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
+  These are the chat's own requests: what the automatic review decides for a Codex subagent
+  isn't shown yet, though a subagent's requests that need you still come to the chat.
 - The latest 128 decisions for each chat, including those your saved rules made, are kept on
   this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running.

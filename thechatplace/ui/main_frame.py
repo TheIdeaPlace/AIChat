@@ -2704,7 +2704,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except ValueError:
             files_supported = False
         edits = list(self._chat_edits) if files_supported else []
-        subagent_list = list(self._chat_subagents) if info.provider == "claude" else []
+        # Codex's child conversations are read into the same list (#558);
+        # leaving them out had Lists say "none" in a chat that has some.
+        subagent_list = list(self._chat_subagents) if info.provider in ("claude", "codex") else []
         # Edits a subagent made count too, marked with who made them (#468).
         # Sorted by turn (stably), so files read in the order first changed.
         if files_supported and subagent_list:
