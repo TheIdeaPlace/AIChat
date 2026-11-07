@@ -1919,8 +1919,10 @@ def d_lists_codex_approvals(frame, env):
             'review': {'status': status, 'rationale': reason}})
         notices.append(('turn', event.item_id, event.text))
     notices.append(('turn', 7, 'Allowed git diff, as you said for this chat.'))
-    key = frame._open.key
-    frame._codex_states[key] = dataclasses.replace(frame._codex_states[key], permission_notices=tuple(notices))
+    from thechatplace.providers.codex_runtime import CodexChatState
+    info = frame._open
+    state = frame._codex_states.get(info.key) or CodexChatState(info.cli_session_id, "idle", "turn", "completed")
+    frame._codex_states[info.key] = dataclasses.replace(state, permission_notices=tuple(notices))
     frame.sessions.owned_action = lambda action, record, *a: ()
     return lambda: frame.on_lists(lists.APPROVALS, lists.SCOPE_CHAT)
 
@@ -2425,6 +2427,7 @@ DIALOG_CLASSES = {
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
     "lists-codex-owned-no-tasks": "ListsDialog",
+    "lists-codex-approvals": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-breakdown": "UsageDialog",
