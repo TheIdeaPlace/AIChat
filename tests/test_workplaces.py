@@ -473,3 +473,126 @@ def test_tool_folders_go_first_only_when_missing(monkeypatch):
     assert workplaces._tool_path(path) == os.pathsep.join([os.path.join("X", "git"), "A", "B"])
     already = os.pathsep.join(["A", os.path.join("X", "git")])
     assert workplaces._tool_path(already) == already
+
+
+# -- where a new worktree's branch starts (#561) --------------------------------------------
+
+def _commit(folder, name):
+    (folder / f"{name}.txt").write_text(name)
+    git("add", ".", cwd=folder)
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", name,
+        cwd=folder)
+
+
+def _head(folder):
+    return subprocess.run([GIT, "rev-parse", "HEAD"], cwd=folder, capture_output=True,
+                          text=True).stdout.strip()
+
+
+@pytest.fixture
+def cloned(repo, tmp_path):
+    """A clone of ``repo``, on a feature branch with a commit of its own,
+    while the remote's main has moved on since it was cloned."""
+    clone = tmp_path / "Clone"
+    subprocess.run([GIT, "clone", "-q", str(repo), str(clone)], check=True, capture_output=True)
+    git("checkout", "-q", "-b", "work", cwd=clone)
+    _commit(clone, "on-feature")
+    _commit(repo, "newer-on-main")
+    return clone
+
+
+@needs_git
+def test_a_new_branch_starts_from_the_remotes_main_fetched_first(cloned, repo):
+    info = workplaces.repo_info(GIT, str(cloned))
+    made = workplaces.create_worktree(GIT, info, "fix/fresh")
+    assert (made.how, made.base, made.note) == ("new", "origin/main", "")
+    assert _head(made.folder) == _head(repo)  # the newer main, not the clone's old copy
+    assert not (made.folder / "on-feature.txt").exists()
+    assert made.said() == "Made worktree fix-fresh on new branch fix/fresh, from origin/main."
+    # It doesn't track main, so pushing it can never go to main.
+    upstream = subprocess.run([GIT, "rev-parse", "--abbrev-ref", "@{upstream}"],
+                              cwd=made.folder, capture_output=True, text=True)
+    assert upstream.returncode != 0
+    assert workplaces.branch_start(GIT, workplaces.repo_info(GIT, str(made.folder))) \
+        == "origin/main"
+
+
+@needs_git
+def test_a_new_branch_can_start_from_the_current_branch(cloned):
+    info = workplaces.repo_info(GIT, str(cloned))
+    made = workplaces.create_worktree(GIT, info, "fix/here", workplaces.START_HERE)
+    assert (made.how, made.base) == ("new", "work")
+    assert (made.folder / "on-feature.txt").exists()
+    assert made.said().endswith("on new branch fix/here, from work.")
+    # Its reflog names where it started, so Properties can say.
+    assert workplaces.branch_start(GIT, workplaces.repo_info(GIT, str(made.folder))) == "work"
+
+
+@needs_git
+def test_no_remote_starts_from_the_current_branch_and_says_so(repo):
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(repo)), "solo")
+    assert made.base == "main" and "has no origin remote" in made.note
+    assert made.note in made.said()
+
+
+@needs_git
+def test_a_failed_fetch_starts_from_the_current_branch_and_says_so(cloned, repo, tmp_path):
+    git("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=cloned)
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "offline")
+    assert made.base == "work"
+    assert "origin/main couldn't be fetched" in made.note
+    assert (made.folder / "on-feature.txt").exists()
+
+
+@needs_git
+def test_existing_and_remote_branches_ignore_start_from(cloned):
+    git("branch", "kept", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert not workplaces.is_new_branch(info, "kept")
+    assert not workplaces.is_new_branch(info, "feature/old")      # only the remote has it
+    assert not workplaces.is_new_branch(info, "origin/feature/old")
+    assert not workplaces.is_new_branch(info, "")
+    assert workplaces.is_new_branch(info, "brand-new")
+    made = workplaces.create_worktree(GIT, info, "kept")
+    assert made.how == "existing" and made.said().endswith("on existing branch kept.")
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "feature/old")
+    assert made.how == "tracking" and made.base == "origin/feature/old"
+    assert made.said().endswith("tracking origin/feature/old.")
+
+
+@needs_git
+@pytest.mark.parametrize("name", ["-x", "@{-1}", "refs/heads/x", "two words"])
+def test_names_are_checked_before_any_fetch(cloned, monkeypatch, name):
+    called = []
+    monkeypatch.setattr(workplaces, "_fetched_default", lambda *a: called.append(a))
+    with pytest.raises(workplaces.ToolError):
+        workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), name)
+    assert not called
+
+
+@needs_git
+def test_the_fetch_updates_origin_main_even_when_the_clone_doesnt_fetch_it(cloned, repo):
+    # A clone that fetches only some branches: a plain "fetch origin main"
+    # would leave origin/main old while saying it started from it.
+    git("config", "remote.origin.fetch", "+refs/heads/feature/old:refs/remotes/origin/feature/old",
+        cwd=cloned)
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "fix/narrow")
+    assert made.base == "origin/main" and _head(made.folder) == _head(repo)
+
+
+@needs_git
+def test_a_commit_claude_code_started_from_is_named(cloned):
+    # Claude Code's worktrees record "Created from <commit>^{commit}".
+    main_commit = subprocess.run([GIT, "rev-parse", "origin/main"], cwd=cloned,
+                                 capture_output=True, text=True).stdout.strip()
+    git("branch", "worktree-x", f"{main_commit}^{{commit}}", cwd=cloned)
+    git("checkout", "-q", "worktree-x", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert workplaces.branch_start(GIT, info) == "origin/main"
+    facts = dict(workplaces.branch_facts(GIT, str(cloned)))
+    assert facts["Branch"] == "worktree-x" and facts["Branch started from"] == "origin/main"
+
+
+def test_branch_facts_outside_a_repository_is_nothing(tmp_path):
+    if GIT:
+        assert workplaces.branch_facts(GIT, str(tmp_path)) == []

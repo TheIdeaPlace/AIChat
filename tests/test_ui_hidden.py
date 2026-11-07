@@ -18,7 +18,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
-from thechatplace.sessions import NEEDS_YOU  # noqa: E402
+from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
                      user_text)
@@ -799,6 +799,92 @@ def test_close_during_turn_asks_and_stops(frame, env, fake_runner):
     assert "Quit anyway" in env["boxes"][-1]
     assert fake_runner.instances[0].cancelled
     assert frame._closing  # no context menu opens from here on
+
+
+def _quit_during_a_turn(frame, fake_runner):
+    """Quit with a turn running and a message queued behind it. Returns the
+    chat's id."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    session_id = frame._open.cli_session_id
+    frame._queued[session_id] = ["queued behind it"]
+    frame.store.update(session_id, last_activity_ms=1)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert fake_runner.instances[0].cancelled
+    assert fake_runner.instances[0].joined is not None  # its last event gets queued
+    return session_id
+
+
+def test_a_turn_ending_as_the_app_quits_is_saved_and_starts_nothing(frame, env, fake_runner):
+    # #545: this raised "Session controller closed", which lost the save. It
+    # also must not reach the queued message: the quit question says it won't
+    # be sent.
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("finished", text="Done.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    assert session_id not in frame._runners
+    saved = frame.store.get(session_id)
+    assert saved.last_activity_ms > 1
+    assert (saved.state, saved.detail) == (IDLE, "")
+
+
+def test_a_turn_stopped_by_quitting_says_so_next_time(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    saved = frame.store.get(session_id)
+    assert saved.state == NEEDS_YOU and "Stopped" in saved.detail
+
+
+def test_other_turn_events_while_quitting_do_nothing(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    for kind in ("text", "tool", "steer_taken", "waiting"):
+        frame._on_turn_event({"id": session_id}, "Hub probe",
+                             TurnEvent(kind, text="More.", session_id=session_id))
+    assert session_id in frame._runners
+    assert frame.store.get(session_id).last_activity_ms == 1
+    assert frame._queued[session_id] == ["queued behind it"]
+    assert len(fake_runner.instances) == 1
+
+
+def test_a_turn_starting_as_the_app_quits_saves_that_and_says_nothing(frame, env, fake_runner,
+                                                                      monkeypatch):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame.store.update(session_id, started=False)
+    said = []
+    monkeypatch.setattr(frame, "_say_mcp_problems", lambda *a: said.append(a))
+    monkeypatch.setattr(frame, "_check_model", lambda *a: said.append(a))
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("started", session_id=session_id))
+    assert frame.store.get(session_id).started
+    assert not said
+
+
+def test_late_callbacks_after_quitting_reach_nothing_closed(frame, env, fake_runner, monkeypatch):
+    _quit_during_a_turn(frame, fake_runner)
+    frame.sessions.close()
+    monkeypatch.setattr(frame._pool, "submit",
+                        lambda *a, **k: pytest.fail("the pool is shut"))
+    frame._update_send_state()
+    frame.refresh_sessions(force=True)
+
+
+def test_a_steered_message_not_taken_in_is_in_the_quit_question(frame, env, fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    fake_runner.instances[0].steer("not that file")
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 def test_a_cancelled_quit_leaves_the_window_working(frame, env, fake_runner, monkeypatch):
@@ -1683,7 +1769,7 @@ def test_quit_prompt_mentions_queued_messages(frame, env, fake_runner):
     event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
     event.SetCanVeto(True)
     frame._on_close(event)
-    assert "queued messages will not be sent" in env["boxes"][-1]
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 # -- reading your own messages back (issue #178) ------------------------------------------
@@ -3777,6 +3863,50 @@ def test_pasting_a_picture_attaches_it(frame, env, monkeypatch):
     monkeypatch.setattr(frame, "_clipboard_image", lambda: None)
     frame._on_reply_paste(Paste())
     assert Paste.skipped  # text pastes as usual
+
+
+class _Paste:
+    def __init__(self):
+        self.skipped = False
+
+    def Skip(self):
+        self.skipped = True
+
+
+def test_pasting_copied_files_attaches_them(frame, env, monkeypatch):
+    # Kelly copied a .jpg in File Explorer: a file on the clipboard, not a
+    # picture, and Ctrl+V did nothing.
+    image, note = _files(env)
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image), str(note)], []))
+    monkeypatch.setattr(frame, "_clipboard_image", lambda: pytest.fail("files come first"))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert frame._attachments["own-1"] == [str(image), str(note)]
+    assert not paste.skipped
+
+
+def test_pasting_only_a_folder_says_it_cant_be_attached(frame, env, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([], [str(env["tmp"])]))
+    said = []
+    monkeypatch.setattr(frame, "_feedback", lambda text, *a, **k: said.append(text))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert not frame._attachments.get("own-1")
+    assert said and "folder can't be attached" in said[-1]
+
+
+def test_pasting_files_into_a_chat_not_started_here_pastes_as_usual(frame, env, monkeypatch):
+    image, _note = _files(env)
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image)], []))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert paste.skipped
 
 
 def test_attachments_are_for_own_sessions_and_follow_the_session(frame, env):
@@ -7964,11 +8094,12 @@ def test_new_session_without_recent_folders_starts_at_the_root(frame):
         assert dialog.work_in.GetString(WORK_IN_FOLDER) == \
             "The folder as it is (not a git repository, so no worktree)"
         assert not dialog.branch.IsEnabled()
-        # Tab order: folder, Browse, From GitHub, Work in, Branch, Title.
+        # Tab order: folder, Browse, From GitHub, Work in, Branch, Start from, Title.
         order = list(dialog.GetChildren())
         assert order.index(dialog.folder) < order.index(dialog.github_btn) < \
             order.index(dialog.work_in) < order.index(dialog.branch) < \
-            order.index(dialog.title_text)
+            order.index(dialog.start_from) < order.index(dialog.title_text)
+        assert not dialog.start_from.IsEnabled()
     finally:
         dialog.Destroy()
 
@@ -8296,10 +8427,108 @@ def test_new_session_in_a_new_worktree(frame, env, fake_runner, monkeypatch):
     assert env["feedback"][0] == "Making the worktree."
     worktree = repo / ".claude" / "worktrees" / "fix-the-thing"
     assert worktree.is_dir()
+    # What was made is said (#561). With no remote, Start from is already on
+    # the current branch, so there's nothing more to explain.
+    assert pump(lambda: any(f.startswith("Made worktree fix-the-thing on new branch "
+                                         "fix/the-thing, from main.") for f in env["feedback"]))
     runner = fake_runner.instances[-1]
     assert runner.cwd == str(worktree) and runner.prompt == "Fix it"
     session_id = runner.command[runner.command.index("--session-id") + 1]
     assert frame.store.get(session_id).cwd == str(worktree)
+
+
+def _cloned_repo(env):
+    """A repository with a remote whose main is ahead, on a branch of its own."""
+    import subprocess
+    origin = _git_repo(env["tmp"] / "Origin")
+    clone = env["tmp"] / "Clone"
+    subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True,
+                   capture_output=True)
+    subprocess.run(["git", "checkout", "-q", "-b", "work"], cwd=clone, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit",
+                    "-q", "--allow-empty", "-m", "newer on main"], cwd=origin, check=True,
+                   capture_output=True)
+    return origin, clone
+
+
+def _start_from_name(dialog):
+    return dialog.start_from.GetName()
+
+
+def test_start_from_is_only_for_a_new_branch_and_says_why_not(frame, env, monkeypatch):
+    # #561: an existing branch is used as it is, so Start from is off then.
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert not dialog.start_from.IsEnabled()
+        assert "for a new branch in a new worktree" in _start_from_name(dialog)
+        assert dialog.start_label.GetLabel() == "Start from:"   # no Alt key while it's off
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.IsEnabled() and dialog.start_label.GetLabel() == "St&art from:"
+        assert _start_from_name(dialog) == "Start from"
+        assert dialog.start_from.GetString(START_FROM_REMOTE) == "origin/main, fetched first"
+        assert dialog.start_from.GetString(START_FROM_HERE) == "work, what the folder has checked out"
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+        dialog.branch.SetValue("main")         # only the remote has it: tracked as it is
+        dialog._sync_start_from()
+        assert not dialog.start_from.IsEnabled()
+        assert "that branch exists" in _start_from_name(dialog)
+    finally:
+        dialog.Destroy()
+
+
+def test_start_from_follows_claude_codes_base_ref(frame, env, monkeypatch):
+    from thechatplace import claude_settings
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    monkeypatch.setattr(claude_settings, "worktree_base_ref", lambda folder: "head")
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_HERE
+        # Your own choice stays.
+        dialog.start_from.SetSelection(START_FROM_REMOTE)
+        dialog._on_start_from()
+        dialog.branch.SetValue("fix/newer")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+    finally:
+        dialog.Destroy()
+
+
+def test_a_worktree_started_from_the_remote_says_so(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/fresh")
+        dialog._sync_start_from()
+        dialog._on_ok(None)
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert dialog.worktree_said == ("Made worktree fix-fresh on new branch fix/fresh, "
+                                        "from origin/main.")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=dialog.values()[0],
+                              capture_output=True, text=True).stdout.strip()
+        main = subprocess.run(["git", "rev-parse", "main"], cwd=origin,
+                              capture_output=True, text=True).stdout.strip()
+        assert head == main
+    finally:
+        dialog.Destroy()
 
 
 def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, env, monkeypatch):
@@ -8345,7 +8574,7 @@ def test_continue_here_has_no_folder_choices(frame):
     dialog = NewSessionDialog(frame, "C:\\G\\Repo", continue_from="Work")
     try:
         assert not dialog.folder.IsEditable()
-        for control in (dialog.github_btn, dialog.work_in, dialog.branch):
+        for control in (dialog.github_btn, dialog.work_in, dialog.branch, dialog.start_from):
             assert not control.IsShown()
     finally:
         dialog.Destroy()
@@ -9535,6 +9764,7 @@ def test_alt_enter_in_the_session_list_shows_the_session_properties(frame, env, 
     assert rows[0] == "Title: Quiet one"
     assert "Kind: Desktop app session" in rows
     assert "Messages: 2" in rows and "Tool calls: 1" in rows and "Links: 1" in rows
+    assert "Subagents: 0" in rows  # #468
     assert "Session ID: cli-a" in rows
     assert any(r.startswith("Transcript: ") and r.endswith("cli-a.jsonl") for r in rows)
     assert focused  # back on the list it came from
@@ -10138,7 +10368,91 @@ def test_codex_turn_status_remembered_approval_count(frame, count, noun):
     state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
     text = frame._codex_status_text(state)
     assert f'{count} {noun} allowed automatically.' in text
-    assert text.count('as you said for this chat') == 1
+    # Counts only: the commands are in Lists, Approvals (#564).
+    assert 'as you said for this chat' not in text and 'git commit' not in text
+
+
+def _heavy_turn(count=40):
+    """A turn whose automatic review allowed ``count`` commands, one saved
+    rule allowed another, and one request was denied (#564)."""
+    from thechatplace.providers.codex_events import decode_event
+    notices = []
+    for number in range(count):
+        status = 'denied' if number == count // 2 else 'approved'
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'owned', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': f'synthetic-command {number}'},
+            'review': {'status': status, 'rationale': 'Synthetic reason.'}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git status, as you said for this chat.'))
+    return tuple(notices)
+
+
+@pytest.mark.parametrize('activity', [False, True])
+def test_a_heavy_turn_says_and_shows_only_what_wasnt_allowed(frame, monkeypatch, activity):
+    """Kelly's #564: dozens of automatic approvals buried the chat. Allowed
+    requests are said and shown only with the chat's tool activity on; the
+    denial is said once and always shown."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.transcript import PERMISSION_NOTICE
+    settle(frame)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: spoken.append(text))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    if activity:
+        frame.tool_activity.add(info.key)
+    notices = _heavy_turn()
+    state = CodexChatState("owned", "working", "turn", "inProgress", permission_notices=notices)
+    for _ in range(3):  # the same state arrives again and again while the turn runs
+        frame._on_owned_update("codex", state)
+    said = [text for text in spoken if 'synthetic-command' in text or 'as you said' in text]
+    # With tool activity on, each is said once, as tool calls are.
+    assert len(said) == (len(notices) if activity else 1)
+    assert sum('denied the request' in text for text in said) == 1
+    frame.tool_activity.discard(info.key)
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda i: True)
+    frame._show_activity = activity
+    frame._codex_states[info.key] = state
+    rows = [m for m in frame._queued_rows() if m.kind == PERMISSION_NOTICE]
+    assert len(rows) == (len(notices) if activity else 1)
+    assert any('denied the request' in m.text for m in rows)
+    frame._codex_states.clear()
+
+
+def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeypatch):
+    """Lists, Approvals (#564): the review history from disk, then what this
+    run allowed by saved rule, newest first, each once."""
+    from thechatplace import lists
+    from thechatplace.providers.codex_runtime import CodexChatState
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    notices = _heavy_turn(4)
+    # The history has an earlier turn's decision this run no longer holds.
+    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.' + chr(10) + 'Command: git fetch')
+    saved = (earlier,) + tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
+    asked = []
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record: asked.append((action, record.provider)) or saved)
+    frame._codex_states[info.key] = CodexChatState("owned", "idle", "turn", "completed",
+                                                   permission_notices=notices)
+    rows, problem = frame._approvals_for(info)
+    assert asked == [("review_history", "codex")]
+    assert problem == "" and len(rows) == 6 and rows[0] == earlier and rows[-1][1] == 'saved-rule:7'
+    items = lists.approval_items(rows)
+    assert items[0].row == 'Allowed: git status. Saved rule for this chat.'
+    frame._codex_states.clear()
+
+
+@pytest.mark.parametrize("provider,is_own,expected", [
+    ("claude", True, "Approvals aren't listed for Claude chats yet."),
+    ("codex", False, "Approvals are listed only for Codex chats run in The Chat Place.")])
+def test_lists_approvals_says_why_when_it_cant_list(frame, provider, is_own, expected):
+    from types import SimpleNamespace
+    assert frame._approvals_for(SimpleNamespace(provider=provider, is_own=is_own)) == ([], expected)
 
 
 def test_owned_codex_ui_creates_sends_queues_and_recovers_stopped_text(frame):
@@ -10487,7 +10801,7 @@ def test_message_dialogs_use_equal_provider_labels(frame, monkeypatch, provider)
     finally:
         dialog.Destroy()
     shown = []
-    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append((title, page)) or True)
+    monkeypatch.setattr(frame, '_show_page', lambda title, page, parent=None: shown.append((title, page)) or True)
     frame._show_formatted(ChatMessage(ASSISTANT, 'Synthetic text', assistant_name=provider))
     assert [title for title, _page in shown] == [f'Message: {provider}']
     # The page starts with who wrote it as heading 1 (#341).
@@ -11198,10 +11512,11 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
     try:
         assert dialog.category == "links"
         assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
-                                                      "decisions", "tasks"])
+                                                      "decisions", "tasks", "subagents", "approvals"])
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
-                                                   "Decisions (1)", "Tasks (1)"]
+                                                   "Decisions (1)", "Tasks (1)",
+                                                   "Subagents (1)", "Approvals (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -11221,7 +11536,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
         assert dialog.category == "code"
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
-        assert dialog.category == "tasks"
+        assert dialog.category == "approvals"
         _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
         assert dialog.category == "code"
         # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
@@ -11229,12 +11544,16 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "links"
         _tab_key(dialog, ord("["), control=False, command=True, shift=True)
         assert dialog.category == "code"
-        # Ctrl+1 to Ctrl+6 go straight to a kind on Windows.
+        # Ctrl+1 to Ctrl+8 go straight to a kind on Windows.
         _tab_key(dialog, ord("4"), control=False, command=True)
         assert dialog.category == "commands" and focused[-1] == "commands"
         assert dialog.kinds.GetSelection() == 3
         _tab_key(dialog, ord("6"), control=False, command=True)
         assert dialog.category == "tasks" and focused[-1] == "tasks"
+        _tab_key(dialog, ord("7"), control=False, command=True)
+        assert dialog.category == "subagents" and focused[-1] == "subagents"
+        _tab_key(dialog, ord("8"), control=False, command=True)  # last, #564
+        assert dialog.category == "approvals" and focused[-1] == "approvals"
         _tab_key(dialog, ord("4"), control=False, command=True)
         # A plain digit is just typing.
         _tab_key(dialog, ord("2"), control=False)
@@ -11275,7 +11594,7 @@ def test_lists_altgr_and_other_digits_are_typing(frame):
             event.SetControlDown(True)
             event.SetAltDown(True)
             dialog._on_char_hook(event)
-        _tab_key(dialog, ord("7"), control=False, command=True)  # no seventh kind
+        _tab_key(dialog, ord("9"), control=False, command=True)  # no ninth kind
         assert dialog.category == "links"
     finally:
         dialog.Destroy()
@@ -11333,7 +11652,7 @@ def test_lists_scope_rebuilds_every_kind(frame):
         dialog.set_scope("message")
         assert sorted(built) == sorted((c, "message") for c in
                                        ("code", "links", "files", "commands", "decisions",
-                                        "tasks"))
+                                        "tasks", "subagents", "approvals"))
     finally:
         dialog.Destroy()
 
@@ -15887,3 +16206,46 @@ def test_reading_usage_leaves_the_status_bar_when_its_done(frame, monkeypatch):
     frame._status('Something newer.')
     callbacks[1](['Line'], False)
     assert frame._status_latest == 'Something newer.'
+
+
+def test_a_chat_claude_moves_into_a_worktree_follows_it_and_says_so(frame, env):
+    # #561: Claude Code carries on in the worktree in later turns, so the
+    # chat's folder follows it, and you hear where it went.
+    import json as _json
+    from records import user_text
+    start = env["tmp"] / "Start"
+    start.mkdir()
+    moved = start / ".claude" / "worktrees" / "wt1"
+    moved.mkdir(parents=True)
+    frame.store.add(OwnSession("moving-1", "Mover", str(start), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(start), "moving-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The record Claude Code writes, then ordinary records in the worktree.
+    records = [user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli"),
+               {"type": "relocated", "sessionId": "moving-1", "relocatedCwd": str(moved)},
+               user_text("next", cwd=str(moved), entrypoint="sdk-cli")]
+    path.write_text("".join(_json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    frame._note_worktree_move("moving-1", "Mover")
+    assert pump(lambda: frame.store.get("moving-1").cwd == str(moved), timeout=15)
+    assert frame._last_announcement.startswith("Mover moved to worktree wt1")
+    # Once it's there, nothing more is said.
+    frame._last_announcement = ""
+    frame._note_worktree_move("moving-1", "Mover")
+    pump(lambda: False, timeout=1)
+    assert frame._last_announcement == ""
+
+
+def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
+    # #561 review: a subfolder's cwd isn't a move to the worktree's top.
+    import json as _json
+    from records import user_text
+    folder = env["tmp"] / "Repo" / ".claude" / "worktrees" / "wt1" / "src"
+    folder.mkdir(parents=True)
+    frame.store.add(OwnSession("sub-1", "In a subfolder", str(folder), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(folder), "sub-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(user_text("hi", cwd=str(folder), entrypoint="sdk-cli")) + "\n",
+                    encoding="utf-8")
+    frame._note_worktree_move("sub-1", "In a subfolder")
+    pump(lambda: False, timeout=1)
+    assert frame.store.get("sub-1").cwd == str(folder)

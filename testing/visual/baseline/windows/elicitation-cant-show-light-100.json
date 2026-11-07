@@ -1,0 +1,136 @@
+{
+ "title": "trip-planner asks: Visual probe",
+ "class": "ElicitationDialog",
+ "size": [
+  680,
+  380
+ ],
+ "client": [
+  664,
+  341
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Note:",
+   "rect": [
+    8,
+    8,
+    30,
+    16
+   ],
+   "best": [
+    30,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Note",
+   "label": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later.",
+   "rect": [
+    10,
+    26,
+    648,
+    60
+   ],
+   "best": [
+    127,
+    98
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    100,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "Where would you like to go?",
+   "rect": [
+    10,
+    118,
+    648,
+    178
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Where would you like to go?"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Decline",
+   "rect": [
+    486,
+    310,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    567,
+    310,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -123,7 +123,7 @@ jobs:
         run: |
           python tools/make_version_info.py
           python -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace `
-            --version-file build/version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx `
+            --version-file build/version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx `
             --icon thechatplace/assets/app.ico `
             --add-data "thechatplace/assets;thechatplace/assets" `
             --add-data "thechatplace/speech;thechatplace/speech" `

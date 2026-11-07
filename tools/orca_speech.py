@@ -97,6 +97,18 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
+    # Rewind to Here (#468) on that message of yours: it opens on the chosen
+    # option of What to Rewind, Tab reads What Happens, Shift+Tab goes back to
+    # the option, Escape comes back. The option is checked after Shift+Tab:
+    # as it opens, Orca's echo of the key can cut its reading short.
+    Step("rewind to here", ["ctrl+shift+z"],
+         expect=["Rewind Visual probe to before your message"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("rewind, what happens", ["Tab"], expect=["What happens"]),
+    Step("rewind, back to the chosen option", ["shift+Tab"],
+         expect=["Conversation only"]),
+    Step("rewind closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),
@@ -126,6 +138,47 @@ STEPS = [
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
+    # A connected tool asks for input (#468): Answer opens on its message,
+    # and Tab goes to the form's first box.
+    Step("a connected tool asks", [], trigger="elicitation", expect=["needs you"]),
+    Step("answer the tool", ["ctrl+shift+a"], expect=["Message", "Where would you like to go"]),
+    # Enter in the read-only box sends nothing, and says so.
+    Step("Enter in the message says where to go", ["Return"],
+         expect_dbus=["Tab to the form, or to Send"]),
+    Step("Tab to the form", ["Tab"], expect=["City", "required"]),
+    # What a form's check box and list are called has to reach Orca (#468).
+    Step("Tab to a check box", ["Tab"], expect=["Bringing pets", "check box"]),
+    Step("Tab to a list", ["Tab"], expect=["Budget"]),
+    # Each field has an access key of its own (#468).
+    Step("Alt+C goes back to City", ["alt+c"], expect=["City"]),
+    # A check box's key moves to it and doesn't tick it (#468).
+    Step("Alt+B goes to the check box, leaving it unticked", ["alt+b"],
+         expect=["Bringing pets", "not checked"]),
+    Step("tool answered later, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # View, Connected Tools (#468), the View menu's last item: Up from the top.
+    Step("Connected Tools", ["alt+v", "Up", "Return"], expect=["Connected tools"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Connected Tools closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Ask Aside (#468): it opens on the question box; Escape closes it.
+    Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
+    Step("Ask Aside closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # File, Chat Options (#468), opened by the trigger: the item has no access
+    # key. It opens on Agent, and Tab goes through every control in turn. The
+    # list has no folders yet, so its one row says so. Add Folder's picker
+    # comes back to Add Folder, as there's no folder to go to in the list.
+    Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
+    Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
+    Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),
+    Step("Chat Options, Add Folder", ["Tab"], expect=["Add Folder"]),
+    Step("Add Folder's picker", ["space"], expect=["Choose a folder Claude may also work in"]),
+    Step("picker closed, back on Add Folder", ["Escape"], expect=["Add Folder"]),
+    Step("Chat Options closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
@@ -150,6 +203,56 @@ STEPS = [
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # File, Stop Background Task (#468), opened by the trigger once the open
+    # chat's turn has background work: the item has no access key.
+    Step("Stop Background Task", [], trigger="background",
+         expect=["Stop Background Task", "Windows build, running"]),
+    Step("the next task", ["Down"], expect=["Watch CI"]),
+    Step("Stop Background Task closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # The page's plain text here: serve has no web view. Built off the window's thread.
+    Step("Read Full Chat", ["alt+v", "w"], expect=["Full chat: Visual probe"]),
+    Step("full chat closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer
+    # that finished and an Explore at work. View, Subagents opens Lists on
+    # them, newest first; Enter reads one's conversation, and Escape goes
+    # back a step at a time.
+    # Sorted by title, so where it is doesn't depend on which sessions the
+    # steps before left needing you. (Ctrl+F in a GTK list is the list's own
+    # type-ahead search, not Find.) "A session whose title goes on…" is first.
+    Step("back to the session list", ["ctrl+1"], expect=["Session list"]),
+    Step("sort by title", ["alt+v", "o", "t"], expect=["Sessions sorted by title"]),
+    Step("the session with subagents", ["Home", "Down"], expect=["Fix the flaky upload test"]),
+    Step("open the session with subagents", ["Return"],
+         expect=["Messages in Fix the flaky upload test"]),
+    Step("View, Subagents", ["alt+v", "g"], expect=["Subagents (2)", "Explore", "Running"]),
+    Step("a subagent's conversation", ["Down", "Return"],
+         expect=["Subagent code-reviewer", "The retry waits too little"]),
+    Step("conversation closed, back in Lists", ["Escape"],
+         expect=["code-reviewer: Review the retry change"]),
+    # Orca says the window and the message you were on, not the list's name.
+    Step("Lists closed, back in the messages", ["Escape"],
+         expect=["Fix the flaky upload test", "Which branch name should the release use"]),
+    Step('Codex command and skill picker', [], trigger='codex-commands',
+         expect=['Insert Command or Skill'], refuse=['unlabeled', 'unlabelled']),
+    Step('Codex commands, into the list', ['Tab'], expect=['Codex']),
+    Step('Codex commands closed', ['Escape'], expect=['Fix the flaky upload test']),
+    Step('Codex temporary side question', [], trigger='codex-aside',
+         expect=['Ask Aside about Visual probe', 'Your question']),
+    # The probe's second question is still being answered: the first Escape
+    # stops it and stays, as the guide says, and the next closes the dialog.
+    Step('Codex side question stopped', ['Escape'], expect_dbus=['Stopped asking']),
+    Step('Codex side question closed', ['Escape'], expect=['Fix the flaky upload test']),
+    # New Session's Start from (#561), on a made-up repository whose remote
+    # has a main branch, with A new worktree chosen and a new branch typed.
+    Step("New Session, a new branch in a new worktree", [], trigger="start-from",
+         expect=["Branch", "fix/orca"]),
+    # GTK gives an editable dropdown two Tab stops, its text and its button,
+    # so Start from is two Tabs on from Branch's text (CI on #562).
+    Step("Start from", ["Tab", "Tab"], expect=["Start from", "origin/main, fetched first"]),
+    Step("Start from, the current branch", ["Down"], expect=["work, what the folder has"]),
+    Step("New Session closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
     # mode, with Copilot asking to run npm test and npm run lint already
@@ -212,6 +315,8 @@ QUESTION = {"questions": [{
 def serve(root: Path) -> int:
     """The app on the probe's made-up sessions, shown and focused, until it's
     closed. Its speech is real, so Orca gets the announcements."""
+    import faulthandler
+    faulthandler.enable()  # a crash in GTK or ATK says where, in app.log
     sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "tests"))
     sys.path.insert(0, str(HERE))
@@ -259,6 +364,90 @@ def ask_question(frame) -> None:
     request = PermissionRequest("q1", "AskUserQuestion", QUESTION, suggestions=[])
     frame._on_turn_event({"id": "own-1"}, "Visual probe",
                          TurnEvent("permission", text=request.summary(), request=request))
+
+
+#: What the "elicitation" trigger's connected tool asks (#468), shaped as
+#: Claude Code 2.1.296 sends it.
+ELICITATION = {
+    "subtype": "elicitation", "mcp_server_name": "trip-planner",
+    "message": "Where would you like to go, and for how long?", "mode": "form",
+    "requested_schema": {"type": "object", "required": ["city"], "properties": {
+        "city": {"type": "string", "title": "City"},
+        "pets": {"type": "boolean", "title": "Bringing pets"},
+        "budget": {"type": "string", "title": "Budget", "enum": ["low", "high"]}}}}
+
+
+def ask_elicitation(frame) -> None:
+    """A connected tool asks for input in the probe's own session, as a turn
+    reports it."""
+    import fake_env
+    from thechatplace.claude_cli import TurnEvent
+    from thechatplace.claude_mcp import elicitation_from
+    frame._pending.clear()
+    frame._runners["own-1"] = fake_env.FakeRunner([], "", "", None)
+    request = elicitation_from("e1", ELICITATION)
+    frame._on_turn_event({"id": "own-1"}, "Visual probe",
+                         TurnEvent("permission", text=request.summary(), request=request))
+
+
+def stop_background_task(frame) -> None:
+    """The probe's own session's turn, with two background tasks running,
+    and File, Stop Background Task opened on it (#468)."""
+    import wx
+    import fake_env
+    frame._pending.clear()
+    runner = fake_env.FakeRunner([], "", "", None)
+    runner.background_entries = [{"task_id": "b1", "description": "Windows build", "since": 0.0},
+                                 {"task_id": "b2", "description": "Watch CI", "since": 60.0}]
+    runner.background_tasks = ["Windows build", "Watch CI"]
+    frame._runners["own-1"] = runner
+    frame._update_send_state()
+    wx.CallAfter(frame.on_stop_background_task)
+
+
+def chat_options(frame) -> None:
+    """File, Chat Options on the probe's own session, open by then (#468). After
+    the timer's call, as the dialog is modal."""
+    import wx
+    wx.CallAfter(frame.on_chat_options)
+
+
+def new_session_start_from(frame) -> None:
+    """New Session on a made-up repository with a remote (#561): A new
+    worktree chosen and a new branch typed, so Start from is on, and the
+    focus on Branch, one Tab before it. Opened once the folder is read."""
+    import subprocess
+    import tempfile
+    import wx
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    base = Path(tempfile.mkdtemp(prefix="tcp-orca-"))
+    origin, clone = base / "Origin", base / "Clone"
+    origin.mkdir()
+    author = ["-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+    for args, folder in ((["init", "-q", "-b", "main"], origin),
+                         ([*author, "commit", "-q", "--allow-empty", "-m", "first"], origin),
+                         (["clone", "-q", str(origin), str(clone)], base),
+                         (["checkout", "-q", "-b", "work"], clone)):
+        subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=frame._feedback)
+
+    def ready(tries=100):
+        if not dialog._repo_known and tries:
+            wx.CallLater(100, ready, tries - 1)
+            return
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/orca")
+        dialog._sync_start_from()
+        dialog.branch.SetFocus()
+        frame._modal(dialog)
+    wx.CallAfter(ready)
+
+
+def _codex_dialog(name, frame, env) -> None:
+    """Opens one of the probe's Codex dialogs (#467)."""
+    import ui_probe
+    getattr(ui_probe, name)(frame, env)()
 
 
 def copilot_chat(frame, env) -> None:
@@ -335,7 +524,16 @@ def copilot_chat(frame, env) -> None:
 
 
 #: What each step's trigger does in ``serve`` (Step.trigger).
-TRIGGERS = {"question": lambda frame, env: ask_question(frame), "copilot": copilot_chat}
+TRIGGERS = {
+    "question": lambda frame, env: ask_question(frame),
+    "elicitation": lambda frame, env: ask_elicitation(frame),
+    "background": lambda frame, env: stop_background_task(frame),
+    "chat-options": lambda frame, env: chat_options(frame),
+    "start-from": lambda frame, env: new_session_start_from(frame),
+    "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
+    "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
+    "copilot": copilot_chat,
+}
 
 
 # -- Orca -----------------------------------------------------------------------------------
@@ -470,6 +668,9 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
                          "passed": not missing and not refused})
+        # As it goes: a job that runs out of time keeps no report at the end.
+        print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
+              f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}", flush=True)
     return results
 
 
@@ -524,6 +725,10 @@ def check(args) -> int:
                                               indent=2), encoding="utf-8")
     if app.returncode not in (0, None, -15) and not args.record:
         print(f"\nThe app exited with {app.returncode}; its output is in {work / 'app.log'}")
+        # On a runner the file is gone with the job, so the end of it goes here.
+        log = (work / "app.log").read_text(encoding="utf-8", errors="replace").splitlines()
+        kept = [line for line in log if "-CRITICAL **" not in line and line.strip()]
+        print("\n".join(kept[-60:]))
     return 0 if args.record or all(r["passed"] for r in results) else 1
 
 

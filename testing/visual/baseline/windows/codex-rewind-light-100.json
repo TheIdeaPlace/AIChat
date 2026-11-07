@@ -1,0 +1,173 @@
+{
+ "title": "Rewind Codex review to before your message: Review the parser before editing it.",
+ "class": "RewindDialog",
+ "size": [
+  640,
+  460
+ ],
+ "client": [
+  624,
+  421
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "RadioBox",
+   "name": "radioBox",
+   "label": "&What to rewind",
+   "rect": [
+    8,
+    8,
+    608,
+    91
+   ],
+   "best": [
+    230,
+    91
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Conversation and files (unavailable)",
+   "rect": [
+    18,
+    30,
+    210,
+    15
+   ],
+   "best": [
+    210,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Conversation only",
+   "rect": [
+    18,
+    52,
+    118,
+    15
+   ],
+   "best": [
+    118,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Files only (unavailable)",
+   "rect": [
+    18,
+    74,
+    142,
+    15
+   ],
+   "best": [
+    142,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "What &happens:",
+   "rect": [
+    8,
+    107,
+    80,
+    16
+   ],
+   "best": [
+    80,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "What happens",
+   "label": "",
+   "rect": [
+    10,
+    125,
+    608,
+    259
+   ],
+   "best": [
+    127,
+    180
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "A new chat, Codex review (rewound), starts with the conversation up to just before it, and your message (\"Review the parser before editing it.\") goes in its reply box to change and send. Codex review is kept as it is, in the list.\n\nThe files stay as they are. Codex conversation branching leaves files as they are. File checkpoints are not available here."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Rewind",
+   "rect": [
+    460,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    541,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

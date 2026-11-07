@@ -19,8 +19,8 @@ from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
 from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
-from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, TOOL, USER,
-                         ChatMessage, Transcript)
+from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, THINKING,
+                         TOOL, USER, ChatMessage, Transcript)
 from . import tasklist, usage
 from .ui_text import codex_effort_label
 
@@ -75,14 +75,29 @@ def saved_rule_lines(count=None, error='', *, pending=False):
     return ['Saved user/system rule files: not checked']
 
 
+def with_branch_facts(lines: List[str], facts) -> List[str]:
+    """``lines`` with the chat's branch, worktree and what the branch started
+    from (#331, #561) after its Folder line, or at the end without one."""
+    extra = [f"{name}: {value}" for name, value in facts or ()]
+    if not extra:
+        return list(lines)
+    for index, line in enumerate(lines):
+        if line.startswith("Folder: "):
+            return [*lines[:index + 1], *extra, *lines[index + 1:]]
+    return [*lines, *extra]
+
+
 def session_properties(info: SessionInfo, transcript: Optional[Transcript] = None,
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,
-                       now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None) -> List[str]:
+                       now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
+                       subagent_count: Optional[int] = None) -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
-    context window Claude Code reported for its model, 0 if none."""
+    context window Claude Code reported for its model, 0 if none;
+    ``subagent_count`` how many subagents' transcripts it has (#468), None
+    when that isn't known."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
     name = info.provider_label or info.provider.capitalize()
@@ -107,6 +122,11 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     if own is not None and info.provider == "claude":
         lines.append(f"Model chosen: {model_label(own.model)}")
         lines.append(f"Effort: {EFFORT_LABELS.get(own.effort, own.effort)}")
+        # Chat Options (#468); instructions in full, a line to read or copy.
+        lines.append(f"Agent: {own.agent or 'none'}")
+        lines.append(f"Output style: {own.output_style or 'your setting'}")
+        instructions = " ".join(own.instructions.split())
+        lines.append(f"Instructions for this chat: {instructions or 'none'}")
     if own is not None and info.provider == 'codex':
         options = own.provider_options
         lines.append(f"Model chosen: {options.get('model') or 'configured Codex model'}")
@@ -130,6 +150,12 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"{name}'s replies: "
                      f"{sum(1 for m in conversation if m.kind == ASSISTANT):,}")
         lines.append(f"Tool calls: {sum(1 for m in transcript.messages if m.kind == TOOL):,}")
+        if subagent_count is not None:
+            lines.append(f"Subagents: {subagent_count:,}")
+        thoughts = sum(1 for m in transcript.messages if m.kind == THINKING)
+        if thoughts:
+            # Only when there's any (#468): most chats' thinking has no text.
+            lines.append(f"Thinking you can read: {thoughts:,}")
         lines.append(f"Links: {len(find_links(conversation)):,}")
         blocks = sum(len(find_code_blocks(m.text)) for m in conversation)
         lines.append(f"Code blocks: {blocks:,}")

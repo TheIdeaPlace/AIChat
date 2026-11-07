@@ -172,7 +172,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "B&ranch (choose one, or type a new name):",
+   "label": "Branch (choose one, or type a new name):",
    "rect": [
     10,
     137,

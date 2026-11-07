@@ -71,6 +71,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Collection, Dict, List, Optional
 
 from . import platform_paths
+from .chat_options import ChatChoices, ChatOptions, choices_from_init
 from .transcript import compaction_text
 
 #: (value passed to --permission-mode, label shown in the New Session dialog)
@@ -128,6 +129,16 @@ SESSION_INJECTED_PREFIXES = ("CLAUDE_CODE_SDK_", "CLAUDE_CODE_HOST_",
 
 #: Turns Claude's task-list tools on for every model (#231).
 TASK_LIST_VAR = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+
+#: Turns on Claude Code's file checkpoints for a ``-p`` turn (#468): before
+#: each of your messages it saves the files Claude is about to change
+#: (``~/.claude/file-history/<session>``) and writes a
+#: ``file-history-snapshot`` record, which is what ``--rewind-files`` puts
+#: back. Checked with Claude Code 2.1.296: without it no snapshots are kept,
+#: and ``--rewind-files`` itself refuses ("File rewinding is not enabled").
+#: It's among the host-session variables stripped by name, so it's set again
+#: after ``child_environment``, never inherited.
+CHECKPOINT_VAR = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"
 
 
 class ResumeRefused(ValueError):
@@ -252,7 +263,8 @@ def is_safe_dir(folder: str) -> bool:
 
 def _common_flags(permission_mode: str, model: str = "",
                   allowed_tools: Collection[str] = (), effort: str = "",
-                  allowed_dirs: Collection[str] = ()) -> List[str]:
+                  allowed_dirs: Collection[str] = (),
+                  options: Optional[ChatOptions] = None) -> List[str]:
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
@@ -274,6 +286,10 @@ def _common_flags(permission_mode: str, model: str = "",
             raise ValueError(f"Not a valid effort level: {effort!r}")
         # Every turn, as with the model: each turn is a new process (#189).
         flags += ["--effort", effort]
+    if options is not None:
+        # Agent, instructions and output style (#468), every turn, as the
+        # model is. Before the lists below, whose values run to the next flag.
+        flags += options.flags()
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
         # "Allow for This Chat" (#187, #329). Claude Code keeps a session-scoped
@@ -304,12 +320,13 @@ def new_session_id() -> str:
 def build_new_command(executable: str, session_id: str, title: str,
                       permission_mode: str, model: str = "",
                       allowed_tools: Collection[str] = (), effort: str = "",
-                      allowed_dirs: Collection[str] = ()) -> List[str]:
+                      allowed_dirs: Collection[str] = (),
+                      options: Optional[ChatOptions] = None) -> List[str]:
     """Command for the first turn of a new session. The prompt goes on stdin."""
     if not platform_paths.is_safe_id(session_id):
         raise ValueError("Not a valid session id.")
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs),
+                                          allowed_dirs, options),
                "--session-id", session_id]
     title = " ".join((title or "").split())
     if title:
@@ -337,7 +354,10 @@ def check_resume_allowed(session_id: str, own_ids: Collection[str],
 def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
                        permission_mode: str, model: str = "",
                        taken_ids: Collection[str] = (),
-                       cowork_ids: Collection[str] = (), effort: str = "") -> List[str]:
+                       cowork_ids: Collection[str] = (), effort: str = "",
+                       resume_at: str = "",
+                       allowed_dirs: Collection[str] = (),
+                       options: Optional[ChatOptions] = None) -> List[str]:
     """Command for the first turn of a copy of another session (#189), such
     as a desktop app session, to carry on in The Chat Place.
 
@@ -349,26 +369,61 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
     ``--resume`` is not; the new id must be one nobody has. Never for a
     Cowork session (``cowork_ids``, #91): its history is in the desktop app's
     own files, and its tools ran there.
+
+    ``resume_at`` (Rewind to Here and Branch from Here, #468) is the uuid of
+    the last transcript record the copy keeps: ``--resume-session-at`` copies
+    the history only up to and including it. Checked with Claude Code
+    2.1.296: asked to list every request so far, the copy listed the turns
+    before the cut and none after, and the source was unchanged. Cuts at a
+    system record (``stop_hook_summary``, Rewind's usual cut), at an
+    assistant reply and at a user message were all accepted. The cut is
+    always a copy, never ``--resume-drops-turn`` in place: the source keeps
+    its whole history, and nothing is ever written into a desktop session.
     """
+    if resume_at and not platform_paths.is_safe_id(resume_at):
+        raise ValueError("That isn't a message Claude Code can go back to.")
     if not platform_paths.is_safe_id(source_id) or source_id.startswith("local_"):
         raise ResumeRefused("That is not a session id Claude Code can continue from.")
     if source_id in cowork_ids:
         raise ResumeRefused("A Cowork session can't be continued here; open it in Claude.")
     if not platform_paths.is_safe_id(new_id) or new_id == source_id or new_id in taken_ids:
         raise ValueError("The new session needs an id of its own.")
-    command = [executable, *_common_flags(permission_mode, model, effort=effort),
+    command = [executable, *_common_flags(permission_mode, model, effort=effort,
+                                          allowed_dirs=allowed_dirs, options=options),
                "--resume", source_id, "--fork-session", "--session-id", new_id]
+    if resume_at:
+        command += ["--resume-session-at", resume_at]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
     return command
 
 
+def build_rewind_files_command(executable: str, session_id: str, message_uuid: str,
+                               own_ids: Collection[str],
+                               desktop_ids: Collection[str]) -> List[str]:
+    """Command that puts the files Claude changed back to the versions saved
+    before one of your messages (Rewind to Here, #468). No turn runs: Claude
+    Code restores the files from its checkpoints, says "Files rewound to
+    state at message <uuid>" and exits (checked with Claude Code 2.1.296).
+
+    Only for The Chat Place's own sessions (``check_resume_allowed``): Claude
+    Code opens the session to do it and may write to its transcript. Needs
+    ``CHECKPOINT_VAR`` in the environment, as the turns that made the
+    checkpoints did (``run_rewind_files`` sets it).
+    """
+    check_resume_allowed(session_id, own_ids, desktop_ids)
+    if not platform_paths.is_safe_id(message_uuid):
+        raise ValueError("That isn't a message Claude Code can go back to.")
+    return [executable, "-p", "--resume", session_id, "--rewind-files", message_uuid]
+
+
 def build_resume_command(executable: str, session_id: str, permission_mode: str,
                          own_ids: Collection[str],
                          desktop_ids: Collection[str], model: str = "",
                          allowed_tools: Collection[str] = (), title: str = "",
-                         effort: str = "", allowed_dirs: Collection[str] = ()) -> List[str]:
+                         effort: str = "", allowed_dirs: Collection[str] = (),
+                         options: Optional[ChatOptions] = None) -> List[str]:
     """Command for a later turn. Refuses anything but The Chat Place's own sessions.
 
     ``--name`` goes on every turn, not just the first (#123). Other sessions
@@ -379,7 +434,7 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
     """
     check_resume_allowed(session_id, own_ids, desktop_ids)
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs)]
+                                          allowed_dirs, options)]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
@@ -417,6 +472,66 @@ def remote_control_line(name: str, reattach: str = "") -> bytes:
         request["reattach_session_id"] = reattach
     return (json.dumps({"type": "control_request", "request_id": RC_REQUEST_ID,
                         "request": request}, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+#: Request ids of the live control requests a turn sends (#468): set_model,
+#: set_permission_mode, stop_task, get_context_usage. Their answers come back
+#: as ``control_answer`` events, matched by id.
+CONTROL_REQUEST_PREFIX = "thechatplace-ctl-"
+
+
+def control_line(request_id: str, subtype: str, **fields) -> bytes:
+    """A control request into the running turn (#468)."""
+    return (json.dumps({"type": "control_request", "request_id": request_id,
+                        "request": {"subtype": subtype, **fields}}, ensure_ascii=False)
+            + "\n").encode("utf-8")
+
+
+def _int(value) -> int:
+    return value if type(value) is int else 0
+
+
+def _live_system_event(etype: str, subtype: str, event: dict,
+                       session_id: str) -> Optional["TurnEvent"]:
+    """System messages about a turn in progress that The Chat Place says or
+    keeps (#468), or None. Fields checked against Claude Code 2.1.296's own
+    schema and, for ``status``, a real capture.
+
+    * ``status`` with ``permissionMode``: the mode changed, by a live Change
+      Permission Mode or by Claude itself (approving a plan, EnterPlanMode).
+    * ``api_retry``: a request failed and will be tried again.
+    * ``model_fallback``: the turn moved to the fallback model.
+    * ``memory_saved``: Claude wrote to its memory files.
+    """
+    if etype != "system":
+        return None
+    if subtype == "status":
+        mode = event.get("permissionMode")
+        if isinstance(mode, str) and mode:
+            # "default" is what The Chat Place calls manual.
+            return TurnEvent("mode", text=normalize_permission_mode(mode),
+                             session_id=session_id)
+        return None
+    if subtype == "api_retry":
+        error = event.get("error")
+        status = event.get("error_status")
+        return TurnEvent("retry", session_id=session_id, data={
+            "attempt": _int(event.get("attempt")), "max_retries": _int(event.get("max_retries")),
+            "retry_delay_ms": _int(event.get("retry_delay_ms")),
+            "error_status": status if type(status) is int else None,
+            "error": error if isinstance(error, str) else ""})
+    if subtype == "model_fallback":
+        return TurnEvent("fallback", session_id=session_id, data={
+            key: str(event.get(key) or "") for key in
+            ("trigger", "original_model", "fallback_model", "content")})
+    if subtype == "memory_saved":
+        paths = event.get("written_paths")
+        verb = event.get("verb")
+        return TurnEvent("memory", session_id=session_id, data={
+            "paths": [p for p in paths if isinstance(p, str) and p]
+            if isinstance(paths, list) else [],
+            "verb": verb if isinstance(verb, str) and verb.strip() else "Saved"})
+    return None
 
 
 def message_line(prompt: str, images: Optional[List[dict]] = None,
@@ -671,7 +786,8 @@ class TurnEvent:
     """One thing that happened during a turn, already made readable."""
 
     kind: str               # started | text | tool | denied | permission | background |
-    #                         waiting | finished | failed | …
+    #                         waiting | finished | failed | mode | retry | fallback |
+    #                         memory | context (#468) | …
     text: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -698,6 +814,9 @@ class StreamParser:
         #: Slash commands and skills, from the answer to ``initialize``:
         #: dicts with ``name``, ``description`` and ``argumentHint``.
         self.commands: List[dict] = []
+        #: The whole answer to ``initialize`` (agents and output styles
+        #: too, #468), or None until it comes.
+        self.init_body: Optional[dict] = None
         #: Control requests The Chat Place can't answer (not ``can_use_tool``);
         #: the runner refuses them so the CLI doesn't wait.
         self.unsupported_requests: List[str] = []
@@ -705,6 +824,8 @@ class StreamParser:
         self.context_window = 0
         #: Edit tool uses waiting for their results: tool_use id -> file.
         self._edits: Dict[str, str] = {}
+        #: The model of the latest top-level assistant message (#468).
+        self.reply_model = ""
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -752,6 +873,13 @@ class StreamParser:
                     tool_use_id=str(request.get("tool_use_id") or ""))
                 return [TurnEvent("permission", text=permission.summary(),
                                   session_id=self.session_id, request=permission)]
+            if request.get("subtype") == "elicitation" and request_id:
+                # An MCP server asking you for input (#468): waits for an
+                # answer like a permission request.
+                from .claude_mcp import elicitation_from
+                asked = elicitation_from(request_id, request)
+                return [TurnEvent("permission", text=asked.summary(),
+                                  session_id=self.session_id, request=asked)]
             if request_id:
                 self.unsupported_requests.append(request_id)
             return []
@@ -760,6 +888,7 @@ class StreamParser:
             if response.get("request_id") == INIT_REQUEST_ID:
                 body = response.get("response") if isinstance(response.get("response"), dict) \
                     else {}
+                self.init_body = body
                 commands = body.get("commands")
                 if isinstance(commands, list):
                     self.commands = [c for c in commands
@@ -770,6 +899,16 @@ class StreamParser:
                         str(m.get("value")): str(m.get("resolvedModel") or "")
                         for m in models if isinstance(m, dict) and m.get("value")}
                 return [TurnEvent("initialized", session_id=self.session_id)]
+            request_id = str(response.get("request_id") or "")
+            if request_id.startswith(CONTROL_REQUEST_PREFIX):
+                # The answer to a live control request The Chat Place sent
+                # into the running turn (#468): set_model, stop_task, …
+                ok = response.get("subtype") == "success"
+                body = response.get("response")
+                return [TurnEvent("control_answer", session_id=self.session_id, data={
+                    "request_id": request_id, "ok": ok,
+                    "response": body if isinstance(body, dict) else {},
+                    "error": "" if ok else str(response.get("error") or "it was refused")})]
             if response.get("request_id") == RC_REQUEST_ID:
                 body = response.get("response") if isinstance(response.get("response"), dict) \
                     else {}
@@ -794,11 +933,19 @@ class StreamParser:
             # tasks kept out of the transcript) aren't work, Claude Code says,
             # and are left out: one would keep the turn open for good.
             tasks = event.get("tasks")
-            names = ([str(t.get("description") or "a background task")
-                      for t in tasks if isinstance(t, dict) and not t.get("ambient")]
-                     if isinstance(tasks, list) else [])
+            work = ([t for t in tasks if isinstance(t, dict) and not t.get("ambient")]
+                    if isinstance(tasks, list) else [])
+            names = [str(t.get("description") or "a background task") for t in work]
+            # Each one's task_id too, which stop_task takes (#468): checked
+            # with Claude Code 2.1.296 ("b375k20qt" for a background Bash).
+            entries = [{"task_id": str(t.get("task_id") or ""),
+                        "description": str(t.get("description") or "a background task"),
+                        "task_type": str(t.get("task_type") or "")} for t in work]
             return [TurnEvent("background", session_id=self.session_id,
-                              data={"tasks": names})]
+                              data={"tasks": names, "entries": entries})]
+        live = _live_system_event(etype, subtype, event, self.session_id)
+        if live is not None:
+            return [live]
         if etype == "system" and subtype == "compact_boundary":
             meta = event.get("compactMetadata")
             post = meta.get('postTokens') if isinstance(meta, dict) else None
@@ -811,9 +958,13 @@ class StreamParser:
             model = event.get("model")
             self.model = model if isinstance(model, str) else ""
             # The model actually in use (#8), which may not be the one asked for.
+            # Its MCP servers and how each is doing, so a turn can say once
+            # which ones Claude can't use (#468).
+            data = {"model": model if isinstance(model, str) else ""}
+            if isinstance(event.get("mcp_servers"), list):
+                data["mcp_servers"] = event["mcp_servers"]
             return [TurnEvent("started", session_id=self.session_id, raw_type="init",
-                              text=str(event.get("permissionMode") or ""),
-                              data={"model": model if isinstance(model, str) else ""})]
+                              text=str(event.get("permissionMode") or ""), data=data)]
         if etype == "system" and subtype == "permission_denied":
             name = str(event.get("tool_name") or "A tool")
             message = str(event.get("message") or "").strip()
@@ -823,6 +974,12 @@ class StreamParser:
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             events: List[TurnEvent] = []
+            reply_model = message.get("model") if isinstance(message, dict) else None
+            if isinstance(reply_model, str) and reply_model:
+                # The model that actually wrote this, which can differ from
+                # system/init's mid-turn: a fallback, a live Change Model, or
+                # plan mode's own model (#468). The Fable check reads it.
+                self.reply_model = reply_model
             if isinstance(content, str) and content.strip():
                 events.append(TurnEvent("text", text=content.strip()))
             elif isinstance(content, list):
@@ -898,16 +1055,19 @@ def api_key_problem(source: Optional[str]) -> Optional[str]:
             "that key from the environment or settings that set it, then try again.")
 
 
-def fable_problem(actual: str, chosen: str, sent: bool = False) -> Optional[str]:
+def fable_problem(actual: str, chosen: str, sent: bool = False,
+                  midway: bool = False) -> Optional[str]:
     """A message if the turn would run on Fable without it having been chosen
     (#58): Claude Code's default, or its fallback from the chosen model. Some
     plans bill Fable to usage credits, and in ``-p`` turns without asking.
-    ``sent``: the message had already gone when this was found."""
+    ``sent``: the message had already gone when this was found; ``midway``:
+    the turn was under way, moved to Fable by a fallback or the like (#468)."""
     if "fable" not in (actual or "").lower() or "fable" in (chosen or "").lower():
         return None
     which = (f"instead of {model_label(chosen)}, the model this session chose" if chosen
              else "Claude Code's default model")
-    done = ("stopped the turn as soon as it started" if sent
+    done = ("stopped the turn when it moved to Fable" if midway
+            else "stopped the turn as soon as it started" if sent
             else "didn't send your message")
     return (f"Claude Code would have used Fable, {which}. Some plans bill Fable to usage "
             f"credits, so The Chat Place {done}. Choose another model with File, "
@@ -924,6 +1084,18 @@ BACKGROUND_DONE_WAIT = 60.0
 
 #: How long a turn's message waits for Claude Code to answer initialize.
 INIT_ANSWER_WAIT = 10.0
+
+#: How long a live control request (Change Model, Stop Background Task, …)
+#: waits for its answer before it counts as refused (#468). They're
+#: answered at once (Claude Code 2.1.296).
+CONTROL_WAIT = 10.0
+#: How long a finished turn waits for get_context_usage's answer before
+#: ending anyway (#468): long enough for the 735 ms seen, short enough that
+#: the end isn't held up.
+CONTEXT_WAIT = 1.5
+#: The error a live control request's caller hears when the turn ended
+#: before Claude Code answered (#468).
+TURN_ENDED = "the turn ended"
 
 
 def resolved_model(models: Dict[str, str], chosen: str) -> str:
@@ -996,8 +1168,45 @@ class TurnRunner:
                  images: Optional[List[dict]] = None,
                  remote_control: Optional[Dict[str, str]] = None,
                  timer: Callable[..., threading.Timer] = threading.Timer,
-                 task_list: bool = False, mcp_config: Optional[str] = None) -> None:
+                 task_list: bool = False, mcp_config: Optional[str] = None,
+                 disabled_mcp: Collection[str] = (),
+                 context_usage: bool = False) -> None:
         self.command = command
+        #: MCP servers this chat turns off (#468), kept out of this turn's
+        #: process with ``--settings`` (claude_mcp.settings_args).
+        self.disabled_mcp = list(disabled_mcp or ())
+        #: The model this turn is meant to run on: its ``--model``, then
+        #: whatever a live Change Model set (#468). The Fable checks read it.
+        self.chosen = chosen_model(command)
+        #: Ask Claude Code what fills the context (get_context_usage) as the
+        #: turn ends, for Usage and Context (#468). Off, nothing is asked.
+        self._want_context = context_usage
+        #: The latest get_context_usage answer (categories, totalTokens, …).
+        self.context_usage: Optional[dict] = None
+        #: Live control requests waiting for their answer (#468):
+        #: request id -> (callback, timeout timer or None).
+        self._controls: Dict[str, tuple] = {}
+        #: The background work as {task_id, description, task_type, since},
+        #: ``since`` on the turn's clock when it was first seen (#468).
+        self.background_entries: List[dict] = []
+        #: The latest api_retry while Claude Code is retrying (#468), with
+        #: ``at`` on the turn's clock; None once the turn moves on.
+        self.retry: Optional[dict] = None
+        #: Stopped by The Chat Place mid-turn, when it moved to Fable (#468):
+        #: unlike ``stopped_before_answer``, Claude may have answered already,
+        #: so the message isn't given back.
+        self.stopped_mid_turn = False
+        #: The permission mode Claude Code last said the turn is in (#468).
+        try:
+            self._mode = normalize_permission_mode(
+                command[command.index("--permission-mode") + 1])
+        except (ValueError, IndexError):
+            self._mode = ""
+        #: A close waiting on the context breakdown (#468). The answer or its
+        #: timeout only clears this by closing; anything else that calls the
+        #: close off is the worker's to clear, so whichever order they run in,
+        #: the worker still sees it and goes on to wait for the work.
+        self._closing = False
         #: ``--mcp-config`` for this turn's process only (the session tools,
         #: #165), or None. Kept apart from ``command``, which is the turn's
         #: own: it ends with ``--resume <id>``, and tests read it.
@@ -1016,6 +1225,10 @@ class TurnRunner:
         # Ask for session_state_changed, so the turn ends when Claude Code says
         # it's idle, not at the first result (#76).
         self._env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
+        # File checkpoints (#468), so Rewind to Here can put files back.
+        # Always on for The Chat Place's own turns: Claude Code keeps them
+        # beside its other per-session data and cleans them up with it.
+        self._env[CHECKPOINT_VAR] = "1"
         if task_list:
             # Claude's task list (TaskCreate and TaskUpdate, #231). Claude
             # Code leaves those tools out on newer models unless asked; the
@@ -1184,8 +1397,141 @@ class TurnRunner:
                 started = not self.waiting_on_background
                 self.waiting_on_background = True
                 return "started waiting" if started else "waiting"
-            self._close_stdin_locked()
+            self._close_after_context_locked()
             return "closed"
+
+    # -- Live control of the running turn (#468) --------------------------------
+
+    def control(self, subtype: str, on_done: Callable[[bool, dict, str], None],
+                timeout: float = None, **fields) -> bool:
+        """Send a control request into the running turn. ``on_done(ok,
+        response, error)`` is called once, from the worker thread (or a
+        timer's), with Claude Code's answer, or ``ok=False`` if it doesn't
+        answer within ``timeout`` or the turn ends first. False, and no
+        call, if the turn is over or being stopped."""
+        request_id = f"{CONTROL_REQUEST_PREFIX}{subtype}-{uuid.uuid4().hex[:8]}"
+        with self._lock:
+            if not self._stdin_open or self._cancelled or self.stopped_before_answer:
+                return False
+            if not self._write_raw(control_line(request_id, subtype, **fields)):
+                return False
+            timer = self._timer(CONTROL_WAIT if timeout is None else timeout,
+                                lambda: self._control_done(request_id, False, {},
+                                                           "Claude Code didn't answer"))
+            timer.daemon = True
+            self._controls[request_id] = (on_done, timer)
+        timer.start()
+        return True
+
+    def _control_done(self, request_id: str, ok: bool, response: dict, error: str) -> None:
+        with self._lock:
+            entry = self._controls.pop(request_id, None)
+        if entry is None:
+            return  # answered already, or timed out
+        on_done, timer = entry
+        if timer is not None:
+            timer.cancel()
+        try:
+            on_done(ok, response, error)
+        except Exception:  # noqa: BLE001 - a UI bug must not wedge the worker
+            pass
+
+    def _fail_controls(self) -> None:
+        """The turn is over: nothing still waiting will be answered."""
+        with self._lock:
+            waiting = list(self._controls)
+        for request_id in waiting:
+            self._control_done(request_id, False, {}, TURN_ENDED)
+
+    def set_model(self, model: str, on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Change the running turn's model (Change Model, #468). Checked with
+        Claude Code 2.1.296: ``set_model`` is answered at once, a model it
+        doesn't know with an error ("Model 'x' not found"). "" is Claude
+        Code's default. Never to a model that resolves to Fable unchosen
+        (#58): False, and the change waits for the next turn, whose check
+        stops it before anything is sent."""
+        if not model and not self.parser.resolved_models:
+            # What the default is isn't known until initialize is answered.
+            return False
+        resolved = resolved_model(self.parser.resolved_models, model)
+        if fable_problem(resolved, model):
+            return False
+
+        def done(ok, response, error):
+            if ok:
+                self.chosen = model
+            on_done(ok, response, error)
+        return self.control("set_model", done, model=model or "default")
+
+    @property
+    def permission_mode(self) -> str:
+        """The mode Claude Code last said the turn is in, "" if it's not known."""
+        return self._mode
+
+    def set_permission_mode(self, mode: str,
+                            on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Change the running turn's permission mode (#468). Checked with
+        Claude Code 2.1.296: answered with ``{"mode": …}`` and followed by a
+        system/status message; "manual" is taken as Claude Code's
+        "default"."""
+        mode = normalize_permission_mode(mode)
+        if mode not in PERMISSION_MODE_VALUES:
+            return False
+        return self.control("set_permission_mode", on_done, mode=mode)
+
+    def stop_task(self, task_id: str, on_done: Callable[[bool, dict, str], None]) -> bool:
+        """Stop one background task, keeping the turn (#468). Checked with
+        Claude Code 2.1.296: the task is killed, task_notification says
+        "stopped" and the background list drops it, all before the
+        (empty) success. An id it doesn't know is answered with success too,
+        so the caller checks the background list, not the answer."""
+        if not task_id:
+            return False
+        return self.control("stop_task", on_done, task_id=task_id)
+
+    def _close_after_context_locked(self) -> None:
+        """Close stdin, ending the turn; first, if asked, ask what fills the
+        context (#468), waiting at most CONTEXT_WAIT for the answer. Measured
+        with Claude Code 2.1.296: 16 to 735 ms. Call with ``_lock`` held.
+        Until it closes, anything sent now still goes in and is answered."""
+        if not self._want_context or not self._stdin_open:
+            self._close_stdin_locked()
+            return
+        request_id = f"{CONTROL_REQUEST_PREFIX}context-{uuid.uuid4().hex[:8]}"
+        if not self._write_raw(control_line(request_id, "get_context_usage")):
+            self._close_stdin_locked()
+            return
+
+        def answered(ok, response, _error):
+            if ok and isinstance(response.get("categories"), list):
+                self.context_usage = response
+                self._emit(TurnEvent("context", session_id=self.parser.session_id,
+                                     data=response))
+            self._close_if_done()
+        timer = self._timer(CONTEXT_WAIT, lambda: self._control_done(
+            request_id, False, {}, "no answer in time"))
+        timer.daemon = True
+        self._controls[request_id] = (answered, timer)
+        self._closing = True
+        timer.start()
+
+    def _close_if_done(self) -> None:
+        """End the turn, unless the worker has called the close off, something
+        sent since is still to be answered, or background work started
+        meanwhile. That last leaves ``_closing`` set: the worker, on the same
+        background event, waits for the work and says the reply."""
+        with self._lock:
+            if not self._closing or self._unanswered or self.background_tasks:
+                return
+            self._closing = False
+            self._close_stdin_locked()
+
+    def _call_off_close(self) -> bool:
+        """The worker's: stop a close waiting on the context breakdown. True
+        if one was waiting."""
+        with self._lock:
+            waiting, self._closing = self._closing, False
+            return waiting
 
     def _write_send_now(self, prompt: str) -> bool:
         """Interrupt, then the message. Call with ``_lock`` held."""
@@ -1265,8 +1611,11 @@ class TurnRunner:
             ok = self._write_line({"type": "control_response", "response": {
                 "subtype": "success", "request_id": request_id, "response": response}})
             if ok:
+                # An MCP server's question answered (#468) has an action, not
+                # a behavior.
                 self.last_activity = (
                     "working" if response.get("behavior") == "allow"
+                    or "action" in response
                     else f"carrying on after you refused {request.tool_name}")
             return ok
 
@@ -1354,6 +1703,11 @@ class TurnRunner:
             # newlines into CRLF, and splitting decoded text on every Unicode
             # line break would cut JSON lines that contain U+2028.
             command = list(self.command)
+            if self.disabled_mcp:
+                # Merged into Chat Options' --settings if there is one: a
+                # second --settings would replace the first (#468).
+                from .claude_mcp import with_settings
+                command = with_settings(command, self.disabled_mcp)
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.
@@ -1398,7 +1752,6 @@ class TurnRunner:
                     self._stdin_open = True
                 except (OSError, ValueError):
                     pass  # the process died early; its exit code tells us why
-            chosen = chosen_model(self.command)
             message_sent = False
             states_seen = False
             last_state = ""
@@ -1479,7 +1832,8 @@ class TurnRunner:
                 for event in self.parser.feed(_decode(raw)):
                     if event.kind == "initialized" and not message_sent:
                         problem = fable_problem(
-                            resolved_model(self.parser.resolved_models, chosen), chosen)
+                            resolved_model(self.parser.resolved_models, self.chosen),
+                            self.chosen)
                         if problem:
                             with sent_lock:
                                 stopping = not message_sent
@@ -1494,6 +1848,60 @@ class TurnRunner:
                     if event.kind == "remote_control":
                         self._emit(event)  # never a reason to send the message
                         continue
+                    if event.kind == "control_answer":
+                        # A live control request's answer (#468): to its
+                        # caller only, and never a reason to send the message.
+                        data = event.data or {}
+                        self._control_done(data.get("request_id", ""), bool(data.get("ok")),
+                                           data.get("response") or {}, data.get("error", ""))
+                        continue
+                    if event.kind == "mode":
+                        # The mode changed (#468); not the conversation. Only
+                        # a real change: a status repeating the mode the turn
+                        # is in must not undo a change kept for later turns.
+                        if event.text != self._mode:
+                            self._mode = event.text
+                            self._emit(event)
+                        continue
+                    if event.kind == "retry":
+                        # Claude Code is retrying (#468), for Turn Status too,
+                        # which says so itself: what Claude last did stands.
+                        # It also sends these as a heartbeat, about every 30
+                        # seconds, while a subagent waits on a rate limit
+                        # (seen in 2.1.316's code), so with the turn answered
+                        # and nothing new under way one doesn't mean the turn
+                        # is retrying.
+                        if not (self.waiting_on_background
+                                or (final is not None and not carrying_on
+                                    and not self._unanswered)):
+                            self.retry = {**(event.data or {}), "at": self._clock()}
+                        self._emit(event)
+                        continue
+                    if event.kind == "fallback":
+                        # A fallback mid-turn gets no new system/init, so the
+                        # Fable check (#58) is made here too (#468).
+                        problem = fable_problem((event.data or {}).get("fallback_model", ""),
+                                                self.chosen, midway=True)
+                        if problem:
+                            self.stopped_mid_turn = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
+                        self._emit(event)
+                        continue
+                    if event.kind in ("text", "tool"):
+                        self.retry = None  # it got through
+                        # Whatever wrote this, Fable unchosen is stopped
+                        # (#58), however it came to be the model (#468).
+                        problem = fable_problem(self.parser.reply_model, self.chosen,
+                                                midway=True)
+                        if problem:
+                            self.stopped_mid_turn = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
                     if event.kind == "taken":
                         taken = self._taken(event.text)
                         if taken is not None and taken[0] == "steer":
@@ -1520,8 +1928,10 @@ class TurnRunner:
                         continue
                     if event.kind == "started":
                         self.session_started = True
+                        if event.text:
+                            self._mode = normalize_permission_mode(event.text)
                         problem = (api_key_problem(self.parser.api_key_source)
-                                   or fable_problem(self.parser.model, chosen, sent=True))
+                                   or fable_problem(self.parser.model, self.chosen, sent=True))
                         if problem:
                             self._stopped_for_key = True
                             self.stopped_before_answer = True
@@ -1549,9 +1959,16 @@ class TurnRunner:
                         self.last_activity = f"waiting for you: {event.request.summary()}"
                     if event.kind == "background":
                         tasks = list((event.data or {}).get("tasks") or [])
+                        since = {e["task_id"]: e.get("since", 0.0)
+                                 for e in self.background_entries}
+                        now = self._clock()
+                        entries = [{**e, "since": since.get(e.get("task_id"), now)}
+                                   for e in (event.data or {}).get("entries") or []
+                                   if isinstance(e, dict)]
                         with self._lock:
                             had_tasks = bool(self.background_tasks)
                             self.background_tasks = tasks
+                            self.background_entries = entries
                             if not tasks:
                                 self.waiting_on_background = False
                         if tasks and (self.waiting_on_background
@@ -1581,6 +1998,13 @@ class TurnRunner:
                             # the lock, as "running" does.
                             arm_ceiling()
                         self._emit(event)
+                        if tasks and final is not None and self._call_off_close():
+                            # Work started while the end waited for the
+                            # context breakdown (#468): wait for it instead,
+                            # saying the reply, as ``_end_or_wait`` would.
+                            outcome = self._end_or_wait()
+                            if outcome != "unanswered":
+                                settle(outcome, final)
                         continue
                     if event.kind == "state":
                         states_seen = True
@@ -1601,6 +2025,8 @@ class TurnRunner:
                             with self._lock:
                                 self.waiting_on_background = False
                                 self._answered = False
+                                # Back at work: the next idle ends the turn.
+                                self._closing = False
                             # Read without the lock on purpose: a Send Now
                             # landing just after only meets the ceiling that
                             # checks again before closing.
@@ -1613,6 +2039,7 @@ class TurnRunner:
                                 arm_ceiling()
                         continue
                     if event.kind == "finished":
+                        self.retry = None
                         follows_waiting = said_while_waiting
                         said_while_waiting = False
                         carrying_on = False
@@ -1668,7 +2095,7 @@ class TurnRunner:
                     else:
                         self._emit(event)
                 self._refuse_unsupported()
-                if self.stopped_before_answer:
+                if self.stopped_before_answer or self.stopped_mid_turn:
                     break
             disarm_ceiling()
             self._close_stdin()
@@ -1682,7 +2109,7 @@ class TurnRunner:
                 detail = next((x for x in reversed(stderr_lines) if x.strip()), "")
                 final = TurnEvent("failed", text=exit_message(process.returncode, detail),
                                   is_error=True, session_id=self.parser.session_id)
-            if said_while_waiting and final is not None:
+            if said_while_waiting and final is not None and not self.stopped_mid_turn:
                 # Over with no result since the reply was said, with the
                 # background work running (#161): don't say it again.
                 if self._cancelled:
@@ -1718,14 +2145,15 @@ class TurnRunner:
             self._tree.close()
             with self._lock:
                 self.pending.clear()
+            self._fail_controls()  # before the final event: their callers hear first
         if not final.session_id:
             final.session_id = self.parser.session_id
         self._emit(final)
 
     def _refuse_unsupported(self) -> None:
-        """Control requests other than permission checks (hooks, MCP
-        messages): The Chat Place registers none, so say so at once rather than
-        leave the CLI waiting."""
+        """Control requests other than permission checks and MCP servers'
+        questions (hooks, MCP messages): The Chat Place registers none, so say
+        so at once rather than leave the CLI waiting."""
         while self.parser.unsupported_requests:
             request_id = self.parser.unsupported_requests.pop(0)
             with self._lock:
@@ -1761,12 +2189,30 @@ def usable_commands(commands) -> List[dict]:
 def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
                    popen: Callable[..., subprocess.Popen] = subprocess.Popen) -> List[dict]:
     """The slash commands and skills Claude Code offers in ``cwd``, without
+    running a turn (see fetch_initialize). [] if they can't be had."""
+    return usable_commands((fetch_initialize(executable, cwd, timeout, popen) or {})
+                           .get("commands"))
+
+
+def fetch_chat_choices(executable: str, cwd: str, timeout: float = 20.0,
+                       popen: Callable[..., subprocess.Popen] = subprocess.Popen
+                       ) -> Optional[ChatChoices]:
+    """The agents and output styles Claude Code offers in ``cwd`` (#468),
+    asked for as the commands are, or None."""
+    return choices_from_init(fetch_initialize(executable, cwd, timeout, popen))
+
+
+def fetch_initialize(executable: str, cwd: str, timeout: float = 20.0,
+                     popen: Callable[..., subprocess.Popen] = subprocess.Popen
+                     ) -> Optional[dict]:
+    """Claude Code's answer to ``initialize`` in ``cwd``: its slash commands
+    and skills (#23), and its agents and output styles (#468). Without
     running a turn: ``claude -p`` is sent only the ``initialize`` request,
     and stdin is closed once it answers, so no session is made and nothing
     is billed (checked with Claude Code 2.1.286: 1.4 seconds, no transcript).
-    [] if it can't be had."""
+    None if it can't be had."""
     if not os.path.isdir(cwd):
-        return []
+        return None
     command = [executable, "-p", "--input-format", "stream-json", "--output-format",
                "stream-json", "--verbose", "--permission-prompts", "none"]
     try:
@@ -1774,7 +2220,7 @@ def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                         creationflags=platform_paths.hidden_window_flags())
     except OSError:
-        return []
+        return None
     timer = threading.Timer(timeout, lambda: _quietly(process.kill))
     timer.start()
     try:
@@ -1785,11 +2231,11 @@ def fetch_commands(executable: str, cwd: str, timeout: float = 20.0,
         parser = StreamParser()
         for raw in iter(process.stdout.readline, b""):
             parser.feed(_decode(raw))
-            if parser.commands:
+            if parser.init_body is not None:
                 break
-        return usable_commands(parser.commands)
+        return parser.init_body
     except (OSError, ValueError):
-        return []
+        return None
     finally:
         timer.cancel()
         _quietly(process.stdin.close)

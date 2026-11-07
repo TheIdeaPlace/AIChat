@@ -12,9 +12,10 @@ app (none of this is documented, so every caller treats it as best effort):
 * Desktop app session metadata:
   ``%APPDATA%\\Claude\\claude-code-sessions\\<id>\\<orgId>\\local_<id>.json``,
   or for the Microsoft Store version
-  ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
+  ``%LOCALAPPDATA%\\Claude-Data\\claude_<id>\\claude-code-sessions`` (#542), or
+  before that ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
 * Cowork sessions (#91): ``local-agent-mode-sessions\\<id>\\<orgId>\\local_<id>.json``
-  in the same two ``Claude`` folders. The ``local_<id>`` folder beside each is
+  in the same ``Claude`` folders. The ``local_<id>`` folder beside each is
   the session's own Claude Code home (``.claude\\projects\\...\\<cli>.jsonl``).
 * Transcripts: ``%USERPROFILE%\\.claude\\projects\\<encoded cwd>\\<cliSessionId>.jsonl``
 * Live sessions: ``%USERPROFILE%\\.claude\\sessions\\<pid>.json``
@@ -292,14 +293,26 @@ def _store_app_sessions_dirs(name: str = "claude-code-sessions") -> List[Path]:
     app (issue #183). Windows redirects a packaged app's AppData writes into
     its package folder, so ``%APPDATA%\\Claude`` doesn't exist there. Matched
     on ``Claude_*`` rather than the package id seen on Kelly's PCs
-    (``Claude_pzs8sxrjxfjjc``), in case it differs."""
+    (``Claude_pzs8sxrjxfjjc``), in case it differs.
+
+    The Store app has since moved its data out of the package, to
+    ``%LOCALAPPDATA%\\Claude-Data\\claude_<package id>`` (#542), leaving only a
+    marker file behind. Both are looked in: not every install has moved."""
     if sys.platform != "win32":
         return []
     local = os.environ.get("LOCALAPPDATA")
-    packages = Path(local) / "Packages" if local else Path.home() / "AppData" / "Local" / "Packages"
+    root = Path(local) if local else Path.home() / "AppData" / "Local"
+    moved = [p / name for p in _folders_matching(root / "Claude-Data", "claude_*")]
+    packaged = [p / "LocalCache" / "Roaming" / "Claude" / name
+                for p in _folders_matching(root / "Packages", "Claude_*")]
+    return [*moved, *packaged]
+
+
+def _folders_matching(folder: Path, pattern: str) -> List[Path]:
+    """Sorted, or none if ``folder`` can't be read: one unreadable place
+    mustn't hide the sessions in another."""
     try:
-        return sorted(p / "LocalCache" / "Roaming" / "Claude" / name
-                      for p in packages.glob("Claude_*"))
+        return sorted(folder.glob(pattern))
     except OSError:
         return []
 
@@ -350,6 +363,17 @@ def long_path(path: Path) -> Path:
     if text.startswith("\\\\"):
         return Path("\\\\?\\UNC\\" + text[2:])
     return Path("\\\\?\\" + text)
+
+
+def plain_path(path: Path) -> Path:
+    """``path`` without the long form ``long_path`` adds, to compare it with
+    an ordinary path or show it to someone."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + text[8:])
+    if text.startswith("\\\\?\\"):
+        return Path(text[4:])
+    return Path(path)
 
 
 def os_name() -> str:
@@ -446,6 +470,10 @@ def user_guide_path() -> Path:
     """The user guide's Markdown (#102), shipped in ``assets`` like the icon so
     every build has it; tools/make_docs.py makes the docs/ copies from it."""
     return Path(__file__).resolve().parent / "assets" / "user-guide.md"
+
+
+#: A whole chat's page while it's open, when too long to pass to WebView2.
+WHOLE_CHAT_PAGE_FILE = "whole chat page.html"
 
 
 def app_data_dir() -> Path:
@@ -566,6 +594,13 @@ def transcript_path(cwd: str, cli_session_id: str,
     return None
 
 
+def subagents_dir(transcript: Path) -> Path:
+    """Where Claude Code keeps a session's subagents' transcripts (#468):
+    ``<session id>/subagents/`` beside ``<session id>.jsonl``, each one
+    ``agent-<id>.jsonl`` with an ``agent-<id>.meta.json``. The same in a
+    Cowork session's own Claude home, which ``transcript`` is already in."""
+    transcript = Path(transcript)
+    return transcript.with_suffix("") / "subagents"
 
 
 def is_safe_id(value: str) -> bool:

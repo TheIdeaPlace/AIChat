@@ -104,7 +104,14 @@ class ClaudeConversations:
             send=own, fork=not own and not session.cowork and bool(session.cli_session_id),
             delete=own, attachments=own, usage=True, changes=True,
             instructions=True, remote_control=True, desktop_link=session.can_open_in_claude,
-            share_link=True, options=own, approvals=True, steer=own)
+            share_link=True, options=own, approvals=True, steer=own,
+            # A branch is a copy, so any chat Claude Code can resume from
+            # (#468); putting files back opens the session itself.
+            branch=not session.cowork and bool(session.cli_session_id), rewind_files=own,
+            # A read-only copy that isn't saved (aside.py): any session whose
+            # transcript Claude Code can read, so not Cowork's (#91).
+            aside=not session.cowork and bool(session.cli_session_id),
+            chat_options=own)
 
     def has_history(self, session) -> bool:
         if session.provider != self.provider_id:
@@ -202,6 +209,10 @@ def preserve_sessions(sessions):
     store = keeper()
     saved = {token: metadata for token, metadata in store.records()}
     seen, result = set(), []
+    # A kept record's identity includes the Claude home, and a Cowork home
+    # moves with the desktop app's data (#542): the chat listed from its new
+    # home is the same chat as a record saved from the old one.
+    listed = {(session.cli_session_id, session.key) for session in sessions}
     for session in sessions:
         if not platform_paths.is_safe_id(session.cli_session_id):
             result.append(session)
@@ -221,6 +232,8 @@ def preserve_sessions(sessions):
             continue
         try:
             native_id = metadata['cli_session_id']
+            if (native_id, metadata.get('key')) in listed:
+                continue
             if (not platform_paths.is_safe_id(native_id)
                     or any(not isinstance(metadata.get(key), str) for key in
                            ('key', 'title', 'cwd', 'desktop_session_id', 'cowork_folder'))

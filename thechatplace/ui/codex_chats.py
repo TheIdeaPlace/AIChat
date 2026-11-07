@@ -23,9 +23,10 @@ from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
 from .permission_hosts import CODEX_MODES
+from .codex_extras import CodexExtras
 
 
-class CodexChats:
+class CodexChats(CodexExtras):
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.
         # Match its native ID rather than attaching it to the previous turn.
@@ -72,10 +73,11 @@ class CodexChats:
                      else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
-        notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-        if notices:
-            count = len(notices)
-            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
+        # Counts only: the commands are in Lists, Approvals (#564).
+        from ..approvals import count_text
+        counted = count_text([n for n in getattr(state, 'permission_notices', ()) if n[0] == state.turn_id])
+        if counted:
+            text += ' ' + counted
         return text
 
     def _codex_work(self, action, done):
@@ -508,6 +510,12 @@ class CodexChats:
             self._update_send_state()
             if on_result is not None:
                 on_result(queued, error)
+        # Rewind to Here's lock is the folder's, whichever AI asks (#468). Agent
+        # conversations and relays use this mixin on windows without rewinding.
+        going_back = getattr(self, '_files_going_back_in', None)
+        if going_back is not None and going_back(getattr(record, 'cwd', '')):
+            done('Still putting files back in this folder. Send again in a moment.', True)
+            return
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
     def _steer_codex_owned(self, record, text, index=None):
@@ -773,7 +781,14 @@ class CodexChats:
             identity = (provider, state.native_id, notice[0], notice[1])
             if identity not in seen:
                 seen.add(identity)
-                self._say(f'{record.title}: {notice[2]}', interrupt=False)
+                # Allowed requests are said only with the chat's tool activity
+                # on, like its tool calls: a long turn has dozens. One that
+                # wasn't allowed is always said once, after what's being said
+                # (#564).
+                from ..approvals import is_routine
+                activity = self._show_activity if loaded else key in self.tool_activity
+                if activity or not is_routine(notice[1], notice[2]):
+                    self._say(f'{record.title}: {notice[2]}', interrupt=False)
         if loaded and (state.token_usage is not None or previous is not None and previous.token_usage is not None):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
@@ -828,17 +843,21 @@ class CodexChats:
                               state=IDLE, unread=not loaded,
                               last_activity_ms=int(time.time() * 1000))
             reply = '\n\n'.join(text for _identity, text in state.replies)
-            text = (f'{record.title}: {name} answered.' if state.outcome == 'completed'
+            # /compact runs as a turn of its own, which answers nothing (#467).
+            compacted = getattr(state, 'compaction', False) and state.outcome == 'completed'
+            text = (f'{record.title}: context compacted.' if compacted else
+                    f'{record.title}: {name} answered.' if state.outcome == 'completed'
                     else f'{record.title}: {name} turn {state.outcome}.')
             # Use the same configured announcement level as Claude replies.
-            if reply:
+            if reply and not compacted:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
             agent_quiet = getattr(self, '_agent_quiet', None)
             quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
             if not quiet:  # an agent conversation says it, by its own name (#248)
                 self._say(text, interrupt=False)
             if state.outcome != 'interrupted' and not quiet:
-                self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
+                self._notify(key, f'{record.title}: context compacted' if compacted else
+                             f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if unsent:

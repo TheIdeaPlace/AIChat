@@ -122,7 +122,7 @@ def paste_folder() -> Path:
 
 
 def pasted_image_path(when: Optional[float] = None) -> Path:
-    stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(when or time.time()))
+    stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(time.time() if when is None else when))
     folder = paste_folder()
     path = folder / f"Pasted image {stamp}.png"
     number = 2

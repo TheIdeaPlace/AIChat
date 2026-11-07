@@ -46,7 +46,7 @@
    ],
    "best": [
     110,
-    23
+    83
    ],
    "depth": 0,
    "parent": -1,
@@ -135,7 +135,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Effort:",
+   "label": "Effort:",
    "rect": [
     10,
     106,

@@ -26,11 +26,23 @@ class _NamedAccessible(wx.Accessible):
         return (wx.ACC_OK, self._label)
 
 
-def set_accessible_name(control: wx.Window, label: str) -> None:
-    """Name a control for JAWS and NVDA.
+class _ReadOnlyBoxAccessible(_NamedAccessible):
+    """A read-only box holds text to read, which isn't a label: Windows took
+    the "&" in a server's "Pick & choose" for an access key and reported a
+    shortcut of "Alt+ ". It has no shortcut of its own."""
 
-    ``SetName`` covers most controls. Text controls also get a wx.Accessible,
-    because their name does not otherwise reach MSAA. List boxes don't get
+    def GetKeyboardShortcut(self, childId):
+        if childId:
+            return (wx.ACC_NOT_IMPLEMENTED, "")
+        return (wx.ACC_OK, "")
+
+
+def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = False) -> None:
+    """Name a control for JAWS and NVDA. ``read_only_box``: it's a read-only
+    box of text, which mustn't be parsed for an access key.
+
+    ``SetName`` doesn't reach MSAA. Text controls, check boxes and choice
+    lists also get a wx.Accessible, so their name does. List boxes don't get
     one here: the messages list has its own (``set_list_items_accessible``),
     which keeps the list's name and its rows' text.
 
@@ -42,15 +54,17 @@ def set_accessible_name(control: wx.Window, label: str) -> None:
     mac_a11y.set_label(control, label)
     gtk_a11y.set_label(control, label)
     # A combo box too (#154): Windows names one by the text in it, so the
-    # Folder box was read as its path rather than as Folder.
-    if not isinstance(control, (wx.TextCtrl, wx.ComboBox)):
+    # Folder box was read as its path rather than as Folder. A check box or a
+    # choice list named more fully than its visible label (#468): what a form
+    # says about being required, or its description, was otherwise lost.
+    if not isinstance(control, (wx.TextCtrl, wx.ComboBox, wx.CheckBox, wx.Choice)):
         return
     existing = getattr(control, "_hub_accessible", None)
     if existing is not None:
         existing.set_label(label)
         return
     try:
-        accessible = _NamedAccessible(control, label)
+        accessible = (_ReadOnlyBoxAccessible if read_only_box else _NamedAccessible)(control, label)
         control.SetAccessible(accessible)
         control._hub_accessible = accessible  # keep it alive
     except (NotImplementedError, AttributeError):

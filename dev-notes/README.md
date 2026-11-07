@@ -14,6 +14,7 @@ shipped.
 
 | Note | Issue |
 |---|---|
+| [codex-feature-gaps.md](codex-feature-gaps.md): shared workflows, native boundaries and remaining work | #467, #468 |
 | [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
 | [steering.md](steering.md): what `claude -p` does with a message mid-turn, how `--replay-user-messages` tells the cases apart, and Codex's `turn/steer` | #238, #239 |
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
@@ -36,3 +37,4 @@ shipped.
 - [User guide review](user-guide-review.md): agreed corrections and improvements to the user guide, and decisions for Kelly, from a Claude and Codex review against 0.2.0.
 
 - [Backup history reader](backup-reader-436.md): the #436 UI contract and isolated Codex recovery.
+- [Approval noise post-mortem](approval-noise-postmortem.md): how automatic approval review buried the chat, the cross-project changes (#566), and the fix (#564).

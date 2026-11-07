@@ -495,3 +495,25 @@ def test_a_link_named_like_a_leftover_is_left_and_what_it_points_at_survives(tmp
     backup_reader.remove_leftover_scratch(older_than=0)
     assert (precious / 'keep.txt').read_text(encoding='utf-8') == 'keep'
     assert not real.exists()
+
+
+@pytest.mark.parametrize('fresh_area,stale_area', [(0, 1), (1, 0)])
+def test_a_cowork_chat_in_two_folders_restores_the_newer_copy_whole(fresh_area, stale_area):
+    # #542: the title came from one copy and the text from the other.
+    def copy(area, title, activity, words):
+        base = f'claude/desktop-cowork-{area}/acct/org/local_c'
+        history = ''.join(json.dumps(record)+'\n' for record in [
+            user_text('Invented question', cwd='/old/workspace'),
+            assistant_block(text_block(words))]).encode()
+        return {base+'.json': json.dumps(dict(
+                    sessionId='local_c', cliSessionId='cowork-chat', cwd='/old/workspace',
+                    title=title, lastActivityAt=activity)).encode(),
+                base+'/.claude/projects/enc/cowork-chat.jsonl': history}
+    files = {**copy(fresh_area, 'Newer title', 2000, 'Newer words'),
+             **copy(stale_area, 'Older title', 1000, 'Older words')}
+    zipped, manifest = archive(files)
+    with zipped, BackupReader(zipped, manifest) as reader:
+        chat, = reader.sessions()
+        assert chat.title == 'Newer title'
+        assert reader.read(chat).last_reply().text == 'Newer words'
+        assert not [note for note in reader.notes if 'Duplicate' in note]

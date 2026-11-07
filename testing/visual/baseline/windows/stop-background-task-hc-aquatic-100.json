@@ -1,0 +1,120 @@
+{
+ "title": "Stop Background Task",
+ "class": "SingleChoiceDialog",
+ "size": [
+  578,
+  189
+ ],
+ "client": [
+  562,
+  150
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Background work in Visual probe. Stop which?",
+   "rect": [
+    15,
+    15,
+    245,
+    16
+   ],
+   "best": [
+    245,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "listBox",
+   "label": "",
+   "rect": [
+    17,
+    48,
+    532,
+    49
+   ],
+   "best": [
+    532,
+    49
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Run the synthetic probe project's full Windows build and tests, running 3 minutes 10 seconds",
+    "Watch CI, running 1 minute 5 seconds"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    390,
+    117,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    473,
+    117,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticLine",
+   "name": "staticLine",
+   "label": "",
+   "rect": [
+    11,
+    106,
+    542,
+    2
+   ],
+   "best": [
+    -1,
+    2
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

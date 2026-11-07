@@ -1,0 +1,150 @@
+{
+ "title": "Insert Command or Skill",
+ "class": "CommandPickerDialog",
+ "size": [
+  720,
+  520
+ ],
+ "client": [
+  704,
+  481
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Search:",
+   "rect": [
+    8,
+    8,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Search commands and skills",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    688,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Commands and skills (12 of 12):",
+   "rect": [
+    8,
+    55,
+    169,
+    16
+   ],
+   "best": [
+    169,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Commands and skills, 12 of 12",
+   "label": "",
+   "rect": [
+    10,
+    73,
+    688,
+    371
+   ],
+   "best": [
+    465,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "/model, Codex: Choose the model for this chat from its next turn.",
+    "/reasoning, Codex: Choose reasoning effort for this chat from its next turn.",
+    "/plan, Codex: Choose native Codex Plan mode or return to Default mode.",
+    "/compact, Codex: Compact this chat's context now.",
+    "/goal, Codex: Read this chat's native goal and its usage.",
+    "/goal pause, Codex: Pause the native goal; the current turn may finish.",
+    "/goal clear, Codex: Clear the native goal.",
+    "/memories on, Codex: Allow this chat to use and contribute to Codex memories.",
+    "/memories off, Codex: Disable Codex memories for this chat.",
+    "/background, Codex: List background terminals and stop one.",
+    "/skills, Codex: Choose a Codex skill to include explicitly in the next message.",
+    "$code-reviewer: Review the current changes."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Insert",
+   "rect": [
+    540,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    621,
+    450,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

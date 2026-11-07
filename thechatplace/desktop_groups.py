@@ -39,9 +39,14 @@ class DesktopGroups:
 def load_desktop_groups(session_dirs: Iterable[Path]) -> DesktopGroups:
     """The groups from the config beside each desktop sessions folder."""
     result = DesktopGroups()
+    # One account's groups come from its newest config alone: the desktop
+    # app's move to Claude-Data can leave an older copy behind (#542).
+    newest: Dict[str, tuple] = {}
     for folder in session_dirs:
+        config = Path(folder).parent / CONFIG_NAME
         try:
-            text = (Path(folder).parent / CONFIG_NAME).read_text(encoding="utf-8")
+            text = config.read_text(encoding="utf-8")
+            written = config.stat().st_mtime
         except FileNotFoundError:
             continue  # no desktop app settings here: no groups, and that's fine
         except OSError:
@@ -62,7 +67,10 @@ def load_desktop_groups(session_dirs: Iterable[Path]) -> DesktopGroups:
             # Only the account and organisation whose sessions are here: an
             # old sign-in's groups would be empty, or mix with these.
             if isinstance(key, str) and (Path(folder) / key).is_dir():
-                _read_scope(scope, result)
+                if key not in newest or written > newest[key][0]:
+                    newest[key] = (written, scope)
+    for _written, scope in newest.values():
+        _read_scope(scope, result)
     return result
 
 

@@ -173,6 +173,7 @@ isn't a letter or digit turned into `-`) was checked against every transcript on
 | `thechatplace/prompts.py` | Your saved prompts |
 | `thechatplace/about_you.py` | Finding Claude and Codex local customization files |
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
+| `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Rewind to Here and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |

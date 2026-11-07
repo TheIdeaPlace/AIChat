@@ -78,6 +78,8 @@ SHORTCUTS = [
                          "approval reviewer, or Copilot agent mode, plan mode or Auto for the "
                          "selected (or loaded) Chat Place session (File, Change Effort and Change "
                          "Model are beside it)"),
+        ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
+                         "moves from message to message; Alt+P reads it as plain text instead"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
                          "mode, and the commands and tools it may use without asking: for a "
                          "Claude chat, those it keeps and the rules from Claude Code's own "
@@ -126,25 +128,34 @@ SHORTCUTS = [
                                            "answers it"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
+        ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude and Codex chats): start a new "
+                                                 "chat just before it, with your message ready to change "
+                                                 "and send. Claude can also restore files changed with "
+                                                 "its edit tools in chats started here. Codex copies "
+                                                 "start read-only and leave files unchanged. The original "
+                                                 "chat is kept. Branch from Here, on a message's menu, "
+                                                 "starts a new chat from that point; in Codex it includes "
+                                                 "the whole turn containing that message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "
                                          "text, not just the first line), then the next or "
                                          "previous one"),
         ("End", "Newest message"),
-        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions and "
-                         "tasks, for this message or the whole chat; it opens on the kind you used last, and "
+        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions, "
+                         "tasks, subagents and approvals, for this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
-                         "(a link opens), Ctrl+C copies, typing narrows the list (also from the "
+                         "(a link opens, a subagent's conversation opens), Ctrl+C copies, typing narrows the list (also from the "
                          "session list and the reply box)"),
         ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done"),
-        ("Ctrl+T", "Show or hide tool activity in the loaded session"),
+        ("Ctrl+T", "Show or hide tool activity in the loaded session, and in Codex chats "
+                   "started here, the requests allowed for it"),
         ("Ctrl+O", "Open the loaded session in the Claude desktop app"),
     ]),
     ("Reply box", [
@@ -157,11 +168,12 @@ SHORTCUTS = [
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
-        ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
-                   "the start of the reply box"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button, Alt+T); "
+        ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
+                   "the start of the reply box. Codex offers enabled skills and chat controls "
+                   "such as /plan and /compact"),
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
-        ("Ctrl+V with a picture copied", "Attach the picture to a Claude message (a screenshot from Win+Shift+S, "
+        ("Ctrl+V with a picture copied", "Attach the picture to a Claude or Codex message (a screenshot from Win+Shift+S, "
                                          "say)"),
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
@@ -192,6 +204,10 @@ SHORTCUTS = [
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
                          "approve its plan (the loaded session first, then another chat "
                          "waiting for an answer). Escape in the dialog answers later"),
+        ("Ctrl+Shift+Y", "Ask Aside (Claude and Codex chats): a quick question about the selected (or "
+                         "loaded) chat, answered without the question or answer being added "
+                         "to it; Ctrl+Enter asks, and the answer is read and goes in the "
+                         "Answer box"),
         ("Ctrl+Shift+K", "What AI knows about you: choose Claude or Codex, then read "
                          "local instructions, memories, skills and settings, or open "
                          "them in your editor"),
@@ -267,6 +283,30 @@ def _tables_as_text(text: str) -> str:
 #: About how long the session list's Last message column is (#146): enough
 #: to hear where a conversation ended, short enough to arrow past.
 LAST_MESSAGE_LIMIT = 150
+
+
+def choose_access_key(label: str, taken: set) -> str:
+    """A key for a field a server named (#468), "" if every letter in ``label``
+    is taken: the first free letter or digit that starts a word, else any in
+    it, lower case. It's added to ``taken``, the keys already spoken for. Only
+    plain ones, as a key that isn't on the keyboard is no use."""
+    plain = [c.lower() for c in label if c.isascii() and c.isalnum()]
+    starts = [m.group().lower() for m in re.finditer(r"\b[A-Za-z0-9]", label)]
+    for key in starts + plain:
+        if key not in taken:
+            taken.add(key)
+            return key
+    return ""
+
+
+def mark_access_key(text: str, key: str) -> str:
+    """A server's ``text`` as a control's label: each "&" of its own shown, not
+    taken as an access key, and ``key`` marked where it first comes."""
+    text = text.replace("&", "&&")
+    for index, char in enumerate(text):
+        if key and char.isascii() and char.lower() == key:
+            return f"{text[:index]}&{text[index:]}"
+    return text
 
 
 def codex_effort_label(value: str) -> str:

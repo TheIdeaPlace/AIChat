@@ -21,7 +21,10 @@ from typing import Dict, List, Optional
 
 from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
+from .chat_options import (ChatOptions, clean_instructions, is_safe_agent,
+                           is_safe_style)
 from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
+from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
 
 
@@ -62,18 +65,41 @@ class OwnSession:
     #: for the heading.
     fork_source: str = ""
     forked_from: str = ""
+    #: Rewind to Here and Branch from Here (#468): the uuid of the last
+    #: record of ``fork_source`` the copy keeps (``--resume-session-at``).
+    #: "" copies the whole history, as Continue Here does.
+    fork_at: str = ""
     #: Remote Control (#72): "on" or "off" for this session, "" for the
     #: Settings default. The Remote Control session it was given, joined again
     #: every turn, and its claude.ai address.
     remote_control: str = ""
     bridge_session_id: str = ""
     remote_url: str = ""
+    #: MCP servers and claude.ai connectors turned off for this chat (#468),
+    #: by the names Claude Code gives them; kept out of every turn with
+    #: ``--settings`` (claude_mcp.settings_args). Older releases ignore it.
+    disabled_mcp: List[str] = field(default_factory=list)
     provider: str = "claude"
     provider_options: dict = field(default_factory=dict)
+    #: Chat options (#468), given to every turn: ``--agent``, instructions
+    #: (``--append-system-prompt``) and an output style. "" passes nothing.
+    #: Older releases ignore these fields (they read only the fields they
+    #: know), so their turns simply run without them.
+    agent: str = ""
+    instructions: str = ""
+    output_style: str = ""
+    #: True once those changed after the chat's first turn: Claude Code would
+    #: otherwise keep the system prompt it recorded then (chat_options.py).
+    prompt_fresh: bool = False
 
     @property
     def identity(self) -> tuple[str, str]:
         return self.provider, self.cli_session_id
+
+    def chat_options(self) -> ChatOptions:
+        """What this chat passes every turn besides model, effort and mode."""
+        return ChatOptions(self.agent, self.instructions, self.output_style,
+                           fresh=self.prompt_fresh)
 
     def to_info(self) -> SessionInfo:
         return SessionInfo(
@@ -103,6 +129,30 @@ PROVIDERS = ("claude", "codex", "copilot")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
 SEPARATE_PROVIDERS = ("copilot",)
+#: Codex settings newer than 0.4 (#467). On disk they sit beside
+#: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
+#: provider-sessions.json over a provider option it doesn't know, and then
+#: saves nothing. It ignores a field it doesn't know. In memory they're
+#: ordinary provider options.
+CODEX_EXTRAS = ("collaboration", "mcp_servers")
+
+
+def _valid_codex_extra(name: str, value) -> bool:
+    if name == "collaboration":
+        return value in ("default", "plan")
+    return (isinstance(value, list) and len(value) <= 100
+            and len(set(map(str, value))) == len(value)
+            and all(is_safe_server_name(n) and n.strip() for n in value))
+
+
+def _stored_record(session: "OwnSession") -> dict:
+    """A foreign session as it's written to its file."""
+    item = asdict(session)
+    extras = {name: item["provider_options"].pop(name) for name in CODEX_EXTRAS
+              if name in item["provider_options"]}
+    if extras:
+        item["provider_extras"] = extras
+    return item
 
 
 def _session_from_dict(item: dict) -> Optional[OwnSession]:
@@ -128,7 +178,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             # Claude permission modes. Runtime model support needs validation.
             allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}
             if (provider in ("claude", "copilot") and options
-                    or any(k not in allowed or not isinstance(v, str)
+                    or any(not _valid_codex_extra(k, v) if k in CODEX_EXTRAS
+                           else k not in allowed or not isinstance(v, str)
                            for k, v in options.items())):
                 return None
             values[name] = dict(options)
@@ -149,6 +200,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             dirs = item[name] if isinstance(item[name], list) else []
             values[name] = [d for d in dirs if is_safe_dir(d)]
             continue
+        if name == "disabled_mcp":
+            names = item[name] if isinstance(item[name], list) else []
+            values[name] = list(dict.fromkeys(n for n in names if is_safe_server_name(n)))
+            continue
         if name == "allowed_dirs_at":
             times = item[name] if isinstance(item[name], dict) else {}
             values[name] = {d: t for d, t in times.items()
@@ -165,6 +220,14 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         else:
             ok = True
         values[name] = value if ok else _DEFAULTS[name]
+    extras = item.get("provider_extras")
+    if provider == "codex" and isinstance(extras, dict):
+        # A hand edit that isn't valid is dropped, which only leaves the chat
+        # in Default mode with no extra tools, rather than refusing the file.
+        kept_extras = {k: extras[k] for k in CODEX_EXTRAS
+                       if k in extras and _valid_codex_extra(k, extras[k])}
+        if kept_extras:
+            values["provider_options"] = {**values.get("provider_options", {}), **kept_extras}
     # Only a model the picker offers: anything else (a hand edit, or a model
     # that bills usage credits) would fail or cost extra on every turn.
     if values.get("model") not in MODEL_LABELS:
@@ -180,16 +243,30 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                                  if d in folders}
     if values.get("fork_source") and not platform_paths.is_safe_id(values["fork_source"]):
         values["fork_source"] = ""
+    if values.get("fork_at") and not (values.get("fork_source")
+                                      and platform_paths.is_safe_id(values["fork_at"])):
+        values["fork_at"] = ""
+    # Chat options (#468): only what could be passed back safely; a hand
+    # edit that couldn't is dropped rather than refused every turn.
+    if not is_safe_agent(values.get("agent", "")):
+        values["agent"] = ""
+    if not is_safe_style(values.get("output_style", "")):
+        values["output_style"] = ""
+    if "instructions" in values:
+        values["instructions"] = clean_instructions(values["instructions"])
     if provider != "claude":
         # These values drive only Claude runners. A foreign record must never
         # carry permissions or Remote Control into that legacy path.
-        for name in ("model", "effort", "fork_source", "remote_control",
-                     "bridge_session_id", "remote_url", "desktop_session_id"):
+        for name in ("model", "effort", "fork_source", "fork_at", "remote_control",
+                     "bridge_session_id", "remote_url", "desktop_session_id",
+                     "agent", "instructions", "output_style"):
             values[name] = ""
+        values["prompt_fresh"] = False
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
         values["allowed_dirs_at"] = {}
+        values["disabled_mcp"] = []
         values["permission_mode"] = "auto"
     return OwnSession(**values)
 
@@ -369,7 +446,7 @@ class OwnSessionStore:
             raise OSError(f"Changes cannot be saved: {self.load_error}")
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
-        foreign = {"version": 2, "sessions": [asdict(s) for s in self._sessions.values()
+        foreign = {"version": 2, "sessions": [_stored_record(s) for s in self._sessions.values()
                                                 if s.provider not in ("claude", *SEPARATE_PROVIDERS)]}
         # Each separate provider's file first, as the provider file goes
         # before the legacy one: put back as it was if the rest fails.

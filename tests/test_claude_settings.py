@@ -159,3 +159,23 @@ def test_the_claude_host_says_when_settings_couldnt_be_read(tmp_path, monkeypatc
     said = []
     ClaudePermissions(frame, record.to_info()).native(said.append)
     assert said == ["Claude Code's own settings couldn't be read."]
+
+
+def test_worktree_base_ref_follows_your_settings_then_the_folders(tmp_path, monkeypatch):
+    # #561: Claude Code's worktree.baseRef, the last that sets it winning.
+    import json
+    from thechatplace import claude_settings, platform_paths
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(platform_paths, "claude_home", lambda: home)
+    folder = tmp_path / "repo"
+    (folder / ".claude").mkdir(parents=True)
+    assert claude_settings.worktree_base_ref(str(folder)) == "fresh"
+    (home / "settings.json").write_text(json.dumps({"worktree": {"baseRef": "head"}}))
+    assert claude_settings.worktree_base_ref(str(folder)) == "head"
+    (folder / ".claude" / "settings.local.json").write_text(
+        json.dumps({"worktree": {"baseRef": "fresh"}}))
+    assert claude_settings.worktree_base_ref(str(folder)) == "fresh"
+    (folder / ".claude" / "settings.local.json").write_text("not json")
+    (home / "settings.json").write_text(json.dumps({"worktree": {"baseRef": "nonsense"}}))
+    assert claude_settings.worktree_base_ref(str(folder)) == "fresh"

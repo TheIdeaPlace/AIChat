@@ -468,10 +468,15 @@ def build_world(root: Path, patch=setattr, empty: bool = False, formatted_view: 
     # (#155).
     written = time.time() - 60
     os.utime(transcript, (written, written))
+    _write_probe_subagents(transcript, repo)
     own_cwd = env["folders"]["Scratch"]
     edit_path = os.path.join(own_cwd, "uploader.py")
+    asked = user_text("Make the uploader flush before it signals.")
     fake_env.add_transcript(env, own_cwd, "own-1", [
-        user_text("Make the uploader flush before it signals."),
+        asked,
+        # A file checkpoint for it (#468), so Rewind to Here offers the files.
+        {"type": "file-history-snapshot", "messageId": asked["uuid"],
+         "snapshot": {"messageId": asked["uuid"], "trackedFileBackups": {}}},
         assistant_block(tool_use_block("Edit", {"file_path": edit_path,
                                                 "old_string": "self.done.set()",
                                                 "new_string": "self._file.flush()\n"
@@ -1080,6 +1085,19 @@ def d_message_formatted(frame, env):
     return frame.on_read_message
 
 
+def d_whole_chat(frame, env):
+    """The page itself, on the selected message; on_read_whole_chat builds it on
+    another thread, and the probe photographs what an opener opens."""
+    from thechatplace import export
+    _open(frame, "Fix the flaky upload test")
+    _select_message(frame, "What changed")
+    messages = frame._visible_messages()
+    start = messages.index(frame._selected_message())
+    title = "Full chat: Fix the flaky upload test"
+    return lambda: frame._open_whole_chat(title, messages, start,
+                                          export.reading_page(title, messages))
+
+
 def d_message_plain(frame, env):
     _open(frame, "Fix the flaky upload test")
     _select_message(frame, "What changed")
@@ -1127,6 +1145,41 @@ def d_settings_speech_problem(frame, env):
 
 def d_new_session(frame, env):
     return frame.on_new_session
+
+
+def d_new_session_worktree(frame, env):
+    """New Session with A new worktree and a new branch, so Start from is on
+    (#561). The repository is described rather than made, as the test VM has
+    no git: what the dialog would read from a clone on branch work, whose
+    remote has a main branch."""
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    folder = str(env["folders"]["Scratch"])
+    dialog = NewSessionDialog(frame, folder)
+    info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
+                               branch="work", branches=["older"], busy=["work"],
+                               remotes=["origin/main"])
+    # Every read of the folder, now and when the dialog opens and the folder
+    # box loses the focus, answers with that description.
+    def described(folder):
+        wx.CallAfter(dialog._repo_read, folder, info, "origin/main", False)
+        wx.CallAfter(choose)
+
+    def choose():
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        if dialog.branch.GetValue() != "fix/login":
+            dialog.branch.SetValue("fix/login")
+        dialog._sync_start_from()
+    for _ in range(150):  # its first, real read finishes first, so it can't land after
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog._read_repo = described
+    dialog._repo_for = ""
+    dialog.refresh_repo()
+    return lambda: frame._modal(dialog)
 
 
 def d_codex_new(frame, env):
@@ -1407,6 +1460,47 @@ def d_codex_permission(frame, env):
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 
+def d_chat_options(frame, env):
+    """File, Chat Options on a Claude chat with an agent, instructions, an
+    output style and a more folder (#468), the folder's choices known."""
+    _open(frame, "Visual probe")
+    other = str(env["folders"]["Website"])
+    frame.store.update("own-1", agent="code-reviewer", output_style="Concise",
+                       instructions="Answer in British English.\nNever change the tests.",
+                       allowed_dirs=[other], allowed_dirs_at={other: 1_792_400_000_000})
+    return frame.on_chat_options
+
+
+def d_ask_aside(frame, env, provider='Claude'):
+    """Ask Aside (#468) after two questions: one answered, one still being
+    answered, the answered one selected in the Answer box."""
+    from thechatplace.aside import AsideEvent
+    from thechatplace.ui.dialogs import AskAsideDialog
+    runners = []
+
+    class Asked:
+        def cancel(self):
+            # As the real runner does, so Escape in the Orca steps stops the
+            # answer that's still coming, and the next one can close it.
+            runners[-1](AsideEvent("failed", "Stopped."))
+
+    def ask(question, on_event):
+        runners.append(on_event)
+        return Asked()
+    dialog = AskAsideDialog(frame, "Visual probe", ask, provider=provider)
+    dialog.question.SetValue("Which file did you change for the upload bug?")
+    dialog.on_ask()
+    runners[0](AsideEvent("done", "uploader.py: it now flushes and closes the file before it "
+                                  "signals that the upload is done.\n\nNothing else changed."))
+    dialog.question.SetValue("Did the tests pass afterwards?")
+    dialog.on_ask()
+    dialog._streamed_at = 0.0
+    runners[1](AsideEvent("text", "Yes: all 12"))
+    dialog.history.SetSelection(0)
+    dialog._show_selected()
+    return lambda: frame._modal(dialog)
+
+
 def d_chat_permissions(frame, env):
     """File, Chat Permissions on a Claude chat with two kept rules (one from
     before times were kept, one with its time, #329) and a kept folder (#334)."""
@@ -1416,6 +1510,113 @@ def d_chat_permissions(frame, env):
                        allowed_tools_at={"WebFetch(domain:docs.python.org)": 1_792_400_000_000},
                        allowed_dirs=[folder], allowed_dirs_at={folder: 1_792_400_000_000})
     return frame.on_chat_permissions
+
+
+def d_connected_tools(frame, env):
+    """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
+    connectors (made up), one turned off for the chat, the list read."""
+    _open(frame, "Visual probe")
+    frame.store.update("own-1", disabled_mcp=["plugin:probe-tools:notes"])
+    return frame.on_connected_tools
+
+
+def s_codex_attachments(frame, env):
+    s_main_codex_owned(frame, env)
+    info = frame._open
+    frame._add_attachments(info.key, [str(env['tmp'] / 'reference-diagram.png'),
+                                     str(env['tmp'] / 'requirements.txt')])
+
+
+def d_codex_aside(frame, env):
+    return d_ask_aside(frame, env, provider='Codex')
+
+
+def d_codex_tools(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    s_main_codex_owned(frame, env)
+    host = CodexConnectedTools(frame, frame._open)
+    host.load = lambda done: done([CodexTool('project-notes', 'connected', ('find_notes',), False),
+                                  CodexTool('build-reports', 'needs-auth', (), False),
+                                  CodexTool('reference-search', 'off', (), True)], '')
+    return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
+
+
+def d_codex_commands(frame, env):
+    from thechatplace.ui.codex_extras import COMMANDS
+    from thechatplace.ui.dialogs import CommandPickerDialog
+    rows = [dict(name=n, description=d, builtin=True, provider='Codex') for n, d in COMMANDS]
+    rows.append(dict(name='code-reviewer', description='Review the current changes.', prefix='$'))
+    return lambda: frame._modal(CommandPickerDialog(frame, rows))
+
+
+def d_codex_collaboration(frame, env):
+    return lambda: frame._choose('Codex Collaboration Mode',
+        'Mode for Codex review, from its next turn:',
+        ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
+
+
+def d_codex_rewind(frame, env):
+    from thechatplace.rewind import RewindPlan
+    from thechatplace.transcript import ChatMessage, USER
+    from thechatplace.ui.dialogs import RewindDialog
+    message = ChatMessage(USER, 'Review the parser before editing it.', key='native-turn:user-message')
+    plan = RewindPlan('Codex review', message, 'native-turn',
+        files_problem='Codex conversation branching leaves files as they are. File checkpoints are not available here.')
+    return lambda: frame._modal(RewindDialog(frame, plan))
+
+
+def _elicitation(request):
+    from thechatplace.claude_mcp import elicitation_from
+    return elicitation_from("e1", request)
+
+
+def d_elicitation_form(frame, env):
+    """A connected tool asks for input with a form (#468), shaped as Claude
+    Code 2.1.296 sent it. A long title, description and option, each about a
+    line and a half, show how they wrap. The form is made to fit without a
+    scroll bar, so all of that is in the picture (tests/test_layout.py checks):
+    the Budget list, which doesn't wrap, made way for them."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "trip-planner",
+        "message": "Where would you like to go, and for how long?", "mode": "form",
+        "requested_schema": {"type": "object", "required": ["city", "nights"], "properties": {
+            "city": {"type": "string", "title": "City",
+                     "description": "Which city to plan for, written the way the local tourist "
+                                    "office writes it, so that the hotels, trains and restaurants "
+                                    "we look up are all in the right place"},
+            "nights": {"type": "integer", "title": "Nights", "minimum": 1, "maximum": 14},
+            "pets": {"type": "boolean", "default": False,
+                     "title": "Bringing pets, which some places charge extra for and a few don't "
+                              "allow at all, even when their own website says they're welcome"},
+            "extras": {"type": "array", "title": "Extras", "items": {
+                "enum": ["breakfast", "parking"],
+                "enumNames": ["Breakfast each morning, served in your room or downstairs, for "
+                              "everyone staying with you, and for anyone who joins you later on",
+                              "Parking"]}}}}}))
+    return frame.on_answer
+
+
+def d_elicitation_url(frame, env):
+    """A connected tool asks you to open a web page (#468)."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "plugin:probe-tools:notes",
+        "message": "Open this page to finish signing in.", "mode": "url",
+        "url": "https://example.com/sign-in?session=probe", "elicitation_id": "elic-1"}))
+    return frame.on_answer
+
+
+def d_elicitation_cant_show(frame, env):
+    """A connected tool's form with a part no control here can answer (#468):
+    only Decline and Answer Later."""
+    _waiting(frame, _elicitation({
+        "subtype": "elicitation", "mcp_server_name": "trip-planner",
+        "message": "Where would you like to go?", "mode": "form",
+        "requested_schema": {"type": "object", "properties": {
+            "trip": {"type": "object", "title": "Trip", "properties": {
+                "city": {"type": "string"}}}}}}))
+    return frame.on_answer
 
 
 def d_chat_permissions_empty(frame, env):
@@ -1605,6 +1806,72 @@ def d_lists_tasks(frame, env):
 
 
 
+def _write_probe_subagents(parent, repo):
+    """Two subagents in "Fix the flaky upload test" (#468): a code-reviewer
+    that finished, having changed a file, and an Explore still at work (the
+    session needs you, so it counts as working). The Explore began just now,
+    so its row says "under a minute so far" in every picture."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from records import (assistant_block, lines, sidechain, text_block, tool_result,
+                         tool_use_block, user_text)
+    from thechatplace import platform_paths
+    folder = platform_paths.subagents_dir(parent)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = os.path.join(repo, "tests", "test_upload.py")
+    reviewer = [
+        user_text("Review the retry change in the uploader against main. Report anything that "
+                  "could make the upload test fail.", timestamp="2026-10-06T12:00:00.000Z"),
+        assistant_block(tool_use_block("Bash", {"command": "git diff main -- uploader.py"}, "pb1"),
+                        "ps1", timestamp="2026-10-06T12:00:20.000Z"),
+        tool_result("pb1", "diff output", timestamp="2026-10-06T12:00:21.000Z"),
+        assistant_block(tool_use_block("Edit", {"file_path": target, "old_string": "retries=1",
+                                                "new_string": "retries=3\ntimeout=10"}, "pe1"),
+                        "ps2", timestamp="2026-10-06T12:02:00.000Z"),
+        tool_result("pe1", "Updated.", toolUseResult={"filePath": target},
+                    timestamp="2026-10-06T12:02:01.000Z"),
+        assistant_block(text_block("The retry waits too little: the server can take ten seconds "
+                                   "to be ready. I raised the test's retries to three."),
+                        "ps3", timestamp="2026-10-06T12:04:00.000Z")]
+    reviewer[-1]["message"]["stop_reason"] = "end_turn"  # its reply ended its work
+    now = datetime.now(timezone.utc)
+    stamp = lambda moment: moment.strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+    explorer = [
+        user_text("Find every place the uploader signals it's done.", timestamp=stamp(now)),
+        assistant_block(tool_use_block("Grep", {"pattern": "done.set"}, "pg1"), "px1",
+                        timestamp=stamp(now + timedelta(seconds=5)))]
+    for agent_id, records, agent_type, description in (
+            ("a1probe", reviewer, "code-reviewer", "Review the retry change"),
+            ("a2probe", explorer, "Explore", "Find where uploads signal done")):
+        (folder / f"agent-{agent_id}.jsonl").write_text(
+            "\n".join(lines(*[sidechain(r, agent_id) for r in records])) + "\n", encoding="utf-8")
+        (folder / f"agent-{agent_id}.meta.json").write_text(json.dumps(
+            {"agentType": agent_type, "description": description, "spawnDepth": 1}),
+            encoding="utf-8")
+
+
+def _probe_subagents(frame, env):
+    """"Fix the flaky upload test" loaded, with its subagents read."""
+    _open(frame, "Fix the flaky upload test")
+    import fake_env
+    if not fake_env.pump(lambda: len(frame._chat_subagents) == 2, timeout=10):
+        raise RuntimeError("the made-up subagents didn't load")
+
+
+def d_lists_subagents(frame, env):
+    """View, Subagents (#468): one finished, one at work."""
+    from thechatplace import lists
+    _probe_subagents(frame, env)
+    return lambda: frame.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
+
+
+def d_subagent_chat(frame, env):
+    """A subagent's conversation (#468), read like a chat."""
+    _probe_subagents(frame, env)
+    sub = next(s for s in frame._chat_subagents if s.agent_type == "code-reviewer")
+    return lambda: frame._open_subagent(sub)
+
+
 def _codex_plan_preview(frame, env):
     from dataclasses import replace
     from thechatplace.tasklist import TaskStep
@@ -1634,6 +1901,32 @@ def d_lists_codex_owned_no_tasks(frame, env):
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
 
+def d_lists_codex_approvals(frame, env):
+    """Lists, Approvals (#564): automatic review's decisions and a saved rule's."""
+    import dataclasses
+    from thechatplace import lists
+    from thechatplace.providers.codex_events import decode_event
+    s_main_codex_owned(frame, env)
+    notices = []
+    for number, (status, command, reason) in enumerate([
+            ('approved', 'git status --short', 'Reads the working tree only.'),
+            ('approved', 'python -m pytest -q tests/test_lists.py', 'Runs the project tests in the workspace.'),
+            ('denied', 'curl https://example.com/install.sh', 'Downloads and runs a script from the network.'),
+            ('approved', 'rg -n "def build" thechatplace', 'Searches files in the workspace.')]):
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'probe', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': command},
+            'review': {'status': status, 'rationale': reason}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git diff, as you said for this chat.'))
+    from thechatplace.providers.codex_runtime import CodexChatState
+    info = frame._open
+    state = frame._codex_states.get(info.key) or CodexChatState(info.cli_session_id, "idle", "turn", "completed")
+    frame._codex_states[info.key] = dataclasses.replace(state, permission_notices=tuple(notices))
+    frame.sessions.owned_action = lambda action, record, *a: ()
+    return lambda: frame.on_lists(lists.APPROVALS, lists.SCOPE_CHAT)
+
+
 def d_properties_codex_tasks(frame, env):
     _codex_plan_preview(frame, env)
     frame.session_list.SetFocus()
@@ -1652,6 +1945,38 @@ def d_properties_codex_tasks(frame, env):
 def d_usage(frame, env):
     _open(frame, "Visual probe")
     return frame.on_usage
+
+
+def d_usage_breakdown(frame, env):
+    """Usage and Context with what fills the context (#468), as Claude Code
+    answered get_context_usage at the end of the latest turn."""
+    _open(frame, "Visual probe")
+    session_id = frame._open.cli_session_id
+    frame._context_usage = {**frame._context_usage, session_id: {"categories": [
+        {"name": "System prompt", "tokens": 3183, "kind": "used"},
+        {"name": "System tools", "tokens": 8019, "kind": "used"},
+        {"name": "MCP tools (deferred)", "tokens": 30577, "isDeferred": True, "kind": "deferred"},
+        {"name": "Memory files", "tokens": 1279, "kind": "used"},
+        {"name": "Skills", "tokens": 9056, "kind": "used"},
+        {"name": "Messages", "tokens": 14431, "kind": "used"},
+        {"name": "Autocompact buffer", "tokens": 33000, "kind": "buffer"},
+        {"name": "Free space", "tokens": 927833, "kind": "free"}]}}
+    return frame.on_usage
+
+
+def d_stop_background_task(frame, env):
+    """File, Stop Background Task (#468): the running background work of a
+    turn, as main_frame builds the list, the longer description first."""
+    from thechatplace import live_turn
+    from thechatplace.ui.dialogs import single_choice_dialog
+    entries = [{"description": "Run the synthetic probe project's full Windows build and tests",
+                "since": 0.0},
+               {"description": "Watch CI", "since": 125.0}]
+    dialog = single_choice_dialog(frame, "Background work in Visual probe. Stop which?",
+                                  "Stop Background Task",
+                                  [live_turn.background_choice(e, 190.0) for e in entries])
+    dialog.SetSelection(0)
+    return lambda: frame._modal(dialog)
 
 
 def d_usage_codex(frame, env):
@@ -1799,6 +2124,41 @@ def d_relay(frame, env):
     return frame.on_send_reply_to
 
 
+def d_rewind(frame, env):
+    """Rewind to Here (#468) on the probe's own first message, with a file
+    checkpoint: the conversation and the uploader.py change can go back, and
+    it opens on Conversation only."""
+    _open(frame, "Visual probe")
+    _select_message(frame, "Make the uploader flush")
+    frame.chat_list.SetFocus()
+    return frame.on_rewind_to_here
+
+
+def d_rewind_files(frame, env):
+    """Rewind to Here with Conversation and files chosen, an arrow press away
+    from how it opens: What Happens has the warning that it can't be undone,
+    the words most worth a look (#468). The dialog is made inside
+    on_rewind_to_here, so it's chosen as it's made."""
+    from thechatplace import rewind
+    from thechatplace.ui import rewind_chats
+    from thechatplace.ui.dialogs import RewindDialog
+    d_rewind(frame, env)
+
+    def choosing(parent, plan, **options):
+        dialog = RewindDialog(parent, plan, **options)
+        dialog.what.SetSelection([value for value, _label in rewind.CHOICES].index(rewind.BOTH))
+        dialog._describe()
+        return dialog
+
+    def opener():
+        rewind_chats.RewindDialog = choosing
+        try:
+            frame.on_rewind_to_here()
+        finally:
+            rewind_chats.RewindDialog = RewindDialog
+    return opener
+
+
 def d_rename(frame, env):
     _select(frame, "Visual probe")
     return frame.on_rename
@@ -1860,6 +2220,7 @@ SURFACES = {
     "user-guide": ("dialog", d_user_guide, "Help, User Guide (formatted page)"),
     "message-formatted": ("dialog", d_message_formatted,
                           "A message read as a formatted page: heading, list, code, table, link"),
+    "whole-chat": ("dialog", d_whole_chat, "A whole chat as one page, on the selected message"),
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
@@ -1868,6 +2229,8 @@ SURFACES = {
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
                                 "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "new-session-worktree": ("dialog", d_new_session_worktree,
+                             "New Session making a new worktree, with Start from on"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
@@ -1898,6 +2261,15 @@ SURFACES = {
     "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
                                  "Chat Permissions: a Copilot chat in Auto, with commands kept"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "chat-options": ("dialog", d_chat_options,
+                     "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
+    "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
+    "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
+    "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
+    "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
+    "codex-collaboration": ("dialog", d_codex_collaboration, "Choose native Codex Plan or Default mode"),
+    "codex-rewind": ("dialog", d_codex_rewind, "Codex conversation rewind with files left unchanged"),
+    "codex-attachments": ("window", s_codex_attachments, "Codex reply with image and document attachments"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
                                "File, Chat Permissions with nothing kept"),
     "chat-permissions-codex": ("dialog", d_chat_permissions_codex,
@@ -1905,6 +2277,13 @@ SURFACES = {
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
+    "connected-tools": ("dialog", d_connected_tools,
+                        "View, Connected Tools: a Claude chat's MCP servers and connectors"),
+    "elicitation-form": ("dialog", d_elicitation_form, "A connected tool asks for input: a form"),
+    "elicitation-url": ("dialog", d_elicitation_url,
+                        "A connected tool asks you to open a web page"),
+    "elicitation-cant-show": ("dialog", d_elicitation_cant_show,
+                              "A connected tool's form that can only be declined"),
     "question-preview": ("dialog", d_question_preview,
                          "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
@@ -1920,11 +2299,19 @@ SURFACES = {
     "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
     "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
     "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
+    "lists-subagents": ("dialog", d_lists_subagents,
+                        "View, Subagents: one finished subagent and one at work"),
+    "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
     "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
+    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Approvals in a Codex chat"),
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
+    "usage-breakdown": ("dialog", d_usage_breakdown,
+                        "Usage and Context with what fills a Claude chat's context"),
+    "stop-background-task": ("dialog", d_stop_background_task,
+                             "File, Stop Background Task: two tasks running"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "usage-copilot": ("dialog", d_usage_copilot, "Copilot account allowances and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
@@ -1939,6 +2326,9 @@ SURFACES = {
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
+    "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: Conversation only chosen"),
+    "rewind-files": ("dialog", d_rewind_files,
+                     "Rewind to Here with Conversation and files chosen: the warning in What Happens"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
@@ -1970,12 +2360,14 @@ DIALOG_CLASSES = {
     "shortcuts-plain": "ShortcutsDialog",
     "user-guide": "FormattedMessageDialog",
     "message-formatted": "FormattedMessageDialog",
+    "whole-chat": "FormattedMessageDialog",
     "message-plain": "MessageDialog",
     "settings": "SettingsDialog",
     "settings-codex": "SettingsDialog",
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "new-session-worktree": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
@@ -2000,11 +2392,22 @@ DIALOG_CLASSES = {
     "chat-permissions-copilot-moved": "ChatPermissionsDialog",
     "chat-permissions-copilot": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
+    "chat-options": "ChatOptionsDialog",
+    "ask-aside": "AskAsideDialog",
+    "codex-aside": "AskAsideDialog",
+    "codex-tools": "ConnectedToolsDialog",
+    "codex-commands": "CommandPickerDialog",
+    "codex-collaboration": "SingleChoiceDialog",
+    "codex-rewind": "RewindDialog",
     "chat-permissions-empty": "ChatPermissionsDialog",
     "chat-permissions-codex": "ChatPermissionsDialog",
     "codex-files": "CodexPermissionDialog",
     "codex-question": "QuestionDialog",
     "question": "QuestionDialog",
+    "connected-tools": "ConnectedToolsDialog",
+    "elicitation-form": "ElicitationDialog",
+    "elicitation-url": "ElicitationDialog",
+    "elicitation-cant-show": "ElicitationDialog",
     "question-preview": "QuestionDialog",
     "plan": "PlanDialog",
     "manage-groups": "ManageGroupsDialog",
@@ -2019,11 +2422,16 @@ DIALOG_CLASSES = {
     "lists-commands": "ListsDialog",
     "lists-decisions": "ListsDialog",
     "lists-tasks": "ListsDialog",
+    "lists-subagents": "ListsDialog",
+    "subagent-chat": "SubagentChatDialog",
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
     "lists-codex-owned-no-tasks": "ListsDialog",
+    "lists-codex-approvals": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
+    "usage-breakdown": "UsageDialog",
+    "stop-background-task": "SingleChoiceDialog",
     "usage-codex": "UsageDialog",
     "usage-copilot": "UsageDialog",
     "properties": "PropertiesDialog",
@@ -2037,6 +2445,8 @@ DIALOG_CLASSES = {
     "export-chats": "ExportChatsDialog",
     "backup-schedule": "BackupScheduleDialog",
     "relay": "RelayDialog",
+    "rewind": "RewindDialog",
+    "rewind-files": "RewindDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
     "agent-new-copilot": "AgentConversationDialog",
@@ -2048,7 +2458,7 @@ DIALOG_CLASSES = {
 #: What a formatted-page surface shows instead where there's no web view
 #: (a Mac, or Windows without the WebView2 runtime).
 PLAIN_INSTEAD = {"shortcuts-page": "ShortcutsDialog", "user-guide": "MessageDialog",
-                 "message-formatted": "MessageDialog"}
+                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog"}
 
 
 def expected_class(name: str) -> str:

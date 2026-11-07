@@ -43,6 +43,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -60,13 +61,13 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           TurnRunner, allow_response, answer_questions_response,
                           build_fork_command, build_new_command, build_resume_command,
                           SESSION_INJECTED_PREFIXES, STRIPPED_VARS, child_environment,
-                          deny_response, fetch_commands, usable_commands,
+                          deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
-from .. import lists, tasklist
+from .. import lists, subagents, tasklist
 from ..session_controller import SessionController
 from ..providers.base import ConversationReader
 from ..providers.claude import ClaudeConversations
@@ -87,6 +88,8 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
 from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
+from .. import workplaces
+from ..transcript import latest_relocation
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
                           PEER, PERMISSION_NOTICE, PLAN, QUESTION, QUEUED, STEERING, TAIL_KINDS, TOOL, TOOL_RESULT, USER,
                           ChatMessage,
@@ -101,14 +104,25 @@ from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
 from .relay_chats import RelayChats
+from .rewind_chats import RewindChats
+from . import rewind_chats
+from .. import rewind
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
+from .subagent_host import SubagentsHost
+from .live_turns import LiveTurns
+from .claude_extras import ClaudeExtras
+from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
 from ..agents import AGENTS, AgentConversationStore, provider_name
 from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
+from .mcp_host import ClaudeConnectedTools
+from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
+                          is_web_url, problems_text)
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
+                      ConnectedToolsDialog, ElicitationDialog,
                       ExportChatsDialog, RestoreChooserDialog,
                       ChatPermissionsDialog,
                       FindResultsDialog,
@@ -117,6 +131,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, press_focused_button_on_a_mac,
+                      remove_whole_chat_page,
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
@@ -183,6 +198,22 @@ _TERMINAL_NOTE = (
     "session isn't changed.")
 
 
+def _no_options():
+    """Chat Options of a dialog that has none (#468): nothing chosen."""
+    from ..chat_options import ChatOptions
+    return ChatOptions(), []
+
+
+def _options_fields(options, folders) -> dict:
+    """OwnSession fields for a new chat's Chat Options (#468): its agent,
+    instructions and style, and its more folders kept as Allow for This Chat
+    keeps folders, so Chat Permissions lists them."""
+    now = int(time.time() * 1000)
+    return dict(agent=options.agent, instructions=options.instructions,
+                output_style=options.output_style, allowed_dirs=list(folders),
+                allowed_dirs_at={folder: now for folder in folders})
+
+
 def kind_name(info: SessionInfo) -> str:
     """What a session is, for "<title> is a terminal session: ...". """
     kind = info.kind_label
@@ -206,7 +237,13 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
+#: Rewind to Here's key (#468) as a menu accelerator, except on a Mac,
+#: where Cmd+Shift+Z is Redo: there the messages list takes it itself.
+REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
+
+
+class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
+                LiveTurns, ClaudeExtras, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -382,6 +419,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         #: the first read after that, not one already under way (#410).
         self._history_reads = 0
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
+        self._aside_histories: Dict[tuple, list] = {}  # Ask Aside's, while the app is open
+        self._whole_chat_building = False
         # Search (#21): text the session list is filtered by, and the last
         # text looked for in the messages.
         self._session_filter = ""
@@ -517,6 +556,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._startup_sign_in = wx.CallLater(UPDATE_CHECK_DELAY_MS, self._check_sign_in,
                                              manual=False)
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
+        self._pool.submit(remove_whole_chat_page)
         self.session_list.SetFocus()
         if check_updates_at_start:
             # A few seconds in, so the list is read first.
@@ -539,7 +579,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Cop&y Session Link...\tCtrl+Shift+L",
                    lambda e: self.on_copy_session_link())
         self._item(session, "&Answer...\tCtrl+Shift+A", lambda e: self.on_answer())
+        # A question about the chat that isn't added to it (#468). Every
+        # letter is another item's access key, so its shortcut is the way in.
+        self._item(session, "Ask Aside...\tCtrl+Shift+Y", lambda e: self.on_ask_aside())
         self._item(session, "Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here)
+        # Back to a message of the loaded chat (#468). Every letter of both
+        # is another item's access key, so Rewind's shortcut is its way in,
+        # and Branch from Here is reached by arrowing, or on the message's
+        # own menu.
+        self._item(session, "Rewind to Here..." + REWIND_ACCEL, lambda e: self.on_rewind_to_here())
+        self._item(session, "Branch from Here", lambda e: self.on_branch_from_here())
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
         self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
         # Every letter of "Change Permission Mode" is another item's access
@@ -551,6 +600,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(session, "Chat Permissions...\tCtrl+Shift+H",
                    lambda e: self.on_chat_permissions())
         self._item(session, "Change E&ffort...", lambda e: self.on_change_effort())
+        # Agent, instructions, output style and more folders (#468). Every
+        # letter is another item's access key, so it's reached by arrowing.
+        self._item(session, "Chat Options...", lambda e: self.on_chat_options())
         self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
         # As with Rename Session, every letter is taken, so the key is its shortcut.
         self._item(session, "Other Machines...\tCtrl+Shift+M",
@@ -596,6 +648,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # Steer (#238, #239): a reply-box key too, so in the label only.
         self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
                    lambda e: self.on_steer())
+        # One background task ended, the turn kept (#468). Every letter is
+        # another item's access key; enabled while there's work to stop.
+        self.stop_background_item = self._item(session, "Stop Background Task...",
+                                               lambda e: self.on_stop_background_task())
+        self.stop_background_item.Enable(False)
         session.AppendSeparator()
         self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
         self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
@@ -641,6 +698,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._item(view, "S&ession List Columns...", lambda e: self.on_session_columns())
         view.AppendSeparator()
         self._item(view, "Read &Full Message", lambda e: self.on_read_message())
+        self._item(view, "Read Full Chat as a &Web Page\tCtrl+Shift+W",
+                   lambda e: self.on_read_whole_chat())
         self._item(view, "F&ind...\tCtrl+F", lambda e: self.on_find())
         self._item(view, "Find &Next\tF3", lambda e: self.find_again(True))
         self._item(view, "Find Pre&vious\tShift+F3", lambda e: self.find_again(False))
@@ -653,6 +712,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # Claude's task list (#231), on its own tab in Lists. Every letter of
         # "Tasks" is another item's access key, so its shortcut is the way in.
         self._item(view, "Tasks...\tCtrl+Shift+J", lambda e: self.on_tasks())
+        # The work Claude handed to subagents (#468), on its own kind in Lists.
+        self._item(view, "Suba&gents...", lambda e: self.on_subagents())
         self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
         # Every letter of "Properties" is another item's access key already,
         # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
@@ -669,6 +730,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         view.AppendSeparator()
         self._item(view, "What AI &Knows About You...\tCtrl+Shift+K",
                    lambda e: self.on_about_you())
+        # A Claude chat's MCP servers and claude.ai connectors (#468). Every
+        # letter is another item's access key already; it's last, so Alt+V
+        # then Up reaches it.
+        self._item(view, "Connected Tools (MCP)...", lambda e: self.on_connected_tools())
         bar.Append(view, "&View")
 
         help_menu = wx.Menu()
@@ -1048,6 +1113,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         session). Otherwise a list with focus keeps its order, so nothing moves
         under Kelly while he arrows.
         """
+        if self._closing:
+            return  # the pool is shut (#545)
         if self._snapshot_busy:
             # Run again when the current pass lands, so F5 is never lost.
             previous = self._pending_refresh or (False, False)
@@ -1510,6 +1577,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if info.cli_session_id in self._runners:
             self._feedback("A turn is running in that session. Stop it first.")
             return
+        if info.cli_session_id in self._rewinding_files:
+            # Claude Code has the transcript open, reading its checkpoints.
+            self._feedback(f"The files in {info.title} are being put back. Wait for that to "
+                           "finish first.")
+            return
         if info.state == WORKING:
             # Resumed in a terminal: that claude is still writing it.
             self._feedback(f"{info.title} is working outside The Chat Place. Let it "
@@ -1562,6 +1634,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         for per_session in (self._attachments, self._drafts, self._queued,
                             self._pending, self._denials):
             per_session.pop(info.cli_session_id, None)
+        self._aside_histories.pop((info.provider, info.cli_session_id), None)
         self._leave_list(info, refocus=was_loaded)
         if failed is not None:
             wx.MessageBox(f"{info.title} is gone from The Chat Place, but its files "
@@ -1712,6 +1785,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._chat_edits, self._chat_turns, self._edits_said = [], 0, 0
         self._chat_commands = []
         self._chat_tasks, self._task_statuses = [], None
+        self._reset_subagents()
         self._changes_due = False
         self._spoken.clear()
         self._chat_loaded = False
@@ -1783,6 +1857,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._reader = None
         self._chat_messages = []
         self._chat_keys = []
+        self._reset_subagents()
         self._history_known = False
         self.SetTitle(APP_NAME)
         self._show_no_session()
@@ -1860,6 +1935,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 kind += f" on {model_label(own.model)}"
                 if own.effort:
                     kind += f" at {effort_label(own.effort)}"
+                # The agent, only if its name is short (#468).
+                agent = own.chat_options().heading_part()
+                if agent:
+                    kind += f", {agent}"
                 # Only when it isn't auto, the default: the heading must
                 # still fit a narrow window.
                 if normalize_permission_mode(own.permission_mode) != DEFAULT_PERMISSION_MODE:
@@ -1868,6 +1947,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     kind += f", continued from {own.forked_from}"
                 if self._remote_control_on(own):
                     kind += ", Remote Control on"
+        elif info.is_own and info.provider == 'codex':
+            own = self.store.get(info.cli_session_id, provider='codex')
+            if own is not None:
+                if own.provider_options.get('model'):
+                    kind += ' on ' + own.provider_options['model']
+                if own.provider_options.get('effort'):
+                    kind += ' at ' + own.provider_options['effort']
+                if (own.provider_options.get('collaboration') == 'plan' and not getattr(
+                        self._codex_states.get(info.key), 'plan_unavailable', False)):
+                    kind += ', plan mode'
         elif info.remote and info.provider == "claude":
             kind += ", on Remote Control in the desktop app"
         elif info.is_own and info.provider == "copilot" and self._can_edit(info):
@@ -1995,6 +2084,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not self._gone() and generation == self._open_generation:
             self._reader = reader
         self._apply_chat(generation, *result)
+        if not self._gone() and len(result) > 3 and result[3] is None:
+            self._refresh_subagents(generation, reader)  # #468
         if (not self._gone() and generation == self._open_generation and self._open is not None
                 and self._open.provider in RUNTIME_PROVIDERS and self._can_edit(self._open)):
             self._prepare_codex_owned(generation)
@@ -2018,6 +2109,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                             or (own is not None and not own.started)):
             line = ("No messages yet. Claude is starting this session."
                     if info.cli_session_id in self._runners else
+                    rewind_chats.unstarted_line(own) or
                     "No messages yet. The first message didn't reach Claude; send it again "
                     "from the reply box.")
             self._chat_loaded = False  # keep looking until it appears
@@ -2355,17 +2447,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if message is None:
             self._feedback("No message selected.")
             return
-        if self.speech.formatted_messages and self._show_formatted(message):
-            self.chat_list.SetFocus()
+        self._read_whole_message(message)
+        self.chat_list.SetFocus()
+
+    def _read_whole_message(self, message: ChatMessage, parent=None):
+        """One message in full, formatted or as text, over ``parent`` (a
+        subagent's conversation, #468) or the window."""
+        if self.speech.formatted_messages and self._show_formatted(message, parent):
             return
-        dialog = MessageDialog(self, message.label, message.whole)
+        dialog = MessageDialog(parent or self, message.label, message.whole)
         try:
             dialog.ShowModal()
         finally:
             dialog.Destroy()
-        self.chat_list.SetFocus()
 
-    def _show_formatted(self, message: ChatMessage) -> bool:
+    def _show_formatted(self, message: ChatMessage, parent=None) -> bool:
         """The message as a formatted page (#190). False when that can't be
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
@@ -2376,7 +2472,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        return self._show_page(title, message_page(title, text, heading=message.label))
+        return self._show_page(title, message_page(title, text, heading=message.label), parent)
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
@@ -2403,13 +2499,74 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         self._modal(ShortcutsDialog(self))
 
-    def _show_page(self, title: str, page: str) -> bool:
+    def on_read_whole_chat(self, _event=None):
+        """View, Read Full Chat as a Web Page (Ctrl+Shift+W, #538): every message in
+        the list, as one page to move through by heading, on the selected one. A
+        snapshot: reopen it for later messages. Built off the window's thread, as
+        a long chat with tool activity on measured 3 seconds."""
+        info = self._open
+        if info is None:
+            self._feedback("Load a chat first.")
+            return
+        if not self._chat_loaded:
+            self._feedback("The messages are still loading.")
+            return
+        if self._whole_chat_building:
+            self._feedback("Still preparing the full chat.")
+            return
+        messages = [m for m in self._visible_messages() if m.kind not in TAIL_KINDS]
+        if not messages:
+            self._feedback("This chat has no messages yet.")
+            return
+        selected = self._selected_message()
+        start = next((i for i, m in enumerate(messages) if m is selected), len(messages) - 1)
+        title = f"Full chat: {info.title}"
+        key, mark = info.key, self._codex_mark()
+
+        def work():
+            try:
+                page, problem = export.reading_page(title, messages), None
+            except Exception as exc:  # noqa: BLE001 - said in the window
+                page, problem = None, exc
+            wx.CallAfter(self._whole_chat_ready, key, mark, title, messages, start, page, problem)
+
+        self._whole_chat_building = True
+        self._feedback("Preparing the full chat.")
+        try:
+            self._pool.submit(work)
+        except RuntimeError:  # the pool is shut down: the window is closing
+            self._whole_chat_building = False
+
+    def _whole_chat_ready(self, key, mark, title, messages, start, page, problem):
+        self._whole_chat_building = False
+        if self._gone() or self._closing:
+            return
+        self._status("")  # "Preparing" is over, one way or another
+        if self._open is None or self._open.key != key:
+            # By chat, not generation: a turn ending in the same chat bumps that.
+            self._feedback("Another chat was opened, so the full chat didn't open.")
+            return
+        if problem is not None:
+            self._feedback(f"Couldn't prepare the full chat: {problem}")
+            return
+        if self._codex_may_open(mark, "The full chat is"):
+            self._open_whole_chat(title, messages, start, page)
+
+    def _open_whole_chat(self, title, messages, start, page):
+        if self._show_page(title, page, start_at=export.message_anchor(start)):
+            return
+        # Plain text on request, or no web view: on the same message.
+        text, tail = export.reading_text(messages, start)
+        self._modal(MessageDialog(self, "Full chat", text, title=title, start_tail=tail))
+
+    def _show_page(self, title: str, page: str, parent=None, start_at: str = "") -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,
         or Kelly chose Read as Plain Text."""
         if not formatted_view_available():
             return False
         try:
-            dialog = FormattedMessageDialog(self, title, page)
+            options = {"start_at": start_at} if start_at else {}
+            dialog = FormattedMessageDialog(parent or self, title, page, **options)
         except RuntimeError as exc:
             self._status(str(exc))
             return False
@@ -2449,9 +2606,30 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         has_code = message is not None and bool(find_code_blocks(message.text))
         blocks = menu.Append(wx.ID_ANY, "Code &Blocks...\tCtrl+Shift+B")
         copy_code = menu.Append(wx.ID_ANY, "Copy &Last Code Block\tCtrl+Shift+C")
+        if (message is not None and message.kind not in TAIL_KINDS
+                and self._subagents_in_turn(message.turn)):
+            # On the Agent call and the reply of a turn that used subagents (#468).
+            subs = menu.Append(wx.ID_ANY, "Subagent Con&versations...")
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_message_subagents(), subs)
         relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
+        # Going back to this message (#468): Claude chats only; elsewhere
+        # they aren't offered rather than refused.
+        if self._open is not None and self._open.provider in ('claude', 'codex'):
+            try:
+                can_branch = self.sessions.capabilities(self._open).branch
+            except ValueError:
+                can_branch = False
+            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here..." + REWIND_ACCEL)
+            anchored = message is not None and bool(message.key if self._open.provider == 'codex' else message.uuid)
+            rewind_item.Enable(can_branch and anchored and message.kind == USER)
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
+            branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
+            branch_item.Enable(can_branch and message is not None
+                               and message.kind in rewind_chats.BRANCHABLE
+                               and anchored)
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
         read.Enable(message is not None)
@@ -2526,6 +2704,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except ValueError:
             files_supported = False
         edits = list(self._chat_edits) if files_supported else []
+        subagent_list = list(self._chat_subagents) if info.provider == "claude" else []
+        # Edits a subagent made count too, marked with who made them (#468).
+        # Sorted by turn (stably), so files read in the order first changed.
+        if files_supported and subagent_list:
+            edits = sorted(edits + self._subagent_edits(), key=lambda e: e.turn)
         commands = list(self._chat_commands)
         tasks = list(self._chat_tasks)
         cwd = info.cwd
@@ -2544,15 +2727,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                                 "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
+            unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
+        approvals, approvals_problem = self._approvals_for(info)
+        if approvals_problem:
+            unavailable[lists.APPROVALS] = approvals_problem
 
         def build(tab, tab_scope):
+            # Subagents as read now: after a conversation closes, its row
+            # is built again with how it stands then (#468).
+            current = (list(self._chat_subagents) if tab == lists.SUBAGENTS and subagent_list
+                       else subagent_list)
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
-                               marks=self.speech.change_marks)
+                               marks=self.speech.change_marks, subagents=current,
+                               approvals=approvals)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
-                             category=category, scope=scope, unavailable=unavailable)
+                             category=category, scope=scope, unavailable=unavailable,
+                             open_subagent=self._open_subagent)
         try:
             self._show_lists(dialog)
             chosen = dialog.chosen_link
@@ -2563,6 +2756,37 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             returning_to.SetFocus()
         if chosen is not None:
             self._open_found_link(chosen)
+
+    def _approvals_for(self, info):
+        """The loaded chat's approval decisions for Lists (#564), oldest
+        first, and what to say instead when there are none to list: Codex's
+        automatic review and your saved rules, in Codex chats run here. The
+        history is a small local file, so it's read here, not on a thread."""
+        if info.provider != "codex" or not info.is_own:
+            if info.provider == "codex":
+                return [], "Approvals are listed only for Codex chats run in The Chat Place."
+            return [], f"Approvals aren't listed for {info.provider.capitalize()} chats yet."
+        from .. import approvals
+        state = self._codex_states.get(info.key)
+        live = getattr(state, "permission_notices", ()) if state is not None else ()
+        record = self.store.get(info.cli_session_id, provider="codex")
+        try:
+            saved = self.sessions.owned_action("review_history", record) if record is not None else ()
+        except Exception as exc:  # noqa: BLE001 - this run's are still worth listing
+            from ..codex_diagnostics import record_failure
+            record_failure(exc)
+            backend = getattr(self.sessions, "_providers", {}).get("codex")
+            if backend is not None and getattr(backend, "runtime", None) is None:
+                return [], "Approvals can't be listed until Codex is available."
+            if not live:
+                return [], "The approval history couldn't be read. Its file was kept as it was."
+            # Said once Lists has focus, so a short list isn't taken for all
+            # of them; said before, a screen reader drops it as focus moves.
+            wx.CallLater(700, self._feedback,
+                         "The approval history couldn't be read, so only this session's "
+                         "approvals are listed. Its file was kept as it was.")
+            saved = ()
+        return approvals.merge(saved, live), ""
 
     def _show_lists(self, dialog):
         """Show View, Lists modally. Tests replace this to act on the dialog
@@ -2612,25 +2836,41 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if self._properties_busy:
             return  # Alt+Enter twice: the first is still reading
         self._properties_busy = True
+        # Read here, on the window's thread, where the store is kept.
+        copied_from = (subagents.source_transcripts(self.store, info)
+                       if info.provider == "claude" else [])
 
         def work():
             transcript, path, size, error = None, "", 0, ""
+            subagent_count = None
             try:
                 reader, path, size = self.sessions.open_reader_with_facts(info)
                 if reader is not None:
                     reader.refresh()
                     transcript = reader.transcript
+                if info.provider == "claude" and path:
+                    subagent_count = subagents.count(path, copied_from, transcript)  # #468
             except Exception as exc:  # noqa: BLE001 - say what can be said without it
                 transcript, error = None, str(exc) or type(exc).__name__
+            # Its branch and worktree, for any provider's chat (#331, #561).
+            branch_facts = []
+            folder = info.cowork_folder if info.cowork else info.cwd
+            if folder and os.path.isdir(folder):
+                git = workplaces.find_git()
+                try:
+                    branch_facts = workplaces.branch_facts(git, folder) if git else []
+                except Exception:  # noqa: BLE001 - Properties without them, not an error
+                    branch_facts = []
             wx.CallAfter(self._session_properties_read, info, transcript, path, size, error,
-                         returning_to)
+                         returning_to, subagent_count, branch_facts)
 
         try:
             self._pool.submit(work)
         except RuntimeError:  # the pool is shut down: the window is closing
             self._properties_busy = False
 
-    def _session_properties_read(self, info, transcript, path, size, error, returning_to):
+    def _session_properties_read(self, info, transcript, path, size, error, returning_to,
+                                 subagent_count=None, branch_facts=()):
         self._properties_busy = False
         if self._gone() or self._closing:
             return
@@ -2652,9 +2892,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error)
+                read_error=error, subagent_count=subagent_count)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
+        lines = properties.with_branch_facts(lines, branch_facts)
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
                               returning_to, codex_info=info if info.provider == 'codex' else None)
 
@@ -2825,6 +3066,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not info.is_own and not conversation and not imported:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
             add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
+        # By the session's own capability, so Codex's chats have it too (#468).
+        # A Claude chat without it (Cowork) is listed, heard as unavailable.
+        try:
+            aside = self.sessions.capabilities(info).aside
+        except ValueError:
+            aside = False
+        if info.source != "kept" and (aside or info.provider == "claude"):
+            add("Ask &Aside...\tCtrl+Shift+Y", self.on_ask_aside, aside)
         add("Re&name Session...\tF2", self.on_rename)
         add("&Remote Control...", self.on_remote_control, not conversation and not imported)
         menu.AppendSeparator()
@@ -3172,7 +3421,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     # ------------------------------------------------------------- sending
 
     def _update_send_state(self):
+        if self._closing:
+            return  # the sessions are closed (#545)
         info = self._open
+        item = getattr(self, "stop_background_item", None)
+        if item is not None:
+            item.Enable(self._can_stop_background(info))  # (#467) (#468)
         if info is not None and info.provider == AGENTS:
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
@@ -3305,6 +3559,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if self._open is not None:
             context = (self._open.title, *self._context(self._open))
         lines = usage.usage_lines(context, self._limits)
+        # What fills it, after the context line (#468).
+        lines[1:1] = self._context_breakdown(self._open)
         self._modal(UsageDialog(self, lines, self._copy_usage))
 
     def _copy_usage(self, text: str, one_line: bool):
@@ -3324,7 +3580,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         selected = self._selected_message()
         turn = selected.turn if selected is not None and selected.kind not in TAIL_KINDS else self._chat_turns
-        scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in self._chat_edits)
+        scope = (lists.SCOPE_MESSAGE if any(e.turn == turn for e in
+                                            self._chat_edits + self._subagent_edits())
                  else lists.SCOPE_CHAT)
         self.on_lists(lists.FILES, scope)
 
@@ -3340,7 +3597,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except ValueError:
             pass  # another drive: the full folder
         where = "" if folder in ("", ".") else f", in {folder}"
-        return f"{name}, {changed.counts()}{where}"
+        by = f", by {changed.by}" if getattr(changed, "by", "") else ""  # a subagent (#468)
+        return f"{name}, {changed.counts()}{by}{where}"
 
     def _say_changes(self, generation: int):
         """After a turn ends: the changes not yet said, at the full
@@ -3862,9 +4120,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return ()
 
     def on_change_model(self):
-        """File, Change Model: the model for this session's next turns. A
-        session's model goes with every turn, so it can change at any time."""
+        """File, Change Model: the model for this session's next turns, and
+        the running turn's if Claude Code takes it (#468). A session's model
+        goes with every turn, so it can change at any time."""
         selected = self._selected_session()
+        if selected is not None and selected.provider == 'codex':
+            self._change_codex_settings(selected, 'model')
+            return
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
@@ -3882,7 +4144,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not self._store_write(self.store.update, own.cli_session_id, model=model):
             return
         self._update_heading()
-        self._feedback(f"{info.title} now uses {model_label(model)}, from its next turn.")
+        # A running turn changes model too, if Claude Code takes it (#468).
+        self._live_change(info, own, lambda runner, done: runner.set_model(model, done),
+                          f"{info.title} now uses {model_label(model)}, now and for later turns.",
+                          f"{info.title} now uses {model_label(model)}, "
+                          f"{self._from_next_turn(own)}.",
+                          f"{info.title} now uses {model_label(model)}, from its next turn.")
 
     def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
         """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
@@ -3910,9 +4177,16 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         if not self._store_write(self.store.update, own.cli_session_id, permission_mode=mode):
             return
+        self._forget_mode_before_plan(own.cli_session_id)  # your choice now (#468)
         self._update_heading()
-        self._feedback(f"Permission mode for {info.title}: {mode_label(mode)}, "
-                       f"{self._from_next_turn(own)}.")
+        # A running turn switches too, if Claude Code takes it (#468).
+        self._live_change(info, own, self._change_mode_now(own.cli_session_id, mode),
+                          f"Permission mode for {info.title}: {mode_label(mode)}, now and for "
+                          "later turns.",
+                          f"Permission mode for {info.title}: {mode_label(mode)}, "
+                          f"{self._from_next_turn(own)}.",
+                          f"Permission mode for {info.title}: {mode_label(mode)}, from its "
+                          "next turn.")
 
     def on_chat_permissions(self):
         """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
@@ -3946,9 +4220,75 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if returning_to:
             returning_to.SetFocus()
 
+    def on_connected_tools(self):
+        """View, Connected Tools (#468): the MCP servers and claude.ai
+        connectors Claude can use in the chat's folder, how each is doing,
+        with Sign In, Reconnect and Turn Off for This Chat."""
+        info = self._selected_session()
+        if info is None:
+            self._feedback("No session selected.")
+            return
+        if info.provider == 'codex':
+            from .codex_tools_host import CodexConnectedTools
+            host = CodexConnectedTools(self, info)
+            focus = wx.Window.FindFocus()
+            try:
+                self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
+            finally:
+                host.close()
+            if focus and wx.Window.FindFocus() is not focus:
+                focus.SetFocus()
+            return
+        if info.provider != "claude":
+            self._feedback(f"Connected Tools is for Claude and Codex chats. {info.title} is a "
+                           f"{provider_name(info.provider)} chat.")
+            return
+        if not info.cwd or not os.path.isdir(info.cwd):
+            self._feedback(f"{info.title}'s folder isn't there, so Claude Code can't say which "
+                           "tools it has.")
+            return
+        lookup = platform_paths.find_claude()
+        if not lookup.path:
+            self._feedback(lookup.problem or "Claude Code isn't installed.")
+            return
+        returning_to = wx.Window.FindFocus()
+        host = ClaudeConnectedTools(self, info)
+        try:
+            self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
+        finally:
+            host.close()  # the idle Claude Code ends with the dialog
+        # Only if Windows hasn't put it back already: setting it again had a
+        # screen reader say the message twice (#468).
+        if returning_to and wx.Window.FindFocus() is not returning_to:
+            returning_to.SetFocus()
+
+    def _say_mcp_problems(self, session_id: str, title: str, servers) -> None:
+        """At a turn's start: the connected tools Claude can't use (they need
+        sign-in or failed), said once per tool each time The Chat Place runs,
+        on the status bar, and spoken at the full level without cutting
+        anything off (#468). A tool the chat turned off isn't mentioned."""
+        own = self.store.get(session_id)
+        listed = init_servers(servers)
+        skip = {name for name, status in listed if ("mcp", name, status) in self._warned}
+        skip |= set(own.disabled_mcp if own is not None else ())
+        text = problems_text(listed, skip)
+        if not text:
+            return
+        for name, status in listed:
+            self._warned.add(("mcp", name, status))
+        text = f"{title}: {text}"
+        if self.speech.announce == ANNOUNCE_FULL:
+            self._feedback(text)
+        else:
+            self._status(text)
+
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
+        selected = self._selected_session()
+        if selected is not None and selected.provider == 'codex':
+            self._change_codex_settings(selected, 'effort')
+            return
         found = self._own_for_setting("effort")
         if found is None:
             return
@@ -4048,7 +4388,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             waiting = f"{self._queued_words(count)} " if count else ""
             waiting += self._steering_words(len(getattr(runner, "steering", ())))
             self._feedback(f"{info.title}: {waiting}Claude has been working for "
-                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}.{tasks}")
+                           f"{describe_elapsed(runner.elapsed())}, last {runner.last_activity}."
+                           f"{self._retry_words(runner)}{tasks}")
             return
         # Not running here: a desktop app session at work says where it is;
         # an idle one only if its list is unfinished and from its latest
@@ -4129,6 +4470,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         """Show the dialog for ``request``. Returns (response for Claude Code,
         what to say, changes to keep with the session), or None to answer
         later."""
+        if isinstance(request, ElicitationRequest):
+            return self._ask_elicitation(title, request)
         if request.is_question:
             dialog = QuestionDialog(self, title, request)
             try:
@@ -4146,6 +4489,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             # It starts on the mode chosen for the session (Change
             # Permission Mode, #189), unless that's plan itself.
             stored = normalize_permission_mode(own.permission_mode) if own is not None else ""
+            if own is not None:
+                # Claude entered plan mode itself: the mode before it (#468).
+                stored = self._mode_to_offer_after_plan(own.cli_session_id, stored)
             dialog = PlanDialog(self, title, request, modes,
                                 stored if stored in dict(modes) else "acceptEdits")
             try:
@@ -4202,6 +4548,27 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         finally:
             dialog.Destroy()
 
+    def _ask_elicitation(self, title: str, request: ElicitationRequest):
+        """A connected tool asking for input (#468): a form to fill in, or a
+        web page to open. Opening the page is the answer it asks for; the
+        tool carries on once it's done there."""
+        dialog = ElicitationDialog(self, title, request, feedback=self._feedback)
+        try:
+            if dialog.ShowModal() != wx.ID_OK or not dialog.action:
+                return None
+            action, content = dialog.action, dialog.content
+        finally:
+            dialog.Destroy()
+        name = request.server_label
+        if action != "accept":
+            return elicitation_response(action), f"Declined. {name} has your answer.", {}
+        if request.is_url:
+            # Opened by _apply_answer, once the answer has gone.
+            return (elicitation_response(action),
+                    f"Opened the page in your browser. Finish there; {name} carries on "
+                    "when it's done.", {})
+        return elicitation_response(action, content), f"Sent to {name}.", {}
+
     def _apply_answer(self, session_id: str, request: PermissionRequest, response: dict,
                       said: str, changes: dict):
         queue = self._pending.get(session_id) or []
@@ -4212,9 +4579,17 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
-        if response.get("behavior") == "allow":
+        if (isinstance(request, ElicitationRequest) and request.is_url
+                and response.get("action") == "accept" and is_web_url(request.url)):
+            try:
+                platform_paths.open_url(request.url)
+            except (OSError, ValueError) as exc:
+                # The answer has gone, so this still has to say so and carry on.
+                said = (f"Couldn't open your browser ({exc}). The page is {request.url}")
+        if response.get("behavior") == "allow" or response.get("action") == "accept":
             # An approval with more still waiting doesn't count until
-            # they're answered too.
+            # they're answered too. A connected tool's question answered
+            # (#468) lets the turn go on, as an approval does.
             if not queue:
                 self._agent_member_answered("claude", session_id, True)
         else:
@@ -4297,6 +4672,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                   feedback=self._feedback,
                                   clone_root=str(platform_paths.clone_root()),
                                   remove_recent=self._remove_recent_folder,
+                                  load_chat_choices=self._load_chat_choices,
                                   **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -4309,8 +4685,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             provider = getattr(dialog, "provider", lambda: "claude")()
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
             copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
+            chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
+            # What New Session made, said once the chat has started (#561).
+            worktree_said = getattr(dialog, "worktree_said", "")
         finally:
             dialog.Destroy()
+        if worktree_said:
+            # Queued, so the chat's own announcements don't cut it off.
+            wx.CallAfter(self._feedback, worktree_said)
         if forward is None:
             self.speech.new_session_provider = provider
             try:
@@ -4331,10 +4713,21 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
+        # Codex and Copilot are checked as they send (_send_codex_owned), and
+        # keep the message in the new chat's reply box. This starts its turn here.
+        if self._keep_for_files_going_back(folder, message, "no chat was started."):
+            return
         session_id = new_session_id()
-        command = build_new_command(exe, session_id, title, mode, model, effort=effort)
+        try:
+            command = build_new_command(exe, session_id, title, mode, model, effort=effort,
+                                        allowed_dirs=more_folders, options=chat_options)
+        except (ResumeRefused, ValueError) as exc:
+            # The dialog has gone, with the first message you typed in it.
+            self._relay_kept(message, f"No chat was started: {exc} Your message wasn't sent.")
+            return
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
-                         permission_mode=mode, started=False, model=model, effort=effort)
+                         permission_mode=mode, started=False, model=model, effort=effort,
+                         **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
         if joint:
@@ -4371,7 +4764,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             paths = list(dialog.GetPaths())
         finally:
             dialog.Destroy()
-        self._add_attachments(info.cli_session_id, paths)
+        self._add_attachments(self._attachment_key(info), paths)
+
+    @staticmethod
+    def _attachment_key(info):
+        return info.cli_session_id if info.provider == 'claude' else info.key
 
     def _add_attachments(self, session_id: str, paths: List[str]):
         current = self._attachments.setdefault(session_id, [])
@@ -4390,8 +4787,8 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
         info = self._open
-        paths = (self._attachments.get(info.cli_session_id, [])
-                 if info and info.is_own and info.provider == "claude" else [])
+        paths = (self._attachments.get(self._attachment_key(info), [])
+                 if info and info.is_own and info.provider in ('claude', 'codex') else [])
         if paths:
             self.attach_list.Set([os.path.basename(p) for p in paths])
             self.attach_list.SetSelection(0)
@@ -4408,7 +4805,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return
         if self._open.provider != "claude" and not self._require_capability("attachments", self._open):
             return
-        paths = self._attachments.get(self._open.cli_session_id, [])
+        paths = self._attachments.get(self._attachment_key(self._open), [])
         index = self.attach_list.GetSelection()
         if not (0 <= index < len(paths)):
             return
@@ -4422,11 +4819,20 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.attach_list.SetFocus()
 
     def _on_reply_paste(self, event):
-        """Ctrl+V with a picture on the clipboard (a screenshot from
-        Win+Shift+S, say) attaches it; text pastes as usual."""
+        """Ctrl+V with files copied in File Explorer or the Finder attaches
+        them, and so does a picture on the clipboard (a screenshot from
+        Win+Shift+S, say); text pastes as usual."""
         info = self._open
-        bitmap = (self._clipboard_image()
-                  if info is not None and info.is_own and info.provider == "claude" else None)
+        own = info is not None and info.is_own and info.provider in ('claude', 'codex')
+        copied, folders = self._clipboard_files() if own else ([], [])
+        if copied:
+            self._add_attachments(self._attachment_key(info), copied)
+            return
+        if folders:
+            # Nothing would paste into the box, so say why rather than nothing.
+            self._feedback("A folder can't be attached. Copy the files in it instead.")
+            return
+        bitmap = self._clipboard_image() if own else None
         if bitmap is None:
             event.Skip()
             return
@@ -4438,7 +4844,25 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         except OSError as exc:
             self._feedback(f"Couldn't attach the pasted picture: {exc}")
             return
-        self._add_attachments(info.cli_session_id, [str(path)])
+        self._add_attachments(self._attachment_key(info), [str(path)])
+
+    def _clipboard_files(self):
+        """Files copied in File Explorer or the Finder, as ``(files, folders)``.
+        A copied picture file is a file, not a picture: without this Ctrl+V
+        did nothing with it."""
+        if not wx.TheClipboard.Open():
+            return [], []
+        try:
+            if not wx.TheClipboard.IsSupported(wx.DataFormat(wx.DF_FILENAME)):
+                return [], []
+            data = wx.FileDataObject()
+            if not wx.TheClipboard.GetData(data):
+                return [], []
+            names = list(data.GetFilenames())
+        finally:
+            wx.TheClipboard.Close()
+        files = [name for name in names if os.path.isfile(name)]
+        return files, [name for name in names if os.path.isdir(name)]
 
     def _clipboard_image(self):
         """The clipboard's picture, when it holds a picture and no text."""
@@ -4531,28 +4955,41 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
-        dialog = NewSessionDialog(self, info.cwd, continue_from=info.title)
+        dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
+                                  load_chat_choices=self._load_chat_choices,
+                                  feedback=self._feedback)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
             _folder, title, mode, message, model = dialog.values()
             effort = dialog.effort()
+            chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
         finally:
             dialog.Destroy()
+        if self._keep_for_files_going_back(info.cwd, message, "no copy was made."):
+            return
         new_id = new_session_id()
         try:
             command = build_fork_command(
                 lookup.path, info.cli_session_id, new_id, title, mode, model,
                 taken_ids={s.cli_session_id for s in self.store.all()}
                 | set(self._snapshot.desktop_cli_ids),
-                cowork_ids=self._snapshot.cowork_cli_ids, effort=effort)
+                cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
+                allowed_dirs=more_folders,
+                options=dataclasses.replace(chat_options, fresh=bool(chat_options)))
         except (ResumeRefused, ValueError) as exc:
-            wx.MessageBox(str(exc), APP_NAME, wx.OK | wx.ICON_WARNING, self)
+            # The dialog has gone, with the first message you typed in it.
+            self._relay_kept(message, f"No copy was made: {exc} Your message wasn't sent.")
             return
         own = OwnSession(cli_session_id=new_id, title=title, cwd=info.cwd,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          fork_source=info.cli_session_id, forked_from=info.title,
-                         remote_control=remote_control)
+                         remote_control=remote_control,
+                         # The copy carries the source's recorded system
+                         # prompt (checked: instructions given to a fork were
+                         # ignored), so its own options need it made afresh.
+                         prompt_fresh=bool(chat_options),
+                         **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
         if info.key in self.tool_activity:
@@ -4584,14 +5021,33 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
-            if not message:
+            if info.provider == 'codex' and self._handle_codex_command(info, message):
+                if self.reply_text.GetValue().strip() == message:
+                    self.reply_text.SetValue('')
+                return
+            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is not None:
+                if self._files_going_back_in(getattr(record, 'cwd', '')):
+                    # Here, before anything's cleared: refused later on, the
+                    # attachments went and the box had a text path instead of
+                    # the picture, so sending again gave Codex the path (#468).
+                    self._feedback('Still putting files back in this folder. Send again in a moment.')
+                    return
+                if info.provider == 'codex':
+                    try:
+                        message = self._codex_message(info, message)
+                    except (ValueError, OSError) as error:
+                        self._feedback(str(error))  # too long, too many, or a file gone
+                        return
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
                 self._send_codex_owned(record, message)
+                if info.provider == 'codex':
+                    self._clear_attachments(self._attachment_key(info))
+                    getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
         if info is not None and info.provider != "claude" and not self._require_capability("send", info):
             return
@@ -4624,6 +5080,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             return False
 
         session_id = info.cli_session_id
+        if session_id in self._rewinding_files or self._files_going_back_in(info.cwd):
+            # Rewind to Here is putting files back (#468): a turn now would
+            # change them under it, or have its edits overwritten.
+            self._feedback("Still putting the files back. Send again in a moment.")
+            return False
         runner = self._runners.get(session_id)
         if runner is not None and runner.cancelled:
             # Queuing behind a stopped turn would only bounce back when the
@@ -4681,6 +5142,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         """Start a turn with ``message``. Returns why it can't, or None once
         sent; the caller decides how to say it (a dialog when Kelly pressed
         Send, speech for a queued message going out on its own)."""
+        own = self.store.get(session_id)
+        if session_id in self._rewinding_files or (own is not None
+                                                   and self._files_going_back_in(own.cwd)):
+            # Every way a turn starts into an existing chat (Other Machines, a
+            # queued message) waits for Rewind to Here's files (#468). New
+            # Session and Continue Here check before making their chat.
+            return ("Rewind to Here is still putting files back in this chat's folder. Send "
+                    "again in a moment.")
         # Read fresh, not from the list's snapshot: up to 5 seconds old, it
         # still shows The Chat Place's own just-finished turn as busy.
         live = hub.load_live_status().get(session_id)
@@ -4701,7 +5170,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     own_ids={s.cli_session_id for s in self.store.all()},
                     desktop_ids=self._snapshot.desktop_cli_ids, model=own.model,
                     allowed_tools=own.allowed_tools, title=own.title, effort=own.effort,
-                    allowed_dirs=own.allowed_dirs)
+                    allowed_dirs=own.allowed_dirs, options=own.chat_options())
             else:
                 # The first turn never got as far as creating the session:
                 # start it again rather than resume something that isn't there.
@@ -4710,17 +5179,22 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 if own.fork_source:
                     # A copy of another session whose first turn didn't get
                     # going: copy it again.
+                    # A branch (#468) is made this way on its first Send,
+                    # cut where Rewind to Here or Branch from Here chose.
                     command = build_fork_command(exe, own.fork_source, own.cli_session_id,
                                                  own.title, own.permission_mode, own.model,
                                                  taken_ids=self._snapshot.desktop_cli_ids,
                                                  cowork_ids=self._snapshot.cowork_cli_ids,
-                                                 effort=own.effort)
+                                                 effort=own.effort, resume_at=own.fork_at,
+                                                 allowed_dirs=own.allowed_dirs,
+                                                 options=own.chat_options())
                 else:
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,
                                                 allowed_tools=own.allowed_tools,
                                                 effort=own.effort,
-                                                allowed_dirs=own.allowed_dirs)
+                                                allowed_dirs=own.allowed_dirs,
+                                                options=own.chat_options())
         except (ResumeRefused, ValueError) as exc:
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,
@@ -4756,7 +5230,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         # The session tools (#165): /wrap and the like work here too.
         runner = TurnRunner(command, cwd, prompt, on_event, images=images,
                             remote_control=remote, task_list=self.speech.task_list,
-                            mcp_config=self._session_tools_config(session_id))
+                            mcp_config=self._session_tools_config(session_id),
+                            # Tools turned off for this chat (#468).
+                            disabled_mcp=list(own.disabled_mcp) if own is not None else [],
+                            context_usage=True)  # for Usage and Context (#468)
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -4820,6 +5297,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
+                if ("claude", session_id) in self._aside_histories:
+                    self._aside_histories[("claude", reported)] = self._aside_histories.pop(
+                        ("claude", session_id))
                 if (self._open is not None and self._open.provider == "claude"
                         and self._open.cli_session_id == session_id):
                     self._open.cli_session_id = reported
@@ -4830,14 +5310,28 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                     self._chat_loaded = False
                 holder["id"] = reported
                 session_id = reported
-            self._check_model(session_id, title, (event.data or {}).get("model", ""))
+            if not self._closing:
+                self._check_model(session_id, title, (event.data or {}).get("model", ""))
             own = self.store.get(session_id)
             if own is not None and not own.started:
                 self._store_write(self.store.update, session_id, started=True)
+            if self._closing:
+                return
             self._status(f"{title}: Claude is working.")
+            self._say_mcp_problems(session_id, title, (event.data or {}).get("mcp_servers"))
+            return
+        if self._closing:
+            # Quitting stopped this turn, and the sessions and speech are
+            # already closed. How it ended is saved and nothing else happens:
+            # a queued message would otherwise start a new turn on the way
+            # out, when the quit question promised it wouldn't be sent (#545).
+            if event.kind in ("finished", "failed"):
+                self._save_turn_end_while_closing(session_id, event)
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
+        if self._live_turn_event(session_id, title, event, is_open_now):
+            return  # retries, fallbacks, memories, mode and context (#468)
         if event.kind == "edited":
             # An agent conversation passes the files it edited on (phase 3).
             self._agent_tool_used("claude", session_id, (event.data or {}).get("file_path", ""))
@@ -4950,6 +5444,9 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if parser is not None and parser.commands:
                 self._commands[_folder_key(self._runners[session_id].cwd)] = \
                     usable_commands(parser.commands)
+            if parser is not None and getattr(parser, "init_body", None):
+                # Its agents and output styles too, for Chat Options (#468).
+                self._remember_chat_choices(self._runners[session_id].cwd, parser.init_body)
             if is_open_now:
                 # The reply is announced next; activity not yet spoken is
                 # older news, and its last text is that same reply.
@@ -4992,21 +5489,11 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
-            if event.kind == "failed" or event.is_error:
-                state, detail = NEEDS_YOU, announce.status_text(event.text or "error", 120)
-            elif denials:
-                count = len(denials)
-                state = NEEDS_YOU
-                detail = f"{count} tool{'s were' if count != 1 else ' was'} refused"
-            else:
-                state, detail = IDLE, ""
-            said_problem = self._said_problems.pop(session_id, "")
-            if state == IDLE and said_problem:
-                # Said when Claude answered; still needs you (#161).
-                state, detail = NEEDS_YOU, said_problem
+            state, detail = self._turn_end_state(session_id, event, denials)
             self._store_write(self.store.update, session_id, state=state, detail=detail,
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            self._note_worktree_move(session_id, title)
             quiet = self._agent_quiet("claude", session_id)
             if not quiet:
                 self._notify_turn_end(session_id, title, event, denials, detail,
@@ -5139,6 +5626,91 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._update_send_state()
         self.refresh_sessions()
 
+    def _note_worktree_move(self, session_id: str, title: str) -> None:
+        """A Claude chat of yours that Claude moved into a worktree, or back
+        out of one, during the turn (#561). Claude Code carries on there in
+        later turns whatever folder it's resumed from (checked with a real
+        claude -p run), so the chat's folder follows it, for the list,
+        Changed Files and Rewind, and you hear where it went: the folder,
+        the branch and, if git can tell, what the branch started from."""
+        own = self.store.get(session_id)
+        if own is None:
+            return
+        info, before = own.to_info(), own.cwd
+        quiet = self._agent_quiet("claude", session_id)
+
+        def work():
+            path = info.transcript_path()
+            moved = latest_relocation(path) if path is not None else ""
+            if (not moved or os.path.normcase(os.path.normpath(moved))
+                    == os.path.normcase(os.path.normpath(before)) or not os.path.isdir(moved)):
+                return
+            git = workplaces.find_git()
+            repo = workplaces.repo_info(git, moved) if git else None
+            branch = repo.branch if repo else ""
+            start = workplaces.branch_start(git, repo) if repo and branch else ""
+            wx.CallAfter(self._worktree_moved, session_id, title, before, moved, branch, start,
+                         quiet)
+
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            pass  # closing: the pool is shut
+
+    def _worktree_moved(self, session_id, title, before, moved, branch, start, quiet=False):
+        if self._gone() or self._closing:
+            return
+        own = self.store.get(session_id)
+        if own is None or own.cwd != before:
+            return  # changed again since, or gone
+        if not self._store_write(self.store.update, session_id, cwd=moved):
+            return
+        name = os.path.basename(moved.rstrip("\\/"))
+        inside = workplaces.WORKTREE_FOLDER_PATTERN.search(moved) is not None
+        text = (f"{title} moved to worktree {name}" if inside
+                else f"{title} moved back to {moved}")
+        if branch:
+            text += f", on branch {branch}"
+            if start and inside:
+                text += f", from {start}"
+        if quiet:
+            self._status(text + ".")  # the conversation says what happened (#248)
+        else:
+            self._say(text + ".", interrupt=False)  # news, after the reply
+        self.refresh_sessions()
+
+    def _turn_end_state(self, session_id: str, event: TurnEvent, denials) -> tuple:
+        """The state and detail a chat is left in when its turn ends."""
+        if event.kind == "failed" or event.is_error:
+            state, detail = NEEDS_YOU, announce.status_text(event.text or "error", 120)
+        elif denials:
+            count = len(denials)
+            state = NEEDS_YOU
+            detail = f"{count} tool{'s were' if count != 1 else ' was'} refused"
+        else:
+            state, detail = IDLE, ""
+        said_problem = self._said_problems.pop(session_id, "")
+        if state == IDLE and said_problem:
+            # Said when Claude answered; still needs you (#161).
+            state, detail = NEEDS_YOU, said_problem
+        return state, detail
+
+    def _save_turn_end_while_closing(self, session_id: str, event: TurnEvent) -> None:
+        """Save how a turn ended as the app quits (#545), so the chat keeps its
+        place and state in the list next time. A failed write has nowhere to
+        be said now."""
+        self._runners.pop(session_id, None)
+        denials = event.denials or self._denials.pop(session_id, [])
+        state, detail = self._turn_end_state(session_id, event, denials)
+        is_open = (self._open is not None and self._open.provider == "claude"
+                   and self._open.cli_session_id == session_id)
+        try:
+            self.store.update(session_id, state=state, detail=detail, unread=not is_open,
+                              last_activity_ms=int(time.time() * 1000))
+            self._agent_stopped_by_quit("claude", session_id)
+        except (OSError, ValueError):
+            pass
+
     def _take_queued(self, session_id: str) -> Optional[str]:
         """All of a session's queued messages, as the one message they're
         sent as, and the queue emptied."""
@@ -5152,8 +5724,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             state = self._codex_states.get(info.key)
             if state is None:
                 return []
+            # Allowed requests can number dozens a turn: they're shown with
+            # tool activity, and listed in Lists, Approvals (#564). One that
+            # wasn't allowed changed what the turn could do, so it's shown.
+            from ..approvals import is_routine
             notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{turn}:{identity}")
-                       for turn, identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
+                       for turn, identity, text in getattr(state, 'permission_notices', ())
+                       if turn == state.turn_id and (self._show_activity or not is_routine(identity, text))]
             return notices + self._steered_rows(info.key) + [
                 ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
                 for i, text in enumerate(state.queued)]
@@ -5361,7 +5938,7 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                                f"{key_name('Ctrl+Enter')} queues it for after.")
                 return
             message = self.reply_text.GetValue().strip()
-            if not message:
+            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -5370,9 +5947,18 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
                 return
             if self._history_unknown():
                 return
+            if info.provider == 'codex':
+                try:
+                    message = self._codex_message(info, message)
+                except (ValueError, OSError) as error:
+                    self._feedback(str(error))
+                    return
             self.reply_text.SetValue("")
             self._codex_drafts.pop(info.key, None)
             self._steer_codex_owned(record, message)
+            if info.provider == 'codex':
+                self._clear_attachments(self._attachment_key(info))
+                getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
         if info.provider != "claude":
             self.on_send()
@@ -6946,6 +7532,10 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
+        if info is not None and info.provider == 'codex':
+            if self._require_capability('send', info):
+                self._codex_commands(info)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS:
             self._feedback("The command and skill picker isn't available for "
                            f"{provider_name(info.provider)} chats yet.")
@@ -7519,6 +8109,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if press_focused_button_on_a_mac(event):
                 # Return did nothing on Send and the rest on a Mac.
                 return
+        if (not REWIND_ACCEL and key == ord("Z") and ctrl and event.ShiftDown()
+                and not event.AltDown() and focus is self.chat_list):
+            # Rewind to Here (#468) on a Mac, only from the messages list:
+            # Cmd+Shift+Z is Redo there, so it can't be a menu accelerator.
+            wx.CallAfter(self.on_rewind_to_here)
+            return
         if (key == wx.WXK_INSERT and event.ShiftDown() and not ctrl
                 and focus is self.reply_text):
             # Shift+Insert pastes like Ctrl+V, so a picture is attached
@@ -7662,12 +8258,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         count = self._running_turn_count()
         waiting = self._relay_waiting_text()
         if (count or waiting) and event.CanVeto():
-            queued = bool(self._queued) or any(state.queued for state in self._codex_states.values())
+            queued = (bool(self._queued)
+                      or any(state.queued for state in self._codex_states.values())
+                      or any(getattr(runner, "steering", ()) for runner in self._runners.values()))
             if count:
                 question = (f"Work is running in {count} Chat Place session"
                             f"{'s' if count != 1 else ''}. Quit anyway? The running turn"
                             f"{'s' if count != 1 else ''} will be stopped"
-                            f"{', and queued messages will not be sent.' if queued else '.'}")
+                            f"{', and messages still waiting will not be sent.' if queued else '.'}")
                 if waiting:
                     question += f" {waiting[0].upper()}{waiting[1:]} will not be sent."
             else:
@@ -7680,6 +8278,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if answer != wx.YES:
                 event.Veto()
                 return
+        # Closing cancels one still queued and can cut a running one short, so
+        # the folder could be left half restored with nothing said (#468).
+        if self._rewinding_files and event.CanVeto() and wx.MessageBox(
+                "Rewind to Here is still putting files back. Quit anyway? It may not finish, "
+                "so some files may go back and others not; check them before carrying on.",
+                f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            event.Veto()
+            return
         export_job = getattr(self, "_export_many_job", None)
         if export_job is not None and not export_job.get("listing"):
             if event.CanVeto() and wx.MessageBox(
@@ -7707,8 +8313,14 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             if job.get("thread") is not None:
                 job["thread"].join(timeout=10)
         self._closing = True
-        for runner in list(self._runners.values()):
+        runners = list(self._runners.values())
+        for runner in runners:
             runner.cancel()
+        # So how each turn ended is queued before the window goes, and saved
+        # (#545). Cancelling kills the process, so this is usually at once.
+        deadline = time.monotonic() + 1.0
+        for runner in runners:
+            runner.join(max(0.0, deadline - time.monotonic()))
         self.stop_timers()
         speaker.stop()
         speaker.on_problem = None

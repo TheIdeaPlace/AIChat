@@ -152,7 +152,7 @@ echo ""
 echo "Building the app (PyInstaller)..."
 rm -rf "$APP"
 "$PY" -m PyInstaller --noconfirm --clean --windowed --onedir --name TheChatPlace \
-    --osx-bundle-identifier "$BUNDLE_ID" --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime \
+    --osx-bundle-identifier "$BUNDLE_ID" --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime \
     --add-data "thechatplace/assets:thechatplace/assets" \
     --add-data "thechatplace/speech:thechatplace/speech" \
     TheChatPlace.pyw || fail "PyInstaller"
