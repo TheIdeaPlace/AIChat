@@ -589,7 +589,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    635
+    697
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1756,6 +1756,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Session making a new worktree, with Start from on"
+  },
+  "codex-chat-options": {
+   "kind": "dialog",
+   "png": "codex-chat-options-hc-aquatic-100.png",
+   "json": "codex-chat-options-hc-aquatic-100.json",
+   "title": "Chat Options: Codex review",
+   "class": "ChatOptionsDialog",
+   "size": [
+    620,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex chat instructions and additional folders"
   },
   "lists-codex-approvals": {
    "kind": "dialog",

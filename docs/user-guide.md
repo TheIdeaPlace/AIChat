@@ -386,7 +386,7 @@ Much of "Getting more out of Claude" is true of Codex too: say what it can't fin
 how to check the work, and use one chat for one job. These sections are what's different in a Codex
 chat started here. See also OpenAI's [Codex documentation](https://developers.openai.com/codex).
 
-Some of the Claude part doesn't apply: Chat Options, output styles, Claude Code's own commands such
+Some of the Claude part doesn't apply: Claude's Agent and Output Style choices, Claude Code's own commands such
 as `/init` and `/code-review`, restoring files, editing a queued message and Remote Control.
 
 ### Codex: agree the approach first
@@ -414,6 +414,25 @@ For a procedure you keep explaining, make a skill. **Ctrl+/** lists your enabled
 you choose goes in as `$name` and is sent with your next message. If one chat shouldn't use or add to
 memories, choose `/memories off` from Ctrl+/ and send it.
 
+For this chat alone, use **Chat Options** (Alt+H in New Session or Continue Here;
+File, Chat Options later). Instructions accompany each turn. More folders grants
+writes only in Folder edits mode; read-only stays read-only. Changes are saved
+while idle, and removing a folder removes its grant from the next turn.
+
+### Codex: follow delegated work and progress
+
+**View, Subagents** lists child conversations, including nested and archived work.
+Read Conversation opens their history. Child approvals identify the subagent and
+are tied to its running parent; command approvals are one-time only.
+
+**Show Tool Activity** (Ctrl+T) includes reasoning summaries supplied by Codex,
+live and in history. They are not announced as final replies. Retry status is
+announced when it changes and clears with new progress; your prompt is not resent.
+
+Built-in session tools let Codex list, search and read chats through The Chat Place
+and hide eligible idle chats. They cannot hide the caller, open chats or running
+work. They require the app to be running and are unavailable in Ask Aside.
+
 ### Codex: change course or go back
 
 - **Heading the wrong way:** **Ctrl+Alt+Enter** steers the running turn. **Ctrl+Period** stops it, and
@@ -431,8 +450,12 @@ memories, choose `/memories off` from Ctrl+/ and send it.
 
 - **A long chat:** choose `/compact` from Ctrl+/ and send it while the chat is idle. **Ctrl+Shift+U**
   shows how full the context is and your account's limits.
-- **Other services:** **View, Connected Tools (MCP)** lists the servers set up for the folder. Add them
-  with `codex mcp` in a terminal. Turning one on or off makes a new copy of the chat.
+- **Other services:** **View, Connected Tools (MCP)** lists configured servers and available apps.
+  Add servers with `codex mcp` in a terminal. Changing a selection makes a new read-only copy;
+  the original keeps its tools. Sign In confirms the web address before opening it. Complete
+  sign-in in the browser, then Refresh if needed. Reconnect reloads configured servers.
+  Standard form and URL questions use the Answer dialog. Plugin installation and provider-specific
+  verification forms are unsupported; unsupported questions are declined.
 - **A harder or lighter job:** File, **Change Model** and **Change Effort** work while the chat is idle.
   See [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
 - **Pictures and files:** **Ctrl+Shift+F** (File, Attach Files) adds them to your next message.
@@ -2201,6 +2224,8 @@ approval.
   chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
   with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Approvals**
   (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
+  These are the chat's own requests: what the automatic review decides for a Codex subagent
+  isn't shown yet, though a subagent's requests that need you still come to the chat.
 - The latest 128 decisions for each chat, including those your saved rules made, are kept on
   this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running.

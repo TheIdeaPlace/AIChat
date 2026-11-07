@@ -138,6 +138,11 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
             options.get('approvals_reviewer', 'user'), 'not reported'))
         if sandbox == 'workspace-write':
             lines.append('Writable folder: ' + options.get('workspace_root', 'not verified'))
+        if options.get('extra_roots'):
+            lines.append(('Additional writable folders: ' if sandbox == 'workspace-write'
+                          else 'Additional folders saved for folder editing: ') + '; '.join(options['extra_roots']))
+        if options.get('instructions'):
+            lines.append('Chat instructions: ' + options['instructions'])
     if info.provider == "codex":
         lines.extend(saved_rule_lines(saved_rule_count))
     mode = own.permission_mode if own is not None else info.permission_mode

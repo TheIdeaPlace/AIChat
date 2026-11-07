@@ -1460,6 +1460,16 @@ def d_codex_permission(frame, env):
     return lambda: frame._modal(CodexPermissionDialog(frame, "Codex preview", request))
 
 
+def d_codex_chat_options(frame, env):
+    from thechatplace.chat_options import ChatOptions
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    dialog = ChatOptionsDialog(frame, 'Codex review', str(env['folders']['Scratch']),
+        options=ChatOptions(instructions='Use concise explanations.\nRun the affected tests.'),
+        folders=[str(env['folders']['Website'])], provider='codex', existing=True,
+        feedback=frame._feedback)
+    return lambda: frame._modal(dialog)
+
+
 def d_chat_options(frame, env):
     """File, Chat Options on a Claude chat with an agent, instructions, an
     output style and a more folder (#468), the folder's choices known."""
@@ -1539,7 +1549,9 @@ def d_codex_tools(frame, env):
     host = CodexConnectedTools(frame, frame._open)
     host.load = lambda done: done([CodexTool('project-notes', 'connected', ('find_notes',), False),
                                   CodexTool('build-reports', 'needs-auth', (), False),
-                                  CodexTool('reference-search', 'off', (), True)], '')
+                                  CodexTool('reference-search', 'off', (), True),
+                                  CodexTool('ccd_session_mgmt', 'connected', off_for_chat=False, is_session_tools=True),
+                                  CodexTool('app:demo', 'available', app_id='demo', display_name='Project documents')], '')
     return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
 
 
@@ -2261,6 +2273,7 @@ SURFACES = {
     "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
                                  "Chat Permissions: a Copilot chat in Auto, with commands kept"),
     "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "codex-chat-options": ("dialog", d_codex_chat_options, "Codex chat instructions and additional folders"),
     "chat-options": ("dialog", d_chat_options,
                      "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
@@ -2392,6 +2405,7 @@ DIALOG_CLASSES = {
     "chat-permissions-copilot-moved": "ChatPermissionsDialog",
     "chat-permissions-copilot": "ChatPermissionsDialog",
     "chat-permissions": "ChatPermissionsDialog",
+    "codex-chat-options": "ChatOptionsDialog",
     "chat-options": "ChatOptionsDialog",
     "ask-aside": "AskAsideDialog",
     "codex-aside": "AskAsideDialog",

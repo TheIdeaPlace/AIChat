@@ -539,17 +539,28 @@ def test_enter_reads_a_message_over_the_dialog(frame, env, tmp_path):
         dialog.Destroy()
 
 
-def test_lists_say_subagents_are_claude_only(frame, env, monkeypatch):
+def test_lists_say_when_provider_does_not_support_subagents(frame, env, monkeypatch):
     add_transcript(env, CWD, "cli-a", [user_text("hi"), assistant_block(text_block("hello"), "m1")])
     select(frame, "Quiet one")
     frame.on_open_session()
     assert pump(lambda: frame._chat_loaded)
-    monkeypatch.setattr(frame._open, "provider", "codex")
+    monkeypatch.setattr(frame._open, "provider", "copilot")
     monkeypatch.setattr(frame.sessions, "capabilities",
                         lambda info: type("Caps", (), {"changes": False})())
     seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
-    assert seen["rows"] == ["Subagents aren't listed for Codex chats yet."]
+    assert seen["rows"] == ["Subagents aren't listed for Copilot chats yet."]
+
+
+def test_lists_shows_a_codex_chats_subagents(frame, env, monkeypatch):
+    # Codex's child conversations are read into the same list as Claude's
+    # (#558); Lists once passed it an empty one, saying "none" (#279).
+    _session_with_subagent(frame, env)
+    monkeypatch.setattr(frame._open, "provider", "codex")
+    seen = _lists_dialog(frame, monkeypatch, lambda page: None)
+    frame.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
+    assert seen["label"] == "&List: Subagents (1):"
+    assert seen["rows"][0].startswith("code-reviewer: Review the branch.")
 
 
 def test_a_background_subagent_still_running_reads_as_running(frame, env, monkeypatch):

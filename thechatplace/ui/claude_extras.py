@@ -103,6 +103,9 @@ class ClaudeExtras:
         if info is None:
             self._feedback("No session selected.")
             return
+        if info.provider == "codex":
+            self._change_codex_settings(info, "chat options")
+            return
         if ((info.provider != "claude" or info.source == "kept")
                 and not self._require_capability("chat_options", info)):
             return  # another provider's chat, or a kept copy: says why

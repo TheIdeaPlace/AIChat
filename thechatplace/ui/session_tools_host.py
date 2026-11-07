@@ -100,18 +100,26 @@ class SessionToolsHost:
         sessions = deepcopy(list(self._snapshot.sessions))
         current = None
         self_id = self._session_tools_renamed.get(self_id, self_id)
+        provider = 'claude'
+        if self_id.startswith('codex:'):
+            provider = 'codex'
+            self_id = self.sessions.session_tool_owner(self_id)
+            if not self_id:
+                raise ValueError('This Codex session-tool caller is no longer owned here.')
         if self_id:
             current = next((info for info in sessions
-                            if info.is_own and info.provider == "claude"
+                            if info.is_own and info.provider == provider
                             and info.cli_session_id == self_id), None)
             if current is None:
                 # A new session the list hasn't caught up with, or a member
                 # of an agent conversation, which the list shows as the
                 # conversation (#248).
-                own = self.store.get(self_id)
+                own = self.store.get(self_id, provider=provider)
                 if own is not None:
                     current = own.to_info()
         running = {f"own:{session_id}" for session_id in self._runners}
+        running.update(key for key, state in getattr(self, "_codex_states", {}).items()
+                       if state.outcome == "inProgress" or state.requests or state.queued)
         return session_tools.View(sessions=sessions, hidden=set(self.hidden.keys()),
                                   running=running, current=current,
                                   read_history=self.sessions.read,
@@ -123,6 +131,9 @@ class SessionToolsHost:
         happens in the background, so it never moves you: a chat you have
         open is left alone, and the list stays on the session you're on."""
         listed = self._current_info(info.key)
+        state = getattr(self, "_codex_states", {}).get(info.key)
+        if state is not None and (state.outcome == "inProgress" or state.requests or state.queued):
+            return "a turn is running or waiting in it."
         if (info.is_own and info.cli_session_id in self._runners) or (
                 listed is not None and listed.state == WORKING):
             return "a turn is running in it."
@@ -149,6 +160,6 @@ class SessionToolsHost:
                     self.session_list.SetSelection(min(gone, len(self._list_keys) - 1))
             self._update_list_label(len(self._list_keys))
         self.refresh_sessions()
-        self._status(f"Hid {info.title}, archived by a Claude session. File, Bring Back "
+        self._status(f"Hid {info.title}, archived by a session tool. File, Bring Back "
                      "Session returns it.")
         return None

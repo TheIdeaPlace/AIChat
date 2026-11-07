@@ -133,6 +133,19 @@ class CodexExtras:
                 self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
             self._codex_work(lambda: self.sessions.owned_action(action, record, *arguments), prepared)
 
+        if what == 'chat options':
+            from ..chat_options import ChatOptions
+            from .dialogs import ChatOptionsDialog
+            dialog = ChatOptionsDialog(self, info.title, record.cwd,
+                options=ChatOptions(instructions=current.get('instructions') or ''),
+                folders=current.get('extra_roots', ()), provider='codex', existing=True,
+                feedback=self._feedback)
+            try:
+                if dialog.ShowModal() == wx.ID_OK:
+                    prepare('prepare_chat_options', (dialog.options().instructions, dialog.chosen_folders()))
+            finally:
+                dialog.Destroy()
+            return
         if what == 'mode':
             # Nothing to wait for, so this opens straight from the key press.
             index = self._choose('Codex Collaboration Mode', 'Mode for ' + info.title + ', from its next turn:',

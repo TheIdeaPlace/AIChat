@@ -169,13 +169,18 @@ STEPS = [
     # key. It opens on Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
+    Step("Codex Chat Options", [], trigger="codex-chat-options",
+         expect=["Chat Options: Codex review", "Instructions for this chat"]),
+    Step("Codex more folders", ["Tab"], expect=["More folders"]),
+    Step("Codex add folder", ["Tab"], expect=["Add Folder"]),
+    Step("Close Codex Chat Options", ["Escape"]),
     Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
     Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),
     Step("Chat Options, Add Folder", ["Tab"], expect=["Add Folder"]),
-    Step("Add Folder's picker", ["space"], expect=["Choose a folder Claude may also work in"]),
+    Step("Add Folder's picker", ["space"], expect=["Choose an additional folder for this chat"]),
     Step("picker closed, back on Add Folder", ["Escape"], expect=["Add Folder"]),
     Step("Chat Options closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -528,6 +533,7 @@ TRIGGERS = {
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
+    "codex-chat-options": lambda frame, env: _codex_dialog("d_codex_chat_options", frame, env),
     "chat-options": lambda frame, env: chat_options(frame),
     "start-from": lambda frame, env: new_session_start_from(frame),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),

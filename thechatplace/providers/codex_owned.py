@@ -42,6 +42,13 @@ class CodexOwnedThread:
     #: A saved mode this Codex couldn't offer when the chat resumed. Its turns
     #: run without it, in Default, but the choice stays saved for a later Codex.
     unavailable_mode: str | None = None
+    instructions: str | None = None
+    apps: tuple = ()
+    session_tool_caller: str = field(default="", repr=False)
+
+    @property
+    def allowed_tools(self):
+        return self.mcp_servers + (("ccd_session_mgmt",) if self.session_tool_caller else ()) + (("codex_apps",) if self.apps else ())
 
     def record(self):
         # Return a fresh record: persisted/mutable UI metadata cannot change
@@ -53,8 +60,14 @@ class CodexOwnedThread:
             options['approvals_reviewer'] = self.policy.reviewer
         if self.policy.workspace_root:
             options['workspace_root'] = self.policy.workspace_root
+        if self.instructions is not None:
+            options['instructions'] = self.instructions
+        if self.policy.extra_roots:
+            options['extra_roots'] = list(self.policy.extra_roots)
         if self.saved_effort is not None:
             options["effort"] = self.saved_effort
+        if self.apps:
+            options['apps'] = list(self.apps)
         if self.mcp_servers:
             options['mcp_servers'] = list(self.mcp_servers)
         mode = self.collaboration if self.collaboration is not None else self.unavailable_mode
@@ -69,7 +82,7 @@ class CodexOwnedThreads:
     def __init__(self, connection):
         self.connection = connection
 
-    def _preflight(self, cwd, mcp_servers=()):
+    def _preflight(self, cwd, mcp_servers=(), apps=()):
         if not isinstance(cwd, str) or not cwd.strip():
             raise ValueError("Codex working directory required")
         account = self.connection.request("account/read", {"refreshToken": True})
@@ -79,7 +92,9 @@ class CodexOwnedThreads:
         config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex configuration unavailable")
-        tools = codex_tool_overrides(config, mcp_servers)
+        if getattr(self.connection, 'session_tools', False) and 'ccd_session_mgmt' in (config.get('mcp_servers') or {}):
+            raise CodexRpcError('Remove or rename the configured ccd_session_mgmt server before opening this chat here')
+        tools = codex_tool_overrides(config, mcp_servers, apps)
         providers = config.get("model_providers", {})
         if (config.get("model_provider") not in (None, "openai")
                 or config.get("forced_login_method") not in (None, "chatgpt")
@@ -103,13 +118,14 @@ class CodexOwnedThreads:
         check_startable(self.connection, native_id, thread, not_loaded=not loaded,
                         check_turns=not empty)
 
-    def verify_loaded(self, proof, *, empty=False):
+    def verify_loaded(self, proof, *, empty=False, retained_roots=None):
         """Recheck retained ownership without resuming or replacing the thread."""
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
-        proof.policy.verify_workspace(proof.cwd)
+        policy = proof.policy if retained_roots is None else replace(proof.policy, extra_roots=retained_roots)
+        policy.verify_workspace(proof.cwd)
         self._verify_idle(proof.native_id, loaded=True, empty=empty)
-        verify_codex_tools(self.connection, proof.native_id, proof.mcp_servers)
+        verify_codex_tools(self.connection, proof.native_id, proof.allowed_tools)
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex connection changed while checking permissions')
 
@@ -120,13 +136,14 @@ class CodexOwnedThreads:
             sandbox=options.get('sandbox', 'read-only'),
             approval_policy=options.get('approval_policy', 'on-request'),
             approvals_reviewer=options.get('approvals_reviewer', 'user'),
-            mcp_servers=options.get('mcp_servers', ()), allow_retired=True)
+            mcp_servers=options.get('mcp_servers', ()), allow_retired=True,
+            instructions=options.get('instructions'), extra_roots=options.get('extra_roots', ()), apps=options.get('apps', ()))
         if checked.cwd != record.cwd:
             raise CodexRpcError('Saved Codex workspace scope could not be verified')
         self.verify_loaded(proof, empty=empty)
         return replace(proof, cwd=checked.cwd, model=checked.model, effort=checked.effort,
                        saved_effort=checked.saved_effort,
-                       policy=checked.policy, title=record.title)
+                       policy=checked.policy, instructions=checked.instructions, title=record.title)
 
     def _require_mode(self, mode):
         try:
@@ -144,9 +161,10 @@ class CodexOwnedThreads:
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
                 last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), collaboration=None,
-                allow_retired=False):
-        from .codex_tools import server_names
+                allow_retired=False, instructions=None, extra_roots=(), apps=()):
+        from .codex_tools import server_names, app_ids
         mcp_servers = server_names(mcp_servers)
+        apps = app_ids(apps)
         if collaboration not in (None, 'default', 'plan'):
             raise ValueError('Invalid Codex collaboration mode')
         unavailable_mode = None
@@ -175,12 +193,14 @@ class CodexOwnedThreads:
         if effort is not None and (model is None or not isinstance(effort, str) or not effort.strip()
                                    or len(effort) > 256 or any(ord(c) < 32 for c in effort)):
             raise ValueError("Codex reasoning effort requires a selected model")
-        policy = CodexPolicy.choose(cwd, sandbox, approval_policy, approvals_reviewer)
+        if instructions is not None and (not isinstance(instructions, str) or len(instructions) > 8000 or '\x00' in instructions):
+            raise ValueError('Chat instructions must be text of at most 8000 characters')
+        policy = CodexPolicy.choose(cwd, sandbox, approval_policy, approvals_reviewer, extra_roots)
         if policy.workspace_root:
             cwd = policy.workspace_root
-        if passive and mcp_servers:
+        if passive and (mcp_servers or apps):
             raise ValueError('Side questions cannot enable external tools')
-        tools = self._preflight(cwd, mcp_servers)
+        tools = self._preflight(cwd, mcp_servers, apps)
         if method == 'thread/resume':
             # Resume changes the loaded thread. Inspect persisted turn state
             # first, even after restarting TCP; never overwrite unfinished work.
@@ -206,6 +226,16 @@ class CodexOwnedThreads:
                       "chatgpt_base_url": CHATGPT_BASE_URL, "approvals_reviewer": policy.reviewer}}
         params['config'].update(policy.config())
         params['config'].update(tools)
+        caller = ''
+        if getattr(self.connection, 'session_tools', False) and not ephemeral:
+            import secrets
+            from ..session_tools import server_command, SERVER_NAME
+            caller = (self.connection.loaded_caller(native_id) if method == 'thread/resume' else '')
+            caller = caller or 'codex:' + secrets.token_hex(24)
+            command, args, env = server_command(caller)
+            params['config']['mcp_servers'][SERVER_NAME] = {
+                'enabled': True, 'command': command, 'args': args, 'env': env}
+
         # TCP must authorize every inferred turn. Native Goal tools would
         # schedule continuations without going through that authorization.
         params['config']['features']['goals'] = False
@@ -262,7 +292,9 @@ class CodexOwnedThreads:
         # A proof from an earlier, ungated process must never be reused.
         verified_config = self.connection.request('config/read', {'cwd': cwd, 'includeLayers': True})
         verify_codex_rule_layers(verified_config)
-        verify_codex_tools(self.connection, actual_id, mcp_servers)
+        verify_codex_tools(self.connection, actual_id, mcp_servers + (("ccd_session_mgmt",) if caller else ()) + (("codex_apps",) if apps else ()))
+        from .codex_tools import verify_apps
+        verify_apps(self.connection, actual_id, apps)
         effective_effort = result.get('reasoningEffort')
         if effective_effort is not None and (not isinstance(effective_effort, str)
                 or not effective_effort.strip() or len(effective_effort) > 256
@@ -272,7 +304,7 @@ class CodexOwnedThreads:
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,
                                  created_ms, self.connection, ephemeral, effective_effort, policy, mcp_servers, collaboration,
-                                 saved_effort=effort, unavailable_mode=unavailable_mode)
+                                 saved_effort=effort, unavailable_mode=unavailable_mode, instructions=instructions, session_tool_caller=caller, apps=apps)
         accept = getattr(self.connection, "_accept_owned_thread", None)
         if callable(accept) and not ephemeral:
             accept(proof)
@@ -280,14 +312,14 @@ class CodexOwnedThreads:
 
     def start(self, cwd, title, *, ephemeral=False, model=None, effort=None,
               sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), collaboration=None,
-              allow_retired=False):
+              allow_retired=False, instructions=None, extra_roots=(), apps=()):
         return self._create("thread/start", cwd, title, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
-                            mcp_servers=mcp_servers, collaboration=collaboration, allow_retired=allow_retired)
+                            mcp_servers=mcp_servers, collaboration=collaboration, allow_retired=allow_retired, instructions=instructions, extra_roots=extra_roots, apps=apps)
 
     def fork(self, source: SessionInfo, title, *, ephemeral=False, model=None, effort=None,
              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
-             last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=()):
+             last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), instructions=None, extra_roots=(), apps=()):
         if (not isinstance(source, SessionInfo) or source.provider != "codex"
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
@@ -296,7 +328,7 @@ class CodexOwnedThreads:
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
                             last_turn_id=last_turn_id, before_turn_id=before_turn_id, passive=passive,
-                            mcp_servers=mcp_servers)
+                            mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps)
 
     @staticmethod
     def _saved_options(record):
@@ -305,12 +337,16 @@ class CodexOwnedThreads:
                 or not platform_paths.is_safe_id(record.cli_session_id)):
             raise ValueError("Only a started TCP-owned Codex chat can be resumed")
         options = record.provider_options
-        if (not isinstance(options, dict) or set(options) - {"model", "sandbox", "approval_policy", "effort", "workspace_root", "approvals_reviewer", "mcp_servers", "collaboration"}
+        if (not isinstance(options, dict) or set(options) - {"model", "sandbox", "approval_policy", "effort", "workspace_root", "approvals_reviewer", "mcp_servers", "collaboration", "instructions", "extra_roots", "apps"}
                 or options.get("sandbox", "read-only") not in ('read-only', 'workspace-write')
                 or options.get("approval_policy", "on-request") not in ('on-request', 'never')):
             raise ValueError("Codex owned chat options are not supported yet")
         from .codex_tools import server_names
         server_names(options.get('mcp_servers', ()))
+        roots = options.get('extra_roots', ())
+        if (not isinstance(roots, (list, tuple)) or len(roots) > 32 or
+                any(platform_paths.codex_workspace_root(p) != p for p in roots)):
+            raise ValueError('Saved additional folders could not be verified')
         if options.get('sandbox', 'read-only') == 'workspace-write':
             # The saved grant binds permission to the original canonical folder.
             # Re-resolving a replaced path must not silently grant a new scope.
@@ -329,4 +365,5 @@ class CodexOwnedThreads:
                             sandbox=options.get('sandbox', 'read-only'),
                             approval_policy=options.get('approval_policy', 'on-request'),
                             approvals_reviewer=options.get('approvals_reviewer', 'user'),
-                            mcp_servers=options.get('mcp_servers', ()), collaboration=options.get('collaboration'))
+                            mcp_servers=options.get('mcp_servers', ()), collaboration=options.get('collaboration'),
+                            instructions=options.get('instructions'), extra_roots=options.get('extra_roots', ()), apps=options.get('apps', ()))

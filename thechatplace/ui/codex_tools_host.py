@@ -11,7 +11,7 @@ COULD_NOT_SAY = 'Codex could not say.'
 
 class CodexConnectedTools:
     provider_name = 'Codex'
-    reconnect_label = 'Read St&atus'
+    reconnect_label = '&Reconnect'
     can_turn_off = True
     # Reading the status of a tool that's off means having it on, which for
     # Codex makes a copy: there's no turning it on in this chat (#468).
@@ -26,6 +26,7 @@ class CodexConnectedTools:
         self.record = frame.store.get(info.cli_session_id, provider='codex') if info.is_own else None
         self.can_turn_off = self.record is not None
         self.closed = False
+        self._logins = {}
         self.busy = False
         #: Selected servers no longer configured: no copy may name them.
         self.removed = set()
@@ -33,10 +34,10 @@ class CodexConnectedTools:
     def note(self):
         if not self.can_turn_off:
             return NOTE_READ_ONLY
-        return ('Codex MCP servers configured for this folder. Apps and plugins remain unavailable. '
+        return ('Configured MCP servers and available Codex apps. Plugin installation is not available here. '
                 'Changing a tool creates a new read-only copy of this chat with that selection; '
                 'the original chat is kept. Enabled tools may read or change external services, '
-                'outside the folder sandbox. Add servers and sign in using the Codex CLI (codex mcp), not here. '
+                'outside the folder sandbox. Add servers using Codex CLI (codex mcp). '
                 'Server questions that The Chat Place cannot display are declined.')
 
     def toggle_label(self, server):
@@ -54,14 +55,101 @@ class CodexConnectedTools:
                 else:
                     done(rows or [], '')
         record, info = self.record, self.info
-        selected = {} if record is None else {'selected': tuple(record.provider_options.get('mcp_servers', ()))}
+        selected = {} if record is None else {'selected': tuple(record.provider_options.get('mcp_servers', ())),
+                                               'apps': tuple(record.provider_options.get('apps', ()))}
         self.frame._codex_work(lambda: self.frame.sessions.connected_tools(info, **selected), finished)
 
     def sign_in(self, server, done):
-        done('Sign in to ' + server.name + ' using Codex CLI, then reopen the chat and refresh.', '')
+        if server.app_id:
+            from ..claude_mcp import elicitation_from, is_web_url
+            from ..platform_paths import open_url
+            from .dialogs import ElicitationDialog
+            if not is_web_url(server.install_url):
+                done(None, 'Codex did not provide a sign-in or installation page for this app.')
+                return
+            request = elicitation_from('app-sign-in', {'mode': 'url', 'url': server.install_url,
+                'mcp_server_name': server.label, 'message': 'Open this app page to connect it to Codex.'})
+            dialog = ElicitationDialog(self.dialog or self.frame, self.info.title, request,
+                feedback=self.frame._feedback)
+            try:
+                accepted = dialog.ShowModal() == wx.ID_OK and dialog.action == 'accept'
+            finally:
+                dialog.Destroy()
+            if accepted:
+                try:
+                    open_url(server.install_url)
+                except (OSError, ValueError):
+                    done(None, 'Could not open the app page in your browser.')
+                    return
+            done('Press Refresh after connecting the app.' if accepted else 'App page was not opened.', '')
+            return
+        if not self.can_turn_off or server.off_for_chat:
+            done(None, 'Open a chat started here with this tool enabled first.')
+            return
+        info = self.info
+        attempt = object()
+        self._logins[server.name] = attempt
+        def started(result, error):
+            if self.closed or self._logins.get(server.name) is not attempt:
+                return
+            if error or not isinstance(result, dict):
+                done(None, 'Codex could not start signing in to this tool.')
+                return
+            from ..claude_mcp import elicitation_from, is_web_url
+            from ..platform_paths import open_url
+            from .dialogs import ElicitationDialog
+            url, login_id = result.get('authorizationUrl'), result.get('loginId')
+            if not isinstance(url, str) or not is_web_url(url):
+                done(None, 'Codex did not return a usable sign-in address.')
+                return
+            request = elicitation_from('sign-in', {'mode': 'url', 'url': url,
+                'mcp_server_name': server.name, 'message': 'Open this address to sign in to the connected tool.'})
+            dialog = ElicitationDialog(self.dialog or self.frame, info.title, request, feedback=self.frame._feedback)
+            try:
+                accepted = dialog.ShowModal() == wx.ID_OK and dialog.action == 'accept'
+            finally:
+                dialog.Destroy()
+            if not accepted or self.closed:
+                done('Sign-in page was not opened.', '')
+                return
+            try:
+                open_url(url)
+            except (OSError, ValueError):
+                done(None, 'Could not open the sign-in page in your browser.')
+                return
+            done('Finish signing in in your browser. ' + ('Keep Connected Tools open; the result will be announced.'
+                 if isinstance(login_id, str) and login_id else 'Press Refresh here when you have finished.'), '')
+            if isinstance(login_id, str) and login_id:
+                self._logins[server.name] = login_id
+                self._poll_login(info, server, login_id, 90)
+        self.frame._codex_work(lambda: self.frame.sessions.connected_tool_action(info, server.name, 'login'), started)
+
+    def _poll_login(self, info, server, login_id, remaining):
+        if self.closed or self.info is not info or self._logins.get(server.name) != login_id:
+            return
+        def checked(result, error):
+            if self.closed or self.info is not info or self._logins.get(server.name) != login_id:
+                return
+            if error or result is False:
+                self.frame._feedback('Codex could not complete sign-in to ' + server.label + '.')
+            elif result is True:
+                self.frame._feedback('Signed in to ' + server.label + '. Refresh shows its current status.')
+                if self.dialog:
+                    self.dialog.on_refresh()
+            elif remaining:
+                wx.CallLater(2000, self._poll_login, info, server, login_id, remaining - 1)
+            else:
+                self.frame._feedback('Sign-in to ' + server.label + ' was not confirmed. Refresh to check its status.')
+        self.frame._codex_work(lambda: self.frame.sessions.connected_tool_action(info, server.name, 'login_status', login_id), checked)
 
     def reconnect(self, server, done):
-        self.load(done)
+        if server.app_id or server.is_session_tools:
+            self.load(done)
+            return
+        def finished(result, error):
+            if not self.closed:
+                done(None, 'Codex could not reconnect this tool.') if error else done(result or [], '')
+        self.frame._codex_work(lambda: self.frame.sessions.connected_tool_action(self.info, server.name, 'reconnect'), finished)
 
     def set_off(self, server, off, done):
         if self.busy:
@@ -71,10 +159,15 @@ class CodexConnectedTools:
         if record is None or self.frame.store.get(record.cli_session_id, provider='codex') is not record:
             done(None, 'This chat is no longer in The Chat Place.')
             return
+        if server.is_session_tools:
+            done(None, 'The built-in session tools stay available while The Chat Place is running.')
+            return
+        apps = [a for a in record.provider_options.get('apps', [])
+                if a != server.app_id and 'app:' + a not in self.removed]
         names = list(record.provider_options.get('mcp_servers', []))
         names = [name for name in names if name != server.name and name not in self.removed]
         if not off:
-            names.append(server.name)
+            (apps if server.app_id else names).append(server.app_id or server.name)
         consent = ('Enable ' + server.name + ' in a new copy? Its tools can read or change external '
                    'services outside the folder sandbox. Only enable a server you trust.' if not off else
                    'Create a new copy without ' + server.name + "? It's no longer in Codex's configuration."
@@ -107,7 +200,7 @@ class CodexConnectedTools:
             self.frame._feedback('Opened ' + copy.title + '. The original chat is kept.')
             self.load(done)
         self.frame._codex_work(lambda: self.frame.sessions.copy_with_tools(source,
-            source.title + ' (tools copy)', names), created)
+            source.title + ' (tools copy)', names, apps), created)
 
     def close(self):
         self.closed = True

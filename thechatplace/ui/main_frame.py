@@ -287,7 +287,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             providers = [ClaudeConversations(), self._imported]
             if self.speech.includes_codex():
                 from ..providers.codex import CodexProvider
-                providers.append(CodexProvider(execution=True,
+                providers.append(CodexProvider(execution=True, session_tools=True,
                     on_update=lambda state: wx.CallAfter(self._on_codex_update, state)))
             if self.speech.copilot_enabled:
                 from ..providers.copilot import CopilotProvider
@@ -2704,7 +2704,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except ValueError:
             files_supported = False
         edits = list(self._chat_edits) if files_supported else []
-        subagent_list = list(self._chat_subagents) if info.provider == "claude" else []
+        # Codex's child conversations are read into the same list (#558);
+        # leaving them out had Lists say "none" in a chat that has some.
+        subagent_list = list(self._chat_subagents) if info.provider in ("claude", "codex") else []
         # Edits a subagent made count too, marked with who made them (#468).
         # Sorted by turn (stably), so files read in the order first changed.
         if files_supported and subagent_list:
@@ -2727,7 +2729,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                 "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
-            unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
+            if info.provider != "codex":
+                unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
         approvals, approvals_problem = self._approvals_for(info)
         if approvals_problem:
             unavailable[lists.APPROVALS] = approvals_problem
@@ -4704,7 +4707,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if provider == "codex":
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(folder, title, message, **options, **policy,
-                                     made=made, joint=joint)
+                                     made=made, joint=joint, instructions=chat_options.instructions,
+                                     extra_roots=more_folders)
             return
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
@@ -4905,10 +4909,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 _folder, title, _mode, message, model = dialog.values()
                 effort = getattr(dialog, 'effort', lambda: '')()
                 policy = getattr(dialog, 'codex_policy', lambda: {})()
+                chat_options, more_folders = getattr(dialog, 'chat_options', _no_options)()
             finally:
                 dialog.Destroy()
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
-            self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy)
+            self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy,
+                                     instructions=chat_options.instructions, extra_roots=more_folders)
             return
         if info.provider == "copilot":
             # A new Copilot chat with the conversation so far ahead of your
