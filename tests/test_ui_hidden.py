@@ -10401,7 +10401,7 @@ def test_a_heavy_turn_says_and_shows_only_what_wasnt_allowed(frame, monkeypatch,
     monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
     monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
     frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
-    info = frame.store.get("owned").to_info()
+    info = frame.store.get("owned", provider="codex").to_info()
     if activity:
         frame.tool_activity.add(info.key)
     notices = _heavy_turn()
@@ -10429,7 +10429,7 @@ def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeyp
     from thechatplace import lists
     from thechatplace.providers.codex_runtime import CodexChatState
     frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
-    info = frame.store.get("owned").to_info()
+    info = frame.store.get("owned", provider="codex").to_info()
     notices = _heavy_turn(4)
     # The history has an earlier turn's decision this run no longer holds.
     earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.' + chr(10) + 'Command: git fetch')
@@ -11512,11 +11512,11 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
     try:
         assert dialog.category == "links"
         assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
-                                                      "decisions", "tasks", "subagents"])
+                                                      "decisions", "tasks", "subagents", "approvals"])
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
                                                    "Decisions (1)", "Tasks (1)",
-                                                   "Subagents (1)"]
+                                                   "Subagents (1)", "Approvals (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -11536,7 +11536,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
         assert dialog.category == "code"
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
-        assert dialog.category == "subagents"
+        assert dialog.category == "approvals"
         _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
         assert dialog.category == "code"
         # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
@@ -11544,7 +11544,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "links"
         _tab_key(dialog, ord("["), control=False, command=True, shift=True)
         assert dialog.category == "code"
-        # Ctrl+1 to Ctrl+7 go straight to a kind on Windows.
+        # Ctrl+1 to Ctrl+8 go straight to a kind on Windows.
         _tab_key(dialog, ord("4"), control=False, command=True)
         assert dialog.category == "commands" and focused[-1] == "commands"
         assert dialog.kinds.GetSelection() == 3
@@ -11552,6 +11552,8 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "tasks" and focused[-1] == "tasks"
         _tab_key(dialog, ord("7"), control=False, command=True)
         assert dialog.category == "subagents" and focused[-1] == "subagents"
+        _tab_key(dialog, ord("8"), control=False, command=True)  # last, #564
+        assert dialog.category == "approvals" and focused[-1] == "approvals"
         _tab_key(dialog, ord("4"), control=False, command=True)
         # A plain digit is just typing.
         _tab_key(dialog, ord("2"), control=False)
@@ -11592,7 +11594,7 @@ def test_lists_altgr_and_other_digits_are_typing(frame):
             event.SetControlDown(True)
             event.SetAltDown(True)
             dialog._on_char_hook(event)
-        _tab_key(dialog, ord("8"), control=False, command=True)  # no eighth kind
+        _tab_key(dialog, ord("9"), control=False, command=True)  # no ninth kind
         assert dialog.category == "links"
     finally:
         dialog.Destroy()
@@ -11650,7 +11652,7 @@ def test_lists_scope_rebuilds_every_kind(frame):
         dialog.set_scope("message")
         assert sorted(built) == sorted((c, "message") for c in
                                        ("code", "links", "files", "commands", "decisions",
-                                        "tasks", "subagents"))
+                                        "tasks", "subagents", "approvals"))
     finally:
         dialog.Destroy()
 
