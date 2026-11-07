@@ -2728,6 +2728,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
             unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
+        approvals, approvals_problem = self._approvals_for(info)
+        if approvals_problem:
+            unavailable[lists.APPROVALS] = approvals_problem
 
         def build(tab, tab_scope):
             # Subagents as read now: after a conversation closes, its row
@@ -2736,7 +2739,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        else subagent_list)
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
-                               marks=self.speech.change_marks, subagents=current)
+                               marks=self.speech.change_marks, subagents=current,
+                               approvals=approvals)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -2752,6 +2756,37 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             returning_to.SetFocus()
         if chosen is not None:
             self._open_found_link(chosen)
+
+    def _approvals_for(self, info):
+        """The loaded chat's approval decisions for Lists (#564), oldest
+        first, and what to say instead when there are none to list: Codex's
+        automatic review and your saved rules, in Codex chats run here. The
+        history is a small local file, so it's read here, not on a thread."""
+        if info.provider != "codex" or not info.is_own:
+            if info.provider == "codex":
+                return [], "Approvals are listed only for Codex chats run in The Chat Place."
+            return [], f"Approvals aren't listed for {info.provider.capitalize()} chats yet."
+        from .. import approvals
+        state = self._codex_states.get(info.key)
+        live = getattr(state, "permission_notices", ()) if state is not None else ()
+        record = self.store.get(info.cli_session_id, provider="codex")
+        try:
+            saved = self.sessions.owned_action("review_history", record) if record is not None else ()
+        except Exception as exc:  # noqa: BLE001 - this run's are still worth listing
+            from ..codex_diagnostics import record_failure
+            record_failure(exc)
+            backend = getattr(self.sessions, "_providers", {}).get("codex")
+            if backend is not None and getattr(backend, "runtime", None) is None:
+                return [], "Approvals can't be listed until Codex is available."
+            if not live:
+                return [], "The approval history couldn't be read. Its file was kept as it was."
+            # Said once Lists has focus, so a short list isn't taken for all
+            # of them; said before, a screen reader drops it as focus moves.
+            wx.CallLater(700, self._feedback,
+                         "The approval history couldn't be read, so only this session's "
+                         "approvals are listed. Its file was kept as it was.")
+            saved = ()
+        return approvals.merge(saved, live), ""
 
     def _show_lists(self, dialog):
         """Show View, Lists modally. Tests replace this to act on the dialog
@@ -5689,8 +5724,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             state = self._codex_states.get(info.key)
             if state is None:
                 return []
+            # Allowed requests can number dozens a turn: they're shown with
+            # tool activity, and listed in Lists, Approvals (#564). One that
+            # wasn't allowed changed what the turn could do, so it's shown.
+            from ..approvals import is_routine
             notices = [ChatMessage(PERMISSION_NOTICE, text, key=f"notice:{info.key}:{turn}:{identity}")
-                       for turn, identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
+                       for turn, identity, text in getattr(state, 'permission_notices', ())
+                       if turn == state.turn_id and (self._show_activity or not is_routine(identity, text))]
             return notices + self._steered_rows(info.key) + [
                 ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
                 for i, text in enumerate(state.queued)]

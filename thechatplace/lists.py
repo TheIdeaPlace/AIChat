@@ -33,6 +33,7 @@ LINKS = "links"
 FILES = "files"
 COMMANDS = "commands"
 DECISIONS = "decisions"
+APPROVALS = "approvals"
 TASKS = "tasks"
 SUBAGENTS = "subagents"
 
@@ -45,6 +46,8 @@ CATEGORIES = (
     (DECISIONS, "Decisions", "decisions"),
     (TASKS, "Tasks", "tasks"),
     (SUBAGENTS, "Subagents", "subagents"),
+    # Last, so Ctrl+1 to Ctrl+7 keep the kinds they had (#564).
+    (APPROVALS, "Approvals", "approvals"),
 )
 #: The kinds whose "this message" is the selected message's turn.
 TURN_KINDS = frozenset({FILES, COMMANDS, DECISIONS, TASKS, SUBAGENTS})
@@ -209,6 +212,23 @@ def decision_items(messages: Sequence[ChatMessage], turn: Optional[int]) -> List
     return items
 
 
+# -- approvals (#564) ---------------------------------------------------------
+
+
+def approval_items(approvals: Sequence[Sequence]) -> List[ListItem]:
+    """Each approval decision, newest first: what was allowed or not, and who
+    decided. Copy copies the command, to try or look up."""
+    from .approvals import parse
+    items: List[ListItem] = []
+    for _turn, identity, text in reversed(list(approvals)):
+        approval = parse(identity, text)
+        items.append(ListItem(row=approval.row(), detail=approval.text,
+                              copy_text=approval.command or approval.text,
+                              copy_what="the command" if approval.command else "the decision",
+                              detail_name="Approval"))
+    return items
+
+
 # -- tasks (#231) ---------------------------------------------------------------
 
 
@@ -252,12 +272,17 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           turn: Optional[int] = None,
           tasks: Sequence[TaskStep] = (),
           marks: str = DEFAULT_MARKS,
-          subagents: Sequence[Subagent] = ()) -> List[ListItem]:
+          subagents: Sequence[Subagent] = (),
+          approvals: Sequence[Sequence] = ()) -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
     in a turn, means the latest). ``marks`` is how a changed file's lines
     are marked (Settings, #174)."""
+    if category == APPROVALS:
+        # The history has Codex's turn ids, not the list's turns, so this is
+        # always the whole chat (#564).
+        return approval_items(approvals)
     if scope == SCOPE_MESSAGE:
         if selected is None:
             return []
@@ -284,6 +309,8 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
 def empty_text(category: str, scope: str) -> str:
     """The list's one line when a kind has nothing."""
     where = "this message" if scope == SCOPE_MESSAGE else "this chat"
+    if category == APPROVALS:
+        where = "this chat"
     if scope == SCOPE_MESSAGE and category in TURN_KINDS:
         where = "this message's turn"
     return f"No {NOUNS.get(category, 'items')} in {where}."
