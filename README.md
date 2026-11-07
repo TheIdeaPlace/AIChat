@@ -141,10 +141,12 @@ too).
   order) and **Subagents** (Claude and Codex chats: work handed to a subagent, "code-reviewer:
   Review the branch. Done, 34 messages, 12 tool calls, 4 minutes", or "Running" with how long so
   far; its details are the prompt it was given and its final report, and Enter or Read
-  Conversation, Alt+R, opens its conversation, below). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
+  Conversation, Alt+R, opens its conversation, below) and **Approvals** (Codex chats started here:
+  each request automatic review or a saved rule allowed, and each it didn't, always for the whole chat,
+  with the reviewer's reason; Copy copies the command). Codex chats also list tasks captured while run here, alongside Code Blocks and Links.
   **Show items from** (Alt+S) chooses This message or The whole chat; for files, commands, decisions,
   tasks and subagents, "this message" is the selected message's turn, from your message to Claude's reply (for
-  tasks, the ones added or changed in it). Links,
+  tasks, the ones added or changed in it); approvals are always the whole chat's. Links,
   commands, decisions and subagents list the newest first; code blocks and files are in the order they appear.
   The kinds are a list of their own, **Kinds**
   (Alt+K), each with its count ("Commands (12)"), which Tab and Shift+Tab reach on Windows and on a
@@ -153,7 +155,7 @@ too).
   **Cmd+Shift+]** and **Cmd+Shift+[** or **Cmd+Page Down** and **Page Up** on a Mac, change the
   kind and stay on its list (Control+Tab is left to macOS, which uses it to move between groups of
   controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
-  **Ctrl+7** go straight to one. It opens on the kind you used last.
+  **Ctrl+8** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
   whole chat, **Ctrl+Shift+J** (View, Tasks) on Tasks for the whole chat, View, Subagents (Alt+V,
   G) on Subagents for the whole chat, the messages' Subagent Conversations (on the reply or Agent
@@ -757,9 +759,13 @@ review or update Codex. There is no silent fallback. Your global settings are no
 changed. Read access remains available; folder editing covers the selected project
 folder only. Network access and temporary folders outside that folder require
 approval. Your saved Codex command rules still apply. Chat Permissions explains
-these boundaries and TCP's overrides. Automatic review decisions are announced
-and shown in the chat; the most recent 128 decisions are kept locally for that
-chat and can be read again in Chat Permissions, including after restarting.
+these boundaries and TCP's overrides. A request automatic review doesn't allow
+(denied, timed out or stopped) is announced once and shown in the chat. Allowed requests,
+by automatic review or a saved rule, are announced and shown in the chat only with **Show
+Tool Activity** on (Ctrl+T), like tool calls; Lists, **Approvals** (Ctrl+Shift+I, then Ctrl+8 on Windows)
+always lists them, and Turn Status counts this turn's. The most recent 128 decisions are kept
+locally for that chat and can be read again in Lists and Chat Permissions, including after
+restarting.
 
 External tools start off in TCP's Codex chats. View, **Connected Tools (MCP)** lists MCP
 servers configured for the chat's folder. **Copy with Tool On/Off** (Alt+O, or Delete in

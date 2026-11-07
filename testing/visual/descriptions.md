@@ -29,6 +29,8 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 
 **Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's ends "Subagents, not available".
 
+**Since #564, in every Lists picture:** Kinds has an eighth row, Approvals, last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Approvals, not available"; a Codex chat started here ends "Approvals" and a count.
+
 ## main-start: Main window as it opens: session list, no session loaded
 
 The window is split into two columns. On the left, "Session list:" heads a white list box 378 wide that runs the full height (590 tall), about 38% of the width. It holds four one-line sessions, the last with a deliberately long title ("A session whose title goes on and on to show what a very long title doe..."). The first is selected in blue with the dotted focus outline, and long rows are cut off at the list's right edge with no horizontal scroll bar. On the right, after a 16-pixel gap, "Messages:" heads a white list 574 wide and 512 tall. Its only row, "No session loaded. Choose one in the session list and press Enter.", is also selected in blue. Below that list are a "Show tool activity" check box and, side by side, "New Session..." and "Refresh" buttons. The status bar is split into three parts: "4 sessions: 1 need you, 0 working." on the left (464 wide), "No session loaded" in the middle (312 wide), and a button "1 session needs you" on the right (146 wide).
@@ -997,3 +999,10 @@ uses white text and outlines on near-black #202020 (16.2933:1), dark #263B50 tex
 on the selected aqua #8EE3F0 row (7.8933:1), and a visible light caret (12.2263:1).
 No new layout or theme defect was observed. Higher display scales were not
 captured in this review.
+
+## lists-codex-approvals: View, Lists: Approvals in a Codex chat (#564)
+
+The Lists dialog for "Codex history preview", on "Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands, Decisions and Subagents say "not available". "List: Approvals (5):" holds five rows, newest first: "Allowed: git diff. Saved rule for this chat." (selected), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+
+**What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
+

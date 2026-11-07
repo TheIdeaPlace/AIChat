@@ -1770,6 +1770,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex chat instructions and additional folders"
+  },
+  "lists-codex-approvals": {
+   "kind": "dialog",
+   "png": "lists-codex-approvals-hc-aquatic-100.png",
+   "json": "lists-codex-approvals-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Approvals in a Codex chat"
   }
  },
  "seconds": 280.2

@@ -10368,7 +10368,91 @@ def test_codex_turn_status_remembered_approval_count(frame, count, noun):
     state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
     text = frame._codex_status_text(state)
     assert f'{count} {noun} allowed automatically.' in text
-    assert text.count('as you said for this chat') == 1
+    # Counts only: the commands are in Lists, Approvals (#564).
+    assert 'as you said for this chat' not in text and 'git commit' not in text
+
+
+def _heavy_turn(count=40):
+    """A turn whose automatic review allowed ``count`` commands, one saved
+    rule allowed another, and one request was denied (#564)."""
+    from thechatplace.providers.codex_events import decode_event
+    notices = []
+    for number in range(count):
+        status = 'denied' if number == count // 2 else 'approved'
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'owned', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': f'synthetic-command {number}'},
+            'review': {'status': status, 'rationale': 'Synthetic reason.'}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git status, as you said for this chat.'))
+    return tuple(notices)
+
+
+@pytest.mark.parametrize('activity', [False, True])
+def test_a_heavy_turn_says_and_shows_only_what_wasnt_allowed(frame, monkeypatch, activity):
+    """Kelly's #564: dozens of automatic approvals buried the chat. Allowed
+    requests are said and shown only with the chat's tool activity on; the
+    denial is said once and always shown."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.transcript import PERMISSION_NOTICE
+    settle(frame)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: spoken.append(text))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    if activity:
+        frame.tool_activity.add(info.key)
+    notices = _heavy_turn()
+    state = CodexChatState("owned", "working", "turn", "inProgress", permission_notices=notices)
+    for _ in range(3):  # the same state arrives again and again while the turn runs
+        frame._on_owned_update("codex", state)
+    said = [text for text in spoken if 'synthetic-command' in text or 'as you said' in text]
+    # With tool activity on, each is said once, as tool calls are.
+    assert len(said) == (len(notices) if activity else 1)
+    assert sum('denied the request' in text for text in said) == 1
+    frame.tool_activity.discard(info.key)
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda i: True)
+    frame._show_activity = activity
+    frame._codex_states[info.key] = state
+    rows = [m for m in frame._queued_rows() if m.kind == PERMISSION_NOTICE]
+    assert len(rows) == (len(notices) if activity else 1)
+    assert any('denied the request' in m.text for m in rows)
+    frame._codex_states.clear()
+
+
+def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeypatch):
+    """Lists, Approvals (#564): the review history from disk, then what this
+    run allowed by saved rule, newest first, each once."""
+    from thechatplace import lists
+    from thechatplace.providers.codex_runtime import CodexChatState
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    notices = _heavy_turn(4)
+    # The history has an earlier turn's decision this run no longer holds.
+    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.' + chr(10) + 'Command: git fetch')
+    saved = (earlier,) + tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
+    asked = []
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record: asked.append((action, record.provider)) or saved)
+    frame._codex_states[info.key] = CodexChatState("owned", "idle", "turn", "completed",
+                                                   permission_notices=notices)
+    rows, problem = frame._approvals_for(info)
+    assert asked == [("review_history", "codex")]
+    assert problem == "" and len(rows) == 6 and rows[0] == earlier and rows[-1][1] == 'saved-rule:7'
+    items = lists.approval_items(rows)
+    assert items[0].row == 'Allowed: git status. Saved rule for this chat.'
+    frame._codex_states.clear()
+
+
+@pytest.mark.parametrize("provider,is_own,expected", [
+    ("claude", True, "Approvals aren't listed for Claude chats yet."),
+    ("codex", False, "Approvals are listed only for Codex chats run in The Chat Place.")])
+def test_lists_approvals_says_why_when_it_cant_list(frame, provider, is_own, expected):
+    from types import SimpleNamespace
+    assert frame._approvals_for(SimpleNamespace(provider=provider, is_own=is_own)) == ([], expected)
 
 
 def test_owned_codex_ui_creates_sends_queues_and_recovers_stopped_text(frame):
@@ -11428,11 +11512,11 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
     try:
         assert dialog.category == "links"
         assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
-                                                      "decisions", "tasks", "subagents"])
+                                                      "decisions", "tasks", "subagents", "approvals"])
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
                                                    "Decisions (1)", "Tasks (1)",
-                                                   "Subagents (1)"]
+                                                   "Subagents (1)", "Approvals (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -11452,7 +11536,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
         assert dialog.category == "code"
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
-        assert dialog.category == "subagents"
+        assert dialog.category == "approvals"
         _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
         assert dialog.category == "code"
         # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
@@ -11460,7 +11544,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "links"
         _tab_key(dialog, ord("["), control=False, command=True, shift=True)
         assert dialog.category == "code"
-        # Ctrl+1 to Ctrl+7 go straight to a kind on Windows.
+        # Ctrl+1 to Ctrl+8 go straight to a kind on Windows.
         _tab_key(dialog, ord("4"), control=False, command=True)
         assert dialog.category == "commands" and focused[-1] == "commands"
         assert dialog.kinds.GetSelection() == 3
@@ -11468,6 +11552,8 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "tasks" and focused[-1] == "tasks"
         _tab_key(dialog, ord("7"), control=False, command=True)
         assert dialog.category == "subagents" and focused[-1] == "subagents"
+        _tab_key(dialog, ord("8"), control=False, command=True)  # last, #564
+        assert dialog.category == "approvals" and focused[-1] == "approvals"
         _tab_key(dialog, ord("4"), control=False, command=True)
         # A plain digit is just typing.
         _tab_key(dialog, ord("2"), control=False)
@@ -11508,7 +11594,7 @@ def test_lists_altgr_and_other_digits_are_typing(frame):
             event.SetControlDown(True)
             event.SetAltDown(True)
             dialog._on_char_hook(event)
-        _tab_key(dialog, ord("8"), control=False, command=True)  # no eighth kind
+        _tab_key(dialog, ord("9"), control=False, command=True)  # no ninth kind
         assert dialog.category == "links"
     finally:
         dialog.Destroy()
@@ -11566,7 +11652,7 @@ def test_lists_scope_rebuilds_every_kind(frame):
         dialog.set_scope("message")
         assert sorted(built) == sorted((c, "message") for c in
                                        ("code", "links", "files", "commands", "decisions",
-                                        "tasks", "subagents"))
+                                        "tasks", "subagents", "approvals"))
     finally:
         dialog.Destroy()
 

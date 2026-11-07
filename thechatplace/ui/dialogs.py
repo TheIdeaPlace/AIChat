@@ -4589,7 +4589,7 @@ class ListsDialog(wx.Dialog):
     below; Enter goes to its list. From anywhere in the dialog, the next or
     previous kind is Ctrl+Tab / Ctrl+Shift+Tab or Ctrl+Page Down / Page Up
     on Windows, and Cmd+Shift+] / Cmd+Shift+[ or Cmd+Page Down / Page Up on a
-    Mac; on Windows, Ctrl+1 to Ctrl+7 go straight to one. Each leaves you on
+    Mac; on Windows, Ctrl+1 to Ctrl+8 go straight to one. Each leaves you on
     that kind's list.
 
     "Show items from" chooses this message or the whole chat.
@@ -4775,7 +4775,7 @@ class ListsDialog(wx.Dialog):
             return ("by", 1)
         if command and event.ShiftDown() and key in (ord("["), ord("{")):
             return ("by", -1)
-        # Ctrl+1 to Ctrl+7 jump to a kind on Windows. On a Mac, Cmd+1 to
+        # Ctrl+1 to Ctrl+8 jump to a kind on Windows. On a Mac, Cmd+1 to
         # Cmd+3 are the main window's Go To keys, and the menu bar takes
         # them before the dialog (real keys, #282), so none are used there.
         if ((platform or sys.platform) != "darwin" and command and not event.ShiftDown()

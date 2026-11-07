@@ -73,10 +73,11 @@ class CodexChats(CodexExtras):
                      else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
-        notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-        if notices:
-            count = len(notices)
-            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
+        # Counts only: the commands are in Lists, Approvals (#564).
+        from ..approvals import count_text
+        counted = count_text([n for n in getattr(state, 'permission_notices', ()) if n[0] == state.turn_id])
+        if counted:
+            text += ' ' + counted
         return text
 
     def _codex_work(self, action, done):
@@ -788,7 +789,14 @@ class CodexChats(CodexExtras):
             identity = (provider, state.native_id, notice[0], notice[1])
             if identity not in seen:
                 seen.add(identity)
-                self._say(f'{record.title}: {notice[2]}', interrupt=False)
+                # Allowed requests are said only with the chat's tool activity
+                # on, like its tool calls: a long turn has dozens. One that
+                # wasn't allowed is always said once, after what's being said
+                # (#564).
+                from ..approvals import is_routine
+                activity = self._show_activity if loaded else key in self.tool_activity
+                if activity or not is_routine(notice[1], notice[2]):
+                    self._say(f'{record.title}: {notice[2]}', interrupt=False)
         if loaded and (state.token_usage is not None or previous is not None and previous.token_usage is not None):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem

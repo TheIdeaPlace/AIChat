@@ -189,7 +189,7 @@ class CodexPermissions:
                 if failed:
                     done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
                 elif reviews:
-                    done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
+                    done(text + '\n\nRecent approval decisions, from automatic review and your saved rules (oldest first):\n\n'
                          + '\n\n'.join(row[2] for row in reviews))
                 else:
                     done(text)

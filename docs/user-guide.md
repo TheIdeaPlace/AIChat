@@ -771,6 +771,10 @@ session list, the messages or the reply box:
   4 minutes". One still working says "Running" and how long so far; one that ended early says
   "Failed" or "Stopped". Its details are the prompt Claude gave it and its final report. **Enter**
   (or **Read Conversation**, Alt+R) opens its conversation (see "Subagent conversations" below).
+- **Approvals** (Codex chats started here): each request Codex's automatic review allowed or
+  didn't, and each one a rule you saved with Allow for This Chat allowed, newest first. It always
+  lists the whole chat, whichever Show items from says: "Allowed: git log --oneline. Automatic review." Its details have the reviewer's
+  reason, and **Copy** copies the command.
 
 Code Blocks and Links work in every chat. A kind that isn't available for a chat's provider says
 so, such as "Commands aren't listed for Codex chats yet."
@@ -791,8 +795,8 @@ these change the kind and leave you on its list:
   **Cmd+Page Down** and **Cmd+Page Up** (with fn on a laptop). Control+Tab is left to macOS, which
   uses it to move between groups of controls. On keyboard layouts where ] and [ need Option, use
   Cmd+Page Down and Page Up.
-- **On Windows, Ctrl+1** to **Ctrl+7** go straight to Code Blocks, Links, Changed Files, Commands,
-  Decisions, Tasks or Subagents. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
+- **On Windows, Ctrl+1** to **Ctrl+8** go straight to Code Blocks, Links, Changed Files, Commands,
+  Decisions, Tasks, Subagents or Approvals. (On a Mac, Cmd+1 to Cmd+3 stay the main window's Go To keys.)
 
 Lists opens on the kind you used last. Some keys open it on their own kind:
 
@@ -2216,8 +2220,12 @@ approval.
 - The chat can read files; folder editing covers its own folder. Network access, and temporary
   folders outside its folder, still need approval, and your saved Codex command rules still
   apply. Chat Permissions explains these limits.
-- Each review decision is announced and shown in the chat. The latest 128 for each chat are kept
-  on this computer, so Chat Permissions can show them after a restart, even if Codex isn't
+- A request that isn't allowed (denied, timed out or stopped) is said once and shown in the
+  chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
+  with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Approvals**
+  (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
+- The latest 128 decisions for each chat, including those your saved rules made, are kept on
+  this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running.
 
 **Allow for This Chat** remembers a Git command for this chat and its exact working folder:
@@ -2234,8 +2242,9 @@ working folder is where it starts, not a limit on what it can do. A plain push f
 repository's own settings, which can themselves force or delete.
 
 Approvals survive restarting the app. A Continue Here copy starts with none. The Chat Place
-answers Codex for you when a remembered approval covers a request, and says so once. The
-current turn's approvals given this way appear after the conversation and in Turn Status. Codex
+answers Codex for you when a remembered approval covers a request. Like automatic review's,
+these approvals are said and shown with Show Tool Activity on, and always listed in Lists,
+**Approvals**; Turn Status counts the current turn's. Codex
 itself keeps none of them, and neither Codex's nor Claude's settings are changed.
 
 **Chat Permissions** lists each kept approval and its date, with **Remove** (or Delete in the

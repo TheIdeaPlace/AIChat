@@ -1913,6 +1913,32 @@ def d_lists_codex_owned_no_tasks(frame, env):
     return lambda: frame.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
 
+def d_lists_codex_approvals(frame, env):
+    """Lists, Approvals (#564): automatic review's decisions and a saved rule's."""
+    import dataclasses
+    from thechatplace import lists
+    from thechatplace.providers.codex_events import decode_event
+    s_main_codex_owned(frame, env)
+    notices = []
+    for number, (status, command, reason) in enumerate([
+            ('approved', 'git status --short', 'Reads the working tree only.'),
+            ('approved', 'python -m pytest -q tests/test_lists.py', 'Runs the project tests in the workspace.'),
+            ('denied', 'curl https://example.com/install.sh', 'Downloads and runs a script from the network.'),
+            ('approved', 'rg -n "def build" thechatplace', 'Searches files in the workspace.')]):
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'probe', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': command},
+            'review': {'status': status, 'rationale': reason}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git diff, as you said for this chat.'))
+    from thechatplace.providers.codex_runtime import CodexChatState
+    info = frame._open
+    state = frame._codex_states.get(info.key) or CodexChatState(info.cli_session_id, "idle", "turn", "completed")
+    frame._codex_states[info.key] = dataclasses.replace(state, permission_notices=tuple(notices))
+    frame.sessions.owned_action = lambda action, record, *a: ()
+    return lambda: frame.on_lists(lists.APPROVALS, lists.SCOPE_CHAT)
+
+
 def d_properties_codex_tasks(frame, env):
     _codex_plan_preview(frame, env)
     frame.session_list.SetFocus()
@@ -2291,6 +2317,7 @@ SURFACES = {
     "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
     "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
+    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Approvals in a Codex chat"),
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
@@ -2414,6 +2441,7 @@ DIALOG_CLASSES = {
     "lists-codex-tasks": "ListsDialog",
     "lists-codex-no-tasks": "ListsDialog",
     "lists-codex-owned-no-tasks": "ListsDialog",
+    "lists-codex-approvals": "ListsDialog",
     "properties-codex-tasks": "PropertiesDialog",
     "usage": "UsageDialog",
     "usage-breakdown": "UsageDialog",

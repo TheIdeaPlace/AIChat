@@ -81,11 +81,11 @@
     10,
     77,
     1192,
-    159
+    209
    ],
    "best": [
-    282,
-    159
+    264,
+    209
    ],
    "depth": 0,
    "parent": -1,
@@ -94,10 +94,12 @@
    "items": [
     "Code Blocks (1)",
     "Links (1)",
-    "Changed Files, not available",
+    "Changed Files (0)",
     "Commands, not available",
     "Decisions, not available",
-    "Tasks, not available"
+    "Tasks, not available",
+    "Subagents, not available",
+    "Approvals, not available"
    ],
    "selection": 5
   },
@@ -107,9 +109,9 @@
    "label": "",
    "rect": [
     0,
-    234,
+    284,
     1208,
-    626
+    576
    ],
    "best": [
     661,
@@ -126,9 +128,9 @@
    "label": "panel",
    "rect": [
     0,
-    234,
+    284,
     1208,
-    626
+    576
    ],
    "best": [
     656,
@@ -145,7 +147,7 @@
    "label": "&Filter:",
    "rect": [
     8,
-    242,
+    292,
     43,
     26
    ],
@@ -164,7 +166,7 @@
    "label": "",
    "rect": [
     10,
-    270,
+    320,
     1192,
     33
    ],
@@ -184,7 +186,7 @@
    "label": "&List: Tasks (0):",
    "rect": [
     8,
-    309,
+    359,
     108,
     26
    ],
@@ -203,13 +205,13 @@
    "label": "",
    "rect": [
     10,
-    337,
+    387,
     1192,
-    210
+    144
    ],
    "best": [
     640,
-    210
+    144
    ],
    "depth": 2,
    "parent": 5,
@@ -226,7 +228,7 @@
    "label": "&Details:",
    "rect": [
     8,
-    553,
+    537,
     58,
     26
    ],
@@ -245,9 +247,9 @@
    "label": "",
    "rect": [
     10,
-    581,
+    565,
     1192,
-    237
+    253
    ],
    "best": [
     191,
