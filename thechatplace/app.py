@@ -173,8 +173,10 @@ def smoke_test(out_path: str) -> int:
     # Sound schemes need app-kit's apps.json, and the gallery needs its signature check (#250).
     try:
         from . import sound_gallery
+        from .ui import sound_gallery_dialog  # noqa: F401 - imported to prove it's bundled
 
-        report["sound_schemes"] = len(sound_events.APP.events) == len(sound_events.EVENTS)
+        report["sound_schemes"] = ([(e.key, e.sound) for e in sound_events.APP.events]
+                                   == [(e.key, e.sound) for e in sound_events.EVENTS])
         report["sound_gallery"] = sound_gallery.check()
     except Exception as exc:  # noqa: BLE001 - reported, not raised
         report["sound_schemes"] = report["sound_gallery"] = False

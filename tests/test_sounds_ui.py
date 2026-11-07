@@ -912,3 +912,104 @@ def test_adding_from_the_gallery_remembers_where_it_came_from(frame, dialog, mon
     assert added.name == "Wood 2" and added.source == {"gallery": "woody", "sha256": entry.sha256}
     saved = dialog.get_settings().sound_schemes[added.id]
     assert saved["source"]["gallery"] == "woody"
+
+
+def _browse_and_add(dialog, monkeypatch, gallery):
+    from thechatplace.ui import sound_gallery_dialog
+    dialog._make_gallery = lambda: gallery
+
+    class Shown(sound_gallery_dialog.SoundGalleryDialog):
+        def ShowModal(self):
+            assert pump(lambda: self.list.GetCount() == len(gallery.entries))
+            self.on_add()
+            assert pump(lambda: self.result is not None)
+            return wx.ID_OK
+    monkeypatch.setattr(sound_gallery_dialog, "SoundGalleryDialog", Shown)
+    dialog.on_browse()
+
+
+@pytest.mark.parametrize("answer", [wx.YES, wx.NO])
+def test_an_update_from_the_gallery_asks_and_keeps_the_scheme_itself(dialog, env, monkeypatch, answer):
+    exported = se.export(se.built_in_scheme("softbell"))
+    entry = _gallery_entry(exported, "bells", "Bells")
+    mine = se.Scheme("user-" + "c" * 32, "My bells", False, {"ToolRan": "none"},
+                     source={"gallery": "bells", "sha256": "0" * 64})
+    dialog._schemes.append(mine)
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: env["boxes"].append(a[0]) or answer)
+    _browse_and_add(dialog, monkeypatch, _FakeGallery([entry], exported))
+    assert "Replace your copy of My bells" in env["boxes"][-1]
+    if answer == wx.YES:
+        assert mine.id in [s.id for s in dialog._schemes] and mine.name == "My bells"
+        assert mine.source["sha256"] == entry.sha256
+        assert mine.events["ToolRan"] == "builtin:softbell/tap"
+    else:
+        assert mine.source["sha256"] == "0" * 64 and mine.events == {"ToolRan": "none"}
+    assert len([s for s in dialog._schemes if not s.built_in]) == 1
+
+
+def test_a_failed_download_says_to_try_add_again(frame):
+    from theideaplace_appkit import soundgallery
+
+    class Failing(_FakeGallery):
+        def download(self, entry):
+            raise soundgallery.Unreachable()
+    entry = _gallery_entry(b"x")
+    dialog, said = _gallery_dialog(frame, se.load_schemes({}), Failing([entry]))
+    try:
+        assert pump(lambda: dialog.list.GetCount() == 1)
+        dialog.add.SetFocus()
+        dialog.on_add()
+        assert pump(lambda: said and "Add again" in said[-1])
+        assert said[-1] == "Rain couldn't be downloaded. Check your connection, then choose Add again."
+        assert dialog.add.IsEnabled() and dialog.result is None
+    finally:
+        dialog.Destroy()
+
+
+def test_reload_waits_for_a_download(frame):
+    import threading
+    gate = threading.Event()
+
+    class Slow(_FakeGallery):
+        def download(self, entry):
+            gate.wait(5)
+            return b"x"
+    entry = _gallery_entry(b"x")
+    dialog, said = _gallery_dialog(frame, se.load_schemes({}), Slow([entry]))
+    try:
+        assert pump(lambda: dialog.list.GetCount() == 1)
+        dialog.on_add()
+        dialog.on_reload()
+        assert said[-1] == "Wait for the download to finish."
+        gate.set()
+        assert pump(lambda: dialog.result is not None)
+    finally:
+        gate.set()
+        dialog.Destroy()
+
+
+def test_an_import_that_leaves_events_silent_is_shown_not_only_said(dialog, env, tmp_path, monkeypatch):
+    import zipfile
+    path = tmp_path / "gaps.tcpsounds"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("scheme.json", json.dumps({"format": 1, "app": "thechatplace", "name": "Gaps",
+                                               "events": {"ToolRan": "custom:gone.wav"}}))
+    _picker(monkeypatch, path)
+    dialog.on_import()
+    assert "1 event had a sound file that was missing" in env["boxes"][-1]
+    assert dialog.scheme.GetStringSelection() == "Gaps"
+
+
+def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
+    dialog._schemes += [se.Scheme("user-" + f"{i:032x}", f"S{i}", False) for i in range(se.MAX_USER_SCHEMES)]
+    dialog.on_new()
+    assert ask.asked == [] and "the most there can be" in env["boxes"][-1]
+
+
+def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
+    assert dialog._events_name() == "Sound events, 15 of 15 events have a sound"
+    select_event(dialog, se.TOOL)
+    dialog.sound.SetStringSelection("None")
+    dialog._sound_chosen()
+    assert dialog._events_name() == "Sound events, 14 of 15 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 14 of 15 events have a sound"

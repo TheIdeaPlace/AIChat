@@ -338,8 +338,8 @@ with a screen reader. User Guide, **Sounds** lists every sound.
    sound, and its chat opens. Nobody has checked that the chat still opens with this setting on.
 8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
 9. **Sound schemes.** Press **Alt+A** (Scheme Actions). Expect: a menu of New, Copy, Rename,
-   Delete, Reset, Export and Import Scheme, with Rename and Delete turned off on Glass, and each
-   read as turned off. Choose **New Scheme**, name it, and check that the events list says "0 of
+   Delete, Reset, Export and Import Scheme, with Rename and Delete turned off on Glass (on Windows
+   and a Mac, read as turned off). Choose **New Scheme**, name it, and check that the events list says "0 of
    15 events have a sound" and that **Sound** offers tones such as "Arrived (Soft bell)". Give
    two events a sound, then **Export Scheme** and **Import Scheme** the file. Expect: "Added the
    sound scheme ..." is said, and the copy has the same sounds.

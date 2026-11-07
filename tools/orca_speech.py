@@ -202,6 +202,12 @@ STEPS = [
     Step("Sounds, its sound", ["Tab"], expect=["Sound"]),
     Step("Sounds, Preview", ["Tab"], expect=["Preview"]),
     Step("Sounds, Choose File", ["Tab"], expect=["Choose File"]),
+    # Sound schemes: the Scheme Actions menu, and the gallery opened and closed (#250).
+    Step("Sounds, Scheme Actions menu", ["alt+a"], expect=["New Scheme"]),
+    Step("Scheme Actions menu closed", ["Escape"], expect=["Scheme Actions"]),
+    Step("Sound Scheme Gallery", ["alt+b"], expect=["Sound Scheme Gallery"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Gallery closed, back on Browse Gallery", ["Escape"], expect=["Browse Gallery"]),
     Step("Sounds closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.

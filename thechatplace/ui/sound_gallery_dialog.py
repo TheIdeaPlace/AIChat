@@ -4,6 +4,7 @@ with Add to take one. Laid out and keyed like QuickMail's gallery, so the apps w
 waits on the network."""
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Callable, List, Optional, Tuple
 
@@ -61,11 +62,12 @@ class SoundGalleryDialog(wx.Dialog):
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.on_add())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.add.Bind(wx.EVT_BUTTON, lambda e: self.on_add())
-        self.reload.Bind(wx.EVT_BUTTON, lambda e: self.load())
+        self.reload.Bind(wx.EVT_BUTTON, lambda e: self.on_reload())
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+        self._downloading = False
         self._show()
         self.reload.SetFocus()
-        wx.CallAfter(self.load)
+        wx.CallAfter(lambda: self and self.load())
 
     def _on_destroy(self, event):
         if event.GetEventObject() is self:
@@ -99,6 +101,12 @@ class SoundGalleryDialog(wx.Dialog):
             return
         done(result, problem)
 
+    def on_reload(self) -> None:
+        if self._downloading:  # a reload would drop the download without a word
+            self._say("Wait for the download to finish.")
+            return
+        self.load()
+
     def load(self) -> None:
         """Reload, and the first load: the list, checked."""
         self._busy = True
@@ -127,8 +135,18 @@ class SoundGalleryDialog(wx.Dialog):
         self._show()
         self.list.SetFocus()  # the row speaks for itself
 
-    def _fail(self, problem: BaseException) -> None:
-        text = str(problem) if isinstance(problem, shared.GalleryProblem) else shared.UNREACHABLE
+    def _fail(self, problem: BaseException, entry: Optional[shared.Entry] = None) -> None:
+        if isinstance(problem, shared.Unreachable) and entry is not None:
+            # Reload reloads the list; it's Add that tries the download again.
+            text = (f"{entry.name} couldn't be downloaded. Check your connection, then choose "
+                    "Add again.")
+        elif isinstance(problem, shared.GalleryProblem):
+            text = str(problem)
+        elif isinstance(problem, ValueError):  # the gallery's address, from --sound-gallery
+            text = str(problem)
+        else:
+            logging.getLogger(__name__).error("The sound gallery failed", exc_info=problem)
+            text = shared.UNREACHABLE
         self._set_status(text)
         self._say(text)
 
@@ -160,7 +178,10 @@ class SoundGalleryDialog(wx.Dialog):
         if sound_gallery.state(entry, self._schemes) == sound_gallery.ADDED:
             self._say(f"You've already added {entry.name}.")
             return
-        self._busy = True
+        # Focus off Add first: turning off the focused button leaves focus nowhere on Windows.
+        if wx.Window.FindFocus() is self.add:
+            self.list.SetFocus()
+        self._busy = self._downloading = True
         self._show()
         text = f"Downloading {entry.name}…"
         self._set_status(text)
@@ -168,11 +189,12 @@ class SoundGalleryDialog(wx.Dialog):
         self._run(lambda: self._make_gallery().download(entry), lambda data, problem: self._downloaded(entry, data, problem))
 
     def _downloaded(self, entry: shared.Entry, data, problem) -> None:
-        self._busy = False
+        self._busy = self._downloading = False
         if problem is not None:
             self._show()
-            self._fail(problem)
+            self._fail(problem, entry)
             self.list.SetFocus()
             return
         self.result = (entry, data)
-        self.EndModal(wx.ID_OK)
+        if self.IsModal():
+            self.EndModal(wx.ID_OK)

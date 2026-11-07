@@ -339,6 +339,12 @@ def custom_files() -> List[str]:
     return sorted((n for n in names if shared.custom_name_ok(n)), key=str.casefold)
 
 
+def missing_files(scheme: Scheme) -> int:
+    """How many of a scheme's events play a file of your own that's no longer there, so an
+    export would carry no sound for them."""
+    return sum(1 for e in EVENTS if custom_missing(ref_for(scheme, e.id)))
+
+
 def schemes_using(schemes: Iterable[Scheme], file_name: str) -> List[str]:
     """The names of the schemes with an event that plays ``file_name``."""
     return [s.name for s in schemes
