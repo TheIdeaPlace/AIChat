@@ -70,6 +70,9 @@ class CodexChatState:
     plan_unavailable: bool = False
     retry: str = ''
     reasoning: tuple = field(default=(), repr=False)
+    #: This turn's tools started and file changes made, for sounds (#250).
+    tools_started: int = 0
+    edits_made: int = 0
 
 
 @dataclass(frozen=True)
@@ -1034,7 +1037,8 @@ class CodexChatRuntime:
                               state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
                               permission_notices, getattr(state, 'changed_paths', ()), steering,
-                              getattr(state, 'compaction', False), proof.unavailable_mode == 'plan', getattr(state, 'retry', ''), getattr(state, 'reasoning', ()))
+                              getattr(state, 'compaction', False), proof.unavailable_mode == 'plan', getattr(state, 'retry', ''), getattr(state, 'reasoning', ()),
+                              tools_started=state.tools_started, edits_made=state.edits_made)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():

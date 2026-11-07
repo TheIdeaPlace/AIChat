@@ -93,4 +93,5 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Alt+H, G | The user guide, read by heading |
 | Ctrl+Comma | Settings: announcements, speech, notifications and more |
 | Ctrl+Shift+R | Repeat the last announcement |
+| Ctrl+Shift+X | Mute All Sounds: silence every sound at once, or bring them back (File, Sounds chooses them) |
 | Alt+F4 | Quit |

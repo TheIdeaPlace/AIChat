@@ -31,6 +31,9 @@ class CodexTurnState:
     compaction: bool = False
     retry: str = ''
     reasoning: tuple = field(default=(), repr=False)
+    #: This turn's tools started and file changes made, for sounds (#250).
+    tools_started: int = 0
+    edits_made: int = 0
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
@@ -573,7 +576,8 @@ class CodexTurnExecutor:
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
                                   buffer.changed_paths, tuple(buffer.review_notices.items()),
-                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, buffer.reasoning)
+                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, buffer.reasoning,
+                                  tools_started=buffer.tools_started, edits_made=buffer.edits_made)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):
         if not self.connection.owns_runtime(proof):

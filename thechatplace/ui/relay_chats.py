@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import wx
 
-from .. import agents, relay
+from .. import agents, relay, sound_events
 from ..sessions import RUNTIME_PROVIDERS, WORKING
 from .dialogs import RelayDialog
 
@@ -244,6 +244,7 @@ class RelayChats:
 
     def _relay_kept(self, text, why):
         """Somewhere to keep a message that has no reply box to go in."""
+        self._sound(sound_events.NOT_SENT)
         if self._copy_text(text):
             self._feedback(f"{why} It's copied to the clipboard.")
         else:

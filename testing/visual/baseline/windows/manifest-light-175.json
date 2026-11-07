@@ -1155,6 +1155,20 @@
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
   },
+  "sounds": {
+   "kind": "dialog",
+   "png": "sounds-light-175.png",
+   "json": "sounds-light-175.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    980,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds"
+  },
   "lists-codex-deleted-file": {
    "kind": "dialog",
    "png": "lists-codex-deleted-file-light-175.png",

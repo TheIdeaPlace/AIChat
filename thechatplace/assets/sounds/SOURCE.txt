@@ -1,0 +1,2 @@
+Copied from TheIdeaPlace/app-kit, folder sounds, commit 75d92c1f3052c244723fa17128b054c5d7fef75b.
+Generated there by generate.py, so there is nothing to license. Copy again from there rather than editing these.

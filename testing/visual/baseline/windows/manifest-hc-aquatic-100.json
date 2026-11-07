@@ -1743,6 +1743,20 @@
    "problems": [],
    "about": "A whole chat as one page, on the selected message"
   },
+  "sounds": {
+   "kind": "dialog",
+   "png": "sounds-hc-aquatic-100.png",
+   "json": "sounds-hc-aquatic-100.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    560,
+    590
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds"
+  },
   "new-session-worktree": {
    "kind": "dialog",
    "png": "new-session-worktree-hc-aquatic-100.png",

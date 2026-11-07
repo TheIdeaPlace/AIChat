@@ -12,7 +12,7 @@ import time
 
 import wx
 
-from .. import announce, platform_paths
+from .. import announce, platform_paths, sound_events
 from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHED, AsideEvent,
                      AsideRunner, build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
@@ -233,6 +233,7 @@ class ClaudeExtras:
             # to what you just did; the level decides how much is said.
             text = (f"Not answered. {answer}" if failed
                     else announce.aside_text(answer, self.speech.announce))
+            self._sound(sound_events.NOT_SENT if failed else sound_events.FINISHED)
             if text:
                 self._say(text)
         returning_to = wx.Window.FindFocus()
