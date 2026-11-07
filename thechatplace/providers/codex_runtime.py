@@ -1043,11 +1043,20 @@ class CodexChatRuntime:
     def _save_for_later(self, native_id, state):
         # A kept approval's notice is named by Codex's request id, a number,
         # not a review's text. Raising here ended the listener and hung the turn.
-        reviews = tuple(row for row in state.permission_notices
-                        if str(row[1]).startswith('auto-review:'))
+        # Saved-rule approvals are kept too, under a "saved-rule:" name, so
+        # Lists, Approvals has them after a restart (#564). Each row keeps
+        # its own turn: saved-rule notices span the chat's turns.
+        from ..approvals import history_identity
+        # The history file refuses an empty field, and one bad row would
+        # make the whole file unreadable, so only whole rows are kept.
+        reviews = tuple((str(row[0]), history_identity(row[1]), row[2])
+                        for row in state.permission_notices
+                        if row[0] and isinstance(row[2], str) and row[2] and len(row[2]) <= 10000)
         if reviews and self._saved_reviews.get(native_id) != reviews:
             try:
-                self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
+                for turn in dict.fromkeys(row[0] for row in reviews):
+                    self.review_store.remember(native_id, turn,
+                                               [(row[1], row[2]) for row in reviews if row[0] == turn])
                 self._saved_reviews[native_id] = reviews
             except (OSError, ValueError):
                 pass  # Never interrupt execution to save display history.
