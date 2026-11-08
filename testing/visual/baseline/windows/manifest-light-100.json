@@ -1840,6 +1840,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Help, Sound Tutorial"
+  },
+  "new-session-branch-in-use": {
+   "kind": "dialog",
+   "png": "new-session-branch-in-use-light-100.png",
+   "json": "new-session-branch-in-use-light-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session with a branch that's in use in another worktree"
   }
  },
  "seconds": 278.6
