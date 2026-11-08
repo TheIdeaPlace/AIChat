@@ -8560,8 +8560,9 @@ def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, e
         assert pump(lambda: boxes, timeout=15)
         assert "can't be a branch name" in boxes[-1] and dialog.start_btn.IsEnabled()
         assert dialog.GetReturnCode() != wx.ID_OK
-        dialog.branch.SetValue("main")   # typed: refused at once, naming the folder (#587)
+        dialog.branch.SetValue("main")   # typed: refused, naming the folder (#587)
         dialog._on_ok(None)
+        assert pump(lambda: len(boxes) == 2, timeout=15)
         here = dialog._repo.busy_at["main"]
         assert os.path.samefile(here, repo)
         assert len(boxes) == 2 and boxes[-1].startswith(
@@ -8614,18 +8615,29 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         assert _start_from_name(dialog) == ("Start from (not used: main is in use in another "
                                             "worktree, so a new worktree can't use it)")
         dialog._on_ok(None)
+        assert pump(lambda: boxes, timeout=15)
         at = dialog._repo.busy_at["main"]
         assert os.path.samefile(at, elsewhere)
-        assert boxes == [f"main is in use in another worktree, at {at}, so a new worktree "
-                         "can't use it. Type a new branch name, and Start from origin/main, "
-                         "to work from main."]
+        refused = (f"main is in use in another worktree, at {at}, so a new worktree "
+                   "can't use it. Type a new branch name, and Start from origin/main, "
+                   "to work from main.")
+        assert boxes == [refused]
         assert focused == ["branch"] and dialog.start_btn.IsEnabled()
         assert dialog.GetReturnCode() != wx.ID_OK and not dialog._making
+        assert "Making the worktree." not in env["feedback"]   # nothing was made
+        # Typed as the remote's name, it means the same branch.
+        dialog.branch.SetValue("origin/main")
+        dialog._sync_start_from()
+        assert _start_from_name(dialog).startswith("Start from (not used: main is in use")
+        dialog._on_ok(None)
+        assert pump(lambda: len(boxes) == 2, timeout=15)
+        assert boxes[-1] == refused
         # The folder's own branch says so, and names the folder.
         dialog.branch.SetSelection(0)
         dialog._sync_start_from()
         assert "work is checked out in this folder" in _start_from_name(dialog)
         dialog._on_ok(None)
+        assert pump(lambda: len(boxes) == 3, timeout=15)
         assert os.path.samefile(dialog._repo.busy_at["work"], clone)
         assert boxes[-1].startswith(
             f"work is checked out in this folder, {dialog._repo.busy_at['work']}, so")
@@ -8634,6 +8646,48 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         dialog._sync_start_from()
         assert dialog.start_from.IsEnabled() and _start_from_name(dialog) == "Start from"
         assert dialog.start_from.GetStringSelection() == "origin/main, fetched first"
+    finally:
+        dialog.Destroy()
+
+
+def test_start_goes_by_what_git_says_now_not_when_the_dialog_opened(frame, env, monkeypatch):
+    # #587 review: worktrees made or removed in a terminal after the dialog
+    # read the folder. Start reads git again, and Branch is brought up to date.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+    repo = _git_repo(env["tmp"] / "Repo")             # on main, with older
+    subprocess.run(["git", "checkout", "-q", "-b", "work"], cwd=repo, check=True,
+                   capture_output=True)
+    elsewhere = env["tmp"] / "MainTree"
+    subprocess.run(["git", "worktree", "add", "-q", str(elsewhere), "main"], cwd=repo,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(repo), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert list(dialog.branch.GetStrings()) == [
+            "older", "work (checked out in this folder)", "main (in use in another worktree)"]
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        # older is taken after the read: refused, and Branch now says so.
+        subprocess.run(["git", "worktree", "add", "-q", str(env["tmp"] / "OlderTree"), "older"],
+                       cwd=repo, check=True, capture_output=True)
+        dialog.branch.SetValue("older")
+        dialog._on_ok(None)
+        assert pump(lambda: boxes, timeout=15)
+        assert boxes[0].startswith("older is in use in another worktree, at ")
+        assert "older (in use in another worktree)" in dialog.branch.GetStrings()
+        assert dialog.branch.GetValue() == "older"       # what you chose stays
+        # main is freed after the read: Start uses it rather than refusing.
+        subprocess.run(["git", "worktree", "remove", str(elsewhere)], cwd=repo, check=True,
+                       capture_output=True)
+        dialog.branch.SetValue("main (in use in another worktree)")
+        dialog._on_ok(None)
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert len(boxes) == 1
+        assert dialog.worktree_said == "Made worktree main on existing branch main."
     finally:
         dialog.Destroy()
 

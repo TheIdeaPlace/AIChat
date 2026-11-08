@@ -704,7 +704,8 @@ class NewSessionDialog(wx.Dialog):
         elif info is None:
             name = "Start from (not a git repository)"
         elif in_use:
-            name = f"Start from (not used: {chosen} is {in_use}, so a new worktree can't use it)"
+            local = workplaces.local_branch(info, chosen)  # origin/main typed means main
+            name = f"Start from (not used: {local} is {in_use}, so a new worktree can't use it)"
         elif not new:
             name = ("Start from (not used: that branch exists, so it's used as it is, or "
                     "tracked if only the remote has it)")
@@ -782,22 +783,15 @@ class NewSessionDialog(wx.Dialog):
             return
         folder = self.folder.GetValue().strip()
         branch = workplaces.branch_from_choice(self.branch.GetValue())
-        info = self._repo if self._repo_known and folder == self._repo_for else None
-        if info is not None and branch in info.busy:
-            # git would refuse it: say where it is and what to do instead (#587).
-            self._warn(workplaces.in_use_message(info, branch, self._start_remote),
-                       self.branch)
-            return
-        start = self.start_point()
+        start, remote = self.start_point(), self._start_remote
         self._making = True
         self.start_btn.Enable(False)
-        fetching = (start == workplaces.START_REMOTE and self._start_remote and self._repo
-                    and workplaces.is_new_branch(self._repo, branch))
-        self._feedback(f"Fetching {self._start_remote}, then making the worktree."
-                       if fetching else "Making the worktree.")
 
         def make():
-            focus = self.branch
+            # The repository is read again here, not taken from when the
+            # dialog opened: a worktree removed (or made) since then changes
+            # which branches are free (#587).
+            focus, info = self.branch, None
             try:
                 info = workplaces.repo_info(git, folder)
                 if info is None:
@@ -806,20 +800,37 @@ class NewSessionDialog(wx.Dialog):
                                          "have a worktree. Choose The folder as it is, or "
                                          "another folder.")
                 else:
-                    made, error = workplaces.create_worktree(git, info, branch, start), ""
+                    if workplaces.local_branch(info, branch) not in info.busy:
+                        fetching = (start == workplaces.START_REMOTE and remote
+                                    and workplaces.is_new_branch(info, branch))
+                        wx.CallAfter(self._say_making,
+                                     f"Fetching {remote}, then making the worktree."
+                                     if fetching else "Making the worktree.")
+                    made, error = workplaces.create_worktree(git, info, branch, start,
+                                                             start_remote=remote), ""
+            except workplaces.BranchInUse as exc:
+                # Checked out somewhere: where, and what to do instead (#587).
+                made, error = None, str(exc)
             except workplaces.ToolError as exc:
                 made, error = None, f"Couldn't make the worktree. {exc}"
             except Exception as exc:  # noqa: BLE001 - always come back to the dialog
                 made, error = None, f"Couldn't make the worktree: {exc}"
-            wx.CallAfter(self._worktree_made, made, error, focus)
+            wx.CallAfter(self._worktree_made, made, error, focus, folder, info)
         threading.Thread(target=make, name="worktree", daemon=True).start()
 
-    def _worktree_made(self, made, error: str, focus=None):
+    def _say_making(self, text: str):
+        if self:
+            self._feedback(text)
+
+    def _worktree_made(self, made, error: str, focus=None, folder: str = "", info=None):
         if not self:
             return
         self._making = False
         self.start_btn.Enable(True)
         if made is None:
+            if info is not None and folder == self._repo_for:
+                # Branch lists what git says now, as the refusal does.
+                self._repo_read(folder, info, self._start_remote, self._base_ref_head)
             self._warn(error, focus or self.branch)
             return
         self._worktree = str(made.folder)

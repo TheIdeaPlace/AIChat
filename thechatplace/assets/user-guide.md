@@ -1622,7 +1622,7 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
   **A new worktree**. A **worktree** is a separate copy of the repository on a branch of its
   own, so the chat's changes stay apart from the folder and from your other chats. With a
   worktree, choose a branch in **Branch** (Alt+R), or type a new name. A branch can be checked
-  out in only one place, so a branch that already is comes last in the list, saying where, such
+  out in only one place, so a branch that already is comes last in the list, saying why, such
   as "main (in use in another worktree)" or "work (checked out in this folder)". Pressing Start
   with one says where it's checked out and what to do instead. For a new name,
   **Start from** (Alt+A) chooses where the branch starts: the remote's main branch, such as
@@ -1688,7 +1688,9 @@ asked for it. This is where each way starts, and how to say which you want.
     - A branch checked out somewhere already, such as main in another worktree, can't have a new
       worktree too: git allows a branch in only one place. Branch lists it last, saying so, and
       Start says where it is. To work from main, type a new branch name and start it from
-      origin/main.
+      origin/main. A branch whose worktree folder was deleted without git worktree remove is
+      listed as "held by a removed worktree": git still holds it until you run git worktree
+      prune in the repository.
     - This works whichever AI the chat is with: The Chat Place makes the worktree.
 - **Asking Claude for a new worktree during a chat,** such as "make a new worktree called fix-x":
   Claude Code makes `.claude\worktrees\fix-x` on a branch called `worktree-fix-x`, from the

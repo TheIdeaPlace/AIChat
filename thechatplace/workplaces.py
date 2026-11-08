@@ -469,6 +469,9 @@ class RepoInfo:
     remotes: List[str]       # remote branches, "origin/name"
     #: Where each busy branch is checked out: its worktree's folder (#587).
     busy_at: Dict[str, str] = field(default_factory=dict)
+    #: Busy branches held only by a worktree whose folder is gone: git still
+    #: refuses them until ``git worktree prune``.
+    busy_gone: List[str] = field(default_factory=list)
 
 
 def repo_info(git: str, folder: str) -> Optional[RepoInfo]:
@@ -491,14 +494,21 @@ def repo_info(git: str, folder: str) -> Optional[RepoInfo]:
     # A worktree's common folder is the main one's .git; new worktrees go
     # beside the others, never inside this one.
     main = str(Path(common).parent) if Path(common).name == ".git" else top
-    busy, busy_at, at = [], {}, ""
-    for line in listed.splitlines():
-        if line.startswith("worktree "):
-            at = str(Path(line[len("worktree "):].strip()))
-        elif line.startswith("branch refs/heads/"):
-            name = line[len("branch refs/heads/"):]
+    busy, busy_at, gone = [], {}, set()
+    for at, name, prunable in _worktrees(listed):
+        if not name:
+            continue
+        held_by_gone = prunable or not os.path.isdir(at)
+        if name not in busy:
+            # A branch in two worktrees (git worktree add -f) is listed once.
             busy.append(name)
-            busy_at.setdefault(name, at)
+            busy_at[name] = at
+            if held_by_gone:
+                gone.add(name)
+        elif name in gone and not held_by_gone:
+            # Say the worktree that's really there, not one whose folder is gone.
+            busy_at[name] = at
+            gone.discard(name)
     local, remotes = [], []
     for ref in (r.strip() for r in refs.splitlines()):
         if ref.startswith("refs/heads/"):
@@ -513,7 +523,32 @@ def repo_info(git: str, folder: str) -> Optional[RepoInfo]:
         rel = ""
     return RepoInfo(top=top, main=main, common=common, rel=rel, branch=branch,
                     branches=[b for b in local if b not in busy], busy=busy, remotes=remotes,
-                    busy_at=busy_at)
+                    busy_at=busy_at, busy_gone=[b for b in busy if b in gone])
+
+
+def _worktrees(listed: str) -> List[tuple]:
+    """``(folder, branch, prunable)`` for each worktree ``git worktree list
+    --porcelain`` lists; branch is "" when it's detached."""
+    found, at, name, prunable = [], None, "", False
+    for line in listed.splitlines() + [""]:
+        if line.startswith("worktree "):
+            at = str(Path(line[len("worktree "):].strip()))
+        elif line.startswith("branch refs/heads/"):
+            name = line[len("branch refs/heads/"):]
+        elif line.startswith("prunable"):
+            prunable = True
+        elif not line.strip() and at is not None:
+            found.append((at, name, prunable))
+            at, name, prunable = None, "", False
+    return found
+
+
+def local_branch(info: RepoInfo, name: str) -> str:
+    """The local branch a name means: ``origin/main`` (as git branch -r
+    lists it) means main, as ``create_worktree`` takes it."""
+    if name in info.remotes and name not in info.branches:
+        return name.split("/", 1)[1]
+    return name
 
 
 # A branch can be checked out in only one worktree, so git worktree add
@@ -522,14 +557,24 @@ def repo_info(git: str, folder: str) -> Optional[RepoInfo]:
 # main isn't simply missing; the path is left to the message, as it's long.
 IN_USE_HERE = "checked out in this folder"
 IN_USE_ELSEWHERE = "in use in another worktree"
+IN_USE_GONE = "held by a removed worktree"
+
+
+class BranchInUse(ToolError):
+    """``create_worktree`` refused a branch checked out somewhere; its words
+    are a whole message, said as they are."""
 
 
 def in_use_reason(info: RepoInfo, branch: str) -> str:
-    """Why a new worktree can't have ``branch``, in a few words, or "" if
-    it can."""
+    """Why a new worktree can't have ``branch`` (or the local branch a
+    remote name such as origin/main means), in a few words, or "" if it
+    can."""
+    branch = local_branch(info, branch) if branch else ""
     if not branch or branch not in info.busy:
         return ""
-    return IN_USE_HERE if branch == info.branch else IN_USE_ELSEWHERE
+    if branch == info.branch:
+        return IN_USE_HERE
+    return IN_USE_GONE if branch in info.busy_gone else IN_USE_ELSEWHERE
 
 
 def branch_choices(info: Optional[RepoInfo]) -> List[str]:
@@ -545,7 +590,7 @@ def branch_from_choice(text: str) -> str:
     """The branch an item from ``branch_choices`` names; anything else as
     typed, trimmed."""
     name = (text or "").strip()
-    for reason in (IN_USE_HERE, IN_USE_ELSEWHERE):
+    for reason in (IN_USE_HERE, IN_USE_ELSEWHERE, IN_USE_GONE):
         suffix = f" ({reason})"
         if name.endswith(suffix):
             return name[:-len(suffix)].strip()
@@ -555,8 +600,16 @@ def branch_from_choice(text: str) -> str:
 def in_use_message(info: RepoInfo, branch: str, start_remote: str = "") -> str:
     """What Start says when the branch chosen is checked out already: where,
     and how to work from it anyway."""
+    branch = local_branch(info, branch)
     where = info.busy_at.get(branch, "")
     here = branch == info.branch
+    if not here and branch in info.busy_gone:
+        # Its folder was deleted without git worktree remove: there's no
+        # folder to choose, and git holds the branch until it's pruned.
+        place = f", {where}," if where else ""
+        return (f"{branch} was checked out in a worktree whose folder{place} is gone, so git "
+                f"still holds it. Run git worktree prune in the repository to free it, then "
+                f"choose {branch} again.")
     if here:
         text = f"{branch} is checked out in this folder"
         text += f", {where}," if where else ","
@@ -688,14 +741,16 @@ def add_worktree(git: str, info: RepoInfo, branch: str) -> Path:
 
 
 def create_worktree(git: str, info: RepoInfo, branch: str,
-                    start: str = START_REMOTE) -> WorktreeMade:
+                    start: str = START_REMOTE, start_remote: str = "") -> WorktreeMade:
     """Make a worktree for ``branch``. Its ``folder`` is the same folder
     inside it as the one chosen. An existing branch is checked out there; a
     branch only a remote has is made to track it; a new one starts from
     ``start``: the remote's default branch, fetched just before (falling back
     to the current branch, and saying so, with no remote or a failed fetch,
     never an old copy), or what the chosen folder has checked out now.
-    ToolError with git's words if it can't."""
+    ToolError with git's words if it can't. A branch checked out somewhere
+    is refused before git is asked, saying where (#587); ``start_remote``
+    (such as origin/main, as New Session offers it) shapes that advice."""
     branch = check_branch_name(git, branch_from_choice(branch))
     remote = ""
     if branch in info.remotes and branch not in info.branches:
@@ -703,7 +758,7 @@ def create_worktree(git: str, info: RepoInfo, branch: str,
         # never a local branch called origin/main.
         remote, branch = branch, branch.split("/", 1)[1]
     if branch in info.busy:
-        raise ToolError(in_use_message(info, branch))
+        raise BranchInUse(in_use_message(info, branch, start_remote))
     folder = worktree_folder(info.main, branch)
     remote = remote or _remote_for(info, branch)
     base, note = "", ""
