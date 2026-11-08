@@ -246,16 +246,23 @@ class SoundHost:
         """File, Sounds: whether there are sounds, which, and for which chats."""
         dialog = SoundsDialog(self, self.speech, self._sound_player, say=self._say)
         try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            self.speech = dialog.get_settings()
+            ok = dialog.ShowModal() == wx.ID_OK
+            if ok:
+                self.speech = dialog.get_settings()
+            tidy_files = dialog.tidy_files(ok)
         finally:
             dialog.Destroy()  # which stops a preview still playing
+        if not ok:
+            tidy_files()  # a scheme made and then cancelled takes its folder with it
+            return
         try:
             self.speech.save()
         except OSError as exc:
             wx.MessageBox(f"Couldn't save the sound settings: {exc}", "Sounds",
                           wx.OK | wx.ICON_WARNING, self)
+        else:
+            # Only once saved: settings that couldn't be saved still name what would be deleted.
+            tidy_files()
         self.mute_item.Check(self.speech.sounds_muted)
         if (self.speech.sounds_muted or not self.speech.sounds_on) and self._sound_player_made:
             self._sound_player_made.stop()

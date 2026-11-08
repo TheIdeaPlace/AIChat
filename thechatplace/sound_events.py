@@ -11,7 +11,9 @@ shared keys (``ToolRan``), the same as in a scheme file; the window uses the ids
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -326,14 +328,18 @@ def ref_label(ref: shared.SoundRef, scheme: Scheme, missing: bool = False) -> st
     return label
 
 
-def custom_missing(ref: shared.SoundRef) -> bool:
-    return ref.kind == "custom" and not (platform_paths.custom_sounds_dir() / ref.name).is_file()
+def custom_missing(ref: shared.SoundRef, scheme: Scheme) -> bool:
+    """Whether ``ref`` is a file of your own that isn't in ``scheme``'s folder."""
+    if ref.kind != "custom":
+        return False
+    path = custom_path(scheme, ref.name)
+    return path is None or not path.is_file()
 
 
 def row_label(event_id: str, scheme: Scheme) -> str:
     """A row of the Sound events list: "Tool ran: Tap"."""
     ref = ref_for(scheme, event_id)
-    return f"{BY_ID[event_id].label}: {ref_label(ref, scheme, custom_missing(ref))}"
+    return f"{BY_ID[event_id].label}: {ref_label(ref, scheme, custom_missing(ref, scheme))}"
 
 
 def events_with_sound(scheme: Scheme) -> int:
@@ -352,7 +358,7 @@ def offered(scheme: Scheme) -> List[str]:
         refs += [built_in_ref(name) for name in BUILT_IN]
     else:
         refs += [built_in_ref(name, pack) for pack in PACKS for name in BUILT_IN]
-    refs += [custom_ref(name) for name in custom_files()]
+    refs += [custom_ref(name) for name in custom_files(scheme)]
     return refs
 
 
@@ -372,15 +378,49 @@ def resolve_ref(ref: shared.SoundRef, event_id: str, scheme: Scheme) -> Optional
         return None
     default = str(built_in_path(BY_ID[event_id].sound, shared.pack_for(shared.SILENT, scheme.pack)))
     if ref.kind == "custom":
-        return str(platform_paths.custom_sounds_dir() / ref.name), default
+        path = custom_path(scheme, ref.name)
+        return (str(path), default) if path is not None else (default, None)
     return str(built_in_path(ref.name, shared.pack_for(ref, scheme.pack))), None
 
 
-def custom_files() -> List[str]:
-    """Your own sounds, already copied into the data folder, by name."""
-    folder = platform_paths.custom_sounds_dir()
+# -- each scheme's own folder ----------------------------------------------------------
+#
+# Every sound file of your own belongs to one scheme and is kept in that scheme's folder,
+# ``sounds/<scheme id>``: importing a scheme puts its files there, Choose File copies into the
+# scheme showing, and deleting a scheme deletes its folder. There's no shared folder and nothing
+# is looked for anywhere else (Kelly's decision for 0.5: files in a preview's shared ``sounds``
+# folder aren't used). A file name is only ever a plain name in a scheme file, as before.
+
+
+def scheme_id_ok(scheme_id: object) -> bool:
+    """A scheme id this app makes: a built-in scheme's, or ``user-<32 hex>``."""
+    return scheme_id in PACKS or _user_id_ok(scheme_id)
+
+
+def scheme_folder(scheme: Scheme) -> Optional[Path]:
+    """``scheme``'s own sound folder, or None for an id that isn't one of ours, which never
+    reaches the disk."""
+    if not scheme_id_ok(scheme.id):
+        return None
+    return platform_paths.scheme_sounds_dir(scheme.id)
+
+
+def custom_path(scheme: Scheme, file_name: str) -> Optional[Path]:
+    """Where ``scheme``'s file ``file_name`` is kept, or None when either can't be used safely:
+    the file name is checked as app-kit checks one in a scheme file."""
+    base = scheme_folder(scheme)
+    if base is None or not shared.custom_name_ok(file_name):
+        return None
+    return base / file_name
+
+
+def custom_files(scheme: Scheme) -> List[str]:
+    """``scheme``'s own sound files, already copied into its folder, by name."""
+    base = scheme_folder(scheme)
+    if base is None:
+        return []
     try:
-        names = [p.name for p in folder.iterdir() if p.is_file()]
+        names = [p.name for p in base.iterdir() if p.is_file() and not p.is_symlink()]
     except OSError:
         return []
     return sorted((n for n in names if shared.custom_name_ok(n)), key=str.casefold)
@@ -389,13 +429,113 @@ def custom_files() -> List[str]:
 def missing_files(scheme: Scheme) -> int:
     """How many of a scheme's events play a file of your own that's no longer there, so an
     export would carry no sound for them."""
-    return sum(1 for e in EVENTS if custom_missing(ref_for(scheme, e.id)))
+    return sum(1 for e in EVENTS if custom_missing(ref_for(scheme, e.id), scheme))
 
 
-def schemes_using(schemes: Iterable[Scheme], file_name: str) -> List[str]:
-    """The names of the schemes with an event that plays ``file_name``."""
-    return [s.name for s in schemes
-            if any(ref_for(s, e.id) == shared.SoundRef("custom", file_name) for e in EVENTS)]
+def events_using(scheme: Scheme, file_name: str, leaving_out: str = "") -> List[str]:
+    """The labels of ``scheme``'s events that play ``file_name``, apart from ``leaving_out``
+    (an event id)."""
+    wanted = shared.SoundRef("custom", file_name)
+    return [e.label for e in EVENTS if e.id != leaving_out and ref_for(scheme, e.id) == wanted]
+
+
+def without_file(scheme: Scheme, event_id: str) -> None:
+    """Remove File: the event goes back to its built-in sound. A built-in scheme just forgets
+    its change; one of your own gets the sound in Glass's tone, as a missing file played."""
+    event = BY_ID[event_id]
+    if scheme.built_in:
+        scheme.events.pop(event.key, None)
+    else:
+        scheme.events[event.key] = built_in_ref(event.sound, DEFAULT_SCHEME)
+
+
+def copy_files(source: Scheme, target: Scheme) -> int:
+    """Copy Scheme: the files ``source``'s events play, copied into ``target``'s folder. A
+    file that's missing is left out, as it would be from an export. Returns how many were
+    copied; raises OSError if they can't be written."""
+    names = [n for n in shared.files_used(APP, source.events)
+             if not custom_missing(shared.SoundRef("custom", n), source)]
+    target_folder = scheme_folder(target)
+    if not names or target_folder is None:
+        return 0
+    target_folder.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.copyfile(custom_path(source, name), target_folder / name)
+    return len(names)
+
+
+def remove_scheme_folder(scheme_id: str) -> None:
+    """Delete a scheme's whole folder. A link in its place is removed, never followed."""
+    if not scheme_id_ok(scheme_id):
+        return
+    path = platform_paths.scheme_sounds_dir(scheme_id)
+    try:
+        if path.is_symlink():
+            path.unlink()
+        elif os.path.isjunction(path):
+            os.rmdir(path)  # removes the junction, not what it points to
+        elif path.is_dir():
+            shutil.rmtree(path)  # which doesn't follow links or junctions inside it
+    except OSError:
+        pass  # a file in use can't stop the dialog closing; the folder is just left
+
+
+def _remove_unused(scheme: Scheme, only: Optional[Iterable[str]] = None) -> None:
+    """Delete files in ``scheme``'s folder that none of its events play (only those named in
+    ``only``, if given), and the folder itself once it's empty."""
+    base = scheme_folder(scheme)
+    if base is None or base.is_symlink() or os.path.isjunction(base) or not base.is_dir():
+        return
+    # Folded, as Windows matches names: "Chime.wav" in an event is the file "chime.wav".
+    used = {shared.fold(n) for n in shared.files_used(APP, scheme.events)}
+    names = custom_files(scheme) if only is None else [n for n in only if shared.custom_name_ok(n)]
+    for name in names:
+        if shared.fold(name) in used:
+            continue
+        try:
+            (base / name).unlink()
+        except OSError:
+            pass  # gone already, or in use: never a reason the dialog can't close
+    try:
+        base.rmdir()  # only if nothing's left in it
+    except OSError:
+        pass
+
+
+@dataclass
+class FileChanges:
+    """What File, Sounds did that changes which files are kept, done to disk when it closes:
+    files go only when you choose OK, so Cancel can take back a delete, a reset or Remove File.
+    Files a scheme brings in, or Choose File copies, are written straight away; a scheme made
+    in the dialog and then cancelled takes its folder with it."""
+    #: Schemes made here (New, Copy, Import, Add from the gallery).
+    made: set = field(default_factory=set)
+    #: Schemes of your own deleted here.
+    deleted: set = field(default_factory=set)
+    #: Schemes whose files may no longer be used: a built-in scheme reset, or a scheme updated
+    #: from the gallery.
+    reset: set = field(default_factory=set)
+    #: (scheme id, file name) for each Remove File.
+    removed: set = field(default_factory=set)
+
+
+def apply_file_changes(changes: FileChanges, kept: Iterable[Scheme], ok: bool) -> None:
+    """Tidy the sound folders after File, Sounds closes. ``kept`` is the schemes now in
+    settings: the dialog's after OK, what there was before after Cancel. A scheme that isn't
+    kept loses its folder; after OK, a reset scheme loses the files it no longer plays, and a
+    removed file goes unless another event in its scheme still plays it."""
+    by_id = {s.id: s for s in kept}
+    for scheme_id in changes.made | changes.deleted:
+        if scheme_id not in by_id:
+            remove_scheme_folder(scheme_id)
+    if not ok:
+        return
+    for scheme_id in changes.reset:
+        if scheme_id in by_id:
+            _remove_unused(by_id[scheme_id])
+    for scheme_id, name in changes.removed:
+        if scheme_id in by_id:
+            _remove_unused(by_id[scheme_id], only=[name])
 
 
 # -- Help, Sound Tutorial ------------------------------------------------------------
@@ -418,7 +558,7 @@ def tutorial_note(event_id: str, scheme: Scheme) -> Optional[str]:
     ref = ref_for(scheme, event_id)
     if ref.kind == "none":
         return "No sound."
-    if custom_missing(ref):
+    if custom_missing(ref, scheme):
         return "Its sound file is missing, so the built-in sound plays."
     return None
 
@@ -433,12 +573,12 @@ def missing_built_ins() -> List[str]:
 
 
 def export(scheme: Scheme) -> bytes:
-    """A scheme file of ``scheme``, every event pinned to the tone it plays in."""
-    folder = platform_paths.custom_sounds_dir()
-
+    """A scheme file of ``scheme``, every event pinned to the tone it plays in, with the files
+    from the scheme's folder."""
     def read(name: str) -> Optional[bytes]:
+        path = custom_path(scheme, name)
         try:
-            return (folder / name).read_bytes() if shared.custom_name_ok(name) else None
+            return path.read_bytes() if path is not None else None
         except OSError:
             return None
     return shared.write_scheme_file(
@@ -466,13 +606,26 @@ class Imported:
         return text
 
 
-def import_scheme(source, taken: Iterable[str], gallery_source: Optional[Dict[str, str]] = None) -> Imported:
-    """A new scheme of your own from a scheme file (a path or bytes), its sounds put in the
-    sounds folder. Raises ``shared.SchemeFileProblem`` with words to show."""
-    folder = platform_paths.custom_sounds_dir()
-    read = shared.read_scheme_file(source, APP, have_file=lambda n: (folder / n).is_file())
-    installed = shared.install_sounds(read, folder)
-    events = {e.key: installed.events.get(e.key, NONE_REF) for e in EVENTS}
-    scheme = Scheme(new_id(), shared.unique_name(read.name, taken), False, events, read.author,
-                    read.license, read.description, gallery_source)
+def import_scheme(source, taken: Iterable[str], gallery_source: Optional[Dict[str, str]] = None,
+                  scheme_id: Optional[str] = None) -> Imported:
+    """A new scheme of your own from a scheme file (a path or bytes), its sounds put in its own
+    folder. ``scheme_id`` is the scheme an update replaces, whose folder they go in; otherwise
+    it gets a new id, and a new, empty folder. Raises ``shared.SchemeFileProblem`` with words to
+    show, or OSError if the files can't be written."""
+    scheme = Scheme(scheme_id if scheme_id is not None else new_id(), "", False)
+    target = scheme_folder(scheme)
+    if target is None or not _user_id_ok(scheme.id):
+        raise ValueError(f"Not a scheme of your own: {scheme_id!r}")
+    # A file the scheme names but doesn't carry counts only if it's in this scheme's own folder.
+    read = shared.read_scheme_file(source, APP, have_file=lambda n: (target / n).is_file())
+    try:
+        installed = shared.install_sounds(read, target)
+    except OSError:
+        if scheme_id is None:
+            remove_scheme_folder(scheme.id)  # a new scheme that won't be added leaves nothing behind
+        raise
+    scheme.events = {e.key: installed.events.get(e.key, NONE_REF) for e in EVENTS}
+    scheme.name = shared.unique_name(read.name, taken)
+    scheme.author, scheme.license, scheme.description = read.author, read.license, read.description
+    scheme.source = gallery_source
     return Imported(scheme, len(read.sounds), read.dropped)
