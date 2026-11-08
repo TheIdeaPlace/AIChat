@@ -237,9 +237,9 @@ def _titled(key, title, cwd, state, activity):
 
 
 SORTABLE = [
-    _titled("a", "zebra notes", "C:\\G\\Quill", IDLE, 5),
+    _titled("a", "zebra notes", "C:\\G\\Harbor", IDLE, 5),
     _titled("b", "Apple pie", "C:\\G\\WeatherFast", NEEDS_YOU, 2),
-    _titled("c", "apple tart", "C:\\G\\quill", WORKING, 9),
+    _titled("c", "apple tart", "C:\\G\\harbor", WORKING, 9),
     _titled("d", "Mango", "C:\\G\\Beta", IDLE, 1),
 ]
 
@@ -249,7 +249,7 @@ SORTABLE = [
     ("newest", ["c", "a", "b", "d"]),
     ("oldest", ["d", "b", "a", "c"]),
     ("title", ["b", "c", "d", "a"]),      # case doesn't matter: Apple pie, apple tart
-    ("folder", ["d", "c", "a", "b"]),     # Beta, quill/Quill (newest first), WeatherFast
+    ("folder", ["d", "c", "a", "b"]),     # Beta, harbor/Harbor (newest first), WeatherFast
     ("nonsense", ["b", "c", "a", "d"]),   # unknown means by status
 ])
 def test_sort_orders(order, expected):
