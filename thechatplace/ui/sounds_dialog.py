@@ -121,8 +121,8 @@ class SoundsDialog(wx.Dialog):
                           else volumes.index(sound_events.DEFAULT_VOLUME))
         self.scheme = row("Sound sc&heme:", [], "Sound scheme", wx.NOT_FOUND)
         self._tool_ids = list(sound_events.TOOLS_LABELS)
-        self.tools = row("&Tick sounds play for:", list(sound_events.TOOLS_LABELS.values()),
-                         "Tick sounds play for",
+        self.tools = row("&Tool sounds play for:", list(sound_events.TOOLS_LABELS.values()),
+                         "Tool sounds play for",
                          self._tool_ids.index(speech.sound_tools)
                          if speech.sound_tools in self._tool_ids else 0)
         self._other_ids = list(sound_events.OTHERS_LABELS)

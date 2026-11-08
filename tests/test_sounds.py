@@ -45,7 +45,7 @@ def test_built_in_files_are_playable_and_short(pack, name):
 
 def test_what_must_be_heard_is_urgent_and_what_says_something_is_going_on_is_ambient():
     assert se.BY_ID[se.NEEDS_YOU].priority == URGENT and se.BY_ID[se.FAILED].priority == URGENT
-    assert {e.id for e in se.EVENTS if e.priority == AMBIENT} == {se.TOOL, se.FILE_CHANGED, se.PULSE}
+    assert {e.id for e in se.EVENTS if e.priority == AMBIENT} == {se.TOOL, se.PULSE}
 
 
 def test_a_sound_means_one_thing_by_default():

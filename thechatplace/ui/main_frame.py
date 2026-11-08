@@ -4638,6 +4638,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("That isn't waiting any more: the turn has ended.")
             self._update_send_state()
             return
+        # Any answer you send, a refusal too (#250). No chat key: it answers your key press, so
+        # "Other sounds play for" doesn't hold it back when the chat isn't the open one.
+        self._sound(sound_events.ANSWER_SENT)
         if (isinstance(request, ElicitationRequest) and request.is_url
                 and response.get("action") == "accept" and is_web_url(request.url)):
             try:

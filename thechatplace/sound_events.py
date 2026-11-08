@@ -37,6 +37,7 @@ FINISHED_ELSEWHERE = "finished_elsewhere"
 ASIDE_ANSWERED = "aside_answered"
 ASIDE_FAILED = "aside_failed"
 NEEDS_YOU = "needs_you"
+ANSWER_SENT = "answer_sent"
 FAILED = "failed"
 STOPPED = "stopped"
 TROUBLE = "trouble"
@@ -62,7 +63,9 @@ class SoundEvent:
 #: dev-notes/sound-design.md has the rules, the families and every sound's notes.
 EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(TOOL, "ToolRan", "Tool ran", "tool", AMBIENT),
-    SoundEvent(FILE_CHANGED, "FileChanged", "File changed", "edit", AMBIENT),
+    # Not ambient, as it was while it was a tick: a file written is a result, heard once per
+    # edit, and isn't dropped for a tick that has just played.
+    SoundEvent(FILE_CHANGED, "FileChanged", "File changed", "write"),
     SoundEvent(PULSE, "StillWorking", "Still working", "working", AMBIENT),
     SoundEvent(SENT, "MessageSent", "Message sent", "send", answers_you=True),
     SoundEvent(QUEUED, "MessageQueued", "Message queued", "queue", answers_you=True),
@@ -76,6 +79,7 @@ EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(FINISHED_ELSEWHERE, "OtherChatFinished", "Another chat finished", "otherreply"),
     SoundEvent(ASIDE_ANSWERED, "AsideAnswered", "Ask Aside answered", "aside"),
     SoundEvent(NEEDS_YOU, "NeedsYou", "Needs you", "needsyou", URGENT),
+    SoundEvent(ANSWER_SENT, "AnswerSent", "Answer sent", "answer", answers_you=True),
     SoundEvent(FAILED, "TurnFailed", "Turn failed", "turnfailed", URGENT),
     SoundEvent(NOT_SENT, "MessageNotSent", "Message not sent", "notsent", answers_you=True),
     SoundEvent(ASIDE_FAILED, "AsideNotAnswered", "Ask Aside not answered", "asidefailed"),
@@ -89,26 +93,31 @@ BY_KEY: Dict[str, SoundEvent] = {event.key: event for event in EVENTS}
 #: This app as app-kit knows it: the same events, keys and sounds as above (a test checks).
 APP = shared.catalog("thechatplace")
 
-#: Tick and Double tick follow "Tick sounds play for"; everything else from a chat that isn't
-#: loaded follows "Other sounds play for". A chat that's only watched has no tool sounds unless it's
-#: loaded: nothing reads its transcript until then.
-TOOL_EVENTS = frozenset({TOOL, FILE_CHANGED})
+#: Tool ran follows "Tool sounds play for"; everything else from a chat that isn't loaded,
+#: File changed included, follows "Other sounds play for". Kelly found one setting for both too
+#: much: a tool can tick dozens of times a turn, a file changes far less often. A chat that's only
+#: watched has no tool sounds unless it's loaded: nothing reads its transcript until then.
+TOOL_EVENTS = frozenset({TOOL})
 
 #: Every built-in sound, in the order the Sound choice lists them, with its name there: what
 #: the sound is like, so a row reads "Reply finished: Rise".
 BUILT_IN: Dict[str, str] = {
-    "tool": "Tick", "edit": "Double tick", "working": "Hum", "send": "Send", "queue": "Hold",
+    "tool": "Tick", "write": "Write", "working": "Hum", "send": "Send", "queue": "Hold",
     "steer": "Bend", "steertaken": "Taken", "queuesent": "Release",
     "queuedelete": "Withdraw", "stop": "Stop",
     "reply": "Rise", "otherreply": "Low rise", "aside": "Aside", "needsyou": "Call",
-    "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
+    "answer": "Answer", "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
     "warning": "Alert", "compacted": "Settle", "peer": "Knock",
 }
 
-#: The first set's names, which only 0.5 previews saved: each becomes the new sound for the
-#: same event, so a choice made then still means the same thing.
+#: Built-in sound names that only 0.5 previews used: the first set's, and then "edit", the Double
+#: tick File changed played until it was too like Tick to tell apart. Each maps to the new sound
+#: for the same event in The Chat Place's own saved settings (load_schemes, migrate), so a choice
+#: made in a preview still means the same thing. Scheme files exported from a preview aren't
+#: migrated: app-kit reads an unknown built-in name in one as no sound, and Kelly decided that an
+#: unreleased feature needs no more than that.
 OLD_NAMES: Dict[str, str] = {
-    "tap": "tool", "changed": "edit", "pulse": "working", "sent": "send", "queued": "queue",
+    "tap": "tool", "changed": "write", "edit": "write", "pulse": "working", "sent": "send", "queued": "queue",
     "error": "notsent", "arrived": "reply", "elsewhere": "otherreply", "attention": "needsyou",
     "failed": "turnfailed", "stopped": "stop", "disconnected": "trouble", "filed": "compacted",
     "reminder": "warning", "matched": "peer",

@@ -193,6 +193,251 @@ def test_other_chats_can_be_narrowed(frame, env):
     assert env["sounds"] == [se.FINISHED_ELSEWHERE, se.FINISHED]
 
 
+def test_another_chats_file_change_follows_other_sounds_not_tool_sounds(frame, env):
+    """Tool sounds play for covers Tool ran only: a file changed in a chat in the background
+    is heard as other sounds are, whatever the tool setting says."""
+    turn(frame, TurnEvent("edited", data={"file_path": "a.py"}), "own-2", "Other")
+    assert env["sounds"] == [se.FILE_CHANGED]  # tools: the open chat only; others: every chat
+    frame.speech.sound_tools, frame.speech.sound_others = se.TOOLS_ALL, se.OTHERS_NONE
+    turn(frame, TurnEvent("edited", data={"file_path": "a.py"}), "own-2", "Other")
+    turn(frame, TurnEvent("tool", text="Bash"), "own-2", "Other")
+    assert env["sounds"] == [se.FILE_CHANGED, se.TOOL]
+    turn(frame, TurnEvent("edited", data={"file_path": "a.py"}))  # the open chat always sounds
+    assert env["sounds"] == [se.FILE_CHANGED, se.TOOL, se.FILE_CHANGED]
+    assert env["players"][0].last["priority"] == "normal"
+
+
+# ---------------------------------------------------------------- Answer sent
+
+def answering(frame, session="own-1", sent=True):
+    """A Claude turn in ``session`` waiting on one permission request. Returns what it was sent."""
+    running(frame, session)
+    responses = []
+
+    def respond(request_id, response):
+        responses.append((request_id, response))
+        return sent
+    frame._runners[session].respond = respond
+    request = PermissionRequest("r1", "Bash", {"command": "x"})
+    frame._pending[session] = [request]
+    return request, responses
+
+
+@pytest.mark.parametrize("kind", ["allow", "allow for this chat", "refuse", "question",
+                                  "decline questions", "plan", "keep planning", "form",
+                                  "decline form"])
+def test_each_claude_answer_sounds_once(frame, env, monkeypatch, kind):
+    from thechatplace.claude_cli import allow_response, deny_response
+    from thechatplace.claude_mcp import elicitation_response
+    request, responses = answering(frame)
+    decisions = {
+        "allow": (allow_response(request), "Allowed.", {}),
+        "allow for this chat": (allow_response(request, for_session=True),
+                                "Allowed for the rest of this chat.", {}),
+        "refuse": (deny_response("no"), "Refused.", {}),
+        "question": ({"behavior": "allow", "updatedInput": {"answers": {"Q": "A"}}},
+                     "Answer sent.", {}),
+        "decline questions": (deny_response("not now"), "Declined to answer.", {}),
+        "plan": (allow_response(request, mode="acceptEdits"), "Plan approved.", {}),
+        "keep planning": (deny_response("Keep planning"), "Claude will keep planning.", {}),
+        "form": (elicitation_response("accept", {"a": "b"}), "Sent to the tool.", {}),
+        "decline form": (elicitation_response("decline"), "Declined.", {}),
+    }
+    monkeypatch.setattr(frame, "_ask", lambda title, req, own: decisions[kind])
+    frame._answer_claude("own-1")
+    assert len(responses) == 1
+    assert env["sounds"] == [se.ANSWER_SENT]
+
+
+def test_answer_later_or_a_turn_already_over_makes_no_answer_sound(frame, env, monkeypatch):
+    from thechatplace.claude_cli import allow_response
+    answering(frame)
+    monkeypatch.setattr(frame, "_ask", lambda *a: None)  # Escape, or Answer Later
+    frame._answer_claude("own-1")
+    request, responses = answering(frame, sent=False)  # the turn ended meanwhile
+    monkeypatch.setattr(frame, "_ask", lambda title, req, own: (allow_response(req), "Allowed.", {}))
+    frame._answer_claude("own-1")
+    assert len(responses) == 1 and env["sounds"] == []
+
+
+def test_an_answer_sounds_for_a_chat_in_the_background_too(frame, env, monkeypatch):
+    """It answers your key press, so Other sounds play for doesn't hold it back."""
+    from thechatplace.claude_cli import allow_response
+    frame.speech.sound_others = se.OTHERS_NONE
+    answering(frame, "own-2")
+    monkeypatch.setattr(frame, "_ask", lambda title, req, own: (allow_response(req), "Allowed.", {}))
+    frame._answer_claude("own-2")
+    assert env["sounds"] == [se.ANSWER_SENT]
+
+
+def test_an_answer_sounds_during_a_presentation(frame, env, monkeypatch):
+    from thechatplace.claude_cli import allow_response
+    monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
+    answering(frame)
+    monkeypatch.setattr(frame, "_ask", lambda title, req, own: (allow_response(req), "Allowed.", {}))
+    frame._answer_claude("own-1")
+    assert env["sounds"] == [se.ANSWER_SENT]
+
+
+def codex_waiting(frame, request):
+    from thechatplace.providers.codex_runtime import CodexChatState as State
+    info = frame.store.get("cdx-1", provider="codex").to_info()
+    state = State("cdx-1", "needs you", "turn", "inProgress", requests=(request,))
+    frame._codex_states[info.key] = state
+    return info, state
+
+
+def codex_command():
+    from thechatplace.providers.codex_requests import COMMAND, CodexRequest
+    return CodexRequest(7, COMMAND, "cdx-1", "turn", "item", command="ls")
+
+
+class FakeCodexDialog:
+    """CodexPermissionDialog or QuestionDialog, answering as ``result`` says."""
+    result = wx.ID_OK
+    choice = "accept"
+    declined = False
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def ShowModal(self):
+        return type(self).result
+
+    def answers(self):
+        return {"q1": "Yes"}
+
+    def Destroy(self):
+        pass
+
+
+def copilot_waiting(frame):
+    """A Copilot chat waiting on a command it asks to run."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, COMMAND, CopilotChatState,
+                                                         CopilotRequest)
+    frame.store.add(OwnSession("cp-1", "Copilot one", "C:\\G\\Scratch", provider="copilot",
+                               last_activity_ms=fake_env.now_ms()))
+    info = frame.store.get("cp-1", provider="copilot").to_info()
+    request = CopilotRequest("perm-1", COMMAND, "call-1", title="Run a command", command="npm test",
+                             choices=(("allow_once", "allow_once"), ("reject_once", "reject_once")))
+    state = CopilotChatState("cp-1", "needs you", "1", "inProgress", mode=AGENT_MODE,
+                             requests=(request,))
+    frame._codex_states[info.key] = state
+    return info, state
+
+
+def waiting_for_permission(frame, provider):
+    return (codex_waiting(frame, codex_command()) if provider == "codex"
+            else copilot_waiting(frame))
+
+
+@pytest.mark.parametrize("provider,choice", [
+    ("codex", "accept"), ("codex", "decline"), ("codex", "tcp_chat_rule"),
+    ("copilot", "allow_once"), ("copilot", "reject_once"), ("copilot", "tcp_chat_rule")])
+def test_each_codex_permission_answer_sounds_once(frame, env, monkeypatch, provider, choice):
+    from thechatplace.ui import codex_chats
+    calls = []
+
+    def owned_action(action, record, *args):
+        calls.append(action)
+        return None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
+                        type("Choosing", (FakeCodexDialog,), {"choice": choice}))
+    info, state = waiting_for_permission(frame, provider)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: env["sounds"] == [se.ANSWER_SENT])
+        pump(lambda: False, timeout=0.2)
+        assert env["sounds"] == [se.ANSWER_SENT]
+        assert calls[-1] == ("allow_for_chat" if choice == "tcp_chat_rule" else "answer")
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_codex_question_answered_sounds_and_declined_or_cancelled_doesnt(frame, env, monkeypatch):
+    from thechatplace.providers.codex_requests import QUESTIONS, CodexQuestion, CodexRequest
+    from thechatplace.ui import codex_chats
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, record, *args: None)
+    stopped = []
+    monkeypatch.setattr(frame, "_stop_codex_owned", lambda info: stopped.append(info.key))
+    question = CodexRequest(8, QUESTIONS, "cdx-1", "turn", "item",
+                            questions=(CodexQuestion("q1", "Go", "Go on?"),))
+    info, state = codex_waiting(frame, question)
+    try:
+        monkeypatch.setattr(codex_chats, "QuestionDialog",
+                            type("Cancelled", (FakeCodexDialog,), {"result": wx.ID_CANCEL}))
+        frame._answer_codex_owned(info, state)
+        monkeypatch.setattr(codex_chats, "QuestionDialog",
+                            type("Declined", (FakeCodexDialog,), {"declined": True}))
+        frame._answer_codex_owned(info, state)  # declining stops the turn: not an answer
+        assert stopped == [info.key]
+        monkeypatch.setattr(codex_chats, "QuestionDialog", FakeCodexDialog)
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: env["sounds"] == [se.ANSWER_SENT])
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_codex_answer_that_couldnt_be_sent_makes_no_sound(frame, env, monkeypatch):
+    from thechatplace.ui import codex_chats
+
+    def owned_action(action, record, *args):
+        if action == "answer":
+            raise RuntimeError("no longer waiting")
+        return None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", FakeCodexDialog)
+    info, state = codex_waiting(frame, codex_command())
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: any("could not be answered" in text for text in env["feedback"]))
+        assert env["sounds"] == []
+    finally:
+        frame._codex_states.clear()
+
+
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+def test_allow_for_this_chat_that_fails_makes_no_answer_sound(frame, env, monkeypatch, provider):
+    from thechatplace.ui import codex_chats
+
+    def owned_action(action, record, *args):
+        if action == "allow_for_chat":
+            raise RuntimeError("no longer waiting")
+        return None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
+                        type("Keeping", (FakeCodexDialog,), {"choice": "tcp_chat_rule"}))
+    info, state = waiting_for_permission(frame, provider)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: any("could not be answered" in text for text in env["feedback"]))
+        pump(lambda: False, timeout=0.2)
+        assert env["sounds"] == []
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_copilot_answer_sent_but_not_kept_sounds_once(frame, env, monkeypatch):
+    """Allow for This Chat's answer went, though the command couldn't be kept: it's an answer."""
+    from thechatplace.providers.copilot import NOT_KEPT, AllowedNotKept
+    from thechatplace.ui import codex_chats
+
+    def owned_action(action, record, *args):
+        return AllowedNotKept(NOT_KEPT) if action == "allow_for_chat" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
+                        type("Keeping", (FakeCodexDialog,), {"choice": "tcp_chat_rule"}))
+    info, state = copilot_waiting(frame)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: env["feedback"] and env["feedback"][-1] == NOT_KEPT)
+        pump(lambda: False, timeout=0.2)
+        assert env["sounds"] == [se.ANSWER_SENT]
+    finally:
+        frame._codex_states.clear()
+
+
 # ---------------------------------------------------------------- Codex and Copilot
 
 def codex(state="working", outcome="inProgress", **fields):
@@ -760,11 +1005,11 @@ def test_each_built_in_scheme_keeps_its_own_changes(dialog):
     dialog.scheme.SetStringSelection("Wood")
     dialog._scheme_chosen()
     assert "Reply finished: Rise" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (21 of 21 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (22 of 22 events have a sound):"
     dialog.scheme.SetStringSelection("Glass")
     dialog._scheme_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (20 of 21 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (21 of 22 events have a sound):"
     settings = dialog.get_settings()
     assert settings.sound_scheme == "glass"
     assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
@@ -890,7 +1135,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
     dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
     try:
         assert pump(lambda: dialog.list.GetCount() == 1)
-        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 21 events have a sound. "
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 22 events have a sound. "
                                             "Update available.")
         assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
@@ -1024,12 +1269,12 @@ def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
 
 
 def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
-    assert dialog._events_name() == "Sound events, 21 of 21 events have a sound"
+    assert dialog._events_name() == "Sound events, 22 of 22 events have a sound"
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert dialog._events_name() == "Sound events, 20 of 21 events have a sound"
-    assert dialog.events.GetName() == "Sound events, 20 of 21 events have a sound"
+    assert dialog._events_name() == "Sound events, 21 of 22 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 21 of 22 events have a sound"
 
 
 # ---------------------------------------------------------------- Help, Sound Tutorial
@@ -1067,7 +1312,7 @@ def test_sound_tutorial_lists_event_names_only_on_the_first(frame):
     try:
         assert dialog.GetTitle() == "Sound Tutorial"
         assert dialog.events.GetItems() == [e.label for e in se.EVENTS]
-        assert len(dialog.events.GetItems()) == 21
+        assert len(dialog.events.GetItems()) == 22
         assert dialog.events.GetSelection() == 0
         assert dialog.events.GetName() == "Sound events"
         assert "in the Wood scheme" in dialog.intro.GetLabel().replace("\n", " ")
