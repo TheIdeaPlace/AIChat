@@ -269,7 +269,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Sound &events (4 of 20 events have a sound):",
+   "label": "Sound &events (4 of 21 events have a sound):",
    "rect": [
     10,
     244,
@@ -287,7 +287,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events, 4 of 20 events have a sound",
+   "name": "Sound events, 4 of 21 events have a sound",
    "label": "",
    "rect": [
     12,
@@ -312,10 +312,10 @@
     "Message steered into the turn: None",
     "Steered message taken: None",
     "Queued message sent: None",
+    "Queued message deleted: None",
     "You stopped a turn: None",
     "Reply finished: Rise (Wood)",
-    "Another chat finished: None",
-    "Ask Aside answered: None"
+    "Another chat finished: None"
    ],
    "selection": 0
   },
