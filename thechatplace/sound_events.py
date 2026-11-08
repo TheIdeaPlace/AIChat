@@ -89,8 +89,8 @@ BY_KEY: Dict[str, SoundEvent] = {event.key: event for event in EVENTS}
 #: This app as app-kit knows it: the same events, keys and sounds as above (a test checks).
 APP = shared.catalog("thechatplace")
 
-#: Tool sounds follow "Tool sounds for"; everything else from a chat that isn't
-#: loaded follows "Other chats". A chat that's only watched has no tool sounds unless it's
+#: Tick and Double tick follow "Tick sounds play for"; everything else from a chat that isn't
+#: loaded follows "Other sounds play for". A chat that's only watched has no tool sounds unless it's
 #: loaded: nothing reads its transcript until then.
 TOOL_EVENTS = frozenset({TOOL, FILE_CHANGED})
 
@@ -122,15 +122,16 @@ VOLUMES: List[int] = list(range(10, 101, 10))
 
 TOOLS_LOADED = "loaded"
 TOOLS_ALL = "all"
-TOOLS_LABELS: Dict[str, str] = {TOOLS_LOADED: "The loaded chat", TOOLS_ALL: "Every chat run here"}
+TOOLS_LABELS: Dict[str, str] = {TOOLS_LOADED: "The open chat only",
+                               TOOLS_ALL: "The open chat and chats running in The Chat Place"}
 
 OTHERS_ALL = "all"
 OTHERS_OWN = "own"
 OTHERS_NONE = "none"
 OTHERS_LABELS: Dict[str, str] = {
-    OTHERS_ALL: "Every listed chat",
-    OTHERS_OWN: "Chats run in The Chat Place",
-    OTHERS_NONE: "None",
+    OTHERS_ALL: "The open chat and every chat in the list",
+    OTHERS_OWN: "The open chat and chats running in The Chat Place",
+    OTHERS_NONE: "The open chat only",
 }
 
 NONE_REF = shared.NONE

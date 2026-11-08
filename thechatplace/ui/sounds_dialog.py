@@ -99,7 +99,7 @@ class SoundsDialog(wx.Dialog):
         self.silent_notifications = None
         if sys.platform == "win32":
             self.silent_notifications = wx.CheckBox(
-                self, label="No &Windows sound for The Chat Place's notifications")
+                self, label="Disable &Windows sound for The Chat Place's notifications")
             self.silent_notifications.SetValue(speech.sound_silent_notifications)
             outer.Add(self.silent_notifications, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -121,13 +121,13 @@ class SoundsDialog(wx.Dialog):
                           else volumes.index(sound_events.DEFAULT_VOLUME))
         self.scheme = row("Sound sc&heme:", [], "Sound scheme", wx.NOT_FOUND)
         self._tool_ids = list(sound_events.TOOLS_LABELS)
-        self.tools = row("&Tool sounds for:", list(sound_events.TOOLS_LABELS.values()),
-                         "Tool sounds for",
+        self.tools = row("&Tick sounds play for:", list(sound_events.TOOLS_LABELS.values()),
+                         "Tick sounds play for",
                          self._tool_ids.index(speech.sound_tools)
                          if speech.sound_tools in self._tool_ids else 0)
         self._other_ids = list(sound_events.OTHERS_LABELS)
-        self.others = row("&Other chats:", list(sound_events.OTHERS_LABELS.values()),
-                          "Sounds from other chats",
+        self.others = row("&Other sounds play for:", list(sound_events.OTHERS_LABELS.values()),
+                          "Other sounds play for",
                           self._other_ids.index(speech.sound_others)
                           if speech.sound_others in self._other_ids else 0)
         outer.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

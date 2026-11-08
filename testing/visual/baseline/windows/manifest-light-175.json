@@ -1252,6 +1252,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Help, Sound Tutorial"
+  },
+  "sounds-own-scheme": {
+   "kind": "dialog",
+   "png": "sounds-own-scheme-light-175.png",
+   "json": "sounds-own-scheme-light-175.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    980,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds on a scheme of your own"
   }
  },
  "seconds": 94.1
