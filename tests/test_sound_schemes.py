@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from markers import windows_junctions
 from thechatplace import platform_paths, sound_events as se, sound_gallery
 from thechatplace.speech import SpeechSettings
 from theideaplace_appkit import soundgallery as shared_gallery
@@ -456,6 +457,84 @@ def test_a_link_in_place_of_a_schemes_folder_is_removed_not_followed(data, tmp_p
     mine = se.Scheme(OTHER, "Mine", False)
     se.apply_file_changes(se.FileChanges(reset={OTHER}), [mine], ok=True)
     assert (outside / "keep.wav").is_file()
+
+
+def _junction(link, target):
+    import _winapi
+    _winapi.CreateJunction(str(target), str(link))
+
+
+@windows_junctions
+def test_a_junction_in_place_of_a_schemes_folder_is_removed_not_followed(data, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.wav").write_bytes(b"x")
+    (data / "sounds").mkdir(exist_ok=True)
+    _junction(data / "sounds" / USER, outside)
+    se.apply_file_changes(se.FileChanges(deleted={USER}), [], ok=True)
+    assert (outside / "keep.wav").is_file() and not (data / "sounds" / USER).exists()
+    _junction(data / "sounds" / OTHER, outside)
+    se.apply_file_changes(se.FileChanges(reset={OTHER}), [se.Scheme(OTHER, "Mine", False)], ok=True)
+    assert (outside / "keep.wav").is_file()
+
+
+@windows_junctions
+def test_a_junction_inside_a_schemes_folder_isnt_followed(data, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.wav").write_bytes(b"x")
+    put(data, USER, "m.wav")
+    _junction(data / "sounds" / USER / "inner", outside)
+    se.apply_file_changes(se.FileChanges(deleted={USER}), [], ok=True)
+    assert (outside / "keep.wav").is_file() and not (data / "sounds" / USER).exists()
+
+
+def test_without_isjunction_as_on_python_3_11_tidying_still_works(data, monkeypatch):
+    """Python 3.11 (Debian 12, from source) has no os.path.isjunction."""
+    monkeypatch.delattr(se.os.path, "isjunction", raising=False)
+    put(data, USER, "m.wav")
+    put(data, "glass", "spare.wav")
+    se.apply_file_changes(se.FileChanges(deleted={USER}, reset={"glass"}), [se.built_in_scheme("glass")],
+                          ok=True)
+    assert not (data / "sounds" / USER).exists() and not (data / "sounds" / "glass").exists()
+    put(data, OTHER, "m.wav")
+    se.remove_scheme_folder(OTHER)
+    assert not (data / "sounds" / OTHER).exists()
+
+
+def test_cancel_deletes_only_the_files_this_dialog_wrote_that_the_scheme_doesnt_play(data):
+    put(data, "glass", "old.wav")
+    put(data, "glass", "new.wav")
+    put(data, "glass", "Played.wav")
+    put(data, "glass", "untouched.wav")
+    glass = se.built_in_scheme("glass")
+    glass.events = {"ToolRan": "custom:old.wav", "NeedsYou": "custom:played.wav"}
+    changes = se.FileChanges(written={("glass", "new.wav"), ("glass", "Played.wav")})
+    se.apply_file_changes(changes, [glass], ok=False)
+    assert sorted(p.name for p in (data / "sounds" / "glass").iterdir()) == [
+        "Played.wav", "old.wav", "untouched.wav"]
+
+
+def test_ok_keeps_files_this_dialog_wrote(data):
+    put(data, "glass", "new.wav")
+    se.apply_file_changes(se.FileChanges(written={("glass", "new.wav")}), [se.built_in_scheme("glass")],
+                          ok=True)
+    assert (data / "sounds" / "glass" / "new.wav").is_file()
+
+
+def test_events_using_matches_names_whatever_their_case():
+    a = se.Scheme(USER, "A", False, {"ToolRan": "custom:mine.wav", "NeedsYou": "custom:MINE.wav"})
+    assert se.events_using(a, "Mine.wav") == ["Tool ran", "Needs you"]
+    assert se.events_using(a, "mine.wav", leaving_out=se.TOOL) == ["Needs you"]
+
+
+def test_an_update_reports_the_files_it_wrote(data):
+    put(data, USER, "knock.wav")
+    (data / "sounds" / USER / "knock.wav").write_bytes(wav_bytes(0.1))
+    put(data, "softbell", "knock.wav")
+    softbell = se.built_in_scheme("softbell")
+    softbell.events = {"NeedsYou": "custom:knock.wav"}
+    assert se.import_scheme(se.export(softbell), [], scheme_id=USER).added == ["knock 2.wav"]
 
 
 # -- scheme files ----------------------------------------------------------------------

@@ -7,8 +7,8 @@ Soft bell, Wood) keeps its own changes, and you can make, share and take schemes
 Every sound file of your own is kept in its scheme's own folder (sound_events.scheme_folder).
 What a scheme does is held here until OK, and so is deleting files: a scheme deleted or reset,
 or a file removed, loses its files only on OK (``tidy_files``). Files a scheme brings in, and ones
-Choose File copies, are written straight away; Cancel takes away the folder of a scheme made
-here."""
+Choose File copies, are written straight away; Cancel deletes them again, and the folder of a
+scheme made here."""
 from __future__ import annotations
 
 import dataclasses
@@ -30,10 +30,12 @@ from .sizes import dialog_size, dip_width
 NEW, COPY, RENAME, DELETE, RESET, EXPORT, IMPORT = (wx.NewIdRef() for _ in range(7))
 
 
-def keep_custom_sound(source: str, scheme: sound_events.Scheme) -> str:
+def keep_custom_sound(source: str, scheme: sound_events.Scheme,
+                      copied: Optional[Callable[[str], None]] = None) -> str:
     """Copy a person's file into ``scheme``'s folder in the data folder, so it survives the
-    original moving and goes with backups, and return its name there. Raises SoundProblem or
-    OSError, with words to show."""
+    original moving and goes with backups, and return its name there. ``copied(name)`` is told
+    when a new copy is made rather than one already there used. Raises SoundProblem or OSError,
+    with words to show."""
     appkit_sounds.read_wav(source)
     name = Path(source).name
     if not name.lower().endswith(".wav"):
@@ -53,6 +55,8 @@ def keep_custom_sound(source: str, scheme: sound_events.Scheme) -> str:
         target = folder / f"{Path(name).stem} {number}{Path(name).suffix}"
         number += 1
     shutil.copyfile(source, target)
+    if copied is not None:
+        copied(target.name)
     return target.name
 
 
@@ -319,7 +323,7 @@ class SoundsDialog(wx.Dialog):
         if scheme.built_in:
             return
         if wx.MessageBox(f"Delete the sound scheme {scheme.name} and its sound files? They're "
-                         "deleted when you choose OK.",
+                         "deleted when you choose OK in Sounds.",
                          "Delete Sound Scheme", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                          self) != wx.YES:
             self.actions.SetFocus()
@@ -333,7 +337,7 @@ class SoundsDialog(wx.Dialog):
         scheme = self.current()
         if not scheme.built_in or not sound_events.save_schemes([scheme]):
             return
-        files = (" Your sound files for it are deleted when you choose OK."
+        files = (" Your sound files for it are deleted when you choose OK in Sounds."
                  if sound_events.custom_files(scheme) else "")
         if wx.MessageBox(f"Reset {scheme.name} to how it ships? Every event goes back to its "
                          f"built-in sound.{files}", "Reset Sound Scheme",
@@ -402,8 +406,9 @@ class SoundsDialog(wx.Dialog):
             back_to.SetFocus()
             return False
         if replacing is not None:
-            # On OK, files only the old version played go.
+            # On OK, files only the old version played go; on Cancel, the new version's files.
             self._file_changes.reset.add(replacing.id)
+            self._file_changes.written.update((replacing.id, name) for name in imported.added)
             replacing.events = imported.scheme.events
             replacing.author, replacing.license = imported.scheme.author, imported.scheme.license
             replacing.description, replacing.source = imported.scheme.description, gallery_source
@@ -436,7 +441,8 @@ class SoundsDialog(wx.Dialog):
             return
         if replacing is not None and wx.MessageBox(
                 f"Replace your copy of {replacing.name} with the gallery's newer version? "
-                "Any changes you made to it are lost.", "Update Sound Scheme",
+                "Any changes you made to it are lost, and sound files only the old version used are "
+                "deleted when you choose OK in Sounds.", "Update Sound Scheme",
                 wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             self.browse.SetFocus()
             return
@@ -534,7 +540,9 @@ class SoundsDialog(wx.Dialog):
                 return
             path = picker.GetPath()
         try:
-            name = keep_custom_sound(path, self.current())
+            scheme_id = self.current().id
+            name = keep_custom_sound(path, self.current(),
+                                     copied=lambda made: self._file_changes.written.add((scheme_id, made)))
         except (appkit_sounds.SoundProblem, OSError) as exc:
             wx.MessageBox(f"That sound can't be used. {exc}", "Sounds",
                           wx.OK | wx.ICON_WARNING, self)
@@ -564,7 +572,7 @@ class SoundsDialog(wx.Dialog):
                         "the file, so it's kept.")
         else:
             question = (f"Remove the sound file {current.name}? {event.label} goes back to its "
-                        "built-in sound, and the file is deleted when you choose OK.")
+                        "built-in sound, and the file is deleted when you choose OK in Sounds.")
         if wx.MessageBox(question, "Remove Sound File",
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             self.remove_file.SetFocus()

@@ -1058,7 +1058,7 @@ def test_copy_rename_delete_and_reset(dialog, ask, env):
     assert dialog.scheme.GetStringSelection() == "Chimes"
     dialog.on_delete()
     assert env["boxes"][-1] == ("Delete the sound scheme Chimes and its sound files? They're "
-                                "deleted when you choose OK.")
+                                "deleted when you choose OK in Sounds.")
     assert dialog.scheme.GetStringSelection() == "Glass"
     assert [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
     select_event(dialog, se.TOOL)
@@ -1133,7 +1133,7 @@ def test_remove_file_takes_it_off_the_event_and_deletes_it_on_ok(frame, env, tmp
         assert kept.is_file() and dialog.remove_file.IsEnabled()
         dialog.on_remove_file()
         assert env["boxes"][-1] == ("Remove the sound file mine.wav? Tool ran goes back to its "
-                                    "built-in sound, and the file is deleted when you choose OK.")
+                                    "built-in sound, and the file is deleted when you choose OK in Sounds.")
         assert kept.is_file()  # not yet
         assert dialog.events.GetString(0) == "Tool ran: Tick"
         assert not dialog.remove_file.IsEnabled()
@@ -1186,19 +1186,104 @@ def test_deleting_a_scheme_deletes_its_folder_on_ok(frame, env, monkeypatch):
     assert frame.speech.sound_scheme == "glass"
 
 
-def test_a_folder_isnt_deleted_when_the_settings_cant_be_saved(frame, env, monkeypatch):
+def test_settings_that_cant_be_saved_are_taken_back_with_their_files(frame, env, tmp_path, monkeypatch):
+    """A failed save is a Cancel: the settings in use and the files on disk keep agreeing."""
     sid = "user-" + "d" * 32
     frame.speech.sound_schemes = {sid: {"name": "Mine", "events": {"ToolRan": "custom:m.wav"}}}
     frame.speech.sound_scheme = sid
+    before = frame.speech
     folder = platform_paths.custom_sounds_dir() / sid
     folder.mkdir(parents=True)
     make_wav(folder / "m.wav")
+    _picker(monkeypatch, make_wav(tmp_path / "new.wav"))
 
     def fail(self, *a, **k):
         raise OSError("disk full")
     monkeypatch.setattr(SpeechSettings, "save", fail)
-    _ok(frame, monkeypatch, lambda dialog: dialog.on_delete())
+
+    def act(dialog):
+        dialog._choose_file()  # a new copy into the scheme
+        dialog.on_delete()
+    _ok(frame, monkeypatch, act)
+    assert (folder / "m.wav").is_file() and not (folder / "new.wav").exists()
+    assert frame.speech is before and sid in frame.speech.sound_schemes
+    assert "your changes weren't kept" in env["boxes"][-1]
+
+
+def test_cancel_deletes_a_file_choose_file_copied_into_an_existing_scheme(frame, env, tmp_path, monkeypatch):
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": "custom:old.wav"}}}
+    folder = platform_paths.custom_sounds_dir() / "glass"
+    folder.mkdir(parents=True)
+    make_wav(folder / "old.wav")
+    make_wav(folder / "mine.wav")  # there before: choosing the same file again reuses it
+    _picker(monkeypatch, make_wav(tmp_path / "new.wav"))
+    _cancel(frame, monkeypatch, lambda dialog: dialog._choose_file())
+    assert not (folder / "new.wav").exists() and (folder / "old.wav").is_file()
+    _picker(monkeypatch, str(folder / "mine.wav"))
+    _cancel(frame, monkeypatch, lambda dialog: dialog._choose_file())
+    assert (folder / "mine.wav").is_file()  # not written by this dialog, so not deleted
+
+
+def test_copy_scheme_that_cant_copy_its_files_isnt_made(frame, env, ask, monkeypatch):
+    frame.speech.sound_schemes = {"wood": {"events": {"ToolRan": "custom:m.wav"}}}
+    frame.speech.sound_scheme = "wood"
+    folder = platform_paths.custom_sounds_dir() / "wood"
+    folder.mkdir(parents=True)
+    make_wav(folder / "m.wav")
+    real_copy = se.shutil.copyfile
+
+    def fail(src, dst, *a, **k):
+        real_copy(src, dst)  # part-way: the file lands, then the copy fails
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(se.shutil, "copyfile", fail)
+    ask.answers = ["Bells"]
+
+    def act(dialog):
+        dialog.on_copy()
+        assert [s.name for s in dialog._schemes] == ["Glass", "Soft bell", "Wood"]
+        assert "couldn't be copied" in env["boxes"][-1]
+    _ok(frame, monkeypatch, act)
+    assert sorted(p.name for p in platform_paths.custom_sounds_dir().iterdir()) == ["wood"]
     assert (folder / "m.wav").is_file()
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_a_gallery_update_deletes_the_old_files_on_ok_and_the_new_on_cancel(frame, env, monkeypatch, ok):
+    sid = "user-" + "c" * 32
+    folder = platform_paths.custom_sounds_dir() / sid
+    folder.mkdir(parents=True)
+    make_wav(folder / "old.wav")
+    make_wav(folder / "knock.wav", seconds=0.1)  # the new version's knock.wav has other bytes
+    frame.speech.sound_schemes = {sid: {"name": "My bells", "events": {
+        "ToolRan": "custom:old.wav", "NeedsYou": "custom:knock.wav"},
+        "source": {"gallery": "bells", "sha256": "0" * 64}}}
+    wood = platform_paths.custom_sounds_dir() / "wood"
+    wood.mkdir()
+    make_wav(wood / "knock.wav")
+    new = se.built_in_scheme("wood")
+    new.events = {"NeedsYou": "custom:knock.wav"}
+    exported = se.export(new)
+
+    def act(dialog):
+        mine = next(s for s in dialog._schemes if s.id == sid)
+        entry = _gallery_entry(exported, "bells", "Bells")
+        _browse_and_add(dialog, monkeypatch, _FakeGallery([entry], exported))
+        assert "sound files only the old version used are deleted when you choose OK in Sounds" in env["boxes"][-1]
+        assert mine.events["NeedsYou"] == "custom:knock 2.wav"
+    (_ok if ok else _cancel)(frame, monkeypatch, act)
+    names = sorted(p.name for p in folder.iterdir())
+    assert names == (["knock 2.wav"] if ok else ["knock.wav", "old.wav"])
+
+
+def test_remove_file_counts_another_event_using_it_in_another_case(frame, env, monkeypatch):
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": "custom:mine.wav",
+                                                       "ReplyFinished": "custom:MINE.wav"}}}
+    folder = platform_paths.custom_sounds_dir() / "glass"
+    folder.mkdir(parents=True)
+    make_wav(folder / "mine.wav")
+    _ok(frame, monkeypatch, lambda dialog: dialog.on_remove_file())
+    assert "Reply finished still uses the file, so it's kept." in env["boxes"][-1]
+    assert (folder / "mine.wav").is_file()
 
 
 def test_reset_deletes_a_built_in_schemes_files_on_ok(frame, env, monkeypatch):
@@ -1209,7 +1294,7 @@ def test_reset_deletes_a_built_in_schemes_files_on_ok(frame, env, monkeypatch):
     make_wav(folder / "m.wav")
     _ok(frame, monkeypatch, lambda dialog: dialog.on_reset())
     assert env["boxes"][-1] == ("Reset Wood to how it ships? Every event goes back to its built-in "
-                                "sound. Your sound files for it are deleted when you choose OK.")
+                                "sound. Your sound files for it are deleted when you choose OK in Sounds.")
     assert not folder.exists() and frame.speech.sound_schemes == {}
 
 

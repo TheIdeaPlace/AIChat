@@ -434,9 +434,11 @@ def missing_files(scheme: Scheme) -> int:
 
 def events_using(scheme: Scheme, file_name: str, leaving_out: str = "") -> List[str]:
     """The labels of ``scheme``'s events that play ``file_name``, apart from ``leaving_out``
-    (an event id)."""
-    wanted = shared.SoundRef("custom", file_name)
-    return [e.label for e in EVENTS if e.id != leaving_out and ref_for(scheme, e.id) == wanted]
+    (an event id). Names match whatever their case, as on Windows and as ``_remove_unused``
+    decides what's still played."""
+    wanted = shared.fold(file_name)
+    return [e.label for e in EVENTS if e.id != leaving_out
+            for ref in [ref_for(scheme, e.id)] if ref.kind == "custom" and shared.fold(ref.name) == wanted]
 
 
 def without_file(scheme: Scheme, event_id: str) -> None:
@@ -464,6 +466,13 @@ def copy_files(source: Scheme, target: Scheme) -> int:
     return len(names)
 
 
+def _is_junction(path: Path) -> bool:
+    """A Windows junction. ``os.path.isjunction`` is Python 3.12's; running from source on 3.11
+    (Debian 12) has none, and there a junction can't be told from a folder this way, but
+    ``rmtree`` still won't follow one inside the folder."""
+    return hasattr(os.path, "isjunction") and os.path.isjunction(path)
+
+
 def remove_scheme_folder(scheme_id: str) -> None:
     """Delete a scheme's whole folder. A link in its place is removed, never followed."""
     if not scheme_id_ok(scheme_id):
@@ -472,7 +481,7 @@ def remove_scheme_folder(scheme_id: str) -> None:
     try:
         if path.is_symlink():
             path.unlink()
-        elif os.path.isjunction(path):
+        elif _is_junction(path):
             os.rmdir(path)  # removes the junction, not what it points to
         elif path.is_dir():
             shutil.rmtree(path)  # which doesn't follow links or junctions inside it
@@ -484,7 +493,7 @@ def _remove_unused(scheme: Scheme, only: Optional[Iterable[str]] = None) -> None
     """Delete files in ``scheme``'s folder that none of its events play (only those named in
     ``only``, if given), and the folder itself once it's empty."""
     base = scheme_folder(scheme)
-    if base is None or base.is_symlink() or os.path.isjunction(base) or not base.is_dir():
+    if base is None or base.is_symlink() or _is_junction(base) or not base.is_dir():
         return
     # Folded, as Windows matches names: "Chime.wav" in an event is the file "chime.wav".
     used = {shared.fold(n) for n in shared.files_used(APP, scheme.events)}
@@ -506,8 +515,8 @@ def _remove_unused(scheme: Scheme, only: Optional[Iterable[str]] = None) -> None
 class FileChanges:
     """What File, Sounds did that changes which files are kept, done to disk when it closes:
     files go only when you choose OK, so Cancel can take back a delete, a reset or Remove File.
-    Files a scheme brings in, or Choose File copies, are written straight away; a scheme made
-    in the dialog and then cancelled takes its folder with it."""
+    Files a scheme brings in, or Choose File copies, are written straight away; Cancel deletes
+    them again (a scheme made in the dialog takes its whole folder with it)."""
     #: Schemes made here (New, Copy, Import, Add from the gallery).
     made: set = field(default_factory=set)
     #: Schemes of your own deleted here.
@@ -517,18 +526,25 @@ class FileChanges:
     reset: set = field(default_factory=set)
     #: (scheme id, file name) for each Remove File.
     removed: set = field(default_factory=set)
+    #: (scheme id, file name) for each file this dialog wrote: Choose File's new copies and the
+    #: files a gallery update brought in.
+    written: set = field(default_factory=set)
 
 
 def apply_file_changes(changes: FileChanges, kept: Iterable[Scheme], ok: bool) -> None:
     """Tidy the sound folders after File, Sounds closes. ``kept`` is the schemes now in
     settings: the dialog's after OK, what there was before after Cancel. A scheme that isn't
-    kept loses its folder; after OK, a reset scheme loses the files it no longer plays, and a
-    removed file goes unless another event in its scheme still plays it."""
+    kept loses its folder. After OK, a reset scheme loses the files it no longer plays, and a
+    removed file goes unless another event in its scheme still plays it. After Cancel, a file
+    the dialog wrote goes unless the scheme as it was plays it."""
     by_id = {s.id: s for s in kept}
     for scheme_id in changes.made | changes.deleted:
         if scheme_id not in by_id:
             remove_scheme_folder(scheme_id)
     if not ok:
+        for scheme_id, name in changes.written:
+            if scheme_id in by_id:
+                _remove_unused(by_id[scheme_id], only=[name])
         return
     for scheme_id in changes.reset:
         if scheme_id in by_id:
@@ -593,6 +609,9 @@ class Imported:
     #: Sound files the scheme brought in, and events left silent for a file it couldn't use.
     files: int
     dropped: int
+    #: The files written into the scheme's folder, by the name they have there: an update that's
+    #: then cancelled deletes them again.
+    added: List[str] = field(default_factory=list)
 
     def message(self) -> str:
         text = f"Added the sound scheme {self.scheme.name}"
@@ -628,4 +647,4 @@ def import_scheme(source, taken: Iterable[str], gallery_source: Optional[Dict[st
     scheme.name = shared.unique_name(read.name, taken)
     scheme.author, scheme.license, scheme.description = read.author, read.license, read.description
     scheme.source = gallery_source
-    return Imported(scheme, len(read.sounds), read.dropped)
+    return Imported(scheme, len(read.sounds), read.dropped, list(installed.added))
