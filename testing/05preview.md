@@ -131,7 +131,7 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 5. Ask Aside a question (Ctrl+Shift+Y). Expect: Aside when the answer comes.
 6. Press **Ctrl+Shift+X** (View, Mute All Sounds). Expect: "Sounds muted", and silence, even a
    sound already playing. Press it again. Expect: "Sounds on".
-7. On Windows, in File, Sounds, turn on **No Windows sound for The Chat Place's notifications**.
+7. On Windows, in File, Sounds, turn on **Disable Windows sound for The Chat Place's notifications**.
    Let a chat finish while you're in another program, then choose its notification. Expect: only
    The Chat Place's sound, and the chat opens.
 8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).

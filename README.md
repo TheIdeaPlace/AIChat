@@ -1167,7 +1167,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not
   under Do Not Disturb, which Windows doesn't let apps detect: use Mute for that. Windows plays its
-  own sound with each notification, so you can hear two; **No Windows sound for The Chat Place's
+  own sound with each notification, so you can hear two; **Disable Windows sound for The Chat Place's
   notifications**, off to start, leaves Windows' out.
 - **Which voice speaks.** On Windows, Automatic (the default) speaks through JAWS or NVDA,
   whichever is running, in your screen reader's own voice and rate. NVDA needs nothing extra: The

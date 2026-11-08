@@ -719,7 +719,7 @@ This is a first version, and we'd like to hear which sounds help, which annoy, a
 Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialog:
 
 - **Mute all sounds** does the same as **Mute All Sounds**, below.
-- **No Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
+- **Disable Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Sound scheme** is Glass, Soft bell, Wood, or a scheme of your own (below). Glass, Soft bell and Wood play the same melodies in a different tone, so a sound means the same thing in any of them.
 - **Tool sounds for** is the loaded chat, or every chat run here. Taps from several chats at once are hard to make sense of, so it starts with the loaded chat. A desktop app, Cowork or terminal session taps only while it's loaded, as that's when its transcript is being read.

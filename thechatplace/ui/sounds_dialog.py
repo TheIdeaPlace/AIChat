@@ -99,7 +99,7 @@ class SoundsDialog(wx.Dialog):
         self.silent_notifications = None
         if sys.platform == "win32":
             self.silent_notifications = wx.CheckBox(
-                self, label="No &Windows sound for The Chat Place's notifications")
+                self, label="Disable &Windows sound for The Chat Place's notifications")
             self.silent_notifications.SetValue(speech.sound_silent_notifications)
             outer.Add(self.silent_notifications, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
