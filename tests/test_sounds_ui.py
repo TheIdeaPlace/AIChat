@@ -1103,15 +1103,64 @@ def test_sound_tutorial_enter_plays_and_stays_open(frame, env):
         dialog._on_char_hook(enter)
         assert Path(env["previews"][-1][0]).parts[-2:] == ("glass", "tool.wav")
         assert not enter.GetSkipped()  # taken here, so no button gets it
-        # Elsewhere, Enter is left to the dialog.
-        other = key_event(wx.WXK_RETURN, wx.wxEVT_CHAR_HOOK, obj=dialog.close)
-        dialog.close.SetFocus()
-        before = len(env["previews"])
-        dialog._on_char_hook(other)
-        if wx.Window.FindFocus() is not dialog.events:
-            assert other.GetSkipped() and len(env["previews"]) == before
     finally:
         dialog.Destroy()
+
+
+def test_sound_tutorial_enter_on_close_is_left_to_the_dialog(frame, env, monkeypatch):
+    dialog = tutorial_dialog(frame)
+    try:
+        # Hidden windows can't be relied on to take focus, so say where it is.
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.close))
+        other = key_event(wx.WXK_RETURN, wx.wxEVT_CHAR_HOOK, obj=dialog.close)
+        dialog._on_char_hook(other)
+        assert other.GetSkipped() and env["previews"] == []
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("ref", ["builtin:wood/reply", "custom:gone.wav"])
+def test_sound_tutorial_plays_what_the_event_plays(frame, env, ref):
+    """The same file, and the same fallback, as the event itself in a scheme of your own."""
+    frame.speech.sound_scheme = "user-" + "c" * 32
+    frame.speech.sound_schemes = {frame.speech.sound_scheme: {
+        "name": "Mine", "events": {"ReplyFinished": ref}}}
+    frame._sound(se.FINISHED)
+    player = env["players"][0]
+    assert env["sounds"] == [se.FINISHED]
+    dialog = tutorial_dialog(frame)
+    try:
+        pick(dialog, se.FINISHED)
+        dialog.play()
+        assert Path(env["previews"][-1][0]) == Path(player.last["path"])
+        assert player.preview_fallback == player.last["fallback"]
+        if ref.startswith("builtin"):
+            assert Path(player.last["path"]).parts[-2:] == ("wood", "reply.wav")
+        else:
+            assert Path(player.last["fallback"]).name == "reply.wav"
+    finally:
+        dialog.Destroy()
+
+
+def test_the_tutorials_words_come_from_its_own_window(frame, env, monkeypatch):
+    """VoiceOver drops what's posted from a window behind the one you're in, so the note is
+    posted from the dialog's. Elsewhere queue_announcement declines, as here, and speech goes
+    as before."""
+    from thechatplace.ui import main_frame
+    handles = []
+    monkeypatch.setattr(main_frame.mac_a11y, "queue_announcement",
+                        lambda handle, text: handles.append(handle) or False)
+    frame.speech.engine = "auto"
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": se.NONE_REF}}}
+
+    def press_space(self):
+        self._on_events_key(key_event(wx.WXK_SPACE))
+        handles.append(("dialog", self.GetHandle()))
+        return wx.ID_CANCEL
+    monkeypatch.setattr(SoundTutorialDialog, "ShowModal", press_space)
+    frame.on_sound_tutorial()
+    assert handles[0] == handles[1][1] and handles[0] != frame.GetHandle()
+    assert "No sound." in env["feedback"]  # declined, so spoken as before
 
 
 def test_sound_tutorial_plays_with_sounds_off_and_muted(frame, env):

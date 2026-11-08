@@ -757,7 +757,7 @@ When a lot happens at once, some sounds are left out so it never turns into nois
 
 ### Sound Tutorial
 
-Help, **Sound Tutorial** (Alt+H, T) lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound, in the scheme and at the volume you use, even when sounds are off or muted. If the event has no sound, it says "No sound". Escape or **Close** closes it. It changes nothing: to choose sounds or another scheme, use File, **Sounds**.
+Help, **Sound Tutorial** (Alt+H, T) lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound, in the scheme and at the volume you use, even when sounds are off or muted. If the event has no sound, it says "No sound"; if its sound file of your own is missing, it says so and plays the built-in sound instead, as the event would. Escape or **Close** closes it. It changes nothing: to choose sounds or another scheme, use File, **Sounds**.
 
 ### Changing a sound
 

@@ -232,9 +232,11 @@ class SoundHost:
     def on_sound_tutorial(self, _event=None) -> None:
         """Help, Sound Tutorial: hear each event's sound in the scheme you use. What it says
         ("No sound.") is said even with announcements silent, because you pressed Space to hear
-        something."""
+        something. From the dialog's own window, so VoiceOver doesn't drop it for coming from the
+        window behind."""
         dialog = SoundTutorialDialog(self, self.speech, self._sound_player,
-                                     say=lambda text: self._say(text, force=True, interrupt=False))
+                                     say=lambda text: self._say(text, force=True, interrupt=False,
+                                                                window=dialog))
         try:
             dialog.ShowModal()
         finally:
