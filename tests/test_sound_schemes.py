@@ -190,6 +190,30 @@ def test_resolve_in_your_own_scheme(data):
     assert Path(fallback).parts[-2:] == ("glass", "needsyou.wav")
 
 
+def test_sound_tutorial_says_the_scheme_once():
+    assert se.tutorial_intro(se.built_in_scheme("glass")) == (
+        "Arrow to an event and press Space to hear it in the Glass scheme. "
+        "Change sounds in File, Sounds.")
+    assert "in the Soft bell scheme." in se.tutorial_intro(se.built_in_scheme("softbell"))
+    assert "in the Calm scheme." in se.tutorial_intro(se.Scheme(USER, "Calm Scheme", False))
+    assert "in the Quiet evenings scheme." in se.tutorial_intro(se.Scheme(USER, "Quiet evenings", False))
+    # "Scheme" alone isn't a word followed by " scheme", so it stays.
+    assert "in the Scheme scheme." in se.tutorial_intro(se.Scheme(USER, "Scheme", False))
+
+
+def test_sound_tutorial_notes_only_what_cant_simply_play(data):
+    glass = se.built_in_scheme("glass")
+    glass.events = {"ToolRan": "none", "PeerMessage": "custom:m.wav"}
+    assert se.tutorial_note(se.FINISHED, glass) is None
+    assert se.tutorial_note(se.TOOL, glass) == "No sound."
+    assert se.tutorial_note(se.PEER, glass) == "Its sound file is missing, so the built-in sound plays."
+    (data / "sounds").mkdir()
+    (data / "sounds" / "m.wav").write_bytes(wav_bytes())
+    assert se.tutorial_note(se.PEER, glass) is None
+    # A scheme of your own leaves an event it doesn't mention silent.
+    assert se.tutorial_note(se.FINISHED, se.Scheme(USER, "Mine", False)) == "No sound."
+
+
 def test_a_bad_choice_never_leaves_the_sounds_folder(data):
     glass = se.built_in_scheme("glass")
     glass.events = {"ToolRan": "custom:../../secret.wav"}

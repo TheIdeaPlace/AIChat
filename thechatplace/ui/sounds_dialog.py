@@ -21,7 +21,7 @@ from theideaplace_appkit import sounds as appkit_sounds
 from .. import platform_paths, sound_events
 from ..speech import SpeechSettings
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
-from .sizes import dialog_size
+from .sizes import dialog_size, dip_width
 
 # The Scheme Actions menu.
 NEW, COPY, RENAME, DELETE, RESET, EXPORT, IMPORT = (wx.NewIdRef() for _ in range(7))
@@ -48,6 +48,18 @@ def keep_custom_sound(source: str) -> str:
         number += 1
     shutil.copyfile(source, target)
     return target.name
+
+
+def preview_event(player: Callable, event_id: str, scheme: sound_events.Scheme, volume: int) -> bool:
+    """Play ``event_id``'s sound in ``scheme`` at ``volume`` percent, even with sounds off or
+    muted: someone asked to hear it. ``player()`` gives the window's player, made only when
+    there's something to play. False when the scheme gives the event no sound. File, Sounds and
+    Help, Sound Tutorial both play through this, so they sound the same."""
+    chosen = sound_events.resolve(event_id, scheme)
+    if chosen is None:
+        return False
+    player().preview(chosen[0], volume=volume / 100, fallback=chosen[1])
+    return True
 
 
 def _default_gallery():
@@ -470,12 +482,10 @@ class SoundsDialog(wx.Dialog):
     def _preview(self) -> None:
         """The sound showing, at the volume and in the scheme showing, even when muted. No words:
         you're listening to it."""
-        chosen = sound_events.resolve(self._event_id(), self.current())
-        if chosen is None:
+        if preview_event(self._player, self._event_id(), self.current(), self._volume()):
+            self._previewed = True
+        else:
             self.stop_preview()
-            return
-        self._previewed = True
-        self._player().preview(chosen[0], volume=self._volume() / 100, fallback=chosen[1])
 
     def stop_preview(self) -> None:
         if not self._previewed:
@@ -545,3 +555,90 @@ class SoundsDialog(wx.Dialog):
             sound_silent_notifications=(self.silent_notifications.GetValue()
                                         if self.silent_notifications is not None
                                         else self._original.sound_silent_notifications))
+
+
+class SoundTutorialDialog(wx.Dialog):
+    """Help, Sound Tutorial: every event by name, and Space (or Enter) plays its sound in the
+    scheme you're using, at your volume, to learn what each means. Nothing here changes a
+    setting: sound names, files and other schemes are File, Sounds."""
+
+    def __init__(self, parent, speech: SpeechSettings, player: Callable,
+                 say: Optional[Callable[[str], None]] = None):
+        super().__init__(parent, title="Sound Tutorial", size=dialog_size(parent, 440, 560),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._player = player
+        self._say = say or (lambda text: None)
+        self._previewed = False
+        self._scheme = sound_events.find(sound_events.load_schemes(speech.sound_schemes),
+                                         speech.sound_scheme)
+        # The volume sounds really play at, as SoundHost plays them.
+        self._volume = speech.sound_volume
+        self._events = list(sound_events.EVENTS)
+
+        outer = wx.BoxSizer(wx.VERTICAL)
+        self.intro = wx.StaticText(self, label=sound_events.tutorial_intro(self._scheme))
+        self.intro.Wrap(dip_width(self, 400))
+        outer.Add(self.intro, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        outer.Add(wx.StaticText(self, label="Sound &events:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.events = wx.ListBox(self, choices=[e.label for e in self._events], style=wx.LB_SINGLE)
+        set_accessible_name(self.events, "Sound events")
+        set_list_items_accessible(self.events, lambda: "Sound events", lambda index: None)
+        outer.Add(self.events, 1, wx.EXPAND | wx.ALL, 10)
+        self.close = wx.Button(self, wx.ID_CANCEL, "&Close")
+        outer.Add(self.close, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.SetSizer(outer)
+        self.SetEscapeId(wx.ID_CANCEL)
+
+        # Space as in File, Sounds' list, which works on a Mac too (#574). Enter is caught before
+        # the dialog would take it as pressing a button, so it plays and the dialog stays open.
+        self.events.Bind(wx.EVT_KEY_DOWN, self._on_events_key)
+        self.events.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.play())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+        self.events.SetSelection(0)
+        self.events.SetFocus()
+
+    def _on_destroy(self, event):
+        if event.GetEventObject() is self:
+            self.stop_preview()
+        event.Skip()
+
+    def _on_events_key(self, event: wx.KeyEvent) -> None:
+        if event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers():
+            self.play()
+            return
+        event.Skip()
+
+    def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        from .dialogs import press_focused_button_on_a_mac
+        if press_focused_button_on_a_mac(event):
+            return
+        if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and not event.HasAnyModifiers()
+                and (wx.Window.FindFocus() is self.events or event.GetEventObject() is self.events)):
+            self.play()
+            return
+        event.Skip()
+
+    def event_id(self) -> str:
+        return self._events[max(self.events.GetSelection(), 0)].id
+
+    def play(self) -> None:
+        """The selected event's sound, even with sounds off or muted: you asked to hear it. When
+        there's none to play, or your file for it has gone, a few words say so."""
+        event_id = self.event_id()
+        note = sound_events.tutorial_note(event_id, self._scheme)
+        if preview_event(self._player, event_id, self._scheme, self._volume):
+            self._previewed = True
+        else:
+            self.stop_preview()  # the last event's sound mustn't run on under "No sound"
+        if note:
+            self._say(note)
+
+    def stop_preview(self) -> None:
+        if not self._previewed:
+            return
+        try:
+            self._player().stop_preview()
+        except Exception:  # noqa: BLE001 - closing a dialog must never fail on a sound
+            pass

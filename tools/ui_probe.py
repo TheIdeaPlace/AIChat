@@ -1128,6 +1128,11 @@ def d_sounds_own_scheme(frame, env):
     return frame.on_sounds
 
 
+def d_sound_tutorial(frame, env):
+    """Help, Sound Tutorial (#250): every event by name, in the Glass scheme."""
+    return frame.on_sound_tutorial
+
+
 class _ProbeGallery:
     """A gallery answering at once with made-up schemes, one of them already added."""
 
@@ -2286,6 +2291,7 @@ SURFACES = {
     "sounds": ("dialog", d_sounds, "File, Sounds"),
     "sounds-own-scheme": ("dialog", d_sounds_own_scheme, "File, Sounds on a scheme of your own"),
     "sound-gallery": ("dialog", d_sound_gallery, "File, Sounds, Browse Gallery: two schemes, one added"),
+    "sound-tutorial": ("dialog", d_sound_tutorial, "Help, Sound Tutorial"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
@@ -2430,6 +2436,7 @@ DIALOG_CLASSES = {
     "sounds": "SoundsDialog",
     "sounds-own-scheme": "SoundsDialog",
     "sound-gallery": "SoundGalleryDialog",
+    "sound-tutorial": "SoundTutorialDialog",
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",

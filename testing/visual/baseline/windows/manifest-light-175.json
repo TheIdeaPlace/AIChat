@@ -1238,6 +1238,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "File, Sounds, Browse Gallery: two schemes, one added"
+  },
+  "sound-tutorial": {
+   "kind": "dialog",
+   "png": "sound-tutorial-light-175.png",
+   "json": "sound-tutorial-light-175.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    770,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Help, Sound Tutorial"
   }
  },
  "seconds": 94.1

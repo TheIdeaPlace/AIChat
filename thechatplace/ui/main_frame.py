@@ -747,6 +747,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         help_menu = wx.Menu()
         self._item(help_menu, "User &Guide", self.on_user_guide)
         self._item(help_menu, "&Keyboard Shortcuts\tF1", self.on_shortcuts)
+        self._item(help_menu, "Sound &Tutorial...", self.on_sound_tutorial)
         # Its label says the version running, or the update a check found (#141).
         self.update_item = self._item(help_menu, update_item_label(__version__),
                                       lambda e: self.check_for_updates(True))
@@ -1006,18 +1007,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.session_list.SetSelection(self._list_keys.index(key))
         self.focus_sessions()
 
-    def _say(self, text: Optional[str], force: bool = False, interrupt: bool = True):
-        """Speak an announcement (per the level) and put it in the status bar."""
+    def _say(self, text: Optional[str], force: bool = False, interrupt: bool = True,
+             window: Optional[wx.Window] = None):
+        """Speak an announcement (per the level) and put it in the status bar.
+        ``window``: a dialog of ours that's open, so VoiceOver hears it from
+        the window it's in rather than from this one behind it."""
         if not text:
             return
         self._last_announcement = text
         self._status(text)
         if force or self.speech.enabled:
-            self._speak_announcement(text, interrupt=interrupt)
+            self._speak_announcement(text, interrupt=interrupt, window=window)
 
-    def _speak_announcement(self, text: str, interrupt: bool):
+    def _speak_announcement(self, text: str, interrupt: bool, window: Optional[wx.Window] = None):
+        # A Mac only: elsewhere queue_announcement declines and speech goes as before.
+        source = window if window else self
         if (not interrupt and self.speech.engine in ("auto", "voiceover")
-                and mac_a11y.queue_announcement(self.GetHandle(), strip_for_speech(text))):
+                and mac_a11y.queue_announcement(source.GetHandle(), strip_for_speech(text))):
             return
         speaker.speak(text, self.speech, interrupt=interrupt)
 
