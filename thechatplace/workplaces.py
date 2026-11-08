@@ -527,7 +527,7 @@ IN_USE_ELSEWHERE = "in use in another worktree"
 def in_use_reason(info: RepoInfo, branch: str) -> str:
     """Why a new worktree can't have ``branch``, in a few words, or "" if
     it can."""
-    if branch not in info.busy:
+    if not branch or branch not in info.busy:
         return ""
     return IN_USE_HERE if branch == info.branch else IN_USE_ELSEWHERE
 
