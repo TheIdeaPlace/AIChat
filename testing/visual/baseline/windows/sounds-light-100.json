@@ -56,15 +56,15 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "No &Windows sound for The Chat Place's notifications",
+   "label": "Disable &Windows sound for The Chat Place's notifications",
    "rect": [
     10,
     60,
-    303,
+    325,
     15
    ],
    "best": [
-    303,
+    325,
     15
    ],
    "depth": 0,
@@ -96,7 +96,7 @@
    "name": "Volume",
    "label": "",
    "rect": [
-    105,
+    136,
     85,
     56,
     23
@@ -135,7 +135,7 @@
    "name": "Sound scheme",
    "label": "",
    "rect": [
-    105,
+    136,
     116,
     71,
     23
@@ -153,15 +153,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Tool sounds for:",
+   "label": "&Tick sounds play for:",
    "rect": [
     10,
     150,
-    87,
+    110,
     16
    ],
    "best": [
-    87,
+    110,
     16
    ],
    "depth": 0,
@@ -171,36 +171,36 @@
   },
   {
    "class": "Choice",
-   "name": "Tool sounds for",
+   "name": "Tick sounds play for",
    "label": "",
    "rect": [
-    105,
+    136,
     147,
-    129,
+    298,
     23
    ],
    "best": [
-    129,
+    298,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "The loaded chat"
+   "value": "The open chat only"
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Other chats:",
+   "label": "&Other sounds play for:",
    "rect": [
     10,
     181,
-    65,
+    118,
     16
    ],
    "best": [
-    65,
+    118,
     16
    ],
    "depth": 0,
@@ -210,23 +210,23 @@
   },
   {
    "class": "Choice",
-   "name": "Sounds from other chats",
+   "name": "Other sounds play for",
    "label": "",
    "rect": [
-    105,
+    136,
     178,
-    174,
+    298,
     23
    ],
    "best": [
-    174,
+    298,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Every listed chat"
+   "value": "The open chat and every chat in the list"
   },
   {
    "class": "Button",

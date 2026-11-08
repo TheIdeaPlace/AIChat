@@ -1,0 +1,458 @@
+{
+ "title": "Sounds",
+ "class": "SoundsDialog",
+ "size": [
+  980,
+  956
+ ],
+ "client": [
+  956,
+  892
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Play sounds",
+   "rect": [
+    10,
+    10,
+    152,
+    30
+   ],
+   "best": [
+    152,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "M&ute all sounds",
+   "rect": [
+    10,
+    50,
+    190,
+    30
+   ],
+   "best": [
+    190,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Disable &Windows sound for The Chat Place's notifications",
+   "rect": [
+    10,
+    90,
+    574,
+    30
+   ],
+   "best": [
+    574,
+    30
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Volume:",
+   "rect": [
+    10,
+    133,
+    77,
+    31
+   ],
+   "best": [
+    77,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Volume",
+   "label": "",
+   "rect": [
+    225,
+    130,
+    91,
+    38
+   ],
+   "best": [
+    91,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "80%"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound sc&heme:",
+   "rect": [
+    10,
+    179,
+    142,
+    31
+   ],
+   "best": [
+    142,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Sound scheme",
+   "label": "",
+   "rect": [
+    225,
+    176,
+    180,
+    38
+   ],
+   "best": [
+    180,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Quiet evenings"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Tick sounds play for:",
+   "rect": [
+    10,
+    225,
+    190,
+    31
+   ],
+   "best": [
+    190,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Tick sounds play for",
+   "label": "",
+   "rect": [
+    225,
+    222,
+    515,
+    38
+   ],
+   "best": [
+    515,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The open chat only"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Other sounds play for:",
+   "rect": [
+    10,
+    271,
+    207,
+    31
+   ],
+   "best": [
+    207,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Other sounds play for",
+   "label": "",
+   "rect": [
+    225,
+    268,
+    515,
+    38
+   ],
+   "best": [
+    515,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The open chat and every chat in the list"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Scheme &Actions...",
+   "rect": [
+    10,
+    316,
+    199,
+    42
+   ],
+   "best": [
+    199,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse Gallery...",
+   "rect": [
+    217,
+    316,
+    186,
+    42
+   ],
+   "best": [
+    186,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &events (4 of 21 events have a sound):",
+   "rect": [
+    10,
+    368,
+    409,
+    31
+   ],
+   "best": [
+    409,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Sound events, 4 of 21 events have a sound",
+   "label": "",
+   "rect": [
+    12,
+    401,
+    936,
+    369
+   ],
+   "best": [
+    415,
+    304
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Tool ran: Tick (Soft bell)",
+    "File changed: None",
+    "Still working: None",
+    "Message sent: None",
+    "Message queued: None",
+    "Message steered into the turn: None",
+    "Steered message taken: None",
+    "Queued message sent: None",
+    "Queued message deleted: None",
+    "You stopped a turn: None",
+    "Reply finished: Rise (Wood)",
+    "Another chat finished: None"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Sound:",
+   "rect": [
+    10,
+    783,
+    65,
+    31
+   ],
+   "best": [
+    65,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Sound",
+   "label": "",
+   "rect": [
+    83,
+    778,
+    386,
+    38
+   ],
+   "best": [
+    240,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Tick (Soft bell)"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "P&review",
+   "rect": [
+    477,
+    778,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Choose &File...",
+   "rect": [
+    618,
+    778,
+    157,
+    42
+   ],
+   "best": [
+    157,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&move File...",
+   "rect": [
+    783,
+    778,
+    163,
+    42
+   ],
+   "best": [
+    163,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    662,
+    840,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    807,
+    840,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
