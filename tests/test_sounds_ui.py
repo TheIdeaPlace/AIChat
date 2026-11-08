@@ -535,6 +535,23 @@ def test_choosing_a_sound_changes_the_row_and_only_ok_keeps_it(frame, dialog):
     assert dialog.get_settings().sound_schemes == {"glass": {"events": {"ReplyFinished": se.NONE_REF}}}
 
 
+def test_space_on_an_event_plays_it(frame, dialog, env):
+    select_event(dialog, se.FINISHED)
+
+    def key(code, shift=False):
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
+        event.SetKeyCode(code)
+        event.SetShiftDown(shift)
+        return event
+    dialog._on_events_key(key(wx.WXK_SPACE))
+    path, _volume = env["previews"][-1]
+    assert Path(path).name == "arrived.wav"
+    before = len(env["previews"])
+    dialog._on_events_key(key(wx.WXK_SPACE, shift=True))  # not plain Space: left alone
+    dialog._on_events_key(key(ord("A")))
+    assert len(env["previews"]) == before
+
+
 def test_preview_uses_what_is_showing_even_when_muted(frame, dialog, env):
     frame.speech.sounds_muted = True
     dialog.volume.SetStringSelection("30%")
