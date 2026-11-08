@@ -5967,6 +5967,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         del waiting[index]
         if not waiting:
             self._queued.pop(info.cli_session_id, None)
+        self._sound(sound_events.QUEUED_DELETED, info.key)
         row = self.chat_list.GetSelection()
         self._rebuild_chat_list()
         self.chat_list.SetSelection(min(row, self.chat_list.GetCount() - 1))

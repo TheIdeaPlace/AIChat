@@ -46,7 +46,7 @@ def test_one_sound_one_meaning():
     own in the Sound choice; none is QuickMail's."""
     from theideaplace_appkit import soundschemes
     sounds = [e.sound for e in se.EVENTS]
-    assert len(sounds) == len(set(sounds)) == 20
+    assert len(sounds) == len(set(sounds)) == 21
     assert len(set(se.BUILT_IN.values())) == len(se.BUILT_IN)
     quickmail = set(soundschemes.catalog("quickmail").built_in_sounds)
     assert not quickmail & set(sounds)
@@ -209,9 +209,9 @@ def test_labels(data):
     (data / "sounds").mkdir()
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav"
-    assert se.count_label(glass) == "19 of 20 events have a sound"
-    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 20 events have a sound"
-    assert se.count_label(wood) == "20 of 20 events have a sound"
+    assert se.count_label(glass) == "20 of 21 events have a sound"
+    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 21 events have a sound"
+    assert se.count_label(wood) == "21 of 21 events have a sound"
 
 
 def test_what_the_sound_choice_offers(data):
@@ -219,9 +219,9 @@ def test_what_the_sound_choice_offers(data):
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     built_in = se.offered(se.built_in_scheme("softbell"))
     assert built_in[0] == "none" and built_in[1] == "builtin:tool" and built_in[-1] == "custom:m.wav"
-    assert len(built_in) == 1 + 20 + 1
+    assert len(built_in) == 1 + 21 + 1
     own = se.offered(se.Scheme(USER, "Mine", False))
-    assert "builtin:softbell/reply" in own and len(own) == 1 + 60 + 1
+    assert "builtin:softbell/reply" in own and len(own) == 1 + 3 * 21 + 1
 
 
 def test_schemes_using_a_file():
@@ -285,7 +285,7 @@ def _entry(sid="rain", sha="d" * 64, events=8, description="Soft."):
 
 def test_gallery_rows_say_what_you_have():
     entry = _entry()
-    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 20 events have a sound."
+    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 21 events have a sound."
     mine = se.Scheme(USER, "Rain", False, source={"gallery": "rain", "sha256": "d" * 64})
     assert sound_gallery.state(entry, [mine]) == sound_gallery.ADDED
     assert sound_gallery.row_label(entry, [mine]).endswith(" Added.")

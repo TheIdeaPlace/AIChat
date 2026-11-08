@@ -27,11 +27,13 @@ and another thing in the next is worse than no sound. These rules replace that s
    | Housekeeping | A chord settling an octave down into one note | Normal |
    | Another session | A knock: one note twice, then a lower note answering | Normal |
 
-3. **Rising means something started or arrived for you. Falling means something didn't work.** A
+3. **Rising means something started or arrived for you. Falling means something didn't work,**
+   **or that you took something back** (Stop, Withdraw), and those two are quick and quiet. A
    repeated note means waiting, or wanting you.
 4. **Related events sound related.** Steering is the send sound with a step on the way up. A queued
-   message going out is the queued sound leaping into a send. Ask Aside's failure starts like its
-   answer and then bends down. Another chat's reply is the reply an octave lower.
+   message going out is the queued sound leaping into a send, and one you delete is the same held
+   note dropping an octave instead. Ask Aside's failure starts like its answer and then bends
+   down. Another chat's reply is the reply an octave lower.
 5. **Short.** Work-going-on sounds are under a tenth of a second plus a short ring. Nothing is longer
    than a second.
 6. **A tone doesn't change the meaning.** Glass, Soft bell and Wood play the same notes in a
@@ -66,6 +68,7 @@ sound starts.
 | Message steered | Your message goes into the running turn without stopping it | `steer`: D5, E5, then D6: the send with a step on the way |
 | Steer taken | Claude has your steered message, at its next step. (Codex accepts one as it's sent, so there only Message steered plays.) | `steertaken`: A5, B5, C-sharp 6, D6, a soft quick climb to the note the steer ended on |
 | Queued message sent | A message that was waiting goes, on its own, when the turn ends | `queuesent`: D5 twice, then D6: the held note leaping into a send |
+| Queued message deleted | You delete a queued message (Delete, or its menu) | `queuedelete`: D5 twice, then D4, quiet: the held note dropping instead of leaping. Added after Kelly found it missing |
 | You stopped a turn | Stop, from you | `stop`: C4 dropping to F3, quick and damped |
 
 ### Answers

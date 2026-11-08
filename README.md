@@ -1152,13 +1152,14 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   messages group chooses whether full messages open as a formatted page or plain text.
   Ctrl+Shift+R repeats the last announcement.
 - **Sounds.** Off until you turn them on, in File, **Sounds**. They let you hear what a chat is doing
-  without tool activity on: a soft tap for each tool that runs, a different one when a file changes,
-  a faint pulse after 20 quiet seconds of a turn still working, and sounds for a message sent or
-  queued, a reply finishing, another chat finishing, a chat needing you, a failed or stopped turn,
+  without tool activity on: a soft tick for each tool that runs, a different one when a file changes,
+  a faint hum after 20 quiet seconds of a turn still working, and sounds for a message sent,
+  queued, steered into the turn, taken in, sent from the queue or deleted from it, Ask Aside's
+  answer, a reply finishing, another chat finishing, a chat needing you, a failed or stopped turn,
   service trouble, compaction, a usage warning and a message from another session. Each event can
   have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's
   `sounds` folder so backups carry it), or none. The dialog also chooses the volume (80% to start),
-  the style (Glass, Soft bell or Wood), whether tool sounds come from the loaded chat or every chat run here,
+  the scheme (Glass, Soft bell, Wood or one of your own), whether tool sounds come from the loaded chat or every chat run here,
   and which other chats make sounds. **Mute All Sounds** (Ctrl+Shift+X, or View) silences everything
   at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not

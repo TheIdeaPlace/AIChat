@@ -30,6 +30,7 @@ QUEUED = "queued"
 STEERED = "steered"
 STEER_TAKEN = "steer_taken"
 QUEUED_SENT = "queued_sent"
+QUEUED_DELETED = "queued_deleted"
 NOT_SENT = "not_sent"
 FINISHED = "finished"
 FINISHED_ELSEWHERE = "finished_elsewhere"
@@ -68,6 +69,8 @@ EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(STEERED, "MessageSteered", "Message steered into the turn", "steer", answers_you=True),
     SoundEvent(STEER_TAKEN, "SteerTaken", "Steered message taken", "steertaken"),
     SoundEvent(QUEUED_SENT, "QueuedMessageSent", "Queued message sent", "queuesent"),
+    SoundEvent(QUEUED_DELETED, "QueuedMessageDeleted", "Queued message deleted", "queuedelete",
+               answers_you=True),
     SoundEvent(STOPPED, "TurnStopped", "You stopped a turn", "stop", answers_you=True),
     SoundEvent(FINISHED, "ReplyFinished", "Reply finished", "reply"),
     SoundEvent(FINISHED_ELSEWHERE, "OtherChatFinished", "Another chat finished", "otherreply"),
@@ -95,7 +98,8 @@ TOOL_EVENTS = frozenset({TOOL, FILE_CHANGED})
 #: the sound is like, so a row reads "Reply finished: Rise".
 BUILT_IN: Dict[str, str] = {
     "tool": "Tick", "edit": "Double tick", "working": "Hum", "send": "Send", "queue": "Hold",
-    "steer": "Bend", "steertaken": "Taken", "queuesent": "Release", "stop": "Stop",
+    "steer": "Bend", "steertaken": "Taken", "queuesent": "Release",
+    "queuedelete": "Withdraw", "stop": "Stop",
     "reply": "Rise", "otherreply": "Low rise", "aside": "Aside", "needsyou": "Call",
     "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
     "warning": "Alert", "compacted": "Settle", "peer": "Knock",

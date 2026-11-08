@@ -61,7 +61,7 @@ Do this in a new Claude chat, then a new Codex chat, in your test folder.
 
 ## 2. Sounds
 
-Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 20
+Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 21
 events, made by the rules in `dev-notes/sound-design.md`. None is QuickMail's any more. Nobody
 has heard the new set yet, so what's being tested is whether each sound fits its event, whether
 the families make sense, and how they sit with your screen reader.
@@ -87,6 +87,7 @@ What each should sound like, top to bottom of the list:
 | Message steered into the turn | Bend | The send, with a step on the way up |
 | Steered message taken | Taken | A soft, quick climb of four notes |
 | Queued message sent | Release | The held note leaping up into a send |
+| Queued message deleted | Withdraw | The held note dropping down instead, quietly |
 | You stopped a turn | Stop | A quick, damped drop, low |
 | Reply finished | Rise | Three notes rising |
 | Another chat finished | Low rise | The same rise, lower and softer |
@@ -131,7 +132,7 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 
 1. In File, Sounds, press **Alt+A** (Scheme Actions). Expect: a menu with New, Copy, Rename,
    Delete, Reset, Export and Import Scheme. On Glass, Rename and Delete are read as turned off.
-2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 20 events have a
+2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 21 events have a
    sound", and **Sound** (Alt+S) offers sounds in each tone, such as "Rise (Soft bell)".
 3. Give two events a sound. Choose **Export Scheme** and save it. Then **Import Scheme** that file.
    Expect: "Added the sound scheme" and its name, and the copy has the same two sounds.

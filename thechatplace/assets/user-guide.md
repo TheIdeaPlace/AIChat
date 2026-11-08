@@ -727,7 +727,7 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 
 ### What you'll hear
 
-Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages leap up an octave, answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
+Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages leap up an octave (and drop one when you take one back), answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
 
 | Event | Sound |
 | --- | --- |
@@ -739,6 +739,7 @@ Every event has a sound of its own, and events that belong together sound alike:
 | Message steered into the turn | Bend: the send with a step on the way up, for a message that goes into the running turn without stopping it |
 | Steered message taken | Taken: a soft, quick climb of four notes, when Claude has your steered message |
 | Queued message sent | Release: the held note leaping up into a send, when a waiting message goes on its own |
+| Queued message deleted | Withdraw: the held note dropping down instead, quietly, when you delete a queued message |
 | You stopped a turn | Stop: a quick, damped drop, low |
 | Reply finished | Rise: three notes rising |
 | Another chat finished | Low rise: the same rise, lower and softer |
