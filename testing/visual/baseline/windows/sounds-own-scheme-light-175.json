@@ -153,15 +153,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Tick sounds play for:",
+   "label": "&Tool sounds play for:",
    "rect": [
     10,
     225,
-    190,
+    194,
     31
    ],
    "best": [
-    190,
+    194,
     31
    ],
    "depth": 0,
@@ -171,7 +171,7 @@
   },
   {
    "class": "Choice",
-   "name": "Tick sounds play for",
+   "name": "Tool sounds play for",
    "label": "",
    "rect": [
     225,
@@ -269,7 +269,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Sound &events (4 of 21 events have a sound):",
+   "label": "Sound &events (4 of 22 events have a sound):",
    "rect": [
     10,
     368,
@@ -287,7 +287,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events, 4 of 21 events have a sound",
+   "name": "Sound events, 4 of 22 events have a sound",
    "label": "",
    "rect": [
     12,
@@ -349,7 +349,7 @@
     38
    ],
    "best": [
-    240,
+    224,
     38
    ],
    "depth": 0,
