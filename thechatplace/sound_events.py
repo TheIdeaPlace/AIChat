@@ -110,9 +110,12 @@ BUILT_IN: Dict[str, str] = {
     "warning": "Alert", "compacted": "Settle", "peer": "Knock",
 }
 
-#: Names only 0.5 previews saved: each becomes the new sound for the same event, so a choice
-#: made then still means the same thing. The first set's, and then "edit", the Double tick that
-#: File changed played until it was too like Tick to tell apart.
+#: Built-in sound names that only 0.5 previews used: the first set's, and then "edit", the Double
+#: tick File changed played until it was too like Tick to tell apart. Each maps to the new sound
+#: for the same event in The Chat Place's own saved settings (load_schemes, migrate), so a choice
+#: made in a preview still means the same thing. Scheme files exported from a preview aren't
+#: migrated: app-kit reads an unknown built-in name in one as no sound, and Kelly decided that an
+#: unreleased feature needs no more than that.
 OLD_NAMES: Dict[str, str] = {
     "tap": "tool", "changed": "write", "edit": "write", "pulse": "working", "sent": "send", "queued": "queue",
     "error": "notsent", "arrived": "reply", "elsewhere": "otherreply", "attention": "needsyou",

@@ -722,9 +722,9 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 - **Disable Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Sound scheme** is Glass, Soft bell, Wood, or a scheme of your own (below). Glass, Soft bell and Wood play the same melodies in a different tone, so a sound means the same thing in any of them.
-- The chat you have open always makes every sound. The next two settings decide what you hear from the other chats.
+- The chat you have open always makes every sound, and Answer sent plays whenever you answer, for any chat. The next two settings decide what else you hear from the other chats.
 - **Tool sounds play for** is for Tick, which plays each time a chat runs a tool: **The open chat only** (to start), or **The open chat and chats running in The Chat Place**, which also hears the ones working in the background. A busy chat makes many, so several at once are hard to follow. A desktop app, Cowork or terminal session ticks only while it's open, as that's when its transcript is being read.
-- **Other sounds play for** is for every other sound, such as a file changing, a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats running in The Chat Place**, or **The open chat only**.
+- **Other sounds play for** is for every other sound but Answer sent, such as a file changing, a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats running in The Chat Place**, or **The open chat only**.
 
 ### What you'll hear
 

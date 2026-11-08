@@ -311,8 +311,30 @@ class FakeCodexDialog:
         pass
 
 
-@pytest.mark.parametrize("choice", ["accept", "decline", "tcp_chat_rule"])
-def test_each_codex_permission_answer_sounds_once(frame, env, monkeypatch, choice):
+def copilot_waiting(frame):
+    """A Copilot chat waiting on a command it asks to run."""
+    from thechatplace.providers.copilot_runtime import (AGENT_MODE, COMMAND, CopilotChatState,
+                                                         CopilotRequest)
+    frame.store.add(OwnSession("cp-1", "Copilot one", "C:\\G\\Scratch", provider="copilot",
+                               last_activity_ms=fake_env.now_ms()))
+    info = frame.store.get("cp-1", provider="copilot").to_info()
+    request = CopilotRequest("perm-1", COMMAND, "call-1", title="Run a command", command="npm test",
+                             choices=(("allow_once", "allow_once"), ("reject_once", "reject_once")))
+    state = CopilotChatState("cp-1", "needs you", "1", "inProgress", mode=AGENT_MODE,
+                             requests=(request,))
+    frame._codex_states[info.key] = state
+    return info, state
+
+
+def waiting_for_permission(frame, provider):
+    return (codex_waiting(frame, codex_command()) if provider == "codex"
+            else copilot_waiting(frame))
+
+
+@pytest.mark.parametrize("provider,choice", [
+    ("codex", "accept"), ("codex", "decline"), ("codex", "tcp_chat_rule"),
+    ("copilot", "allow_once"), ("copilot", "reject_once"), ("copilot", "tcp_chat_rule")])
+def test_each_codex_permission_answer_sounds_once(frame, env, monkeypatch, provider, choice):
     from thechatplace.ui import codex_chats
     calls = []
 
@@ -322,7 +344,7 @@ def test_each_codex_permission_answer_sounds_once(frame, env, monkeypatch, choic
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
                         type("Choosing", (FakeCodexDialog,), {"choice": choice}))
-    info, state = codex_waiting(frame, codex_command())
+    info, state = waiting_for_permission(frame, provider)
     try:
         frame._answer_codex_owned(info, state)
         assert pump(lambda: env["sounds"] == [se.ANSWER_SENT])
@@ -371,6 +393,47 @@ def test_a_codex_answer_that_couldnt_be_sent_makes_no_sound(frame, env, monkeypa
         frame._answer_codex_owned(info, state)
         assert pump(lambda: any("could not be answered" in text for text in env["feedback"]))
         assert env["sounds"] == []
+    finally:
+        frame._codex_states.clear()
+
+
+@pytest.mark.parametrize("provider", ["codex", "copilot"])
+def test_allow_for_this_chat_that_fails_makes_no_answer_sound(frame, env, monkeypatch, provider):
+    from thechatplace.ui import codex_chats
+
+    def owned_action(action, record, *args):
+        if action == "allow_for_chat":
+            raise RuntimeError("no longer waiting")
+        return None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
+                        type("Keeping", (FakeCodexDialog,), {"choice": "tcp_chat_rule"}))
+    info, state = waiting_for_permission(frame, provider)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: any("could not be answered" in text for text in env["feedback"]))
+        pump(lambda: False, timeout=0.2)
+        assert env["sounds"] == []
+    finally:
+        frame._codex_states.clear()
+
+
+def test_a_copilot_answer_sent_but_not_kept_sounds_once(frame, env, monkeypatch):
+    """Allow for This Chat's answer went, though the command couldn't be kept: it's an answer."""
+    from thechatplace.providers.copilot import NOT_KEPT, AllowedNotKept
+    from thechatplace.ui import codex_chats
+
+    def owned_action(action, record, *args):
+        return AllowedNotKept(NOT_KEPT) if action == "allow_for_chat" else None
+    monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog",
+                        type("Keeping", (FakeCodexDialog,), {"choice": "tcp_chat_rule"}))
+    info, state = copilot_waiting(frame)
+    try:
+        frame._answer_codex_owned(info, state)
+        assert pump(lambda: env["feedback"] and env["feedback"][-1] == NOT_KEPT)
+        pump(lambda: False, timeout=0.2)
+        assert env["sounds"] == [se.ANSWER_SENT]
     finally:
         frame._codex_states.clear()
 
