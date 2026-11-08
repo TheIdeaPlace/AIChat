@@ -12842,6 +12842,16 @@ def _other_runtime_chat(frame, monkeypatch, calls):
     return info, record
 
 
+def test_a_runtime_chats_queue_is_not_deleted_while_it_runs_and_makes_no_sound(
+        frame, env, monkeypatch):
+    _other_runtime_chat(frame, monkeypatch, [])
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
+    frame.remove_queued()
+    assert env["feedback"][-1].startswith("Stop this ")
+    assert sounds == []  # Withdraw is for a message really deleted
+
+
 def test_send_and_stop_route_any_runtime_providers_chat(frame, env, monkeypatch):
     settle(frame)
     calls = []

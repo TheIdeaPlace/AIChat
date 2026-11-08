@@ -119,7 +119,8 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 4. **Steering.** While a Claude turn runs, type a message and press **Ctrl+Alt+Enter**. Expect:
    Bend, and then Taken when Claude takes it in. In Codex, only Bend plays. Queue a message with
    Ctrl+Enter instead and let the turn finish. Expect: Hold when you queue it, and Release when it
-   goes on its own.
+   goes on its own. Queue another, then select it in the messages list and press Delete. Expect:
+   Withdraw, with "Queued message removed" still spoken.
 5. Ask Aside a question (Ctrl+Shift+Y). Expect: Aside when the answer comes.
 6. Press **Ctrl+Shift+X** (View, Mute All Sounds). Expect: "Sounds muted", and silence, even a
    sound already playing. Press it again. Expect: "Sounds on".
