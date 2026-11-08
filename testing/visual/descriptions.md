@@ -507,6 +507,12 @@ The same 680 by 635 dialog as new-session, with a described repository (the test
 
 **What looks off:** nothing new; the label column's gutter is as in new-session.
 
+## new-session-branch-in-use: New Session with a branch that's in use in another worktree
+
+The same dialog as new-session-worktree, 680 by 620, on a described repository whose main is checked out in another worktree (#587). Work in shows "A new worktree". Branch shows "main (in use in another worktree)" in full, black on white (21:1), with about a third of its 413-wide field to spare; no path appears anywhere. Start from is greyed out, its label with no underlined letter (#A0A0A0 on #F0F0F0, 2.3:1, as every greyed label in this dialog) and its field showing "origin/main, fetched first" (#6D6D6D on #FAFAFA, 5.0:1). The Branch label is black on #F0F0F0 (18.4:1) with its underlined r. Everything below matches new-session. In High Contrast Aquatic Branch is white on #202020 (16.3:1) and Start from's greyed label and field #A6A6A6 on #202020 (6.7:1).
+
+**What looks off:** nothing new. The greyed Start from label is below 4.5:1 in light, as greyed labels already are in new-session; disabled controls are exempt.
+
 ## new-session-copilot: New Session for Copilot, with the models Copilot offered
 
 The same dialog as copilot-new, 680 by 620, once a Copilot chat here has listed its models (#422), with synthetic model names. "Model" is enabled and shows the longest of them, "Probe Sonnet Long Model Name (preview) (1x)", in full, black on white (20.6:1), with about a third of the 413-wide field to spare (it needs 275). "Effort" stays greyed out, as in copilot-new (#6D6D6D on #FAFAFA, 5.0:1). Model's label has its underlined d; Effort's and Branch's have no underlined letter (#515). "Permission mode" is enabled on Plan, the longer of its two labels (#424): "Plan: plans first and doesn't edit your files; asks before anything else" shows in full, black on white (20.6:1), ending a few pixels short of the drop-down arrow. The "About permissions:" box and everything below it are exactly as in copilot-new. In High Contrast Aquatic the Model field is white on #202020 (16.3:1), the greyed fields #A6A6A6 on #202020 (6.7:1), and Start light aqua with dark text (11.2:1).

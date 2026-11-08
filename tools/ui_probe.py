@@ -1234,6 +1234,40 @@ def d_new_session_worktree(frame, env):
     return lambda: frame._modal(dialog)
 
 
+def d_new_session_branch_in_use(frame, env):
+    """New Session with A new worktree and main chosen while it's checked out
+    in another worktree (#587): listed last, saying so, with Start from off
+    and its name saying why. Described, not made, as the VM has no git."""
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog, WORK_IN_WORKTREE
+    folder = str(env["folders"]["Scratch"])
+    dialog = NewSessionDialog(frame, folder)
+    info = workplaces.RepoInfo(top=folder, main=folder, common=folder + "\\.git", rel="",
+                               branch="work", branches=["older"], busy=["work", "main"],
+                               remotes=["origin/main"],
+                               busy_at={"work": folder,
+                                        "main": folder + "\\.claude\\worktrees\\main"})
+
+    def described(folder):
+        wx.CallAfter(dialog._repo_read, folder, info, "origin/main", False)
+        wx.CallAfter(choose)
+
+    def choose():
+        dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        dialog._on_work_in()
+        dialog.branch.SetStringSelection("main (in use in another worktree)")
+        dialog._sync_start_from()
+    for _ in range(150):
+        if dialog._repo_known:
+            break
+        wx.SafeYield()
+        time.sleep(0.1)
+    dialog._read_repo = described
+    dialog._repo_for = ""
+    dialog.refresh_repo()
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -2299,6 +2333,8 @@ SURFACES = {
     "new-session": ("dialog", d_new_session, "File, New Session"),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
+    "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
+                                  "New Session with a branch that's in use in another worktree"),
     "codex-new": ("dialog", d_codex_new, "New Session with Codex selected as Provider"),
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
@@ -2441,6 +2477,7 @@ DIALOG_CLASSES = {
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "new-session-worktree": "NewSessionDialog",
+    "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",

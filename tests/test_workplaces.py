@@ -334,7 +334,7 @@ def test_an_existing_branch_gets_a_worktree(repo):
     # Now it's checked out, so it's no longer offered, and asking says why.
     info = workplaces.repo_info(GIT, str(repo))
     assert "feature/old" not in info.branches
-    with pytest.raises(workplaces.ToolError, match="already checked out"):
+    with pytest.raises(workplaces.ToolError, match="in use in another worktree"):
         workplaces.add_worktree(GIT, info, "feature/old")
     (repo / ".claude" / "worktrees" / "again").mkdir()
     assert workplaces.worktree_folder(str(repo), "again").name == "again-2"
@@ -596,3 +596,119 @@ def test_a_commit_claude_code_started_from_is_named(cloned):
 def test_branch_facts_outside_a_repository_is_nothing(tmp_path):
     if GIT:
         assert workplaces.branch_facts(GIT, str(tmp_path)) == []
+
+
+# -- branches checked out somewhere (#587) -----------------------------------------------------
+
+def test_busy_branches_say_where_they_are(repo):
+    elsewhere = workplaces.add_worktree(GIT, workplaces.repo_info(GIT, str(repo)), "feature/old")
+    elsewhere = elsewhere.parent if elsewhere.name == "sub" else elsewhere
+    git("branch", "spare", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo / "sub"))
+    assert sorted(info.busy) == ["feature/old", "main"]
+    assert os.path.samefile(info.busy_at["main"], repo)
+    assert os.path.samefile(info.busy_at["feature/old"], elsewhere)
+    assert workplaces.in_use_reason(info, "main") == "checked out in this folder"
+    assert workplaces.in_use_reason(info, "feature/old") == "in use in another worktree"
+    assert workplaces.in_use_reason(info, "spare") == ""
+    # The usable ones first, then the busy ones with the reason, never a path.
+    choices = workplaces.branch_choices(info)
+    assert choices[0] == "spare"
+    assert set(choices[1:]) == {"main (checked out in this folder)",
+                                "feature/old (in use in another worktree)"}
+    assert not any(str(repo) in choice for choice in choices)
+    assert workplaces.branch_choices(None) == []
+
+
+def test_a_choice_names_its_branch():
+    assert workplaces.branch_from_choice("main (in use in another worktree)") == "main"
+    assert workplaces.branch_from_choice(" work (checked out in this folder) ") == "work"
+    assert workplaces.branch_from_choice(" fix/new ") == "fix/new"
+    assert workplaces.branch_from_choice("") == ""
+
+
+def _described(**changes):
+    values = dict(top=r"C:\R", main=r"C:\R", common=r"C:\R\.git", rel="", branch="work",
+                  branches=["older"], busy=["work", "main"], remotes=["origin/main"],
+                  busy_at={"work": r"C:\R", "main": r"C:\R\.claude\worktrees\main"})
+    values.update(changes)
+    return workplaces.RepoInfo(**values)
+
+
+def test_the_in_use_message_says_where_and_what_to_do():
+    info = _described()
+    assert workplaces.in_use_message(info, "main", "origin/main") == (
+        r"main is in use in another worktree, at C:\R\.claude\worktrees\main, so a new "
+        "worktree can't use it. Type a new branch name, and Start from origin/main, to work "
+        "from main.")
+    # The folder's own branch names the folder.
+    assert workplaces.in_use_message(info, "work", "origin/main") == (
+        r"work is checked out in this folder, C:\R, so a new worktree can't use it. To work "
+        "on work here, choose The folder as it is. Or type a new branch name, and Start "
+        "from work, to work from it.")
+    # A branch that's neither the remote's main nor here: that worktree's folder.
+    info = _described(busy=["work", "topic"], busy_at={"topic": r"C:\T"})
+    said = workplaces.in_use_message(info, "topic", "origin/main")
+    assert said.startswith(r"topic is in use in another worktree, at C:\T, so a new worktree")
+    assert "choose that worktree's folder" in said
+    # No path known (a described repository): still a sentence.
+    info = _described(busy_at={})
+    assert workplaces.in_use_message(info, "main").startswith(
+        "main is in use in another worktree, so a new worktree can't use it.")
+
+
+def test_a_busy_branch_is_never_new_and_never_made(repo):
+    info = workplaces.repo_info(GIT, str(repo))
+    for text in ("main", "main (checked out in this folder)"):
+        assert not workplaces.is_new_branch(info, text)
+        with pytest.raises(workplaces.ToolError, match="checked out in this folder"):
+            workplaces.create_worktree(GIT, info, text, workplaces.START_HERE)
+    assert not (repo / ".claude").exists()
+
+
+def test_a_branch_in_two_worktrees_is_listed_once(repo, tmp_path):
+    # git worktree add -f can check one branch out twice.
+    git("worktree", "add", "-q", str(tmp_path / "One"), "feature/old", cwd=repo)
+    git("worktree", "add", "-q", "-f", str(tmp_path / "Two"), "feature/old", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert info.busy.count("feature/old") == 1
+    assert workplaces.branch_choices(info).count("feature/old (in use in another worktree)") == 1
+    assert os.path.samefile(info.busy_at["feature/old"], tmp_path / "One")
+
+
+def test_a_worktree_whose_folder_is_gone_still_holds_its_branch(repo, tmp_path):
+    gone = tmp_path / "Gone"
+    git("worktree", "add", "-q", str(gone), "feature/old", cwd=repo)
+    shutil.rmtree(gone)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert info.busy_gone == ["feature/old"]
+    assert workplaces.in_use_reason(info, "feature/old") == "held by a removed worktree"
+    assert "feature/old (held by a removed worktree)" in workplaces.branch_choices(info)
+    assert workplaces.branch_from_choice("feature/old (held by a removed worktree)") \
+        == "feature/old"
+    said = workplaces.in_use_message(info, "feature/old", "origin/main")
+    assert said.startswith("feature/old was checked out in a worktree whose folder, ")
+    assert said.endswith("is gone, so git still holds it. Run git worktree prune in the "
+                         "repository to free it, then choose feature/old again.")
+    assert "choose that worktree's folder" not in said
+    with pytest.raises(workplaces.BranchInUse, match="git worktree prune"):
+        workplaces.create_worktree(GIT, info, "feature/old")
+    # Once pruned, it's free again.
+    git("worktree", "prune", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert "feature/old" in info.branches and not info.busy_gone
+
+
+def test_a_remote_name_means_its_local_branch(cloned):
+    # Typing origin/main while main is in a worktree of its own (#587).
+    git("worktree", "add", "-q", str(cloned.parent / "MainTree"), "main", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert workplaces.local_branch(info, "origin/main") == "main"
+    assert workplaces.local_branch(info, "brand-new") == "brand-new"
+    assert workplaces.in_use_reason(info, "origin/main") == "in use in another worktree"
+    assert not workplaces.is_new_branch(info, "origin/main")
+    with pytest.raises(workplaces.BranchInUse) as refused:
+        workplaces.create_worktree(GIT, info, "origin/main", start_remote="origin/main")
+    assert str(refused.value).startswith("main is in use in another worktree, at ")
+    assert str(refused.value).endswith("Type a new branch name, and Start from origin/main, "
+                                       "to work from main.")

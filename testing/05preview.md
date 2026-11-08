@@ -382,6 +382,10 @@ say when both are running without waiting for them.
    fix-login on new branch fix/login, from origin/main." Properties (Alt+Enter) lists the branch,
    the worktree and what the branch started from. Choose an existing branch instead: Start from
    turns off.
+   **A branch in use elsewhere.** On a repository whose main is checked out in another worktree,
+   arrow through **Branch**. Expect: "main (in use in another worktree)", after the usable
+   branches. Press Ctrl+Enter with it chosen. Expect: a message saying where main is checked out
+   and to type a new name and start from origin/main, and focus back in Branch.
 2. **A chat moving into a worktree.** Ask Claude to make a worktree and work in it. Expect: you hear
    where the chat went, and the chat keeps showing its messages.
 3. **Turned-off settings.** In New Session choose Copilot, then press Alt+D and Alt+E. Expect: focus

@@ -1687,8 +1687,10 @@ Chat can send a reply into it.</p>
 <li><strong>Work in</strong> (Alt+I): <strong>The folder as it is</strong> (it says which branch the folder is on), or
   <strong>A new worktree</strong>. A <strong>worktree</strong> is a separate copy of the repository on a branch of its
   own, so the chat's changes stay apart from the folder and from your other chats. With a
-  worktree, choose a branch in <strong>Branch</strong> (Alt+R), or type a new name. A branch that's already
-  checked out somewhere isn't offered, since a branch can be in only one place. For a new name,
+  worktree, choose a branch in <strong>Branch</strong> (Alt+R), or type a new name. A branch can be checked
+  out in only one place, so a branch that already is comes last in the list, saying why, such
+  as "main (in use in another worktree)" or "work (checked out in this folder)". Pressing Start
+  with one says where it's checked out and what to do instead. For a new name,
   <strong>Start from</strong> (Alt+A) chooses where the branch starts: the remote's main branch, such as
   origin/main, fetched first, or what the folder has checked out. When you press Start, you hear
   "Making the worktree", then what was made, such as "Made worktree fix-login on new branch
@@ -1753,6 +1755,12 @@ asked for it. This is where each way starts, and how to say which you want.</p>
   only the remote has, which tracks it. Its name says why it's off. If the fetch takes a
   while, you hear "Fetching origin/main, then making the worktree."</li>
 <li>The new branch doesn't track main, so pushing it never goes to main.</li>
+<li>A branch checked out somewhere already, such as main in another worktree, can't have a new
+  worktree too: git allows a branch in only one place. Branch lists it last, saying so, and
+  Start says where it is. To work from main, type a new branch name and start it from
+  origin/main. A branch whose worktree folder was deleted without git worktree remove is
+  listed as "held by a removed worktree": git still holds it until you run git worktree
+  prune in the repository.</li>
 <li>This works whichever AI the chat is with: The Chat Place makes the worktree.</li>
 </ul>
 </li>
