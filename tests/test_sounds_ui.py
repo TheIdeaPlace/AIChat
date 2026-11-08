@@ -19,7 +19,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.providers.codex_runtime import CodexChatState
 from thechatplace.speech import SpeechSettings
 from thechatplace.ui import sound_host
-from thechatplace.ui.sounds_dialog import SoundsDialog, keep_custom_sound
+from thechatplace.ui.sounds_dialog import SoundsDialog, SoundTutorialDialog, keep_custom_sound
 from theideaplace_appkit.sounds import SoundProblem
 
 
@@ -1030,3 +1030,144 @@ def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
     dialog._sound_chosen()
     assert dialog._events_name() == "Sound events, 20 of 21 events have a sound"
     assert dialog.events.GetName() == "Sound events, 20 of 21 events have a sound"
+
+
+# ---------------------------------------------------------------- Help, Sound Tutorial
+
+def tutorial_dialog(frame, said=None):
+    return SoundTutorialDialog(frame, frame.speech, frame._sound_player,
+                               say=(said.append if said is not None else None))
+
+
+def key_event(code, kind=wx.wxEVT_KEY_DOWN, obj=None, shift=False):
+    event = wx.KeyEvent(kind)
+    event.SetKeyCode(code)
+    event.SetShiftDown(shift)
+    if obj is not None:
+        event.SetEventObject(obj)
+    return event
+
+
+def pick(dialog, event_id):
+    dialog.events.SetSelection([e.id for e in se.EVENTS].index(event_id))
+
+
+def test_help_has_sound_tutorial_after_keyboard_shortcuts(frame):
+    bar = frame.GetMenuBar()
+    help_menu = bar.GetMenu(bar.FindMenu("Help"))
+    labels = [item.GetItemLabel() for item in help_menu.GetMenuItems()]
+    at = labels.index("Sound &Tutorial...")
+    assert labels[at - 1].startswith("&Keyboard Shortcuts")
+    assert help_menu.FindItemByPosition(at).GetAccel() is None  # no shortcut of its own
+
+
+def test_sound_tutorial_lists_event_names_only_on_the_first(frame):
+    frame.speech.sound_scheme = "wood"
+    dialog = tutorial_dialog(frame)
+    try:
+        assert dialog.GetTitle() == "Sound Tutorial"
+        assert dialog.events.GetItems() == [e.label for e in se.EVENTS]
+        assert len(dialog.events.GetItems()) == 21
+        assert dialog.events.GetSelection() == 0
+        assert dialog.events.GetName() == "Sound events"
+        assert "in the Wood scheme" in dialog.intro.GetLabel().replace("\n", " ")
+        assert dialog.GetEscapeId() == wx.ID_CANCEL and dialog.close.GetId() == wx.ID_CANCEL
+    finally:
+        dialog.Destroy()
+
+
+def test_sound_tutorial_space_plays_the_event_in_the_active_scheme(frame, env):
+    frame.speech.sound_scheme = "wood"
+    frame.speech.sound_volume = 60
+    said = []
+    dialog = tutorial_dialog(frame, said)
+    try:
+        pick(dialog, se.FINISHED)
+        dialog._on_events_key(key_event(wx.WXK_SPACE))
+        path, volume = env["previews"][-1]
+        assert Path(path).parts[-2:] == ("wood", "reply.wav") and volume == 0.6
+        assert said == []  # a sound that plays needs no words
+        before = len(env["previews"])
+        dialog._on_events_key(key_event(wx.WXK_SPACE, shift=True))
+        dialog._on_events_key(key_event(ord("A")))
+        assert len(env["previews"]) == before
+    finally:
+        dialog.Destroy()
+
+
+def test_sound_tutorial_enter_plays_and_stays_open(frame, env):
+    dialog = tutorial_dialog(frame)
+    try:
+        pick(dialog, se.TOOL)
+        enter = key_event(wx.WXK_RETURN, wx.wxEVT_CHAR_HOOK, obj=dialog.events)
+        dialog._on_char_hook(enter)
+        assert Path(env["previews"][-1][0]).parts[-2:] == ("glass", "tool.wav")
+        assert not enter.GetSkipped()  # taken here, so no button gets it
+        # Elsewhere, Enter is left to the dialog.
+        other = key_event(wx.WXK_RETURN, wx.wxEVT_CHAR_HOOK, obj=dialog.close)
+        dialog.close.SetFocus()
+        before = len(env["previews"])
+        dialog._on_char_hook(other)
+        if wx.Window.FindFocus() is not dialog.events:
+            assert other.GetSkipped() and len(env["previews"]) == before
+    finally:
+        dialog.Destroy()
+
+
+def test_sound_tutorial_plays_with_sounds_off_and_muted(frame, env):
+    frame.speech.sounds_on = False
+    frame.speech.sounds_muted = True
+    dialog = tutorial_dialog(frame)
+    try:
+        dialog.play()
+        assert Path(env["previews"][-1][0]).parts[-2:] == ("glass", "tool.wav")
+        assert env["sounds"] == []  # a preview, not an event sound
+    finally:
+        dialog.Destroy()
+
+
+def test_sound_tutorial_says_no_sound_and_stops_the_last(frame, env):
+    frame.speech.sound_schemes = {"glass": {"events": {"ReplyFinished": se.NONE_REF}}}
+    said = []
+    dialog = tutorial_dialog(frame, said)
+    try:
+        dialog.play()  # Tool ran plays
+        env["previews"].clear()
+        pick(dialog, se.FINISHED)
+        dialog.play()
+        assert env["previews"] == [] and said == ["No sound."]
+        assert "stop_preview" in env["sound_stops"]
+    finally:
+        dialog.Destroy()
+
+
+def test_sound_tutorial_says_a_missing_file_and_plays_the_built_in(frame, env):
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": se.custom_ref("gone.wav")}}}
+    said = []
+    dialog = tutorial_dialog(frame, said)
+    try:
+        dialog.play()
+        assert Path(env["previews"][-1][0]).name == "gone.wav"
+        assert Path(env["players"][0].preview_fallback).name == "tool.wav"
+        assert said == ["Its sound file is missing, so the built-in sound plays."]
+    finally:
+        dialog.Destroy()
+
+
+def test_on_sound_tutorial_says_even_with_announcements_silent(frame, env, monkeypatch):
+    frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": se.NONE_REF}}}
+    frame.speech.announce = "silent"
+
+    def press_space(self):
+        self._on_events_key(key_event(wx.WXK_SPACE))
+        return wx.ID_CANCEL
+    monkeypatch.setattr(SoundTutorialDialog, "ShowModal", press_space)
+    frame.on_sound_tutorial()
+    assert "No sound." in env["feedback"]
+    assert frame.speech.sound_schemes == {"glass": {"events": {"ToolRan": se.NONE_REF}}}
+
+
+def test_closing_the_tutorial_without_playing_makes_no_player(frame, env, monkeypatch):
+    monkeypatch.setattr(SoundTutorialDialog, "ShowModal", lambda self: wx.ID_CANCEL)
+    frame.on_sound_tutorial()
+    assert env["players"] == []

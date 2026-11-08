@@ -17,7 +17,7 @@ from .. import sound_events
 from ..agents import AGENTS
 from ..sound_events import OTHERS_ALL, OTHERS_NONE, OTHERS_OWN, TOOL_EVENTS, TOOLS_ALL
 from ..sessions import WORKING
-from .sounds_dialog import SoundsDialog
+from .sounds_dialog import SoundsDialog, SoundTutorialDialog
 
 #: How long a loaded chat's turn can go without a sound before "Still working".
 #: A long command or long thinking sends no events, so without this the silence
@@ -228,6 +228,17 @@ class SoundHost:
         self.mute_item.Check(muted)
         if muted and self._sound_player_made is not None:
             self._sound_player_made.stop()
+
+    def on_sound_tutorial(self, _event=None) -> None:
+        """Help, Sound Tutorial: hear each event's sound in the scheme you use. What it says
+        ("No sound.") is said even with announcements silent, because you pressed Space to hear
+        something."""
+        dialog = SoundTutorialDialog(self, self.speech, self._sound_player,
+                                     say=lambda text: self._say(text, force=True, interrupt=False))
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.Destroy()  # which stops a sound still playing
 
     def on_sounds(self, _event=None) -> None:
         """File, Sounds: whether there are sounds, which, and for which chats."""

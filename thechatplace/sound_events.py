@@ -388,6 +388,31 @@ def schemes_using(schemes: Iterable[Scheme], file_name: str) -> List[str]:
             if any(ref_for(s, e.id) == shared.SoundRef("custom", file_name) for e in EVENTS)]
 
 
+# -- Help, Sound Tutorial ------------------------------------------------------------
+
+
+def tutorial_intro(scheme: Scheme) -> str:
+    """The Sound Tutorial's one line: what to press, and which scheme you'll hear. A scheme of
+    your own called "Calm scheme" reads "the Calm scheme", not "the Calm scheme scheme"."""
+    name = scheme.name.strip()
+    if name.casefold().endswith(" scheme"):
+        name = name[:-len(" scheme")].rstrip()
+    return (f"Arrow to an event and press Space to hear it in the {name} scheme. "
+            "Change sounds in File, Sounds.")
+
+
+def tutorial_note(event_id: str, scheme: Scheme) -> Optional[str]:
+    """What the Sound Tutorial says when Space can't simply play the event's sound, or None when
+    it can. A file of your own that's gone still plays: the built-in sound it falls back to,
+    which is what you'd hear when the event happens."""
+    ref = ref_for(scheme, event_id)
+    if ref.kind == "none":
+        return "No sound."
+    if custom_missing(ref):
+        return "Its sound file is missing, so the built-in sound plays."
+    return None
+
+
 def missing_built_ins() -> List[str]:
     """Built-in files this copy of the app lacks, for ``--smoke-test``."""
     return [str(path) for pack in PACKS for name in BUILT_IN

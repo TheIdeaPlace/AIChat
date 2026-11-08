@@ -755,6 +755,10 @@ Every event has a sound of its own, and events that belong together sound alike:
 
 When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
 
+### Sound Tutorial
+
+Help, **Sound Tutorial** (Alt+H, T) lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound, in the scheme and at the volume you use, even when sounds are off or muted. If the event has no sound, it says "No sound". Escape or **Close** closes it. It changes nothing: to choose sounds or another scheme, use File, **Sounds**.
+
 ### Changing a sound
 
 In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the `sounds` folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.

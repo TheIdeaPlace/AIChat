@@ -107,6 +107,13 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    Expect: the same notes in a different tone. Lower the **Volume** (Alt+V) and play one. Expect:
    it plays at the volume showing.
 5. Choose OK.
+6. Choose Help, **Sound Tutorial** (Alt+H, T). Expect: focus on the first event, "Tool ran", and
+   the line above says which scheme it plays. Arrow down and press **Space** on a few, then
+   **Enter** on one. Expect: each plays the scheme's sound at your volume, and Enter doesn't close
+   the dialog. Tab goes to Close and back. Turn on Mute All Sounds (Ctrl+Shift+X) and press Space
+   again. Expect: it still plays. Give an event None in File, Sounds first, and Space on it here
+   says "No sound". Escape closes it. On a Mac, open it from the Help menu (VO+M) and check
+   Space and Return play too.
 
 ### Sounds in use
 

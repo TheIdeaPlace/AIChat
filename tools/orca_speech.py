@@ -130,6 +130,13 @@ STEPS = [
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Help, Sound Tutorial (#250): it opens on the first event, arrows move
+    # through them by name, and Escape comes back.
+    Step("sound tutorial", ["alt+h", "t"], expect=["Sound Tutorial", "Tool ran"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("sound tutorial, next event", ["Down"], expect=["File changed"]),
+    Step("sound tutorial closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Answer (#415): it opens on the Question box, and Tab goes to the first
     # question's choices, not past them to its answer box (#428).
     Step("Claude asks a question", [], trigger="question", expect=["needs you"]),

@@ -747,6 +747,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         help_menu = wx.Menu()
         self._item(help_menu, "User &Guide", self.on_user_guide)
         self._item(help_menu, "&Keyboard Shortcuts\tF1", self.on_shortcuts)
+        self._item(help_menu, "Sound &Tutorial...", self.on_sound_tutorial)
         # Its label says the version running, or the update a check found (#141).
         self.update_item = self._item(help_menu, update_item_label(__version__),
                                       lambda e: self.check_for_updates(True))
