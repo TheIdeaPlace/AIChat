@@ -760,11 +760,11 @@ def test_each_built_in_scheme_keeps_its_own_changes(dialog):
     dialog.scheme.SetStringSelection("Wood")
     dialog._scheme_chosen()
     assert "Reply finished: Rise" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (20 of 20 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (21 of 21 events have a sound):"
     dialog.scheme.SetStringSelection("Glass")
     dialog._scheme_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (19 of 20 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (20 of 21 events have a sound):"
     settings = dialog.get_settings()
     assert settings.sound_scheme == "glass"
     assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
@@ -890,7 +890,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
     dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
     try:
         assert pump(lambda: dialog.list.GetCount() == 1)
-        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 20 events have a sound. "
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 21 events have a sound. "
                                             "Update available.")
         assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
@@ -1024,9 +1024,9 @@ def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
 
 
 def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
-    assert dialog._events_name() == "Sound events, 20 of 20 events have a sound"
+    assert dialog._events_name() == "Sound events, 21 of 21 events have a sound"
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert dialog._events_name() == "Sound events, 19 of 20 events have a sound"
-    assert dialog.events.GetName() == "Sound events, 19 of 20 events have a sound"
+    assert dialog._events_name() == "Sound events, 20 of 21 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 20 of 21 events have a sound"

@@ -4631,7 +4631,9 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
         frame.on_send()
     rows = list(frame.chat_list.GetStrings())
     assert rows[-2:] == ["Queued: second", "Queued: third"]
-    # Delete on a queued row removes it.
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
+    # Delete on a queued row removes it, with its own sound (Withdraw, dev-notes/sound-design.md).
     frame.chat_list.SetSelection(len(rows) - 2)
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
     event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
@@ -4640,6 +4642,7 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
     assert frame._queued == {"own-1": ["third"]}
     assert list(frame.chat_list.GetStrings())[-1] == "Queued: third"
     assert env["feedback"][-1] == "Queued message removed. 1 still queued."
+    assert sounds == ["queued_deleted"]
     # The context menu offers Edit and Remove for a queued row.
     frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
     menu = frame._message_menu()
@@ -4652,6 +4655,7 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
     assert frame._queued == {}
     assert frame.reply_text.GetValue() == "third\n\ndraft"
     assert not any(r.startswith("Queued:") for r in frame.chat_list.GetStrings())
+    assert sounds == ["queued_deleted"]  # editing takes it back to change, not to delete
     # Delete on an ordinary message does nothing to it.
     frame.chat_list.SetSelection(0)
     count = frame.chat_list.GetCount()
@@ -12836,6 +12840,16 @@ def _other_runtime_chat(frame, monkeypatch, calls):
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     monkeypatch.setattr(frame, "_open", info)
     return info, record
+
+
+def test_a_runtime_chats_queue_is_not_deleted_while_it_runs_and_makes_no_sound(
+        frame, env, monkeypatch):
+    _other_runtime_chat(frame, monkeypatch, [])
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
+    frame.remove_queued()
+    assert env["feedback"][-1].startswith("Stop this ")
+    assert sounds == []  # Withdraw is for a message really deleted
 
 
 def test_send_and_stop_route_any_runtime_providers_chat(frame, env, monkeypatch):
