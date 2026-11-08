@@ -1,5 +1,8 @@
 # Codex parity validation (#558)
 
+The hand checks below are now part of `testing/05preview.md`, the one testing guide for the 0.5
+preview. This file keeps the background: how the parity work was built and what was checked.
+
 Branch: `codex/05preview-parity`, based on preview commit `5c21f9b74b819108829ce93e281b09e7744a19d4`.
 The preview checkout is not modified. `f859738` is an implementation checkpoint, not a release candidate.
 

@@ -173,8 +173,9 @@ SHORTCUTS = [
                    "such as /plan and /compact"),
         ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
-        ("Ctrl+V with a picture copied", "Attach the picture to a Claude or Codex message (a screenshot from Win+Shift+S, "
-                                         "say)"),
+        ("Ctrl+V with a picture or files copied", "Attach the picture (a screenshot from Win+Shift+S, say), "
+                                                  "or files copied in File Explorer or the Finder, to a "
+                                                  "Claude or Codex message"),
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
