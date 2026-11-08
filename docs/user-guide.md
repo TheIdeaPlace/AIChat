@@ -766,7 +766,7 @@ Changes belong to the scheme showing: changing an event in Glass leaves Wood as 
 
 A sound scheme is a sound for each event. Glass, Soft bell and Wood come with The Chat Place, and you can make your own, share them, and take ones others have made. **Scheme Actions** (Alt+A in File, Sounds) has:
 
-- **New Scheme** starts a scheme of your own with every event silent, so you give sounds only to the events you want. A scheme of your own can use any built-in sound in any tone, such as "Arrived (Soft bell)", and your own files.
+- **New Scheme** starts a scheme of your own with every event silent, so you give sounds only to the events you want. A scheme of your own can use any built-in sound in any tone, such as "Rise (Soft bell)", and your own files.
 - **Copy Scheme** starts from the scheme showing instead.
 - **Rename Scheme** and **Delete Scheme**, for schemes of your own. Deleting a scheme keeps its sound files.
 - **Reset Scheme** puts Glass, Soft bell or Wood back to how it comes.
@@ -2416,13 +2416,19 @@ about the selected server.
   the copy and checked before every turn; unselected servers, apps and plugins stay off.
 - Enabled MCP tools can read or change external services beyond the chat's folder. Enable
   only servers you trust; the confirmation explains this access before creating a copy.
-- Add servers and sign in through Codex CLI. **Sign In** explains where to do this;
-  **Refresh** and **Read Status** reread status. The Chat Place leaves your global Codex settings alone.
+- The list also has the Codex apps you can use, and **The Chat Place's session tools**, which
+  stay on while The Chat Place is running. An app is chosen for a copy the same way as a server.
+- Add servers through Codex CLI (`codex mcp`). **Sign In** (Alt+S) reads you the sign-in page's
+  real address and opens it only if you agree; finish in your browser, and you hear when it's
+  done, or press **Refresh**. For an app, it opens the app's page instead. Sign-in needs a copy
+  with that server on. **Reconnect** (Alt+R) tries a server again. The Chat Place leaves your
+  global Codex settings alone.
 - If a server the chat uses is later removed from Codex's configuration, the chat can't send and
   says why. The server is first in this list, and **Copy with Tool Off** makes a copy without
   it. Or add it back to Codex's `config.toml`.
-- A connected tool's question that The Chat Place can't display is declined with a notice.
-  Claude's connected-tool forms aren't available for Codex yet.
+- When a connected tool asks for something, **Answer** (Ctrl+Shift+A) shows its form or the web
+  page it wants opened, as for Claude. A question The Chat Place can't display, or a plugin
+  installation, is declined with a notice.
 
 For a Codex chat started elsewhere, the list shows which servers are configured for its folder,
 without how each is doing, and tools can't be changed for it here.

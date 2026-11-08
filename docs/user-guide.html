@@ -744,7 +744,7 @@ your next message. That setting applies only to Claude.</p>
 <h3>Sound schemes</h3>
 <p>A sound scheme is a sound for each event. Glass, Soft bell and Wood come with The Chat Place, and you can make your own, share them, and take ones others have made. <strong>Scheme Actions</strong> (Alt+A in File, Sounds) has:</p>
 <ul>
-<li><strong>New Scheme</strong> starts a scheme of your own with every event silent, so you give sounds only to the events you want. A scheme of your own can use any built-in sound in any tone, such as "Arrived (Soft bell)", and your own files.</li>
+<li><strong>New Scheme</strong> starts a scheme of your own with every event silent, so you give sounds only to the events you want. A scheme of your own can use any built-in sound in any tone, such as "Rise (Soft bell)", and your own files.</li>
 <li><strong>Copy Scheme</strong> starts from the scheme showing instead.</li>
 <li><strong>Rename Scheme</strong> and <strong>Delete Scheme</strong>, for schemes of your own. Deleting a scheme keeps its sound files.</li>
 <li><strong>Reset Scheme</strong> puts Glass, Soft bell or Wood back to how it comes.</li>
@@ -2427,13 +2427,19 @@ about the selected server.</p>
   the copy and checked before every turn; unselected servers, apps and plugins stay off.</li>
 <li>Enabled MCP tools can read or change external services beyond the chat's folder. Enable
   only servers you trust; the confirmation explains this access before creating a copy.</li>
-<li>Add servers and sign in through Codex CLI. <strong>Sign In</strong> explains where to do this;
-  <strong>Refresh</strong> and <strong>Read Status</strong> reread status. The Chat Place leaves your global Codex settings alone.</li>
+<li>The list also has the Codex apps you can use, and <strong>The Chat Place's session tools</strong>, which
+  stay on while The Chat Place is running. An app is chosen for a copy the same way as a server.</li>
+<li>Add servers through Codex CLI (<code>codex mcp</code>). <strong>Sign In</strong> (Alt+S) reads you the sign-in page's
+  real address and opens it only if you agree; finish in your browser, and you hear when it's
+  done, or press <strong>Refresh</strong>. For an app, it opens the app's page instead. Sign-in needs a copy
+  with that server on. <strong>Reconnect</strong> (Alt+R) tries a server again. The Chat Place leaves your
+  global Codex settings alone.</li>
 <li>If a server the chat uses is later removed from Codex's configuration, the chat can't send and
   says why. The server is first in this list, and <strong>Copy with Tool Off</strong> makes a copy without
   it. Or add it back to Codex's <code>config.toml</code>.</li>
-<li>A connected tool's question that The Chat Place can't display is declined with a notice.
-  Claude's connected-tool forms aren't available for Codex yet.</li>
+<li>When a connected tool asks for something, <strong>Answer</strong> (Ctrl+Shift+A) shows its form or the web
+  page it wants opened, as for Claude. A question The Chat Place can't display, or a plugin
+  installation, is declined with a notice.</li>
 </ul>
 <p>For a Codex chat started elsewhere, the list shows which servers are configured for its folder,
 without how each is doing, and tools can't be changed for it here.</p>
