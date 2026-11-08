@@ -641,7 +641,8 @@ class NewSessionDialog(wx.Dialog):
         self._repo, self._repo_known = info, True
         self._start_remote, self._base_ref_head = remote, head
         typed = self.branch.GetValue()
-        self.branch.Set(info.branches if info else [])
+        # Branches checked out somewhere are listed too, last, saying so (#587).
+        self.branch.Set(workplaces.branch_choices(info))
         self.branch.ChangeValue(typed)
         if info and info.branch:
             here = f"The folder as it is, on {info.branch}"
@@ -685,8 +686,9 @@ class NewSessionDialog(wx.Dialog):
             if self.start_from.GetString(index) != text:
                 self.start_from.SetString(index, text)
         worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
-        new = bool(worktree and info is not None
-                   and workplaces.is_new_branch(info, self.branch.GetValue()))
+        chosen = workplaces.branch_from_choice(self.branch.GetValue())
+        new = bool(worktree and info is not None and workplaces.is_new_branch(info, chosen))
+        in_use = workplaces.in_use_reason(info, chosen) if worktree and info else ""
         if info is not None and (not self._start_chosen or not remote):
             # Claude Code's own worktrees start where its baseRef says, so a
             # Claude chat here starts there too unless you choose.
@@ -701,6 +703,8 @@ class NewSessionDialog(wx.Dialog):
             name = "Start from (for a new branch in a new worktree)"
         elif info is None:
             name = "Start from (not a git repository)"
+        elif in_use:
+            name = f"Start from (not used: {chosen} is {in_use}, so a new worktree can't use it)"
         elif not new:
             name = ("Start from (not used: that branch exists, so it's used as it is, or "
                     "tracked if only the remote has it)")
@@ -776,7 +780,14 @@ class NewSessionDialog(wx.Dialog):
             self._warn("Git isn't installed, or The Chat Place can't find it, so there can't "
                        "be a worktree. Choose The folder as it is, or install Git.", self.work_in)
             return
-        folder, branch = self.folder.GetValue().strip(), self.branch.GetValue()
+        folder = self.folder.GetValue().strip()
+        branch = workplaces.branch_from_choice(self.branch.GetValue())
+        info = self._repo if self._repo_known and folder == self._repo_for else None
+        if info is not None and branch in info.busy:
+            # git would refuse it: say where it is and what to do instead (#587).
+            self._warn(workplaces.in_use_message(info, branch, self._start_remote),
+                       self.branch)
+            return
         start = self.start_point()
         self._making = True
         self.start_btn.Enable(False)

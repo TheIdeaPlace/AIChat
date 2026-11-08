@@ -293,6 +293,10 @@ STEPS = [
     Step("Start from", ["Tab", "Tab"], expect=["Start from", "origin/main, fetched first"]),
     Step("Start from, the current branch", ["Down"], expect=["work, what the folder has"]),
     Step("New Session closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # A branch checked out in another worktree is listed, saying so (#587).
+    Step("New Session, a branch in use in another worktree", [], trigger="branch-in-use",
+         expect=["Branch", "main (in use in another worktree)"]),
+    Step("New Session closed again", ["Escape"], expect=["Fix the flaky upload test"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
     # mode, with Copilot asking to run npm test and npm run lint already
@@ -452,10 +456,12 @@ def chat_options(frame) -> None:
     wx.CallAfter(frame.on_chat_options)
 
 
-def new_session_start_from(frame) -> None:
+def new_session_start_from(frame, in_use: bool = False) -> None:
     """New Session on a made-up repository with a remote (#561): A new
     worktree chosen and a new branch typed, so Start from is on, and the
-    focus on Branch, one Tab before it. Opened once the folder is read."""
+    focus on Branch, one Tab before it. Opened once the folder is read.
+    ``in_use``: main is checked out in a worktree of its own and chosen
+    instead (#587), so Branch shows it saying so."""
     import subprocess
     import tempfile
     import wx
@@ -469,6 +475,9 @@ def new_session_start_from(frame) -> None:
                          (["clone", "-q", str(origin), str(clone)], base),
                          (["checkout", "-q", "-b", "work"], clone)):
         subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
+    if in_use:
+        subprocess.run(["git", "worktree", "add", "-q", str(base / "MainTree"), "main"],
+                       cwd=clone, check=True, capture_output=True)
     dialog = NewSessionDialog(frame, str(clone), feedback=frame._feedback)
 
     def ready(tries=100):
@@ -477,7 +486,10 @@ def new_session_start_from(frame) -> None:
             return
         dialog.work_in.SetSelection(WORK_IN_WORKTREE)
         dialog._on_work_in()
-        dialog.branch.SetValue("fix/orca")
+        if in_use:
+            dialog.branch.SetStringSelection("main (in use in another worktree)")
+        else:
+            dialog.branch.SetValue("fix/orca")
         dialog._sync_start_from()
         dialog.branch.SetFocus()
         frame._modal(dialog)
@@ -572,6 +584,7 @@ TRIGGERS = {
     "chat-options": lambda frame, env: chat_options(frame),
     "sounds": lambda frame, env: frame.on_sounds(),
     "start-from": lambda frame, env: new_session_start_from(frame),
+    "branch-in-use": lambda frame, env: new_session_start_from(frame, in_use=True),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "copilot": copilot_chat,
