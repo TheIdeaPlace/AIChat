@@ -5310,8 +5310,11 @@ def _steer_key(frame, monkeypatch, focus):
 def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_runner,
                                                                monkeypatch):
     runner = _start_steering(frame, fake_runner)
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
     frame.reply_text.SetValue("Also update the README")
     _steer_key(frame, monkeypatch, frame.reply_text)
+    assert sounds == ["steered"]  # its own sound, not the send's (dev-notes/sound-design.md)
     assert runner.steered == ["Also update the README"]
     assert not getattr(runner, "sent_now", None)  # nothing stopped
     assert frame._queued == {}
@@ -5324,6 +5327,7 @@ def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="Also update the README", data={"late": False}))
     assert env["feedback"][-1] == "Hub probe has your message."
+    assert sounds[-1] == "steer_taken"
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="And the docs", data={"late": True}))
     assert env["feedback"][-1] == "Hub probe had finished, and is answering your message now."
@@ -5360,7 +5364,10 @@ def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runne
     labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
     assert "Send Now" in labels and "Steer" in labels
     menu.Destroy()
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
     _steer_key(frame, monkeypatch, frame.chat_list)
+    assert sounds == ["steered"]
     assert runner.steered == ["third"]
     assert not getattr(runner, "sent_now", None)
     assert frame._queued == {"own-1": ["second"]}

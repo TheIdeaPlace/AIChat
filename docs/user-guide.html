@@ -645,6 +645,7 @@ your next message. That setting applies only to Claude.</p>
 <li><strong>Other chats</strong> chooses which chats that aren't loaded make their other sounds: every listed chat, only those run in The Chat Place, or none.</li>
 </ul>
 <h3>What you'll hear</h3>
+<p>Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages leap up an octave, answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.</p>
 <table>
 <thead>
 <tr>
@@ -655,67 +656,87 @@ your next message. That setting applies only to Claude.</p>
 <tbody>
 <tr>
 <td>Tool ran</td>
-<td>Tap: one very soft short note, whether tool activity is on or not</td>
+<td>Tick: one very soft, very short high note, whether tool activity is on or not</td>
 </tr>
 <tr>
 <td>File changed</td>
-<td>Changed: two soft quick notes, rising, once the change has worked</td>
+<td>Double tick: two soft high ticks, rising, once the change has worked</td>
 </tr>
 <tr>
 <td>Still working</td>
-<td>Pulse: one faint low note, after 20 quiet seconds of a turn in the loaded chat. A long command or long thinking reports nothing, so this tells you it hasn't stopped</td>
+<td>Hum: one faint low note, after 20 quiet seconds of a turn in the loaded chat. A long command or long thinking reports nothing, so this tells you it hasn't stopped</td>
 </tr>
 <tr>
 <td>Message sent</td>
-<td>Sent: two notes, rising</td>
+<td>Send: a quick leap up an octave</td>
 </tr>
 <tr>
 <td>Message queued</td>
-<td>Queued: one note, repeated softer</td>
+<td>Hold: one note three times, each softer</td>
 </tr>
 <tr>
-<td>Message not sent</td>
-<td>Error: two low notes, repeated, when a message comes back to you</td>
+<td>Message steered into the turn</td>
+<td>Bend: the send with a step on the way up, for a message that goes into the running turn without stopping it</td>
 </tr>
 <tr>
-<td>Reply finished</td>
-<td>Arrived: three notes, rising</td>
+<td>Steered message taken</td>
+<td>Taken: a soft, quick climb of four notes, when Claude has your steered message</td>
 </tr>
 <tr>
-<td>Another chat finished</td>
-<td>Elsewhere: the same rise, lower and softer</td>
-</tr>
-<tr>
-<td>Needs you</td>
-<td>Attention: a repeated note, then a higher one, for a permission, a question or a plan to approve</td>
-</tr>
-<tr>
-<td>Turn failed</td>
-<td>Failed: three notes, falling</td>
+<td>Queued message sent</td>
+<td>Release: the held note leaping up into a send, when a waiting message goes on its own</td>
 </tr>
 <tr>
 <td>You stopped a turn</td>
-<td>Stopped: one low damped note</td>
+<td>Stop: a quick, damped drop, low</td>
+</tr>
+<tr>
+<td>Reply finished</td>
+<td>Rise: three notes rising</td>
+</tr>
+<tr>
+<td>Another chat finished</td>
+<td>Low rise: the same rise, lower and softer</td>
+</tr>
+<tr>
+<td>Ask Aside answered</td>
+<td>Aside: three quiet notes, down and back</td>
+</tr>
+<tr>
+<td>Needs you</td>
+<td>Call: one note three times fast, then a leap up, for a permission, a question or a plan to approve</td>
+</tr>
+<tr>
+<td>Turn failed</td>
+<td>Fall: four notes falling</td>
+</tr>
+<tr>
+<td>Message not sent</td>
+<td>Bump: a note slipping down, then dropping, when a message comes back to you</td>
+</tr>
+<tr>
+<td>Ask Aside not answered</td>
+<td>Aside fall: the aside's start, bending down instead of coming back</td>
 </tr>
 <tr>
 <td>Service trouble</td>
-<td>Disconnected: two low notes, falling, when the AI is retrying, moved to another model, or its turn ended without you stopping it</td>
-</tr>
-<tr>
-<td>Conversation compacted</td>
-<td>Filed: two quick notes, a small step up</td>
+<td>Waver: two low notes wavering, when the AI is retrying, moved to another model, or its turn ended without you stopping it</td>
 </tr>
 <tr>
 <td>Usage or context warning</td>
-<td>Reminder: one high note, three times</td>
+<td>Alert: high notes, alternating</td>
+</tr>
+<tr>
+<td>Conversation compacted</td>
+<td>Settle: a chord settling down into one low note</td>
 </tr>
 <tr>
 <td>Message from another session</td>
-<td>Matched: one bright note</td>
+<td>Knock: two knocks, then a lower note answering</td>
 </tr>
 </tbody>
 </table>
-<p>When a lot happens at once, some sounds are left out so it never turns into noise. A tap is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. <strong>Needs you</strong> and <strong>Turn failed</strong> go first.</p>
+<p>When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. <strong>Needs you</strong> and <strong>Turn failed</strong> go first.</p>
 <h3>Changing a sound</h3>
 <p>In <strong>Sound events</strong>, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. <strong>Sound</strong> chooses another, or None. <strong>Preview</strong> plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. <strong>Space</strong> on an event plays its sound the same way, so you can arrow through the list and hear each one. <strong>Choose File</strong> uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the <code>sounds</code> folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.</p>
 <p><strong>Remove File</strong> deletes the chosen sound file of your own, after saying which schemes use it; they play a built-in sound instead. The file is deleted straight away, even if you then choose Cancel.</p>

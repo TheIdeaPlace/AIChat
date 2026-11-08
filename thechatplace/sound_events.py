@@ -27,9 +27,14 @@ FILE_CHANGED = "file_changed"
 PULSE = "pulse"
 SENT = "sent"
 QUEUED = "queued"
+STEERED = "steered"
+STEER_TAKEN = "steer_taken"
+QUEUED_SENT = "queued_sent"
 NOT_SENT = "not_sent"
 FINISHED = "finished"
 FINISHED_ELSEWHERE = "finished_elsewhere"
+ASIDE_ANSWERED = "aside_answered"
+ASIDE_FAILED = "aside_failed"
 NEEDS_YOU = "needs_you"
 FAILED = "failed"
 STOPPED = "stopped"
@@ -52,22 +57,29 @@ class SoundEvent:
     answers_you: bool = False
 
 
+#: One sound for each event, made for it: never shared, never borrowed from another app.
+#: dev-notes/sound-design.md has the rules, the families and every sound's notes.
 EVENTS: Tuple[SoundEvent, ...] = (
-    SoundEvent(TOOL, "ToolRan", "Tool ran", "tap", AMBIENT),
-    SoundEvent(FILE_CHANGED, "FileChanged", "File changed", "changed", AMBIENT),
-    SoundEvent(PULSE, "StillWorking", "Still working", "pulse", AMBIENT),
-    SoundEvent(SENT, "MessageSent", "Message sent", "sent", answers_you=True),
-    SoundEvent(QUEUED, "MessageQueued", "Message queued", "queued", answers_you=True),
-    SoundEvent(NOT_SENT, "MessageNotSent", "Message not sent", "error", answers_you=True),
-    SoundEvent(FINISHED, "ReplyFinished", "Reply finished", "arrived"),
-    SoundEvent(FINISHED_ELSEWHERE, "OtherChatFinished", "Another chat finished", "elsewhere"),
-    SoundEvent(NEEDS_YOU, "NeedsYou", "Needs you", "attention", URGENT),
-    SoundEvent(FAILED, "TurnFailed", "Turn failed", "failed", URGENT),
-    SoundEvent(STOPPED, "TurnStopped", "You stopped a turn", "stopped", answers_you=True),
-    SoundEvent(TROUBLE, "ServiceTrouble", "Service trouble", "disconnected"),
-    SoundEvent(COMPACTED, "Compacted", "Conversation compacted", "filed"),
-    SoundEvent(LIMIT, "UsageWarning", "Usage or context warning", "reminder"),
-    SoundEvent(PEER, "PeerMessage", "Message from another session", "matched"),
+    SoundEvent(TOOL, "ToolRan", "Tool ran", "tool", AMBIENT),
+    SoundEvent(FILE_CHANGED, "FileChanged", "File changed", "edit", AMBIENT),
+    SoundEvent(PULSE, "StillWorking", "Still working", "working", AMBIENT),
+    SoundEvent(SENT, "MessageSent", "Message sent", "send", answers_you=True),
+    SoundEvent(QUEUED, "MessageQueued", "Message queued", "queue", answers_you=True),
+    SoundEvent(STEERED, "MessageSteered", "Message steered into the turn", "steer", answers_you=True),
+    SoundEvent(STEER_TAKEN, "SteerTaken", "Steered message taken", "steertaken"),
+    SoundEvent(QUEUED_SENT, "QueuedMessageSent", "Queued message sent", "queuesent"),
+    SoundEvent(STOPPED, "TurnStopped", "You stopped a turn", "stop", answers_you=True),
+    SoundEvent(FINISHED, "ReplyFinished", "Reply finished", "reply"),
+    SoundEvent(FINISHED_ELSEWHERE, "OtherChatFinished", "Another chat finished", "otherreply"),
+    SoundEvent(ASIDE_ANSWERED, "AsideAnswered", "Ask Aside answered", "aside"),
+    SoundEvent(NEEDS_YOU, "NeedsYou", "Needs you", "needsyou", URGENT),
+    SoundEvent(FAILED, "TurnFailed", "Turn failed", "turnfailed", URGENT),
+    SoundEvent(NOT_SENT, "MessageNotSent", "Message not sent", "notsent", answers_you=True),
+    SoundEvent(ASIDE_FAILED, "AsideNotAnswered", "Ask Aside not answered", "asidefailed"),
+    SoundEvent(TROUBLE, "ServiceTrouble", "Service trouble", "trouble"),
+    SoundEvent(LIMIT, "UsageWarning", "Usage or context warning", "warning"),
+    SoundEvent(COMPACTED, "Compacted", "Conversation compacted", "compacted"),
+    SoundEvent(PEER, "PeerMessage", "Message from another session", "peer"),
 )
 BY_ID: Dict[str, SoundEvent] = {event.id: event for event in EVENTS}
 BY_KEY: Dict[str, SoundEvent] = {event.key: event for event in EVENTS}
@@ -79,12 +91,23 @@ APP = shared.catalog("thechatplace")
 #: loaded: nothing reads its transcript until then.
 TOOL_EVENTS = frozenset({TOOL, FILE_CHANGED})
 
-#: Every built-in sound, in the order the Sound choice lists them, with its name there.
+#: Every built-in sound, in the order the Sound choice lists them, with its name there: what
+#: the sound is like, so a row reads "Reply finished: Rise".
 BUILT_IN: Dict[str, str] = {
-    "tap": "Tap", "changed": "Changed", "pulse": "Pulse", "sent": "Sent", "queued": "Queued",
-    "error": "Error", "arrived": "Arrived", "elsewhere": "Elsewhere", "attention": "Attention",
-    "failed": "Failed", "stopped": "Stopped", "disconnected": "Disconnected", "filed": "Filed",
-    "reminder": "Reminder", "matched": "Matched",
+    "tool": "Tick", "edit": "Double tick", "working": "Hum", "send": "Send", "queue": "Hold",
+    "steer": "Bend", "steertaken": "Taken", "queuesent": "Release", "stop": "Stop",
+    "reply": "Rise", "otherreply": "Low rise", "aside": "Aside", "needsyou": "Call",
+    "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
+    "warning": "Alert", "compacted": "Settle", "peer": "Knock",
+}
+
+#: The first set's names, which only 0.5 previews saved: each becomes the new sound for the
+#: same event, so a choice made then still means the same thing.
+OLD_NAMES: Dict[str, str] = {
+    "tap": "tool", "changed": "edit", "pulse": "working", "sent": "send", "queued": "queue",
+    "error": "notsent", "arrived": "reply", "elsewhere": "otherreply", "attention": "needsyou",
+    "failed": "turnfailed", "stopped": "stop", "disconnected": "trouble", "filed": "compacted",
+    "reminder": "warning", "matched": "peer",
 }
 
 #: The packs, which are also the built-in schemes, by id.
@@ -172,10 +195,20 @@ def _clean_events(raw: object) -> Dict[str, str]:
         return {}
     out = {}
     for key, value in raw.items():
-        ref = parse_ref(value)
+        ref = parse_ref(_renamed(value))
         if key in BY_KEY and ref is not None:
             out[key] = str(ref)
     return out
+
+
+def _renamed(value: object) -> object:
+    """A 0.5 preview's built-in sound under its new name (OLD_NAMES); anything else as it is."""
+    if not isinstance(value, str) or not value.lower().startswith("builtin:"):
+        return value
+    rest = value[len("builtin:"):]
+    pack, slash, name = rest.rpartition("/")
+    new = OLD_NAMES.get(name.lower())
+    return f"builtin:{pack}{slash}{new}" if new else value
 
 
 def _clean_source(raw: object) -> Optional[Dict[str, str]]:
@@ -247,7 +280,7 @@ def migrate(style: object, choices: object) -> Tuple[str, Dict[str, dict]]:
     if isinstance(choices, dict):
         for event_id, ref in choices.items():
             event = BY_ID.get(event_id)
-            parsed = parse_ref(ref)
+            parsed = parse_ref(_renamed(ref))
             if event is not None and parsed is not None:
                 events[event.key] = str(parsed)
     return pack, ({pack: {"events": events}} if events else {})

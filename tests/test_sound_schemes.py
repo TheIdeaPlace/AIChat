@@ -41,24 +41,54 @@ def test_the_events_are_app_kits_for_this_app():
     assert list(se.PACKS) == ["glass", "softbell", "wood"]
 
 
+def test_one_sound_one_meaning():
+    """dev-notes/sound-design.md: every event has its own sound, its own file, and a name of its
+    own in the Sound choice; none is QuickMail's."""
+    from theideaplace_appkit import soundschemes
+    sounds = [e.sound for e in se.EVENTS]
+    assert len(sounds) == len(set(sounds)) == 20
+    assert len(set(se.BUILT_IN.values())) == len(se.BUILT_IN)
+    quickmail = set(soundschemes.catalog("quickmail").built_in_sounds)
+    assert not quickmail & set(sounds)
+    for pack in se.PACKS:
+        for sound in sounds:
+            path = se.built_in_path(sound, pack)
+            assert path.is_file(), path
+        assert sorted(p.stem for p in se.built_in_path("tool", pack).parent.glob("*.wav")) == sorted(sounds)
+
+
+def test_a_preview_choice_keeps_its_meaning_under_the_new_names():
+    loaded = se.load_schemes({"wood": {"events": {"ToolRan": "builtin:tap", "NeedsYou": "builtin:glass/attention",
+                                                  "ReplyFinished": "builtin:Arrived"}},
+                              USER: {"name": "Mine", "events": {"Compacted": "builtin:softbell/filed",
+                                                                "PeerMessage": "builtin:matched"}}})
+    wood = se.find(loaded, "wood")
+    assert wood.events == {"ToolRan": "builtin:tool", "NeedsYou": "builtin:glass/needsyou",
+                           "ReplyFinished": "builtin:reply"}
+    mine = se.find(loaded, USER)
+    assert mine.events["Compacted"] == "builtin:softbell/compacted"
+    assert mine.events["PeerMessage"] == "builtin:peer"
+    assert se.ref_for(mine, se.STEERED).kind == "none"  # a new event: silent in a scheme of your own
+
+
 # -- what's kept ---------------------------------------------------------------------
 
 
 def test_a_built_in_scheme_keeps_only_what_you_changed():
     glass = se.built_in_scheme("glass")
-    glass.events = {"ToolRan": "none", "FileChanged": "builtin:changed"}
+    glass.events = {"ToolRan": "none", "FileChanged": "builtin:edit"}
     assert se.save_schemes([glass]) == {"glass": {"events": {"ToolRan": "none"}}}
     assert se.save_schemes([se.built_in_scheme("wood")]) == {}
 
 
 def test_your_own_scheme_keeps_every_event_and_where_it_came_from():
-    mine = se.Scheme(USER, "Mine", False, {"ToolRan": "builtin:wood/tap"}, "Me", None, "Quiet.",
+    mine = se.Scheme(USER, "Mine", False, {"ToolRan": "builtin:wood/tool"}, "Me", None, "Quiet.",
                      {"gallery": "rain", "sha256": "c" * 64})
     saved = se.save_schemes([mine])[USER]
     assert saved["name"] == "Mine" and saved["author"] == "Me" and saved["description"] == "Quiet."
     assert "license" not in saved and saved["source"] == {"gallery": "rain", "sha256": "c" * 64}
     assert list(saved["events"]) == [e.key for e in se.EVENTS]
-    assert saved["events"]["ToolRan"] == "builtin:wood/tap" and saved["events"]["NeedsYou"] == "none"
+    assert saved["events"]["ToolRan"] == "builtin:wood/tool" and saved["events"]["NeedsYou"] == "none"
     back = se.load_schemes(se.save_schemes([mine]))
     assert [s.id for s in back] == ["glass", "softbell", "wood", USER]
     assert back[3].events == saved["events"] and back[3].source == mine.source
@@ -96,13 +126,13 @@ def test_settings_round_trip(tmp_path):
     path = tmp_path / "s.json"
     settings = SpeechSettings()
     settings.sound_scheme = USER
-    settings.sound_schemes = {USER: {"name": "Mine", "events": {"ToolRan": "builtin:softbell/tap"}},
+    settings.sound_schemes = {USER: {"name": "Mine", "events": {"ToolRan": "builtin:softbell/tool"}},
                               "wood": {"events": {"NeedsYou": "none"}}}
     settings.save(path)
     loaded = SpeechSettings.load(path)
     assert loaded.sound_scheme == USER
     assert loaded.sound_schemes["wood"] == {"events": {"NeedsYou": "none"}}
-    assert loaded.sound_schemes[USER]["events"]["ToolRan"] == "builtin:softbell/tap"
+    assert loaded.sound_schemes[USER]["events"]["ToolRan"] == "builtin:softbell/tool"
     assert loaded.sound_schemes[USER]["events"]["NeedsYou"] == "none"
 
 
@@ -144,54 +174,54 @@ def _saved(settings, tmp_path):
 def test_resolve_in_a_built_in_scheme(data):
     wood = se.built_in_scheme("wood")
     path, fallback = se.resolve(se.TOOL, wood)
-    assert Path(path).parts[-2:] == ("wood", "tap.wav") and fallback is None
-    wood.events = {"ToolRan": "none", "NeedsYou": "builtin:glass/sent", "ReplyFinished": "builtin:sent"}
+    assert Path(path).parts[-2:] == ("wood", "tool.wav") and fallback is None
+    wood.events = {"ToolRan": "none", "NeedsYou": "builtin:glass/send", "ReplyFinished": "builtin:send"}
     assert se.resolve(se.TOOL, wood) is None
-    assert Path(se.resolve(se.NEEDS_YOU, wood)[0]).parts[-2:] == ("glass", "sent.wav")
-    assert Path(se.resolve(se.FINISHED, wood)[0]).parts[-2:] == ("wood", "sent.wav")
+    assert Path(se.resolve(se.NEEDS_YOU, wood)[0]).parts[-2:] == ("glass", "send.wav")
+    assert Path(se.resolve(se.FINISHED, wood)[0]).parts[-2:] == ("wood", "send.wav")
 
 
 def test_resolve_in_your_own_scheme(data):
-    mine = se.Scheme(USER, "Mine", False, {"ToolRan": "builtin:tap", "NeedsYou": "custom:m.wav"})
+    mine = se.Scheme(USER, "Mine", False, {"ToolRan": "builtin:tool", "NeedsYou": "custom:m.wav"})
     assert se.resolve(se.FINISHED, mine) is None  # blank means silent
-    assert Path(se.resolve(se.TOOL, mine)[0]).parts[-2:] == ("glass", "tap.wav")
+    assert Path(se.resolve(se.TOOL, mine)[0]).parts[-2:] == ("glass", "tool.wav")
     path, fallback = se.resolve(se.NEEDS_YOU, mine)
     assert Path(path) == data / "sounds" / "m.wav"
-    assert Path(fallback).parts[-2:] == ("glass", "attention.wav")
+    assert Path(fallback).parts[-2:] == ("glass", "needsyou.wav")
 
 
 def test_a_bad_choice_never_leaves_the_sounds_folder(data):
     glass = se.built_in_scheme("glass")
     glass.events = {"ToolRan": "custom:../../secret.wav"}
     path, _ = se.resolve(se.TOOL, glass)
-    assert Path(path).parts[-2:] == ("glass", "tap.wav")
+    assert Path(path).parts[-2:] == ("glass", "tool.wav")
 
 
 def test_labels(data):
     glass, wood = se.built_in_scheme("glass"), se.built_in_scheme("wood")
-    assert se.row_label(se.TOOL, glass) == "Tool ran: Tap"
-    glass.events = {"ToolRan": "none", "FileChanged": "builtin:wood/changed",
-                    "PeerMessage": "custom:m.wav", "NeedsYou": "builtin:glass/attention"}
+    assert se.row_label(se.TOOL, glass) == "Tool ran: Tick"
+    glass.events = {"ToolRan": "none", "FileChanged": "builtin:wood/edit",
+                    "PeerMessage": "custom:m.wav", "NeedsYou": "builtin:glass/needsyou"}
     assert se.row_label(se.TOOL, glass) == "Tool ran: None"
-    assert se.row_label(se.FILE_CHANGED, glass) == "File changed: Changed (Wood)"
-    assert se.row_label(se.NEEDS_YOU, glass) == "Needs you: Attention"
+    assert se.row_label(se.FILE_CHANGED, glass) == "File changed: Double tick (Wood)"
+    assert se.row_label(se.NEEDS_YOU, glass) == "Needs you: Call"
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav (missing)"
     (data / "sounds").mkdir()
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav"
-    assert se.count_label(glass) == "14 of 15 events have a sound"
-    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 15 events have a sound"
-    assert se.count_label(wood) == "15 of 15 events have a sound"
+    assert se.count_label(glass) == "19 of 20 events have a sound"
+    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 20 events have a sound"
+    assert se.count_label(wood) == "20 of 20 events have a sound"
 
 
 def test_what_the_sound_choice_offers(data):
     (data / "sounds").mkdir()
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     built_in = se.offered(se.built_in_scheme("softbell"))
-    assert built_in[0] == "none" and built_in[1] == "builtin:tap" and built_in[-1] == "custom:m.wav"
-    assert len(built_in) == 1 + 15 + 1
+    assert built_in[0] == "none" and built_in[1] == "builtin:tool" and built_in[-1] == "custom:m.wav"
+    assert len(built_in) == 1 + 20 + 1
     own = se.offered(se.Scheme(USER, "Mine", False))
-    assert "builtin:softbell/arrived" in own and len(own) == 1 + 45 + 1
+    assert "builtin:softbell/reply" in own and len(own) == 1 + 60 + 1
 
 
 def test_schemes_using_a_file():
@@ -215,15 +245,15 @@ def test_export_and_import_bring_a_scheme_and_its_file_across(data):
         meta = json.loads(zf.read("scheme.json"))
         assert zf.namelist() == ["scheme.json", "sounds/knock.wav"]
     assert meta["app"] == "thechatplace" and meta["name"] == "Soft bell"
-    assert meta["events"]["FileChanged"] == "builtin:softbell/changed"  # pinned to its tone
+    assert meta["events"]["FileChanged"] == "builtin:softbell/edit"  # pinned to its tone
     (folder / "knock.wav").unlink()
     imported = se.import_scheme(exported, ["Glass", "Soft bell", "Wood"])
     scheme = imported.scheme
     assert scheme.name == "Soft bell 2" and not scheme.built_in and scheme.id.startswith("user-")
     assert scheme.events["NeedsYou"] == "custom:knock.wav" and (folder / "knock.wav").is_file()
-    assert scheme.events["FileChanged"] == "builtin:softbell/changed"
+    assert scheme.events["FileChanged"] == "builtin:softbell/edit"
     assert imported.message() == "Added the sound scheme Soft bell 2, with 1 sound file."
-    assert Path(se.resolve(se.FILE_CHANGED, scheme)[0]).parts[-2:] == ("softbell", "changed.wav")
+    assert Path(se.resolve(se.FILE_CHANGED, scheme)[0]).parts[-2:] == ("softbell", "edit.wav")
 
 
 def test_import_says_what_was_left_silent(data):
@@ -255,7 +285,7 @@ def _entry(sid="rain", sha="d" * 64, events=8, description="Soft."):
 
 def test_gallery_rows_say_what_you_have():
     entry = _entry()
-    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 15 events have a sound."
+    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 20 events have a sound."
     mine = se.Scheme(USER, "Rain", False, source={"gallery": "rain", "sha256": "d" * 64})
     assert sound_gallery.state(entry, [mine]) == sound_gallery.ADDED
     assert sound_gallery.row_label(entry, [mine]).endswith(" Added.")

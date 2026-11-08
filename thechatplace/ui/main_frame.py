@@ -5481,6 +5481,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             data = event.data or {}
             self._steer_status(session_id, event.text, "taken in by Claude")
             said = announce.steer_taken_text(title, bool(data.get("late")))
+            self._sound(sound_events.STEER_TAKEN, self._own_key(session_id), on_its_own=True)
             # Late, the reply Claude had just finished is said first: the
             # steered message's answer becomes the turn's (#238).
             reply = announce.reply_text(title, data.get("reply") or "", self.speech.announce)
@@ -5691,7 +5692,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         runner = self._runners.get(session_id)
         if queued:
             if runner is not None and runner.send_follow_up(queued):
-                self._sound(sound_events.SENT, key, on_its_own=True)
+                self._sound(sound_events.QUEUED_SENT, key, on_its_own=True)
                 self._feedback(f"Sent your queued message. {title} is working.")
             else:
                 # Claude moved on already: it goes when the turn ends.
@@ -6070,7 +6071,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._clear_attachments(session_id)
         self._steer_row(session_id, text, "waiting for Claude")
         self._update_send_state()
-        self._sound(sound_events.SENT, info.key)
+        self._sound(sound_events.STEERED, info.key)
         self._feedback(announce.steered_text(info.title, message, self.speech.announce,
                                              self.speech.announce_own))
         self.reply_text.SetFocus()
@@ -6122,7 +6123,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._steer_row(info.cli_session_id, text, "waiting for Claude")
         self._update_send_state()
         # It was read back when it was queued.
-        self._sound(sound_events.SENT, info.key)
+        self._sound(sound_events.STEERED, info.key)
         self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))
 
     def send_queued_now(self):
@@ -6159,7 +6160,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("The turn is already ending: the message stays queued and goes "
                            "when it's done.")
             return
-        self._sound(sound_events.SENT, info.key)
+        self._sound(sound_events.STEERED, info.key)
         del waiting[index]
         if not waiting:
             self._queued.pop(info.cli_session_id, None)

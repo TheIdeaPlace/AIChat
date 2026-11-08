@@ -17,6 +17,7 @@ shipped.
 | [codex-feature-gaps.md](codex-feature-gaps.md): shared workflows, native boundaries and remaining work | #467, #468 |
 | [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
 | [steering.md](steering.md): what `claude -p` does with a message mid-turn, how `--replay-user-messages` tells the cases apart, and Codex's `turn/steer` | #238, #239 |
+| [sound-design.md](sound-design.md): the rules for The Chat Place's sounds, the families, and every event's sound and notes | #250 |
 | [speech-routing.md](speech-routing.md): how The Chat Place chooses what speaks, why NVDA users hear a Windows voice, and the options for fixing it | #98 |
 | [linux-port.md](linux-port.md): Linux and Orca: naming controls through ATK, reading message rows, which way announcements reach Orca, the formatted page, and what the AppImage keeps of the system's libraries | Linux port |
 
