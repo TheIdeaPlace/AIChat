@@ -1159,8 +1159,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   service trouble, compaction, a usage warning and a message from another session. Each event can
   have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's
   `sounds` folder so backups carry it), or none. The dialog also chooses the volume (80% to start),
-  the scheme (Glass, Soft bell, Wood or one of your own), whether tool sounds come from the loaded chat or every chat run here,
-  and which other chats make sounds. Help, **Sound Tutorial** lists the events by name: Space or
+  the scheme (Glass, Soft bell, Wood or one of your own), which chats make Tick sounds (**Tick sounds play for**)
+  and which make the other sounds (**Other sounds play for**); the open chat always makes them all. Help, **Sound Tutorial** lists the events by name: Space or
   Enter on one plays its sound in the scheme you use, even with sounds off or muted, and says
   "No sound" for an event without one, or that its file is missing (and plays the built-in sound,
   as the event would). **Mute All Sounds** (Ctrl+Shift+X, or View) silences everything

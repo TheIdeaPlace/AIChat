@@ -586,7 +586,7 @@ def test_preview_of_none_stops_what_was_previewing(dialog, env):
 def test_get_settings_carries_everything_else_through(frame, dialog):
     frame.speech.session_order = "title"
     dialog._original = frame.speech
-    dialog.tools.SetStringSelection("Every chat run here")
+    dialog.tools.SetStringSelection("The open chat and chats running in The Chat Place")
     dialog.others.SetStringSelection("None")
     dialog.mute.SetValue(True)
     got = dialog.get_settings()
