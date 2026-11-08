@@ -54,11 +54,11 @@ def test_a_bad_read_is_flagged_and_other_accounts_groups_are_left_out(tmp_path):
 
 def test_names_are_tidied_and_case_only_twins_kept_once(tmp_path):
     folder = _config(tmp_path, {"acct/org": {
-        "groups": [{"id": "cg-1", "name": "  Quill   app "}, {"id": "cg-2", "name": "QUILL APP"}],
+        "groups": [{"id": "cg-1", "name": "  Harbor   app "}, {"id": "cg-2", "name": "HARBOR APP"}],
         "assignments": {"code:local_a": "cg-1", "code:local_b": "cg-2"}}})
     groups = load_desktop_groups([folder])
-    assert groups.names == ["Quill app"]
-    assert groups.by_session == {"local_a": "Quill app", "local_b": "QUILL APP"}
+    assert groups.names == ["Harbor app"]
+    assert groups.by_session == {"local_a": "Harbor app", "local_b": "HARBOR APP"}
 
 
 def _copy_of_settings(root, written, name):
