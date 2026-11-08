@@ -114,15 +114,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "St&yle:",
+   "label": "Sound sc&heme:",
    "rect": [
     10,
     179,
-    50,
+    142,
     31
    ],
    "best": [
-    50,
+    142,
     31
    ],
    "depth": 0,
@@ -132,7 +132,7 @@
   },
   {
    "class": "Choice",
-   "name": "Style",
+   "name": "Sound scheme",
    "label": "",
    "rect": [
     168,
@@ -229,17 +229,55 @@
    "value": "Every listed chat"
   },
   {
-   "class": "StaticText",
-   "name": "staticText",
-   "label": "Sound &events:",
+   "class": "Button",
+   "name": "button",
+   "label": "Scheme &Actions...",
    "rect": [
     10,
     316,
-    131,
+    199,
+    42
+   ],
+   "best": [
+    199,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse Gallery...",
+   "rect": [
+    217,
+    316,
+    186,
+    42
+   ],
+   "best": [
+    186,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &events (15 of 15 events have a sound):",
+   "rect": [
+    10,
+    368,
+    420,
     31
    ],
    "best": [
-    131,
+    420,
     31
    ],
    "depth": 0,
@@ -249,13 +287,13 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events",
+   "name": "Sound events, 15 of 15 events have a sound",
    "label": "",
    "rect": [
     12,
-    349,
+    401,
     936,
-    421
+    369
    ],
    "best": [
     446,
@@ -307,7 +345,7 @@
    "rect": [
     83,
     778,
-    557,
+    386,
     38
    ],
    "best": [
@@ -325,7 +363,7 @@
    "name": "button",
    "label": "P&review",
    "rect": [
-    648,
+    477,
     778,
     133,
     42
@@ -344,7 +382,7 @@
    "name": "button",
    "label": "Choose &File...",
    "rect": [
-    789,
+    618,
     778,
     157,
     42
@@ -356,6 +394,25 @@
    "depth": 0,
    "parent": -1,
    "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&move File...",
+   "rect": [
+    783,
+    778,
+    163,
+    42
+   ],
+   "best": [
+    163,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
    "problems": []
   },
   {

@@ -230,9 +230,21 @@ was found at the two captured 100% variants. Higher scaling was not recaptured f
 
 ## sounds: File, Sounds
 
-A small dialog titled "Sounds". At the top, three check boxes, "Play sounds", "Mute all sounds" and "No Windows sound for The Chat Place's notifications". Below them, four labelled drop-down lists in a column: Volume (80%), Style (Glass), Tool sounds for (The loaded chat) and Other chats (Every listed chat). Then "Sound events:" over a list filling the middle, with 15 rows like "Tool ran: Tap", the first selected. Below it a row with "Sound:" and a wide drop-down (Tap), then Preview and Choose File buttons. OK and Cancel at the bottom right.
+A dialog titled "Sounds", 546 by 633 at 100%. At the top, three check boxes, "Play sounds", "Mute all sounds" and "No Windows sound for The Chat Place's notifications". Below them, four labelled drop-down lists in a column: Volume (80%), Sound scheme (Glass), Tool sounds for (The loaded chat) and Other chats (Every listed chat). Then two buttons side by side, "Scheme Actions..." and "Browse Gallery...". Then "Sound events (15 of 15 events have a sound):" over a list filling the middle, with 15 rows like "Tool ran: Tap", the first selected. Below it a row with "Sound:" and a drop-down (Tap), then Preview, Choose File... and Remove File..., the last greyed because Tap isn't a file of your own. OK and Cancel at the bottom right. (#250, sound schemes)
 
-**What looks off:** Nothing. No text is cut off at 100% or 175%. Every row fits at 100%. At 175% the list scrolls, with its last row out of view until you move to it. High Contrast Aquatic keeps every control visible, with the selected row in its own colour.
+**What looks off:** Nothing at 100%: every row fits and no text is cut off, the Sound drop-down still shows its choice in full beside three buttons. At 175% (960 by 946) nothing is cut off; the events list shows 12 rows and scrolls for the rest. High Contrast Aquatic keeps every control visible, with the selected row in its own colour and Remove File visibly greyed.
+
+## sounds-own-scheme: File, Sounds on a scheme of your own
+
+The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 15 events have a sound):". Rows read "Tool ran: Tap (Soft bell)", "Reply finished: Arrived (Wood)", "Needs you: Attention (Glass)" and "Turn failed: Failed"; the other eleven say "None". The Sound drop-down shows "Tap (Soft bell)".
+
+**What looks off:** Nothing. The longest row and the drop-down's "Tap (Soft bell)" fit without cutting off. High Contrast Aquatic as in sounds.
+
+## sound-gallery: File, Sounds, Browse Gallery
+
+A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 15 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 15 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and licence on two lines. Add, Reload and Close sit at the bottom right.
+
+**What looks off:** Nothing. Both rows and the details fit at 100%. High Contrast Aquatic draws the list, the details box and the buttons in the theme's colours, the selected row in aqua with dark text.
 
 ## settings-codex: Settings with Codex automatically included
 

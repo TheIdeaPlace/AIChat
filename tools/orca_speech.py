@@ -204,7 +204,7 @@ STEPS = [
     Step("Sounds, Choose File", ["Tab"], expect=["Choose File"]),
     # Sound schemes: the Scheme Actions menu, and the gallery opened and closed (#250).
     Step("Sounds, Scheme Actions menu", ["alt+a"], expect=["New Scheme"]),
-    Step("Scheme Actions menu closed", ["Escape"], expect=["Scheme Actions"]),
+    Step("Scheme Actions menu closed, focus where it was", ["Escape"], expect=["Choose File"]),
     Step("Sound Scheme Gallery", ["alt+b"], expect=["Sound Scheme Gallery"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Gallery closed, back on Browse Gallery", ["Escape"], expect=["Browse Gallery"]),

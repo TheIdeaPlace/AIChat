@@ -12,7 +12,7 @@ import wx
 from theideaplace_appkit import soundgallery as shared
 
 from .. import sound_events, sound_gallery
-from .a11y import set_accessible_name
+from .a11y import set_accessible_name, set_list_items_accessible
 from .sizes import dialog_size, dip
 
 LOADING = "Loading the sound scheme gallery…"
@@ -41,6 +41,8 @@ class SoundGalleryDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label="Sound &schemes:"), 0, wx.LEFT | wx.RIGHT, 10)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Sound schemes")
+        # Windows takes a list box's name from here, not from SetName (a11y.set_accessible_name).
+        set_list_items_accessible(self.list, lambda: "Sound schemes", lambda index: None)
         outer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         outer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT | wx.RIGHT, 10)
         # Read-only text, not a label, so it's in the Tab order and read by line.

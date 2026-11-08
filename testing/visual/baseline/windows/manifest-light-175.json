@@ -1224,6 +1224,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Lists: Approvals in a Codex chat"
+  },
+  "sound-gallery": {
+   "kind": "dialog",
+   "png": "sound-gallery-light-175.png",
+   "json": "sound-gallery-light-175.json",
+   "title": "Sound Scheme Gallery",
+   "class": "SoundGalleryDialog",
+   "size": [
+    980,
+    770
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Browse Gallery: two schemes, one added"
   }
  },
  "seconds": 94.1

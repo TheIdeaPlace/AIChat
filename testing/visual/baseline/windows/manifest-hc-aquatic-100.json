@@ -1751,7 +1751,7 @@
    "class": "SoundsDialog",
    "size": [
     560,
-    590
+    640
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1798,6 +1798,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Lists: Approvals in a Codex chat"
+  },
+  "sounds-own-scheme": {
+   "kind": "dialog",
+   "png": "sounds-own-scheme-hc-aquatic-100.png",
+   "json": "sounds-own-scheme-hc-aquatic-100.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    560,
+    640
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds on a scheme of your own"
+  },
+  "sound-gallery": {
+   "kind": "dialog",
+   "png": "sound-gallery-hc-aquatic-100.png",
+   "json": "sound-gallery-hc-aquatic-100.json",
+   "title": "Sound Scheme Gallery",
+   "class": "SoundGalleryDialog",
+   "size": [
+    560,
+    440
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Browse Gallery: two schemes, one added"
   }
  },
  "seconds": 280.2

@@ -182,8 +182,8 @@ def _clean_source(raw: object) -> Optional[Dict[str, str]]:
     if not isinstance(raw, dict):
         return None
     gallery, sha = raw.get("gallery"), raw.get("sha256")
-    if (isinstance(gallery, str) and re.match(r"^[a-z0-9][a-z0-9-]{0,39}$", gallery)
-            and isinstance(sha, str) and re.match(r"^[0-9a-f]{64}$", sha)):
+    if (isinstance(gallery, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", gallery)
+            and isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha)):
         return {"gallery": gallery, "sha256": sha}
     return None
 

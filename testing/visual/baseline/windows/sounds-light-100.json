@@ -3,11 +3,11 @@
  "class": "SoundsDialog",
  "size": [
   560,
-  590
+  640
  ],
  "client": [
   544,
-  551
+  601
  ],
  "dpi": [
   96,
@@ -114,15 +114,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "St&yle:",
+   "label": "Sound sc&heme:",
    "rect": [
     10,
     119,
-    29,
+    82,
     16
    ],
    "best": [
-    29,
+    82,
     16
    ],
    "depth": 0,
@@ -132,7 +132,7 @@
   },
   {
    "class": "Choice",
-   "name": "Style",
+   "name": "Sound scheme",
    "label": "",
    "rect": [
     105,
@@ -229,17 +229,55 @@
    "value": "Every listed chat"
   },
   {
-   "class": "StaticText",
-   "name": "staticText",
-   "label": "Sound &events:",
+   "class": "Button",
+   "name": "button",
+   "label": "Scheme &Actions...",
    "rect": [
     10,
     211,
-    75,
+    115,
+    23
+   ],
+   "best": [
+    115,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Browse Gallery...",
+   "rect": [
+    133,
+    211,
+    107,
+    23
+   ],
+   "best": [
+    107,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &events (15 of 15 events have a sound):",
+   "rect": [
+    10,
+    244,
+    237,
     16
    ],
    "best": [
-    75,
+    237,
     16
    ],
    "depth": 0,
@@ -249,13 +287,13 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events",
+   "name": "Sound events, 15 of 15 events have a sound",
    "label": "",
    "rect": [
     12,
-    229,
+    262,
     524,
-    238
+    255
    ],
    "best": [
     255,
@@ -287,7 +325,7 @@
    "label": "&Sound:",
    "rect": [
     10,
-    478,
+    528,
     38,
     16
    ],
@@ -306,8 +344,8 @@
    "label": "",
    "rect": [
     56,
-    475,
-    296,
+    525,
+    194,
     23
    ],
    "best": [
@@ -325,8 +363,8 @@
    "name": "button",
    "label": "P&review",
    "rect": [
-    360,
-    475,
+    258,
+    525,
     75,
     23
    ],
@@ -344,8 +382,8 @@
    "name": "button",
    "label": "Choose &File...",
    "rect": [
-    443,
-    475,
+    341,
+    525,
     91,
     23
    ],
@@ -361,10 +399,29 @@
   {
    "class": "Button",
    "name": "button",
+   "label": "Re&move File...",
+   "rect": [
+    440,
+    525,
+    94,
+    23
+   ],
+   "best": [
+    94,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
    "label": "OK",
    "rect": [
     372,
-    518,
+    568,
     75,
     23
    ],
@@ -383,7 +440,7 @@
    "label": "Cancel",
    "rect": [
     455,
-    518,
+    568,
     75,
     23
    ],
