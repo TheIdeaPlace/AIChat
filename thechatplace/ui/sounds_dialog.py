@@ -157,6 +157,7 @@ class SoundsDialog(wx.Dialog):
         self.actions.Bind(wx.EVT_BUTTON, lambda e: self._show_actions())
         self.browse.Bind(wx.EVT_BUTTON, lambda e: self.on_browse())
         self.events.Bind(wx.EVT_LISTBOX, lambda e: self._show_event())
+        self.events.Bind(wx.EVT_KEY_DOWN, self._on_events_key)
         self.sound.Bind(wx.EVT_CHOICE, lambda e: self._sound_chosen())
         self.preview.Bind(wx.EVT_BUTTON, lambda e: self._preview())
         self.choose.Bind(wx.EVT_BUTTON, lambda e: self._choose_file())
@@ -456,6 +457,15 @@ class SoundsDialog(wx.Dialog):
 
     def _volume(self) -> int:
         return sound_events.VOLUMES[max(self.volume.GetSelection(), 0)]
+
+    def _on_events_key(self, event: wx.KeyEvent) -> None:
+        """Space on an event plays its sound, so you can arrow through the list and hear each one.
+        Every system has it: Alt+R reaches Preview only where buttons have access keys, which a
+        Mac doesn't (app-kit's sounds/README.md makes this the standard for every app)."""
+        if event.GetKeyCode() == wx.WXK_SPACE and not event.HasAnyModifiers():
+            self._preview()
+            return
+        event.Skip()
 
     def _preview(self) -> None:
         """The sound showing, at the volume and in the scheme showing, even when muted. No words:

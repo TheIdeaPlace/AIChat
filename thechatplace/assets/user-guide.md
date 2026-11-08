@@ -749,7 +749,7 @@ When a lot happens at once, some sounds are left out so it never turns into nois
 
 ### Changing a sound
 
-In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the `sounds` folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
+In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the `sounds` folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
 
 **Remove File** deletes the chosen sound file of your own, after saying which schemes use it; they play a built-in sound instead. The file is deleted straight away, even if you then choose Cancel.
 

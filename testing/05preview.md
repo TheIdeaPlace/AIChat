@@ -320,7 +320,8 @@ with a screen reader. User Guide, **Sounds** lists every sound.
 1. Choose File, **Sounds**. Tab through it both ways. Expect: each control is named, and the
    **Sound events** list reads each row as the event and its sound. Turn on **Play sounds** and
    choose OK.
-2. In **Sound events**, arrow to a few events and choose **Preview**. Try each **Sound scheme**
+2. In **Sound events**, arrow to a few events and press **Space** on each (on a Mac too), then
+   try **Preview** once. Expect: the sound plays, and nothing is said over it. Try each **Sound scheme**
    (Glass, Soft bell, Wood) and a lower **Volume**. Expect: each plays at the volume showing, and
    none is harsh or clipped.
 3. In a disposable chat, with **Show Tool Activity** off (**Ctrl+T**), ask for something that
