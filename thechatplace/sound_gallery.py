@@ -44,7 +44,7 @@ def added_as(entry: shared.Entry, schemes: Iterable[sound_events.Scheme]) -> Opt
 
 
 def row_label(entry: shared.Entry, schemes: Iterable[sound_events.Scheme]) -> str:
-    """A row of the gallery's list: "Rain at Night, by Someone. 8 of 15 events have a sound."
+    """A row of the gallery's list: "Rain at Night, by Someone. 8 of 20 events have a sound."
     with "Added." or "Update available." after it."""
     text = f"{entry.name}, by {entry.author}."
     if entry.events_with_sound is not None:

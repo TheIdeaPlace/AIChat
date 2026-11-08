@@ -313,9 +313,10 @@ wait for about 90 seconds, and report when both are running without waiting for 
 
 ## Sounds
 
-Sounds are off until turned on. Nobody has heard them yet: their levels and timing were measured
-in a VM through a virtual sound card, so what's left is whether they're pleasant and how they sit
-with a screen reader. User Guide, **Sounds** lists every sound.
+Sounds are off until turned on. The set was remade so every event has a sound of its own, by the
+rules in `dev-notes/sound-design.md`; none is QuickMail's any more. Nobody has heard the new set:
+what's left is whether each sound fits its event, whether the families make sense, and how they
+sit with a screen reader. User Guide, **Sounds** lists every sound.
 
 1. Choose File, **Sounds**. Tab through it both ways. Expect: each control is named, and the
    **Sound events** list reads each row as the event and its sound. Turn on **Play sounds** and
@@ -325,26 +326,30 @@ with a screen reader. User Guide, **Sounds** lists every sound.
    (Glass, Soft bell, Wood) and a lower **Volume**. Expect: each plays at the volume showing, and
    none is harsh or clipped.
 3. In a disposable chat, with **Show Tool Activity** off (**Ctrl+T**), ask for something that
-   runs a few commands and edits a test file. Expect: a soft tap per tool, Changed when the edit
-   works, and Arrived when the reply finishes. Listen for whether the taps get in the way of
-   speech or are hard to hear under it.
-4. Ask for something that needs your permission. Expect: the Attention sound with the
-   announcement, not instead of it. Stop a turn (**Ctrl+Period**). Expect: Stopped.
-5. While a turn runs in another chat, stay in this one. Expect: the softer Elsewhere when it
+   runs a few commands and edits a test file. Expect: a soft Tick per tool, a Double tick when
+   the edit works, and Rise when the reply finishes. Listen for whether the ticks get in the way
+   of speech or are hard to hear under it.
+4. Ask for something that needs your permission. Expect: the Call sound with the
+   announcement, not instead of it. Stop a turn (**Ctrl+Period**). Expect: Stop.
+5. While a turn runs in another chat, stay in this one. Expect: the softer Low rise when it
    finishes.
-6. Press **Ctrl+Shift+X**. Expect: "Sounds muted", and silence, including a sound already
+6. **Steering.** While a Claude turn runs, type a message and press **Ctrl+Alt+Enter** to steer it
+   in. Expect: Bend, a send with a step in it. When Claude takes it in, expect Taken. Queue a
+   message with Enter instead and let the turn finish: expect Hold when you queue it and Release
+   when it goes on its own.
+7. Press **Ctrl+Shift+X**. Expect: "Sounds muted", and silence, including a sound already
    playing. Press it again for "Sounds on".
-7. With **No Windows sound for The Chat Place's notifications** turned on, let a chat finish
+8. With **No Windows sound for The Chat Place's notifications** turned on, let a chat finish
    while you're in another program, then select the notification. Expect: only The Chat Place's
    sound, and its chat opens. Nobody has checked that the chat still opens with this setting on.
-8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
-9. **Sound schemes.** Press **Alt+A** (Scheme Actions). Expect: a menu of New, Copy, Rename,
+9. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
+10. **Sound schemes.** Press **Alt+A** (Scheme Actions). Expect: a menu of New, Copy, Rename,
    Delete, Reset, Export and Import Scheme, with Rename and Delete turned off on Glass (on Windows
    and a Mac, read as turned off). Choose **New Scheme**, name it, and check that the events list says "0 of
-   15 events have a sound" and that **Sound** offers tones such as "Arrived (Soft bell)". Give
+   20 events have a sound" and that **Sound** offers tones such as "Rise (Soft bell)". Give
    two events a sound, then **Export Scheme** and **Import Scheme** the file. Expect: "Added the
    sound scheme ..." is said, and the copy has the same sounds.
-10. **Browse Gallery** (**Alt+B**). The gallery isn't open yet. Expect: "Loading the sound
+11. **Browse Gallery** (**Alt+B**). The gallery isn't open yet. Expect: "Loading the sound
     scheme gallery…", then "The gallery could not be reached", with focus on **Reload**. Escape
     closes it and you're back on Browse Gallery.
 

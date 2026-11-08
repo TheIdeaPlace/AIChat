@@ -91,7 +91,7 @@ def test_volume_and_style_reach_the_player(frame, env):
     frame.speech.sound_volume, frame.speech.sound_scheme = 50, "wood"
     turn(frame, TurnEvent("tool", text="Bash"))
     last = env["players"][0].last
-    assert last["volume"] == 0.5 and Path(last["path"]).parts[-2:] == ("wood", "tap.wav")
+    assert last["volume"] == 0.5 and Path(last["path"]).parts[-2:] == ("wood", "tool.wav")
     assert last["priority"] == "ambient"
 
 
@@ -522,8 +522,8 @@ def test_dialog_shows_the_settings_and_its_rows(frame, dialog):
     assert dialog.play_sounds.GetValue() is True
     assert dialog.volume.GetStringSelection() == "80%"
     assert dialog.scheme.GetStringSelection() == "Glass"
-    assert dialog.events.GetString(0) == "Tool ran: Tap"
-    assert dialog.sound.GetStringSelection() == "Tap"
+    assert dialog.events.GetString(0) == "Tool ran: Tick"
+    assert dialog.sound.GetStringSelection() == "Tick"
 
 
 def test_choosing_a_sound_changes_the_row_and_only_ok_keeps_it(frame, dialog):
@@ -545,7 +545,7 @@ def test_space_on_an_event_plays_it(frame, dialog, env):
         return event
     dialog._on_events_key(key(wx.WXK_SPACE))
     path, _volume = env["previews"][-1]
-    assert Path(path).name == "arrived.wav"
+    assert Path(path).name == "reply.wav"
     before = len(env["previews"])
     dialog._on_events_key(key(wx.WXK_SPACE, shift=True))  # not plain Space: left alone
     dialog._on_events_key(key(ord("A")))
@@ -559,13 +559,13 @@ def test_preview_uses_what_is_showing_even_when_muted(frame, dialog, env):
     dialog._scheme_chosen()
     dialog._preview()
     path, volume = env["previews"][-1]
-    assert volume == 0.3 and Path(path).parts[-2:] == ("wood", "tap.wav")
+    assert volume == 0.3 and Path(path).parts[-2:] == ("wood", "tool.wav")
 
 
 def test_preview_of_your_own_file_can_fall_back_as_real_playback_does(frame, dialog, env):
     dialog.current().events["ToolRan"] = se.custom_ref("gone.wav")
     dialog._preview()
-    assert Path(env["players"][0].preview_fallback).name == "tap.wav"
+    assert Path(env["players"][0].preview_fallback).name == "tool.wav"
 
 
 def test_closing_without_a_preview_makes_no_player(frame, env, monkeypatch):
@@ -759,12 +759,12 @@ def test_each_built_in_scheme_keeps_its_own_changes(dialog):
     dialog._sound_chosen()
     dialog.scheme.SetStringSelection("Wood")
     dialog._scheme_chosen()
-    assert "Reply finished: Arrived" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (15 of 15 events have a sound):"
+    assert "Reply finished: Rise" in dialog.events.GetItems()
+    assert dialog.events_label.GetLabelText() == "Sound events (20 of 20 events have a sound):"
     dialog.scheme.SetStringSelection("Glass")
     dialog._scheme_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (14 of 15 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (19 of 20 events have a sound):"
     settings = dialog.get_settings()
     assert settings.sound_scheme == "glass"
     assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
@@ -778,7 +778,7 @@ def test_a_new_scheme_starts_silent_and_offers_every_tone(dialog, ask, env):
     assert any("already a scheme called Glass" in str(b) for b in env["boxes"])
     assert dialog.scheme.GetStringSelection() == "Quiet"
     assert dialog.events.GetString(0) == "Tool ran: None"
-    assert "Arrived (Soft bell)" in dialog.sound.GetItems()
+    assert "Rise (Soft bell)" in dialog.sound.GetItems()
     settings = dialog.get_settings()
     assert settings.sound_scheme.startswith("user-")
     assert settings.sound_schemes[settings.sound_scheme]["name"] == "Quiet"
@@ -804,7 +804,7 @@ def test_copy_rename_delete_and_reset(dialog, ask, env):
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
     dialog.on_reset()
-    assert dialog.events.GetString(0) == "Tool ran: Tap"
+    assert dialog.events.GetString(0) == "Tool ran: Tick"
     assert dialog.get_settings().sound_schemes == {}
 
 
@@ -816,7 +816,7 @@ def test_a_built_in_scheme_cant_be_renamed_or_deleted(dialog, ask):
 
 def test_export_then_import_brings_the_scheme_back(dialog, env, tmp_path, monkeypatch):
     select_event(dialog, se.TOOL)
-    dialog.sound.SetStringSelection("Stopped")
+    dialog.sound.SetStringSelection("Stop")
     dialog._sound_chosen()
     target = tmp_path / "Glass"
     _picker(monkeypatch, target)
@@ -829,7 +829,7 @@ def test_export_then_import_brings_the_scheme_back(dialog, env, tmp_path, monkey
     dialog.on_import()
     assert dialog.scheme.GetStringSelection() == "Glass 2"
     assert said[-1] == "Added the sound scheme Glass 2. Choose OK to keep it."
-    assert dialog.events.GetString(0) == "Tool ran: Stopped (Glass)"
+    assert dialog.events.GetString(0) == "Tool ran: Stop (Glass)"
 
 
 def test_importing_another_apps_scheme_says_whose_it_is(dialog, env, tmp_path, monkeypatch):
@@ -890,7 +890,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
     dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
     try:
         assert pump(lambda: dialog.list.GetCount() == 1)
-        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 15 events have a sound. "
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 20 events have a sound. "
                                             "Update available.")
         assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
@@ -1024,9 +1024,9 @@ def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
 
 
 def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
-    assert dialog._events_name() == "Sound events, 15 of 15 events have a sound"
+    assert dialog._events_name() == "Sound events, 20 of 20 events have a sound"
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert dialog._events_name() == "Sound events, 14 of 15 events have a sound"
-    assert dialog.events.GetName() == "Sound events, 14 of 15 events have a sound"
+    assert dialog._events_name() == "Sound events, 19 of 20 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 19 of 20 events have a sound"

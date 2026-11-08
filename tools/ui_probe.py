@@ -1123,8 +1123,8 @@ def d_sounds_own_scheme(frame, env):
     """File, Sounds on a scheme of your own (#250): some events silent, others in other tones."""
     frame.speech.sound_scheme = "user-" + "a" * 32
     frame.speech.sound_schemes = {frame.speech.sound_scheme: {"name": "Quiet evenings", "events": {
-        "ToolRan": "builtin:softbell/tap", "ReplyFinished": "builtin:wood/arrived",
-        "NeedsYou": "builtin:glass/attention", "TurnFailed": "builtin:failed"}}}
+        "ToolRan": "builtin:softbell/tool", "ReplyFinished": "builtin:wood/reply",
+        "NeedsYou": "builtin:glass/needsyou", "TurnFailed": "builtin:turnfailed"}}}
     return frame.on_sounds
 
 

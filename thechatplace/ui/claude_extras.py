@@ -233,7 +233,7 @@ class ClaudeExtras:
             # to what you just did; the level decides how much is said.
             text = (f"Not answered. {answer}" if failed
                     else announce.aside_text(answer, self.speech.announce))
-            self._sound(sound_events.NOT_SENT if failed else sound_events.FINISHED)
+            self._sound(sound_events.ASIDE_FAILED if failed else sound_events.ASIDE_ANSWERED)
             if text:
                 self._say(text)
         returning_to = wx.Window.FindFocus()

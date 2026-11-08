@@ -566,7 +566,7 @@ class CodexChats(SoundHost, CodexExtras):
                 # a queued message's turn has started since: it may never be
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
-            self._sound(sound_events.NOT_SENT if error or refused else sound_events.SENT, key)
+            self._sound(sound_events.NOT_SENT if error or refused else sound_events.STEERED, key)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
