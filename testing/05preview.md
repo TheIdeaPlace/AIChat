@@ -66,13 +66,13 @@ events, made by the rules in `dev-notes/sound-design.md`. None is QuickMail's an
 has heard the new set yet, so what's being tested is whether each sound fits its event, whether
 the families make sense, and how they sit with your screen reader.
 
-### Listen to all 20
+### Listen to all 21
 
 1. Choose File, **Sounds**. Tab through it both ways. Expect: every control is named. Turn on
    **Play sounds**.
 2. Tab to **Sound events**. Expect: the list's name says how many events have a sound, and each
    row says the event and its sound, such as "Reply finished: Rise".
-3. Arrow through all 20 and press **Space** on each. Expect: each one plays, with nothing said
+3. Arrow through all 21 and press **Space** on each. Expect: each one plays, with nothing said
    over it, on Windows and on a Mac. Try **Preview** (Alt+R) once too: the same sound.
 
 What each should sound like, top to bottom of the list:

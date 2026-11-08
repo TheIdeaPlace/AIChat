@@ -131,7 +131,7 @@ OTHERS_NONE = "none"
 OTHERS_LABELS: Dict[str, str] = {
     OTHERS_ALL: "The open chat and every chat in the list",
     OTHERS_OWN: "The open chat and chats running in The Chat Place",
-    OTHERS_NONE: "None",
+    OTHERS_NONE: "The open chat only",
 }
 
 NONE_REF = shared.NONE
