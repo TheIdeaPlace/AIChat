@@ -1114,7 +1114,10 @@ def test_sound_tutorial_enter_on_close_is_left_to_the_dialog(frame, env, monkeyp
         monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.close))
         other = key_event(wx.WXK_RETURN, wx.wxEVT_CHAR_HOOK, obj=dialog.close)
         dialog._on_char_hook(other)
-        assert other.GetSkipped() and env["previews"] == []
+        assert env["previews"] == []
+        # A Mac presses a focused button only with Space, so there the hook presses Close
+        # itself (press_focused_button_on_a_mac); elsewhere the key goes on to the button.
+        assert other.GetSkipped() is (wx.Platform != "__WXMAC__")
     finally:
         dialog.Destroy()
 
@@ -1153,13 +1156,15 @@ def test_the_tutorials_words_come_from_its_own_window(frame, env, monkeypatch):
     frame.speech.engine = "auto"
     frame.speech.sound_schemes = {"glass": {"events": {"ToolRan": se.NONE_REF}}}
 
+    # A hidden window has no native handle on Linux, so the dialog's is made up.
+    monkeypatch.setattr(SoundTutorialDialog, "GetHandle", lambda self: 4242)
+
     def press_space(self):
         self._on_events_key(key_event(wx.WXK_SPACE))
-        handles.append(("dialog", self.GetHandle()))
         return wx.ID_CANCEL
     monkeypatch.setattr(SoundTutorialDialog, "ShowModal", press_space)
     frame.on_sound_tutorial()
-    assert handles[0] == handles[1][1] and handles[0] != frame.GetHandle()
+    assert handles == [4242]
     assert "No sound." in env["feedback"]  # declined, so spoken as before
 
 
