@@ -793,7 +793,7 @@ def test_copy_rename_delete_and_reset(dialog, ask, env):
     ask.answers = ["Bells"]
     dialog.on_copy()
     assert ask.asked[-1] == ("Copy Sound Scheme", "Soft bell copy")
-    assert dialog.current().events["ToolRan"] == "builtin:softbell/tap"  # pinned to its tone
+    assert dialog.current().events["ToolRan"] == "builtin:softbell/tool"  # pinned to its tone
     ask.answers = ["Chimes"]
     dialog.on_rename()
     assert dialog.scheme.GetStringSelection() == "Chimes"
@@ -958,7 +958,7 @@ def test_an_update_from_the_gallery_asks_and_keeps_the_scheme_itself(dialog, env
     if answer == wx.YES:
         assert mine.id in [s.id for s in dialog._schemes] and mine.name == "My bells"
         assert mine.source["sha256"] == entry.sha256
-        assert mine.events["ToolRan"] == "builtin:softbell/tap"
+        assert mine.events["ToolRan"] == "builtin:softbell/tool"
     else:
         assert mine.source["sha256"] == "0" * 64 and mine.events == {"ToolRan": "none"}
     assert len([s for s in dialog._schemes if not s.built_in]) == 1
