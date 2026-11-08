@@ -99,8 +99,10 @@ jobs:
         run: timeout 14m tools/orca_speech.sh --json orca-speech.json
       - name: Every control Orca reaches has a name
         if: always()
+        # 05preview's audit already took 9m56s, so each new surface pushed it
+        # past 10 minutes (#579, #587). Still inside the job's 30 with speech's 14.
         run: |
-          TCP_PROBE_ORCA=1 timeout 10m tools/linux_a11y_session.sh \
+          TCP_PROBE_ORCA=1 timeout 12m tools/linux_a11y_session.sh \
             .venv/bin/python tools/ui_probe.py --out probe-linux --tag linux-light
           .venv/bin/python tools/orca_names.py probe-linux
       - name: Keep what Orca said and the probe's pictures
