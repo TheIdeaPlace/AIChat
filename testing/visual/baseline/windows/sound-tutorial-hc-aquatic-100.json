@@ -1,0 +1,111 @@
+{
+ "title": "Sound Tutorial",
+ "class": "SoundTutorialDialog",
+ "size": [
+  440,
+  560
+ ],
+ "client": [
+  424,
+  521
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Arrow to an event and press Space to hear it in the Glass scheme. Change\nsounds in File, Sounds.",
+   "rect": [
+    10,
+    10,
+    404,
+    31
+   ],
+   "best": [
+    386,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &events:",
+   "rect": [
+    10,
+    51,
+    75,
+    16
+   ],
+   "best": [
+    75,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Sound events",
+   "label": "",
+   "rect": [
+    12,
+    79,
+    404,
+    401
+   ],
+   "best": [
+    202,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Tool ran",
+    "File changed",
+    "Still working",
+    "Message sent",
+    "Message queued",
+    "Message steered into the turn",
+    "Steered message taken",
+    "Queued message sent",
+    "Queued message deleted",
+    "You stopped a turn",
+    "Reply finished",
+    "Another chat finished"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Close",
+   "rect": [
+    339,
+    488,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

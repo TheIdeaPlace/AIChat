@@ -246,6 +246,12 @@ A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 
 
 **What looks off:** Nothing. Both rows and the details fit at 100%. High Contrast Aquatic draws the list, the details box and the buttons in the theme's colours, the selected row in aqua with dark text.
 
+## sound-tutorial: Help, Sound Tutorial
+
+A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in File, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 21 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
+
+**What looks off:** Nothing. Every name fits without cutting off, at 175% too, where the window is 750 by 946 and all 21 rows still show. High Contrast Aquatic draws it white on #202020 (16.3:1), the selected row aqua with dark text (11.2:1).
+
 ## settings-codex: Settings with Codex automatically included
 
 The same layout, 680 by 818. The Codex check box is ticked and fits one line, moving
