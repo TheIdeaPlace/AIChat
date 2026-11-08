@@ -269,7 +269,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Sound &events (4 of 15 events have a sound):",
+   "label": "Sound &events (4 of 21 events have a sound):",
    "rect": [
     10,
     244,
@@ -287,7 +287,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events, 4 of 15 events have a sound",
+   "name": "Sound events, 4 of 21 events have a sound",
    "label": "",
    "rect": [
     12,
@@ -304,18 +304,18 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Tool ran: Tap (Soft bell)",
+    "Tool ran: Tick (Soft bell)",
     "File changed: None",
     "Still working: None",
     "Message sent: None",
     "Message queued: None",
-    "Message not sent: None",
-    "Reply finished: Arrived (Wood)",
-    "Another chat finished: None",
-    "Needs you: Attention (Glass)",
-    "Turn failed: Failed",
+    "Message steered into the turn: None",
+    "Steered message taken: None",
+    "Queued message sent: None",
+    "Queued message deleted: None",
     "You stopped a turn: None",
-    "Service trouble: None"
+    "Reply finished: Rise (Wood)",
+    "Another chat finished: None"
    ],
    "selection": 0
   },
@@ -349,14 +349,14 @@
     23
    ],
    "best": [
-    154,
+    142,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Tap (Soft bell)"
+   "value": "Tick (Soft bell)"
   },
   {
    "class": "Button",

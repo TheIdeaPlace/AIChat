@@ -269,7 +269,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Sound &events (15 of 15 events have a sound):",
+   "label": "Sound &events (21 of 21 events have a sound):",
    "rect": [
     10,
     368,
@@ -287,7 +287,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events, 15 of 15 events have a sound",
+   "name": "Sound events, 21 of 21 events have a sound",
    "label": "",
    "rect": [
     12,
@@ -296,7 +296,7 @@
     369
    ],
    "best": [
-    446,
+    420,
     304
    ],
    "depth": 0,
@@ -304,18 +304,18 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Tool ran: Tap",
-    "File changed: Changed",
-    "Still working: Pulse",
-    "Message sent: Sent",
-    "Message queued: Queued",
-    "Message not sent: Error",
-    "Reply finished: Arrived",
-    "Another chat finished: Elsewhere",
-    "Needs you: Attention",
-    "Turn failed: Failed",
-    "You stopped a turn: Stopped",
-    "Service trouble: Disconnected"
+    "Tool ran: Tick",
+    "File changed: Double tick",
+    "Still working: Hum",
+    "Message sent: Send",
+    "Message queued: Hold",
+    "Message steered into the turn: Bend",
+    "Steered message taken: Taken",
+    "Queued message sent: Release",
+    "Queued message deleted: Withdraw",
+    "You stopped a turn: Stop",
+    "Reply finished: Rise",
+    "Another chat finished: Low rise"
    ],
    "selection": 0
   },
@@ -349,14 +349,14 @@
     38
    ],
    "best": [
-    167,
+    146,
     38
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Tap"
+   "value": "Tick"
   },
   {
    "class": "Button",
