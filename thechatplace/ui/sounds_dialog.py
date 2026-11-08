@@ -6,7 +6,7 @@ Sound schemes work as in QuickMail and app-kit's sounds/SCHEMES.md: each built-i
 Soft bell, Wood) keeps its own changes, and you can make, share and take schemes of your own.
 Every sound file of your own is kept in its scheme's own folder (sound_events.scheme_folder).
 What a scheme does is held here until OK, and so is deleting files: a scheme deleted or reset,
-or a file removed, loses its files only on OK (``finish``). Files a scheme brings in, and ones
+or a file removed, loses its files only on OK (``tidy_files``). Files a scheme brings in, and ones
 Choose File copies, are written straight away; Cancel takes away the folder of a scheme made
 here."""
 from __future__ import annotations
@@ -91,7 +91,7 @@ class SoundsDialog(wx.Dialog):
         self._previewed = False  # so closing doesn't make a player only to stop it
         self._schemes = [s.copy() for s in sound_events.load_schemes(speech.sound_schemes)]
         self._scheme_id = sound_events.find(self._schemes, speech.sound_scheme).id
-        # What happens to sound files when the dialog closes (finish).
+        # What happens to sound files when the dialog closes (tidy_files).
         self._file_changes = sound_events.FileChanges()
         self._events = list(sound_events.EVENTS)
         self._refs: List[str] = []
