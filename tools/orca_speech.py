@@ -192,16 +192,26 @@ STEPS = [
          refuse=["unlabeled", "unlabelled"]),
     Step("Sounds, mute", ["Tab"], expect=["Mute all sounds"]),
     Step("Sounds, volume", ["Tab"], expect=["Volume"]),
-    Step("Sounds, style", ["Tab"], expect=["Style"]),
+    Step("Sounds, scheme", ["Tab"], expect=["Sound scheme"]),
     Step("Sounds, tool sounds", ["Tab"], expect=["Tool sounds for"]),
     Step("Sounds, other chats", ["Tab"], expect=["other chats"]),
+    Step("Sounds, Scheme Actions", ["Tab"], expect=["Scheme Actions"]),
+    Step("Sounds, Browse Gallery", ["Tab"], expect=["Browse Gallery"]),
     Step("Sounds, events", ["Tab"], expect=["Tool ran: Tap"]),
     Step("Sounds, next event", ["Down"], expect=["File changed: Changed"]),
     Step("Sounds, its sound", ["Tab"], expect=["Sound"]),
     Step("Sounds, Preview", ["Tab"], expect=["Preview"]),
     Step("Sounds, Choose File", ["Tab"], expect=["Choose File"]),
+    # Sound schemes: the Scheme Actions menu, and the gallery opened and closed (#250).
+    # GTK opens the menu with no item highlighted, so Orca says only that it's a menu.
+    Step("Sounds, Scheme Actions menu", ["alt+a"], expect=["menu"]),
+    Step("Scheme Actions menu closed, focus where it was", ["Escape"], expect=["Choose File"]),
+    Step("Sound Scheme Gallery", ["alt+b"], expect=["Sound Scheme Gallery"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Gallery closed, back on Browse Gallery", ["Escape"], expect=["Browse Gallery"]),
+    # Back on the message that had focus: Orca reads the window and that message.
     Step("Sounds closed, back in the messages", ["Escape"],
-         expect=["Messages in Visual probe"]),
+         expect=["Visual probe — The Chat Place"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
     Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],

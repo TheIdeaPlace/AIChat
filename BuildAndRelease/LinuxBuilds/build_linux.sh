@@ -175,6 +175,7 @@ rm -rf "$APP"
     --hidden-import velopack --hidden-import thechatplace.providers.codex \
     --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot \
     --hidden-import thechatplace.providers.copilot_runtime \
+    --collect-data theideaplace_appkit \
     --add-data "thechatplace/assets:thechatplace/assets" \
     --add-data "thechatplace/speech:thechatplace/speech" \
     TheChatPlace.pyw || fail "PyInstaller"

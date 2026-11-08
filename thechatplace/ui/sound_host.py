@@ -98,7 +98,7 @@ class SoundHost:
                 return
         if (on_its_own or not event.answers_you) and quiet_now():
             return
-        chosen = sound_events.resolve(event_id, settings.sound_choices, settings.sound_style)
+        chosen = sound_events.resolve(event_id, self._sound_scheme())
         if chosen is None:
             return
         path, fallback = chosen
@@ -106,6 +106,19 @@ class SoundHost:
                                            volume=settings.sound_volume / 100, fallback=fallback)
         if played:
             self._sound_last_played = time.monotonic()
+
+    def _sound_scheme(self) -> sound_events.Scheme:
+        """The scheme playing, read again only when the settings change (a tap can come every
+        fifth of a second)."""
+        settings = self.speech
+        cached = getattr(self, "_sound_scheme_cache", None)
+        # The saved dict itself is held, not its id, so a new one can't be mistaken for it.
+        if cached is None or cached[0] is not settings.sound_schemes or cached[1] != settings.sound_scheme:
+            scheme = sound_events.find(sound_events.load_schemes(settings.sound_schemes),
+                                       settings.sound_scheme)
+            cached = (settings.sound_schemes, settings.sound_scheme, scheme)
+            self._sound_scheme_cache = cached
+        return cached[2]
 
     def _sound_turn_end(self, key: str, own: bool = True) -> None:
         """A turn ended with a reply: which sound depends on whether you're in that chat."""
@@ -218,7 +231,7 @@ class SoundHost:
 
     def on_sounds(self, _event=None) -> None:
         """File, Sounds: whether there are sounds, which, and for which chats."""
-        dialog = SoundsDialog(self, self.speech, self._sound_player)
+        dialog = SoundsDialog(self, self.speech, self._sound_player, say=self._say)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return

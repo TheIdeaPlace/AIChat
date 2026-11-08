@@ -170,6 +170,19 @@ def smoke_test(out_path: str) -> int:
     from theideaplace_appkit import sounds as appkit_sounds  # noqa: F401 - that it's bundled
     for name in sound_events.missing_built_ins():
         problems.append(f"missing sound {name}")
+    # Sound schemes need app-kit's apps.json, and the gallery needs its signature check (#250).
+    try:
+        from . import sound_gallery
+        from .ui import sound_gallery_dialog  # noqa: F401 - imported to prove it's bundled
+
+        report["sound_schemes"] = ([(e.key, e.sound) for e in sound_events.APP.events]
+                                   == [(e.key, e.sound) for e in sound_events.EVENTS])
+        report["sound_gallery"] = sound_gallery.check()
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        report["sound_schemes"] = report["sound_gallery"] = False
+        problems.append(f"sound schemes: {exc}")
+    if not (report["sound_schemes"] and report["sound_gallery"]):
+        problems.append("sound schemes or the sound gallery can't work in this build")
     scripts = speech._script_dir()
     for name in speech.engine_script_names():
         if not (scripts / name).is_file():
@@ -307,6 +320,13 @@ def main(argv: Optional[list] = None) -> int:
     # Logging before the hooks, so a failed install or update hook is recorded.
     updater.configure_logging()
     updater.bootstrap(argv if link is None else [link])
+    if "--sound-gallery" in argv:
+        # Browse Gallery from a gallery of your own, for testing: a folder, or http on this
+        # computer (app-kit's sounds/SCHEMES.md).
+        index = argv.index("--sound-gallery")
+        if index + 1 < len(argv):
+            from . import sound_gallery
+            sound_gallery.base_override = argv[index + 1]
     if "--smoke-test" in argv:
         index = argv.index("--smoke-test")
         target = argv[index + 1] if index + 1 < len(argv) else "smoke-test.json"

@@ -36,10 +36,10 @@ def test_every_event_has_a_sound_in_every_style():
     assert len({e.id for e in se.EVENTS}) == len(se.EVENTS)
 
 
-@pytest.mark.parametrize("style", list(se.STYLES))
+@pytest.mark.parametrize("pack", list(se.PACKS))
 @pytest.mark.parametrize("name", list(se.BUILT_IN))
-def test_built_in_files_are_playable_and_short(style, name):
-    params, _frames = read_wav(str(se.built_in_path(name, style)))
+def test_built_in_files_are_playable_and_short(pack, name):
+    params, _frames = read_wav(str(se.built_in_path(name, pack)))
     assert params.nframes / params.framerate < 1.0
 
 
@@ -57,24 +57,8 @@ def test_a_new_install_has_sounds_off_at_80_percent(tmp_path):
     settings = SpeechSettings.load(tmp_path / "none.json")
     assert settings.sound_silent_notifications is False
     assert (settings.sounds_on, settings.sounds_muted, settings.sound_volume,
-            settings.sound_style, settings.sound_tools, settings.sound_others) == (
-        False, False, 80, "glass", "loaded", "all")
-
-
-def test_settings_round_trip(tmp_path):
-    path = tmp_path / "s.json"
-    settings = SpeechSettings()
-    settings.sounds_on, settings.sounds_muted = True, True
-    settings.sound_volume, settings.sound_style = 50, "wood"
-    settings.sound_tools, settings.sound_others = "all", "own"
-    settings.sound_choices = {se.TOOL: se.NONE_REF, se.FINISHED: se.custom_ref("mine.wav")}
-    settings.sound_silent_notifications = True
-    settings.save(path)
-    loaded = SpeechSettings.load(path)
-    assert loaded.sound_silent_notifications is True
-    assert (loaded.sounds_on, loaded.sounds_muted, loaded.sound_volume, loaded.sound_style,
-            loaded.sound_tools, loaded.sound_others, loaded.sound_choices) == (
-        True, True, 50, "wood", "all", "own", settings.sound_choices)
+            settings.sound_scheme, settings.sound_tools, settings.sound_others,
+            settings.sound_schemes) == (False, False, 80, "glass", "loaded", "all", {})
 
 
 @pytest.mark.parametrize("raw", [
@@ -82,49 +66,16 @@ def test_settings_round_trip(tmp_path):
     {"sound_volume": True},
     {"sound_volume": 0},
     {"sound_volume": "80"},
-    {"sound_style": "../../evil"},
-    {"sound_style": ["glass"]},
     {"sound_tools": {}},
     {"sound_others": 3},
-    {"sound_choices": "tap"},
-    {"sound_choices": {se.TOOL: "custom:../../x.wav"}},
-    {"sound_choices": {se.TOOL: "custom:C:\\x.wav"}},
-    {"sound_choices": {se.TOOL: "custom:COM1.wav"}},
-    {"sound_choices": {se.TOOL: "builtin:nothing"}},
-    {"sound_choices": {se.TOOL: 5}},
-    {"sound_choices": {"made-up": "none"}},
 ])
 def test_odd_settings_fall_back_on_defaults(tmp_path, raw):
     path = tmp_path / "s.json"
     path.write_text(json.dumps(raw), encoding="utf-8")
     loaded = SpeechSettings.load(path)
     assert loaded.sounds_on is False and loaded.sound_volume == 80
-    assert loaded.sound_style == "glass" and loaded.sound_tools == "loaded"
-    assert loaded.sound_others == "all" and loaded.sound_choices == {}
-
-
-def test_resolve(monkeypatch, tmp_path):
-    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
-    path, fallback = se.resolve(se.TOOL, {}, "wood")
-    assert Path(path).parts[-2:] == ("wood", "tap.wav") and fallback is None
-    assert se.resolve(se.TOOL, {se.TOOL: "none"}, "wood") is None
-    path, fallback = se.resolve(se.TOOL, {se.TOOL: se.built_in_ref("sent")}, "glass")
-    assert Path(path).parts[-2:] == ("glass", "sent.wav")
-    path, fallback = se.resolve(se.TOOL, {se.TOOL: se.custom_ref("m.wav")}, "glass")
-    assert Path(path) == tmp_path / "sounds" / "m.wav"
-    assert Path(fallback).parts[-2:] == ("glass", "tap.wav")
-
-
-def test_a_bad_choice_or_style_never_leaves_the_sounds_folder(monkeypatch, tmp_path):
-    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
-    path, _ = se.resolve(se.TOOL, {se.TOOL: "custom:../../secret.wav"}, "../..")
-    assert Path(path).parts[-2:] == ("glass", "tap.wav")
-
-
-def test_row_labels():
-    assert se.row_label(se.TOOL, {}) == "Tool ran: Tap"
-    assert se.row_label(se.TOOL, {se.TOOL: "none"}) == "Tool ran: None"
-    assert se.row_label(se.TOOL, {se.TOOL: se.custom_ref("m.wav")}) == "Tool ran: Your file, m.wav"
+    assert loaded.sound_scheme == "glass" and loaded.sound_tools == "loaded"
+    assert loaded.sound_others == "all" and loaded.sound_schemes == {}
 
 
 def test_custom_files_lists_only_usable_names(monkeypatch, tmp_path):

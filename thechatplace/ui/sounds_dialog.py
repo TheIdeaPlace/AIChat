@@ -1,21 +1,30 @@
 """File, Sounds (#250). One list and one detail area rather than a row of controls per event,
 which would be some 45 tab stops. Choices rather than radio buttons, so Tab can't skip a group
-that has nothing chosen (#428)."""
+that has nothing chosen (#428).
+
+Sound schemes work as in QuickMail and app-kit's sounds/SCHEMES.md: each built-in scheme (Glass,
+Soft bell, Wood) keeps its own changes, and you can make, share and take schemes of your own.
+What a scheme does is held here until OK; only a sound file you remove, or one a scheme brings
+in, changes on disk straight away."""
 from __future__ import annotations
 
 import dataclasses
 import shutil
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 import wx
+from theideaplace_appkit import soundschemes as shared
 from theideaplace_appkit import sounds as appkit_sounds
 
 from .. import platform_paths, sound_events
 from ..speech import SpeechSettings
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .sizes import dialog_size
+
+# The Scheme Actions menu.
+NEW, COPY, RENAME, DELETE, RESET, EXPORT, IMPORT = (wx.NewIdRef() for _ in range(7))
 
 
 def keep_custom_sound(source: str) -> str:
@@ -26,7 +35,7 @@ def keep_custom_sound(source: str) -> str:
     if not name.lower().endswith(".wav"):
         # Only .wav files are offered for the other events, so it would be lost from the list.
         raise appkit_sounds.SoundProblem("Its name has to end in .wav.")
-    if not appkit_sounds.safe_file_name(name):
+    if not shared.custom_name_ok(name):
         raise appkit_sounds.SoundProblem("Its name can't be used for a file here. Rename it first.")
     folder = platform_paths.custom_sounds_dir()
     folder.mkdir(parents=True, exist_ok=True)
@@ -41,13 +50,29 @@ def keep_custom_sound(source: str) -> str:
     return target.name
 
 
+def _default_gallery():
+    from .. import sound_gallery
+    return sound_gallery.gallery()
+
+
+TOO_MANY = (f"You have {sound_events.MAX_USER_SCHEMES} sound schemes of your own, the most there can "
+            "be. Delete one first.")
+
+
 class SoundsDialog(wx.Dialog):
-    def __init__(self, parent, speech: SpeechSettings, player: Callable):
-        super().__init__(parent, title="Sounds", size=dialog_size(parent, 560, 590))
+    def __init__(self, parent, speech: SpeechSettings, player: Callable,
+                 say: Optional[Callable[..., None]] = None,
+                 make_gallery: Optional[Callable] = None):
+        super().__init__(parent, title="Sounds", size=dialog_size(parent, 560, 640))
         self._original = speech
         self._player = player
+        self._say = say or (lambda text, **kw: None)
+        # The gallery (and Cryptodome's signature code) loads only when you browse: a problem
+        # there can't stop the app starting.
+        self._make_gallery = make_gallery or _default_gallery
         self._previewed = False  # so closing doesn't make a player only to stop it
-        self._choices: Dict[str, str] = dict(speech.sound_choices)
+        self._schemes = [s.copy() for s in sound_events.load_schemes(speech.sound_schemes)]
+        self._scheme_id = sound_events.find(self._schemes, speech.sound_scheme).id
         self._events = list(sound_events.EVENTS)
         self._refs: List[str] = []
 
@@ -82,10 +107,7 @@ class SoundsDialog(wx.Dialog):
                           volumes.index(speech.sound_volume)
                           if speech.sound_volume in volumes
                           else volumes.index(sound_events.DEFAULT_VOLUME))
-        self._style_ids = list(sound_events.STYLES)
-        self.style = row("St&yle:", list(sound_events.STYLES.values()), "Style",
-                         self._style_ids.index(speech.sound_style)
-                         if speech.sound_style in self._style_ids else 0)
+        self.scheme = row("Sound sc&heme:", [], "Sound scheme", wx.NOT_FOUND)
         self._tool_ids = list(sound_events.TOOLS_LABELS)
         self.tools = row("&Tool sounds for:", list(sound_events.TOOLS_LABELS.values()),
                          "Tool sounds for",
@@ -98,11 +120,20 @@ class SoundsDialog(wx.Dialog):
                           if speech.sound_others in self._other_ids else 0)
         outer.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        outer.Add(wx.StaticText(self, label="Sound &events:"), 0, wx.LEFT | wx.RIGHT, 10)
-        self.events = wx.ListBox(self, choices=self._rows(), style=wx.LB_SINGLE)
+        schemes_row = wx.BoxSizer(wx.HORIZONTAL)
+        # One button with a menu rather than seven: a menu's turned-off items still say they're
+        # there, and Tab has fewer stops.
+        self.actions = wx.Button(self, label="Scheme &Actions...")
+        schemes_row.Add(self.actions, 0, wx.RIGHT, 8)
+        self.browse = wx.Button(self, label="&Browse Gallery...")
+        schemes_row.Add(self.browse, 0)
+        outer.Add(schemes_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        self.events_label = wx.StaticText(self, label="Sound &events:")
+        outer.Add(self.events_label, 0, wx.LEFT | wx.RIGHT, 10)
+        self.events = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.events, "Sound events")
-        set_list_items_accessible(self.events, lambda: "Sound events", lambda index: None)
-        self.events.SetSelection(0)
+        set_list_items_accessible(self.events, self._events_name, lambda index: None)
         outer.Add(self.events, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         detail = wx.BoxSizer(wx.HORIZONTAL)
@@ -113,19 +144,33 @@ class SoundsDialog(wx.Dialog):
         self.preview = wx.Button(self, label="P&review")
         detail.Add(self.preview, 0, wx.RIGHT, 8)
         self.choose = wx.Button(self, label="Choose &File...")
-        detail.Add(self.choose, 0)
+        detail.Add(self.choose, 0, wx.RIGHT, 8)
+        self.remove_file = wx.Button(self, label="Re&move File...")
+        detail.Add(self.remove_file, 0)
         outer.Add(detail, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         outer.Add(buttons, 0, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(outer)
 
+        self.scheme.Bind(wx.EVT_CHOICE, lambda e: self._scheme_chosen())
+        self.actions.Bind(wx.EVT_BUTTON, lambda e: self._show_actions())
+        self.browse.Bind(wx.EVT_BUTTON, lambda e: self.on_browse())
         self.events.Bind(wx.EVT_LISTBOX, lambda e: self._show_event())
         self.sound.Bind(wx.EVT_CHOICE, lambda e: self._sound_chosen())
         self.preview.Bind(wx.EVT_BUTTON, lambda e: self._preview())
         self.choose.Bind(wx.EVT_BUTTON, lambda e: self._choose_file())
+        self.remove_file.Bind(wx.EVT_BUTTON, lambda e: self.on_remove_file())
+        self.Bind(wx.EVT_MENU, lambda e: self.on_new(), id=NEW)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_copy(), id=COPY)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_rename(), id=RENAME)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_delete(), id=DELETE)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_reset(), id=RESET)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_export(), id=EXPORT)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_import(), id=IMPORT)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
-        self._show_event()
+        self._fill_schemes()
+        self._fill_events(0)
         self.play_sounds.SetFocus()
 
     def _on_destroy(self, event):
@@ -133,23 +178,265 @@ class SoundsDialog(wx.Dialog):
             self.stop_preview()
         event.Skip()
 
-    def _rows(self) -> List[str]:
-        return [sound_events.row_label(e.id, self._choices) for e in self._events]
+    # -- schemes -------------------------------------------------------------------
+
+    def current(self) -> sound_events.Scheme:
+        return sound_events.find(self._schemes, self._scheme_id)
+
+    def _fill_schemes(self) -> None:
+        self.scheme.Set([s.name for s in self._schemes])
+        self.scheme.SetSelection(self._schemes.index(self.current()))
+
+    def _scheme_chosen(self) -> None:
+        index = self.scheme.GetSelection()
+        if 0 <= index < len(self._schemes):
+            self._scheme_id = self._schemes[index].id
+            self._fill_events(max(self.events.GetSelection(), 0))
+
+    def _select_scheme(self, scheme_id: str, focus: bool = True) -> None:
+        """Show ``scheme_id``, with the list in its usual order, and put focus on the choice."""
+        own = sorted((s for s in self._schemes if not s.built_in), key=lambda s: s.name.casefold())
+        self._schemes = [s for s in self._schemes if s.built_in] + own
+        self._scheme_id = scheme_id
+        self._fill_schemes()
+        self._fill_events(max(self.events.GetSelection(), 0))
+        if focus:
+            self.scheme.SetFocus()
+
+    def _names(self, leaving_out: Optional[sound_events.Scheme] = None) -> List[str]:
+        return [s.name for s in self._schemes if s is not leaving_out]
+
+    def _ask_name(self, title: str, value: str, leaving_out: Optional[sound_events.Scheme] = None) -> Optional[str]:
+        """A name for a scheme, asked until it's one that can be used, or None for Cancel."""
+        while True:
+            with wx.TextEntryDialog(self, "Name:", title, value) as ask:
+                ask.SetMaxLength(shared.MAX_NAME)
+                if ask.ShowModal() != wx.ID_OK:
+                    return None
+                value = ask.GetValue().strip()
+            problem = shared.name_problem(value, self._names(leaving_out))
+            if problem is None:
+                return value
+            wx.MessageBox(problem, title, wx.OK | wx.ICON_WARNING, self)
+
+    def _show_actions(self) -> None:
+        scheme = self.current()
+        changed = scheme.built_in and bool(sound_events.save_schemes([scheme]))
+        menu = wx.Menu()
+        menu.Append(NEW, "&New Scheme...")
+        menu.Append(COPY, "&Copy Scheme...")
+        menu.Append(RENAME, "&Rename Scheme...").Enable(not scheme.built_in)
+        menu.Append(DELETE, "&Delete Scheme...").Enable(not scheme.built_in)
+        menu.Append(RESET, "Re&set Scheme...").Enable(changed)
+        menu.AppendSeparator()
+        menu.Append(EXPORT, "&Export Scheme...")
+        menu.Append(IMPORT, "&Import Scheme...")
+        self.PopupMenu(menu, self.actions.GetPosition() + wx.Point(0, self.actions.GetSize().height))
+        menu.Destroy()
+
+    def _add(self, scheme: sound_events.Scheme) -> None:
+        self._schemes.append(scheme)
+        self._select_scheme(scheme.id)
+
+    def _room_for_another(self, title: str, back_to: wx.Window) -> bool:
+        """Whether another scheme of your own can be added: past the most, the next start would
+        leave some out."""
+        if sum(1 for s in self._schemes if not s.built_in) < sound_events.MAX_USER_SCHEMES:
+            return True
+        wx.MessageBox(TOO_MANY, title, wx.OK | wx.ICON_WARNING, self)
+        back_to.SetFocus()
+        return False
+
+    def on_new(self) -> None:
+        if not self._room_for_another("New Sound Scheme", self.actions):
+            return
+        name = self._ask_name("New Sound Scheme", "")
+        if name is None:
+            self.actions.SetFocus()
+            return
+        self._add(sound_events.Scheme(sound_events.new_id(), name, False,
+                                      {e.key: sound_events.NONE_REF for e in self._events}))
+        self._say(f"Made the sound scheme {name}. Every event is silent until you choose a sound.")
+
+    def on_copy(self) -> None:
+        if not self._room_for_another("Copy Sound Scheme", self.actions):
+            return
+        source = self.current()
+        name = self._ask_name("Copy Sound Scheme", shared.unique_name(f"{source.name} copy", self._names()))
+        if name is None:
+            self.actions.SetFocus()
+            return
+        events = shared.portable(sound_events.APP, source.events, source.built_in, source.pack)
+        self._add(sound_events.Scheme(sound_events.new_id(), name, False, events, source.author,
+                                      source.license, source.description))
+        self._say(f"Made {name}, a copy of {source.name}.")
+
+    def on_rename(self) -> None:
+        scheme = self.current()
+        if scheme.built_in:
+            return
+        name = self._ask_name("Rename Sound Scheme", scheme.name, leaving_out=scheme)
+        if name is None:
+            self.actions.SetFocus()
+            return
+        scheme.name = name
+        self._select_scheme(scheme.id)
+
+    def on_delete(self) -> None:
+        scheme = self.current()
+        if scheme.built_in:
+            return
+        if wx.MessageBox(f"Delete the sound scheme {scheme.name}? Its sound files are kept.",
+                         "Delete Sound Scheme", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                         self) != wx.YES:
+            self.actions.SetFocus()
+            return
+        self._schemes.remove(scheme)
+        self._select_scheme(sound_events.DEFAULT_SCHEME)
+        self._say(f"Deleted {scheme.name}. Glass is chosen.")
+
+    def on_reset(self) -> None:
+        scheme = self.current()
+        if not scheme.built_in or not sound_events.save_schemes([scheme]):
+            return
+        if wx.MessageBox(f"Reset {scheme.name} to how it ships? Every event goes back to its "
+                         "built-in sound.", "Reset Sound Scheme",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            self.actions.SetFocus()
+            return
+        scheme.events = {}
+        self._select_scheme(scheme.id)
+        self._say(f"{scheme.name} is back to how it ships.")
+
+    def on_export(self) -> None:
+        scheme = self.current()
+        extension = sound_events.APP.extension
+        safe = "".join(c if c.isalnum() or c in " -_()" else "-" for c in scheme.name).strip(" -")
+        with wx.FileDialog(self, "Export Sound Scheme", defaultFile=(safe or "Sound scheme") + extension,
+                           wildcard=f"Sound schemes (*{extension})|*{extension}",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as picker:
+            if picker.ShowModal() != wx.ID_OK:
+                self.actions.SetFocus()
+                return
+            path = picker.GetPath()
+        if not path.lower().endswith(extension):
+            path += extension
+        missing = sound_events.missing_files(scheme)
+        try:
+            Path(path).write_bytes(sound_events.export(scheme))
+        except OSError as exc:
+            wx.MessageBox(f"The scheme couldn't be saved: {exc.strerror or exc}", "Export Sound Scheme",
+                          wx.OK | wx.ICON_WARNING, self)
+            self.actions.SetFocus()
+            return
+        if missing:
+            # Shown, not only said: the file you'd share is missing sounds you'd expect in it.
+            wx.MessageBox(f"Exported {scheme.name}. {missing} event{'s' if missing != 1 else ''} "
+                          f"{'use' if missing != 1 else 'uses'} a sound file that's missing, so "
+                          f"{'they have' if missing != 1 else 'it has'} no sound in the file.",
+                          "Export Sound Scheme", wx.OK | wx.ICON_WARNING, self)
+        else:
+            self._say(f"Exported {scheme.name}.")
+        self.actions.SetFocus()
+
+    def on_import(self) -> None:
+        extension = sound_events.APP.extension
+        with wx.FileDialog(self, "Import Sound Scheme",
+                           wildcard=f"Sound schemes (*{extension})|*{extension}",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as picker:
+            if picker.ShowModal() != wx.ID_OK:
+                self.actions.SetFocus()
+                return
+            path = picker.GetPath()
+        if self._room_for_another("Import Sound Scheme", self.actions):
+            self._take(path, "Import Sound Scheme", self.actions)
+
+    def _take(self, source, title: str, back_to: wx.Window,
+              gallery_source: Optional[Dict[str, str]] = None,
+              replacing: Optional[sound_events.Scheme] = None) -> bool:
+        """Add a scheme from a file or downloaded bytes, or update ``replacing`` with it. On a
+        problem, say so and put focus on ``back_to``; on success, focus is on the scheme."""
+        try:
+            imported = sound_events.import_scheme(source, self._names(leaving_out=replacing), gallery_source)
+        except (shared.SchemeFileProblem, OSError) as exc:
+            wx.MessageBox(str(exc), title, wx.OK | wx.ICON_WARNING, self)
+            back_to.SetFocus()
+            return False
+        if replacing is not None:
+            replacing.events = imported.scheme.events
+            replacing.author, replacing.license = imported.scheme.author, imported.scheme.license
+            replacing.description, replacing.source = imported.scheme.description, gallery_source
+            self._select_scheme(replacing.id)
+            done = f"Updated {replacing.name}."
+        else:
+            self._add(imported.scheme)
+            done = imported.message()
+        if imported.dropped:
+            # Shown, not only said, so it's there with announcements off too.
+            wx.MessageBox(done + " Choose OK in Sounds to keep it.", title, wx.OK | wx.ICON_WARNING, self)
+            self.scheme.SetFocus()
+        else:
+            self._say(done + " Choose OK to keep it.")
+        return True
+
+    def on_browse(self) -> None:
+        from .. import sound_gallery
+        from .sound_gallery_dialog import SoundGalleryDialog
+        dialog = SoundGalleryDialog(self, self._schemes, self._make_gallery, self._say)
+        try:
+            if dialog.ShowModal() != wx.ID_OK or dialog.result is None:
+                self.browse.SetFocus()
+                return
+            entry, data = dialog.result
+        finally:
+            dialog.Destroy()
+        replacing = sound_gallery.added_as(entry, self._schemes)
+        if replacing is None and not self._room_for_another("Sound Scheme Gallery", self.browse):
+            return
+        if replacing is not None and wx.MessageBox(
+                f"Replace your copy of {replacing.name} with the gallery's newer version? "
+                "Any changes you made to it are lost.", "Update Sound Scheme",
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            self.browse.SetFocus()
+            return
+        self._take(data, "Sound Scheme Gallery", self.browse,
+                   {"gallery": entry.id, "sha256": entry.sha256}, replacing)
+
+    # -- events --------------------------------------------------------------------
+
+    def _events_name(self) -> str:
+        """The list's name for a screen reader, with how many events have a sound."""
+        return f"Sound events, {sound_events.count_label(self.current())}"
+
+    def _show_count(self) -> None:
+        self.events_label.SetLabel(f"Sound &events ({sound_events.count_label(self.current())}):")
+        # Windows reads _events_name through the list's own accessible; VoiceOver and Orca need
+        # the name set on the native list each time it changes.
+        set_accessible_name(self.events, self._events_name())
+
+    def _fill_events(self, row: int) -> None:
+        scheme = self.current()
+        self._show_count()
+        self.events.Set([sound_events.row_label(e.id, scheme) for e in self._events])
+        self.events.SetSelection(min(max(row, 0), len(self._events) - 1))
+        self._show_event()
+        self.Layout()
 
     def _event_id(self) -> str:
         return self._events[max(self.events.GetSelection(), 0)].id
 
     def _show_event(self) -> None:
         """The Sound choice, for the selected event."""
-        event_id = self._event_id()
-        current = sound_events.ref_for(self._choices, event_id)
-        self._refs = [sound_events.NONE_REF]
-        self._refs += [sound_events.built_in_ref(name) for name in sound_events.BUILT_IN]
-        self._refs += [sound_events.custom_ref(name) for name in sound_events.custom_files()]
-        if current not in self._refs:
-            self._refs.append(current)  # a file that has gone: it still shows what's chosen
-        self.sound.Set([sound_events.ref_label(ref) for ref in self._refs])
-        self.sound.SetSelection(self._refs.index(current))
+        scheme = self.current()
+        current = sound_events.ref_for(scheme, self._event_id())
+        self._refs = sound_events.offered(scheme)
+        if str(current) not in self._refs:
+            self._refs.append(str(current))  # a file that has gone: it still shows what's chosen
+        self.sound.Set([sound_events.ref_label(sound_events.parse_ref(ref), scheme,
+                                               sound_events.custom_missing(sound_events.parse_ref(ref)))
+                        for ref in self._refs])
+        self.sound.SetSelection(self._refs.index(str(current)))
+        self.remove_file.Enable(current.kind == "custom" and not sound_events.custom_missing(current))
 
     def _sound_chosen(self) -> None:
         index = self.sound.GetSelection()
@@ -157,23 +444,23 @@ class SoundsDialog(wx.Dialog):
             self._set_ref(self._refs[index])
 
     def _set_ref(self, ref: str) -> None:
-        event_id = self._event_id()
-        self._choices[event_id] = ref
+        scheme = self.current()
+        event = sound_events.BY_ID[self._event_id()]
+        scheme.events[event.key] = ref
         row = self.events.GetSelection()
-        self.events.SetString(row, sound_events.row_label(event_id, self._choices))
+        self.events.SetString(row, sound_events.row_label(event.id, scheme))
+        self._show_count()
         refresh_list_item(self.events)  # Orca: the row changed under it
-
-    def _style_id(self) -> str:
-        return self._style_ids[max(self.style.GetSelection(), 0)]
+        current = sound_events.ref_for(scheme, event.id)
+        self.remove_file.Enable(current.kind == "custom" and not sound_events.custom_missing(current))
 
     def _volume(self) -> int:
         return sound_events.VOLUMES[max(self.volume.GetSelection(), 0)]
 
     def _preview(self) -> None:
-        """The sound showing, at the volume and style showing, even when muted. No words: you're
-        listening to it."""
-        event_id = self._event_id()
-        chosen = sound_events.resolve(event_id, self._choices, self._style_id())
+        """The sound showing, at the volume and in the scheme showing, even when muted. No words:
+        you're listening to it."""
+        chosen = sound_events.resolve(self._event_id(), self.current())
         if chosen is None:
             self.stop_preview()
             return
@@ -208,16 +495,43 @@ class SoundsDialog(wx.Dialog):
         # cancelling the picker sounds just like coming back to the button.
         self.sound.SetFocus()
 
+    def on_remove_file(self) -> None:
+        """Delete one of your own sound files, after saying what still uses it."""
+        current = sound_events.ref_for(self.current(), self._event_id())
+        if current.kind != "custom" or sound_events.custom_missing(current):
+            return
+        users = sound_events.schemes_using(self._schemes, current.name)
+        if len(users) > 1:
+            uses = f" {', '.join(users[:-1])} and {users[-1]} use it, and will play a built-in sound instead."
+        elif users:
+            uses = f" {users[0]} uses it, and will play a built-in sound instead."
+        else:
+            uses = ""
+        if wx.MessageBox(f"Delete the sound file {current.name}?{uses} The file is deleted now, "
+                         "even if you then choose Cancel.", "Remove Sound File",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+            self.remove_file.SetFocus()
+            return
+        try:
+            (platform_paths.custom_sounds_dir() / current.name).unlink()
+        except OSError as exc:
+            wx.MessageBox(f"The file couldn't be deleted: {exc.strerror or exc}", "Remove Sound File",
+                          wx.OK | wx.ICON_WARNING, self)
+            return
+        self._fill_events(self.events.GetSelection())
+        self._say(f"Deleted {current.name}.")
+        self.sound.SetFocus()
+
     def get_settings(self) -> SpeechSettings:
         return dataclasses.replace(
             self._original,
             sounds_on=self.play_sounds.GetValue(),
             sounds_muted=self.mute.GetValue(),
             sound_volume=self._volume(),
-            sound_style=self._style_id(),
+            sound_scheme=self._scheme_id,
             sound_tools=self._tool_ids[max(self.tools.GetSelection(), 0)],
             sound_others=self._other_ids[max(self.others.GetSelection(), 0)],
-            sound_choices=sound_events.clean_choices(self._choices),
+            sound_schemes=sound_events.save_schemes(self._schemes),
             sound_silent_notifications=(self.silent_notifications.GetValue()
                                         if self.silent_notifications is not None
                                         else self._original.sound_silent_notifications))

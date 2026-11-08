@@ -3,7 +3,7 @@ wxPython>=4.2
 # sound player (#250), whose WAV files are copied to thechatplace/assets/sounds.
 # A commit of TheIdeaPlace/app-kit's main, so builds don't move under us; an archive, so
 # no builder needs git.
-theideaplace-appkit @ https://github.com/TheIdeaPlace/app-kit/archive/75d92c1f3052c244723fa17128b054c5d7fef75b.zip#subdirectory=python
+theideaplace-appkit @ https://github.com/TheIdeaPlace/app-kit/archive/1e9268855c6c906a179425df486885389a5bbaaa.zip#subdirectory=python
 # Full messages as formatted pages (rendering.py, issue #190).
 markdown==3.11.2
 # Automatic updates (installed copies only; a source run ignores it).

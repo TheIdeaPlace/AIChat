@@ -1,0 +1,178 @@
+{
+ "title": "Sound Scheme Gallery",
+ "class": "SoundGalleryDialog",
+ "size": [
+  560,
+  440
+ ],
+ "client": [
+  544,
+  401
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "2 schemes.",
+   "rect": [
+    10,
+    10,
+    524,
+    16
+   ],
+   "best": [
+    59,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Sound &schemes:",
+   "rect": [
+    10,
+    36,
+    87,
+    16
+   ],
+   "best": [
+    87,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Sound schemes",
+   "label": "",
+   "rect": [
+    12,
+    54,
+    524,
+    200
+   ],
+   "best": [
+    407,
+    49
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Rain at Night, by Synthetic Author. 12 of 15 events have a sound.",
+    "Bright Bells, by Another Author. 15 of 15 events have a sound. Added."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    10,
+    262,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Details",
+   "label": "",
+   "rect": [
+    12,
+    280,
+    524,
+    70
+   ],
+   "best": [
+    127,
+    70
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Soft, low sounds for working late, with a quiet tap for tools. By Synthetic Author. Licence: CC0-1.0."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Add",
+   "rect": [
+    297,
+    368,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Reload",
+   "rect": [
+    378,
+    368,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Close",
+   "rect": [
+    459,
+    368,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
