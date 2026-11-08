@@ -1,3 +1,3 @@
-Copied from TheIdeaPlace/app-kit, folder sounds/thechatplace, commit 84df03e324945fec3d616c89e29fb5ad965b2f3c.
+Copied from TheIdeaPlace/app-kit, folder sounds/thechatplace, commit f722fa19468c0e9b82ec561223a151131c029b3c.
 Generated there by generate.py, so there is nothing to license. Copy again from there rather than editing these.
 These are The Chat Place's own sounds, one for each event; the rules are in dev-notes/sound-design.md.

@@ -727,30 +727,30 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 
 ### What you'll hear
 
-Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages are quick notes in the middle, answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
+Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages leap up an octave, answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
 
 | Event | Sound |
 | --- | --- |
 | Tool ran | Tick: one very soft, very short high note, whether tool activity is on or not |
 | File changed | Double tick: two soft high ticks, rising, once the change has worked |
 | Still working | Hum: one faint low note, after 20 quiet seconds of a turn in the loaded chat. A long command or long thinking reports nothing, so this tells you it hasn't stopped |
-| Message sent | Send: two quick notes, rising |
+| Message sent | Send: a quick leap up an octave |
 | Message queued | Hold: one note three times, each softer |
-| Message steered into the turn | Bend: the send with a step in it, for a message that goes into the running turn without stopping it |
-| Steered message taken | Taken: two soft notes rising from where the bend ended, when Claude has your steered message |
-| Queued message sent | Release: the held note rising into a send, when a waiting message goes on its own |
-| You stopped a turn | Stop: one low damped note |
+| Message steered into the turn | Bend: the send with a step on the way up, for a message that goes into the running turn without stopping it |
+| Steered message taken | Taken: a soft, quick climb of four notes, when Claude has your steered message |
+| Queued message sent | Release: the held note leaping up into a send, when a waiting message goes on its own |
+| You stopped a turn | Stop: a quick, damped drop, low |
 | Reply finished | Rise: three notes rising |
 | Another chat finished | Low rise: the same rise, lower and softer |
-| Ask Aside answered | Aside: two quiet notes |
+| Ask Aside answered | Aside: three quiet notes, down and back |
 | Needs you | Call: one note three times fast, then a leap up, for a permission, a question or a plan to approve |
-| Turn failed | Fall: three notes falling |
-| Message not sent | Bump: a note bending down a half step, when a message comes back to you |
-| Ask Aside not answered | Aside fall: the aside's first note, then falling |
+| Turn failed | Fall: four notes falling |
+| Message not sent | Bump: a note slipping down, then dropping, when a message comes back to you |
+| Ask Aside not answered | Aside fall: the aside's start, bending down instead of coming back |
 | Service trouble | Waver: two low notes wavering, when the AI is retrying, moved to another model, or its turn ended without you stopping it |
 | Usage or context warning | Alert: high notes, alternating |
-| Conversation compacted | Settle: a chord settling into one note |
-| Message from another session | Knock: one note twice, then up |
+| Conversation compacted | Settle: a chord settling down into one low note |
+| Message from another session | Knock: two knocks, then a lower note answering |
 
 When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
 
