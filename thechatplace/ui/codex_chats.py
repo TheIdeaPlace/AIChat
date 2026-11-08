@@ -1006,6 +1006,9 @@ class CodexChats(SoundHost, CodexExtras):
             dialog.Destroy()
         def done(_result, error):
             name = provider_name(info.provider)
+            if not error:
+                # Any answer that went, a refusal too (#250); for any chat, as for Claude's.
+                self._sound(sound_events.ANSWER_SENT)
             not_kept = getattr(_result, 'said', '') if keep and not error else ''
             self._feedback((_result or f'This {name} request could not be answered. It may no longer be waiting.')
                            if error else not_kept or (f'Approval kept for this chat and answer sent to {name}.'

@@ -61,18 +61,18 @@ Do this in a new Claude chat, then a new Codex chat, in your test folder.
 
 ## 2. Sounds
 
-Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 21
+Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 22
 events, made by the rules in `dev-notes/sound-design.md`. None is QuickMail's any more. Nobody
 has heard the new set yet, so what's being tested is whether each sound fits its event, whether
 the families make sense, and how they sit with your screen reader.
 
-### Listen to all 21
+### Listen to all 22
 
 1. Choose File, **Sounds**. Tab through it both ways. Expect: every control is named. Turn on
    **Play sounds**.
 2. Tab to **Sound events**. Expect: the list's name says how many events have a sound, and each
    row says the event and its sound, such as "Reply finished: Rise".
-3. Arrow through all 21 and press **Space** on each. Expect: each one plays, with nothing said
+3. Arrow through all 22 and press **Space** on each. Expect: each one plays, with nothing said
    over it, on Windows and on a Mac. Try **Preview** (Alt+R) once too: the same sound.
 
 What each should sound like, top to bottom of the list:
@@ -80,7 +80,7 @@ What each should sound like, top to bottom of the list:
 | Event | Sound | Listen for |
 | --- | --- | --- |
 | Tool ran | Tick | One very soft, very short high tick |
-| File changed | Double tick | Two soft high ticks, rising |
+| File changed | Write | Two notes together settling onto a lower one, soft and short, in the middle: nothing like the Tick |
 | Still working | Hum | One faint low note, the softest |
 | Message sent | Send | A quick leap up an octave |
 | Message queued | Hold | One note three times, each softer |
@@ -93,6 +93,7 @@ What each should sound like, top to bottom of the list:
 | Another chat finished | Low rise | The same rise, lower and softer |
 | Ask Aside answered | Aside | Three quiet notes, down and back |
 | Needs you | Call | One note three times fast, then a leap up; the loudest |
+| Answer sent | Answer | The send's leap, then a step down to the Call's note |
 | Turn failed | Fall | Four notes falling |
 | Message not sent | Bump | A note slipping down, then dropping |
 | Ask Aside not answered | Aside fall | The aside's start, bending down |
@@ -118,11 +119,18 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 ### Sounds in use
 
 1. In a test chat, with **Show Tool Activity** off (Ctrl+T), ask for something that runs a few
-   commands and edits a test file. Expect: a Tick for each tool, a Double tick when the edit
-   works, and Rise when the reply finishes. Note whether the ticks get in the way of speech.
+   commands and edits a test file. Expect: a Tick for each tool, Write when the edit works, and
+   Rise when the reply finishes. Note whether the ticks get in the way of speech, and whether
+   Write is easy to tell from a Tick without listening for it.
 2. Ask for something that needs your permission. Expect: Call, along with the announcement, not
-   instead of it. Press **Ctrl+Period** to stop a turn. Expect: Stop.
-3. Let a turn run in another chat while you stay in this one. Expect: Low rise when it finishes.
+   instead of it. Answer it with **Ctrl+Shift+A**. Expect: Answer when you choose Allow (or
+   Refuse), and nothing when you press Escape instead. Try a question card and a plan too. Press
+   **Ctrl+Period** to stop a turn. Expect: Stop.
+3. Let a turn run in another chat while you stay in this one. Expect: Low rise when it finishes,
+   and Write when it changes a file, but no Ticks. In File, Sounds, the setting is now called
+   **Tool sounds play for** (Alt+T), and covers only the Tick; set it to **The open chat and chats
+   running in The Chat Place** and the other chat's Ticks play too. Set **Other sounds play for**
+   to **The open chat only** and its Write and Low rise stop.
 4. **Steering.** While a Claude turn runs, type a message and press **Ctrl+Alt+Enter**. Expect:
    Bend, and then Taken when Claude takes it in. In Codex, only Bend plays. Queue a message with
    Ctrl+Enter instead and let the turn finish. Expect: Hold when you queue it, and Release when it
@@ -140,7 +148,7 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 
 1. In File, Sounds, press **Alt+A** (Scheme Actions). Expect: a menu with New, Copy, Rename,
    Delete, Reset, Export and Import Scheme. On Glass, Rename and Delete are read as turned off.
-2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 21 events have a
+2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 22 events have a
    sound", and **Sound** (Alt+S) offers sounds in each tone, such as "Rise (Soft bell)".
 3. Give two events a sound. Choose **Export Scheme** and save it. Then **Import Scheme** that file.
    Expect: "Added the sound scheme" and its name, and the copy has the same two sounds.

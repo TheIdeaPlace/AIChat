@@ -723,17 +723,17 @@ Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialo
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Sound scheme** is Glass, Soft bell, Wood, or a scheme of your own (below). Glass, Soft bell and Wood play the same melodies in a different tone, so a sound means the same thing in any of them.
 - The chat you have open always makes every sound. The next two settings decide what you hear from the other chats.
-- **Tick sounds play for** is for Tick and Double tick, which play each time a chat runs a tool or changes a file: **The open chat only** (to start), or **The open chat and chats running in The Chat Place**, which also hears the ones working in the background. A busy chat makes many, so several at once are hard to follow. A desktop app, Cowork or terminal session ticks only while it's open, as that's when its transcript is being read.
-- **Other sounds play for** is for every other sound, such as a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats running in The Chat Place**, or **The open chat only**.
+- **Tool sounds play for** is for Tick, which plays each time a chat runs a tool: **The open chat only** (to start), or **The open chat and chats running in The Chat Place**, which also hears the ones working in the background. A busy chat makes many, so several at once are hard to follow. A desktop app, Cowork or terminal session ticks only while it's open, as that's when its transcript is being read.
+- **Other sounds play for** is for every other sound, such as a file changing, a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats running in The Chat Place**, or **The open chat only**.
 
 ### What you'll hear
 
-Every event has a sound of its own, and events that belong together sound alike: work going on is soft ticks, your messages leap up an octave (and drop one when you take one back), answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
+Every event has a sound of its own, and events that belong together sound alike: work going on is a soft tick, your messages leap up an octave (and drop one when you take one back), answers rise, something wrong falls or wavers, and a chat needing you repeats one note fast and then leaps up.
 
 | Event | Sound |
 | --- | --- |
 | Tool ran | Tick: one very soft, very short high note, whether tool activity is on or not |
-| File changed | Double tick: two soft high ticks, rising, once the change has worked |
+| File changed | Write: two notes together settling onto a lower one, soft and short, once the change has worked |
 | Still working | Hum: one faint low note, after 20 quiet seconds of a turn in the loaded chat. A long command or long thinking reports nothing, so this tells you it hasn't stopped |
 | Message sent | Send: a quick leap up an octave |
 | Message queued | Hold: one note three times, each softer |
@@ -746,6 +746,7 @@ Every event has a sound of its own, and events that belong together sound alike:
 | Another chat finished | Low rise: the same rise, lower and softer |
 | Ask Aside answered | Aside: three quiet notes, down and back |
 | Needs you | Call: one note three times fast, then a leap up, for a permission, a question or a plan to approve |
+| Answer sent | Answer: the send's leap, then a step down to the call's note, when your answer to a question, a permission, a plan or a form has gone. It plays for any chat |
 | Turn failed | Fall: four notes falling |
 | Message not sent | Bump: a note slipping down, then dropping, when a message comes back to you |
 | Ask Aside not answered | Aside fall: the aside's start, bending down instead of coming back |

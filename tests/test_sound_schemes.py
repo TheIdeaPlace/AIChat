@@ -46,7 +46,7 @@ def test_one_sound_one_meaning():
     own in the Sound choice; none is QuickMail's."""
     from theideaplace_appkit import soundschemes
     sounds = [e.sound for e in se.EVENTS]
-    assert len(sounds) == len(set(sounds)) == 21
+    assert len(sounds) == len(set(sounds)) == 22
     assert len(set(se.BUILT_IN.values())) == len(se.BUILT_IN)
     quickmail = set(soundschemes.catalog("quickmail").built_in_sounds)
     assert not quickmail & set(sounds)
@@ -71,12 +71,42 @@ def test_a_preview_choice_keeps_its_meaning_under_the_new_names():
     assert se.ref_for(mine, se.STEERED).kind == "none"  # a new event: silent in a scheme of your own
 
 
+def test_a_preview_that_chose_double_tick_gets_write():
+    """0.5 previews called File changed's sound "edit" (Double tick), and the first set's
+    "changed" before that; both are now Write, in any tone and in a scheme of your own."""
+    loaded = se.load_schemes({"glass": {"events": {"ToolRan": "builtin:edit"}},
+                              USER: {"name": "Mine", "events": {"FileChanged": "builtin:wood/Edit",
+                                                                "Compacted": "builtin:changed"}}})
+    assert se.find(loaded, "glass").events == {"ToolRan": "builtin:write"}
+    mine = se.find(loaded, USER)
+    assert mine.events["FileChanged"] == "builtin:wood/write"
+    assert mine.events["Compacted"] == "builtin:write"
+    assert se.migrate("softbell", {se.FILE_CHANGED: "builtin:edit"}) == (
+        "softbell", {"softbell": {"events": {"FileChanged": "builtin:write"}}})
+    assert "edit" not in se.BUILT_IN and se.BUILT_IN["write"] == "Write"
+
+
+def test_only_tool_ran_follows_the_tool_setting():
+    """Kelly found one setting for Tick and Double tick too much: File changed follows "Other
+    sounds play for" like every other event now."""
+    assert se.TOOL_EVENTS == {se.TOOL}
+
+
+def test_answer_sent_answers_you_and_comes_after_needs_you():
+    keys = [e.key for e in se.EVENTS]
+    assert keys[keys.index("NeedsYou") + 1] == "AnswerSent"
+    event = se.BY_ID[se.ANSWER_SENT]
+    assert (event.label, event.sound, event.answers_you, event.priority) == (
+        "Answer sent", "answer", True, "normal")
+    assert se.BUILT_IN["answer"] == "Answer"
+
+
 # -- what's kept ---------------------------------------------------------------------
 
 
 def test_a_built_in_scheme_keeps_only_what_you_changed():
     glass = se.built_in_scheme("glass")
-    glass.events = {"ToolRan": "none", "FileChanged": "builtin:edit"}
+    glass.events = {"ToolRan": "none", "FileChanged": "builtin:write"}
     assert se.save_schemes([glass]) == {"glass": {"events": {"ToolRan": "none"}}}
     assert se.save_schemes([se.built_in_scheme("wood")]) == {}
 
@@ -224,18 +254,18 @@ def test_a_bad_choice_never_leaves_the_sounds_folder(data):
 def test_labels(data):
     glass, wood = se.built_in_scheme("glass"), se.built_in_scheme("wood")
     assert se.row_label(se.TOOL, glass) == "Tool ran: Tick"
-    glass.events = {"ToolRan": "none", "FileChanged": "builtin:wood/edit",
+    glass.events = {"ToolRan": "none", "FileChanged": "builtin:wood/write",
                     "PeerMessage": "custom:m.wav", "NeedsYou": "builtin:glass/needsyou"}
     assert se.row_label(se.TOOL, glass) == "Tool ran: None"
-    assert se.row_label(se.FILE_CHANGED, glass) == "File changed: Double tick (Wood)"
+    assert se.row_label(se.FILE_CHANGED, glass) == "File changed: Write (Wood)"
     assert se.row_label(se.NEEDS_YOU, glass) == "Needs you: Call"
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav (missing)"
     (data / "sounds").mkdir()
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav"
-    assert se.count_label(glass) == "20 of 21 events have a sound"
-    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 21 events have a sound"
-    assert se.count_label(wood) == "21 of 21 events have a sound"
+    assert se.count_label(glass) == "21 of 22 events have a sound"
+    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 22 events have a sound"
+    assert se.count_label(wood) == "22 of 22 events have a sound"
 
 
 def test_what_the_sound_choice_offers(data):
@@ -243,9 +273,9 @@ def test_what_the_sound_choice_offers(data):
     (data / "sounds" / "m.wav").write_bytes(wav_bytes())
     built_in = se.offered(se.built_in_scheme("softbell"))
     assert built_in[0] == "none" and built_in[1] == "builtin:tool" and built_in[-1] == "custom:m.wav"
-    assert len(built_in) == 1 + 21 + 1
+    assert len(built_in) == 1 + 22 + 1
     own = se.offered(se.Scheme(USER, "Mine", False))
-    assert "builtin:softbell/reply" in own and len(own) == 1 + 3 * 21 + 1
+    assert "builtin:softbell/reply" in own and len(own) == 1 + 3 * 22 + 1
 
 
 def test_schemes_using_a_file():
@@ -269,15 +299,15 @@ def test_export_and_import_bring_a_scheme_and_its_file_across(data):
         meta = json.loads(zf.read("scheme.json"))
         assert zf.namelist() == ["scheme.json", "sounds/knock.wav"]
     assert meta["app"] == "thechatplace" and meta["name"] == "Soft bell"
-    assert meta["events"]["FileChanged"] == "builtin:softbell/edit"  # pinned to its tone
+    assert meta["events"]["FileChanged"] == "builtin:softbell/write"  # pinned to its tone
     (folder / "knock.wav").unlink()
     imported = se.import_scheme(exported, ["Glass", "Soft bell", "Wood"])
     scheme = imported.scheme
     assert scheme.name == "Soft bell 2" and not scheme.built_in and scheme.id.startswith("user-")
     assert scheme.events["NeedsYou"] == "custom:knock.wav" and (folder / "knock.wav").is_file()
-    assert scheme.events["FileChanged"] == "builtin:softbell/edit"
+    assert scheme.events["FileChanged"] == "builtin:softbell/write"
     assert imported.message() == "Added the sound scheme Soft bell 2, with 1 sound file."
-    assert Path(se.resolve(se.FILE_CHANGED, scheme)[0]).parts[-2:] == ("softbell", "edit.wav")
+    assert Path(se.resolve(se.FILE_CHANGED, scheme)[0]).parts[-2:] == ("softbell", "write.wav")
 
 
 def test_import_says_what_was_left_silent(data):
@@ -309,7 +339,7 @@ def _entry(sid="rain", sha="d" * 64, events=8, description="Soft."):
 
 def test_gallery_rows_say_what_you_have():
     entry = _entry()
-    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 21 events have a sound."
+    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 22 events have a sound."
     mine = se.Scheme(USER, "Rain", False, source={"gallery": "rain", "sha256": "d" * 64})
     assert sound_gallery.state(entry, [mine]) == sound_gallery.ADDED
     assert sound_gallery.row_label(entry, [mine]).endswith(" Added.")

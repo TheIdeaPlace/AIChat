@@ -19,12 +19,12 @@ and another thing in the next is worse than no sound. These rules replace that s
 
    | Family | Pattern | Level |
    | --- | --- | --- |
-   | Work going on | Very short high ticks, or one low hum | Soft, under speech |
-   | Your message | Starts on D5 and leaps an octave: the leap is the message going | Normal |
+   | Work going on | One very short high tick, or one low hum | Soft, under speech |
+   | Your message | Starts on D5 and leaps an octave: the leap is the message going. An answer to a chat that needed you then comes to rest on that call's note | Normal |
    | Answers | Notes rising to an open fifth | Normal; another chat's softer and lower |
    | Needs you | The same note fast, three times, then a leap up | Loudest; goes first |
    | Something went wrong | Falling, or bending down a half step, or wavering | Normal |
-   | Housekeeping | A chord settling an octave down into one note | Normal |
+   | Housekeeping | A chord settling down into one note: something rewritten and put away, with nothing for you to do | Normal; a file written softer |
    | Another session | A knock: one note twice, then a lower note answering | Normal |
 
 3. **Rising means something started or arrived for you. Falling means something didn't work,**
@@ -33,7 +33,9 @@ and another thing in the next is worse than no sound. These rules replace that s
 4. **Related events sound related.** Steering is the send sound with a step on the way up. A queued
    message going out is the queued sound leaping into a send, and one you delete is the same held
    note dropping an octave instead. Ask Aside's failure starts like its answer and then bends
-   down. Another chat's reply is the reply an octave lower.
+   down. Another chat's reply is the reply an octave lower. Your answer to a chat that needed you
+   is the send's leap, then a step down to A5, the note Needs you calls on. A file written is the
+   compacted settle made smaller: two notes instead of three, a fourth instead of an octave.
 5. **Short.** Work-going-on sounds are under a tenth of a second plus a short ring. Nothing is longer
    than a second.
 6. **A tone doesn't change the meaning.** Glass, Soft bell and Wood play the same notes in a
@@ -44,7 +46,11 @@ and another thing in the next is worse than no sound. These rules replace that s
    every sound's notes with every other's: strictly against every other app's set, and normally
    within this one. Only pairs this file says are related (the two replies) may be alike. It
    caught the first redesign's Tick sounding like QuickMail's Matched, Fall like QuickMail's
-   Failed, and six more, before anyone had to hear them.
+   Failed, and six more, before anyone had to hear them. Shapes aren't everything: File changed
+   was once two soft high ticks (A6 then C7), a different shape from Tool ran's, and passed, but
+   heard in passing the two were the same blip, and Kelly couldn't tell them apart. So the test
+   also fails any two sounds in an app that are both very short (0.2 seconds or less, ring
+   included), both soft (half the normal level or less) and start within 7 semitones of each other.
 
 ## The events and their sounds
 
@@ -56,7 +62,6 @@ sound starts.
 | Event | When | Sound (`thechatplace/<tone>/…`) |
 | --- | --- | --- |
 | Tool ran | A tool starts in a chat: a command, a search, an MCP tool | `tool`: C7 and G7 a hair apart: one very soft, very short tick |
-| File changed | A file change has been made | `edit`: two ticks rising, A6 then C7 |
 | Still working | 20 quiet seconds of a turn in the loaded chat | `working`: one low hum, C3. The softest |
 
 ### Your message
@@ -70,6 +75,7 @@ sound starts.
 | Queued message sent | A message that was waiting goes, on its own, when the turn ends | `queuesent`: D5 twice, then D6: the held note leaping into a send |
 | Queued message deleted | You delete a queued message (Delete, or its menu) | `queuedelete`: D5 twice, then D4, quiet: the held note dropping instead of leaping. Added after Kelly found it missing |
 | You stopped a turn | Stop, from you | `stop`: C4 dropping to F3, quick and damped |
+| Answer sent | You send an answer to what a chat was waiting on you for: a question, a permission (Allow, Allow for This Chat or Refuse), a plan, a connected tool's form; Claude, Codex or Copilot. Not when you leave it for later, or it couldn't be sent | `answer`: D5 leaping to D6, then A5: the send's leap coming to rest on the note Needs you calls on. Plays whichever chat it was for, as the answer to your key press. Added at Kelly's request |
 
 ### Answers
 
@@ -100,7 +106,16 @@ sound starts.
 | Event | When | Sound |
 | --- | --- | --- |
 | Conversation compacted | The conversation was compacted | `compacted`: C5, E5 and G5 together, settling into C4 |
+| File changed | A file change has been made, once it has worked | `write`: A5 and C-sharp 6 together, settling a fourth onto E5; soft (0.30) and short (0.29 seconds) |
 | Message from another session | Another session sent this chat a message | `peer`: B5 twice like a knock, then E5 answering |
+
+File changed was in "work going on" as `edit`, two soft high ticks, A6 then C7. Kelly couldn't tell
+it from Tool ran's tick without listening for it, and it shared Tool ran's setting, though a tool
+can tick dozens of times a turn and a file changes far less often. It isn't work going on: it's a
+result, something written and put away, so it joined Housekeeping beside a compacted conversation
+(which is the conversation rewritten) and took that family's settling chord, smaller and softer.
+It's in the middle register, more than an octave below the tick, three times its length and
+nearly twice its level. Like every sound but Tool ran, it follows "Other sounds play for".
 
 ## How they're made
 
