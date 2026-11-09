@@ -242,15 +242,15 @@ The same dialog on "Quiet evenings", a scheme of your own. The events label read
 
 ## sound-gallery: File, Sounds, Browse Gallery
 
-A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 23 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 23 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and licence on two lines. Add, Reload and Close sit at the bottom right.
+A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 23 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 23 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and license on two lines. Add, Reload and Close sit at the bottom right.
 
-**What looks off:** Nothing. Both rows and the details fit at 100% and at 175% (960 by 760). High Contrast Aquatic draws the list, the details box and the buttons in the theme's colours, the selected row in aqua with dark text.
+**What looks off:** Nothing. Both rows and the details fit at 100% and at 175% (960 by 760). High Contrast Aquatic draws the list, the details box and the buttons in the theme's colors, the selected row in aqua with dark text.
 
 ## sound-tutorial: Help, Sound Tutorial
 
 A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in File, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 23 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
 
-**What looks off:** Nothing. Every name fits without cutting off, at 175% too, where the window is 750 by 946 and all 22 rows still show. High Contrast Aquatic draws it white on #202020 (16.3:1), the selected row aqua with dark text (11.2:1).
+**What looks off:** Nothing. Every name fits without cutting off, at 175% too, where the window is 750 by 946 and all 23 rows still show, with no scroll bar. High Contrast Aquatic draws it white on #202020 (16.3:1), the selected row aqua with dark text (11.2:1).
 
 ## settings-codex: Settings with Codex automatically included
 

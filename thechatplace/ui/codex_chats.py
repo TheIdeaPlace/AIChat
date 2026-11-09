@@ -908,11 +908,16 @@ class CodexChats(SoundHost, CodexExtras):
         if fresh_terminal:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
-                agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
-                            more_queued=bool(state.queued),
-                            detail=state.problem or '',
-                            files=tuple(getattr(state, 'changed_paths', ())))
-                self._agent_pay_reply_sound(provider, state.native_id)
+                try:
+                    agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
+                                more_queued=bool(state.queued),
+                                queued_ours=self._agent_queued_is_ours(
+                                    provider, state.native_id, state.queued),
+                                detail=state.problem or '',
+                                files=tuple(getattr(state, 'changed_paths', ())))
+                finally:
+                    # Whatever happened there, a held-back reply sound isn't lost.
+                    self._agent_pay_reply_sound(provider, state.native_id)
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog

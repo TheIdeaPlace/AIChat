@@ -5635,12 +5635,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._give_back(session_id, "\n\n".join(unsent), is_open)
             self._update_send_state()
             failed_turn = event.kind == "failed" or event.is_error
-            self._agent_turn_ended(
-                "claude", session_id, event.text, failed_turn,
-                more_queued=session_id in self._runners,
-                detail=(usage.friendly_error(event.text) if failed_turn
-                        else f"{detail}: " + "; ".join(denials) if denials else ""))
-            self._agent_pay_reply_sound("claude", session_id)
+            try:
+                self._agent_turn_ended(
+                    "claude", session_id, event.text, failed_turn,
+                    more_queued=session_id in self._runners,
+                    queued_ours=self._agent_queued_is_ours("claude", session_id, [queued or ""]),
+                    detail=(usage.friendly_error(event.text) if failed_turn
+                            else f"{detail}: " + "; ".join(denials) if denials else ""))
+            finally:
+                # Whatever happened there, a held-back reply sound isn't lost.
+                self._agent_pay_reply_sound("claude", session_id)
             self.refresh_sessions()
 
     def _answered_with_background(self, session_id: str, title: str, event: TurnEvent,
@@ -5662,13 +5666,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # The turn's end, later, has no new answer to sound (#161). In an agent
             # conversation, the conversation sounds it as it's handed on or waits (#248).
             self._sound_turn_end(key)
-        self._agent_answered(
-            "claude", session_id, event.text, event.is_error,
-            detail=(usage.friendly_error(event.text) if event.is_error else
-                    f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
-                    + "; ".join(denials) if denials else ""),
-            more_queued=bool(self._queued.get(session_id)))
-        self._agent_pay_reply_sound("claude", session_id)
+        try:
+            self._agent_answered(
+                "claude", session_id, event.text, event.is_error,
+                detail=(usage.friendly_error(event.text) if event.is_error else
+                        f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
+                        + "; ".join(denials) if denials else ""),
+                more_queued=bool(self._queued.get(session_id)),
+                queued_ours=self._agent_queued_is_ours("claude", session_id,
+                                                       self._queued.get(session_id) or ()))
+        finally:
+            # Whatever happened there, a held-back reply sound isn't lost.
+            self._agent_pay_reply_sound("claude", session_id)
         if event.is_error:
             self._said_problems[session_id] = announce.status_text(event.text or "error", 120)
         elif denials:

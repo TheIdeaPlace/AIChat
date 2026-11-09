@@ -142,13 +142,28 @@ that couldn't go, and each reply to a message you sent to "@all".
 
 Those stops have no sounds of their own: each waits for you in the same way, and what stopped it
 is said. A reply waiting for your hand-off isn't Needs you either: nothing is blocked, and in
-Approve each mode it's every turn, so a loud urgent sound would wear thin. A member turn that
-ends with more of the conversation's text queued for it is silent: nobody waits on that reply,
-and nothing is said.
+Approve each mode it's every turn, so a loud urgent sound would wear thin.
+
+A member turn that ends with more of the conversation's text queued for it has no reply sound:
+nobody waits on that reply, and nothing is said. What follows differs by provider. A Claude
+member's chat sends the queued text as a new turn, which plays Message sent. Codex and Copilot
+take it into their own queue, which plays nothing. If the text queued is only your own, typed
+in the member chat itself, the reply sounds as usual.
+
+**Never quieter than before.** A scheme with no sound for Agent reply handed on hears a hand-off
+as it did before the event existed: the reply's sound, then Message sent for the send to the
+next agent. That covers a scheme of your own made before it (it has no entry for the event, and
+a scheme of your own plays nothing for an event it doesn't keep), one where you chose None, and
+Essentials. Choosing None counts the same as having no entry, on purpose: once the dialog
+saves a scheme of your own, a missing event is written as None, so the two can't be told
+apart, and silencing hand-offs for everyone whose old scheme was saved again would make them
+quieter than before, which nobody chose. To hear nothing at a hand-off, give Reply finished
+and Message sent None too.
 
 Essentials, the gallery's scheme of only the sounds you'd otherwise miss, doesn't take Agent
 reply handed on: it's news of progress, and when the conversation needs you it plays Reply
-finished, Needs you or Turn failed, which Essentials has.
+finished, Needs you or Turn failed, which Essentials has. By the rule above, an automatic
+hand-off in Essentials plays its Reply finished (or Another chat finished), as before.
 
 ## How they're made
 

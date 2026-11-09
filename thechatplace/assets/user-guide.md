@@ -784,7 +784,7 @@ A sound scheme is a sound for each event. Glass, Soft bell and Wood come with Th
 
 QuickMail has sound schemes too, but its events are different, so a QuickMail scheme can't be imported here, and you're told so.
 
-**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and license. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. The gallery isn't open yet, so for now Browse Gallery says it couldn't be reached; it will work without updating The Chat Place once it opens. The Chat Place checks the gallery's signature and every file before using anything from it.
+**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and license. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. For The Chat Place it has two so far: **Essentials**, only the sounds you'd otherwise miss, and **River Voicing Glass**, where each Glass sound is followed by a voice saying what happened, which helps while you learn the sounds. If the gallery can't be reached, it says so, and **Reload** tries again. The Chat Place checks the gallery's signature and every file before using anything from it.
 
 Nothing you do with schemes is kept until you choose OK, and no sound file is deleted until then. Files you choose, or a scheme brings in, are copied straight away; choose Cancel and they're deleted again.
 
@@ -2119,7 +2119,10 @@ reply is set aside, and you hear so.
 
 With sounds on, a reply that goes across by itself plays **Agent reply handed on**, so you can
 follow an automatic conversation with nothing said. A reply that waits for you, in either mode,
-plays **Reply finished** (**Another chat finished** if the conversation isn't open).
+plays **Reply finished** (**Another chat finished** if the conversation isn't open). In a scheme
+with no sound for Agent reply handed on, such as Essentials, one of your own made before it,
+or one where you chose None for it, a reply that goes across sounds as a reply, followed by
+**Message sent** if the scheme has it.
 
 In either mode, the relay finishes when an agent ends its reply with DONE once the others have
 replied since your last message, when the replies start repeating each other, or when the

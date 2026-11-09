@@ -79,6 +79,11 @@ class Window(AgentChats):
     def _sound_turn_end(self, key, own=True):
         self.sounds.append(('reply', key))
 
+    pass_plays = True  # whether the scheme has Agent reply handed on
+
+    def _sound_scheme_has(self, event_id):
+        return self.pass_plays
+
     def _sound_hush_send(self, key):
         self.hushed.add(key)
 
@@ -1963,3 +1968,54 @@ def test_a_renamed_member_keeps_its_held_back_sound(tmp_path):
     assert w._agent_owe_reply_sound('claude', 'c1')
     w._agent_rename_member('claude', 'c1', 'c2')
     assert w._agent_sound_owed == {('claude', 'c2')}
+
+
+def test_a_scheme_without_pass_hears_a_hand_off_as_before(tmp_path):
+    """A scheme of your own from before Agent reply handed on, or with None
+    chosen for it: never quieter than before, so the reply sounds and the
+    send to the next agent isn't hushed."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.pass_plays = False
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.codex_sent and w.sounds == [('reply', 'own:c1')]
+    assert not w.hushed
+
+
+def test_a_hand_off_refused_at_once_is_not_handed_on(tmp_path):
+    """A Codex send refused before it went (Rewind putting files back): the
+    conversation stays paused as _agent_send_failed left it, with the reply's
+    sound, not Agent reply handed on, and nothing hushed."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+
+    def refused(record, text, announce_send=True, restore=True, on_result=None):
+        on_result('Still putting files back in this folder.', True)
+    w._send_codex_owned = refused
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.sounds == [('reply', 'own:c1')] and not w.hushed
+    saved = w.saved
+    assert saved.paused and saved.stop_reason == "Couldn't send to Codex."
+    assert saved.exchanges == 0  # this copy wasn't saved over it
+    assert 'Built v1.' in w.reply_text.GetValue()
+
+
+def test_a_send_that_raises_leaves_nothing_hushed(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+
+    def broken(*a, **k):
+        raise RuntimeError('boom')
+    w._agent_deliver_unhushed = broken
+    with pytest.raises(RuntimeError):
+        w._agent_deliver(w.saved, 1, 'x', hush=True)
+    assert not w.hushed
+
+
+def test_text_you_queued_in_the_member_chat_keeps_the_reply_sound(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    assert not w._agent_queued_is_ours('claude', 'c1', ['My own note'])
+    sent = w._agent_last_sent[('claude', 'c1')]
+    assert w._agent_queued_is_ours('claude', 'c1', ['My own note\n\n' + sent.strip()])
+    w.member_replied('claude', 'c1', 'Part one.', more_queued=True, queued_ours=False)
+    assert w.sounds == [('reply', 'own:c1')]

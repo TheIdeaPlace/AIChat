@@ -162,9 +162,11 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    Expect: "Added the sound scheme" and its name, and the copy has the same two sounds.
 4. Choose **Reset Scheme** on Glass after changing one of its events. Expect: it's back to how it
    came.
-5. Press **Alt+B** (Browse Gallery). The gallery isn't open yet. Expect: "Loading the sound scheme
-   gallery", then "The gallery could not be reached", with focus on **Reload**. Escape closes it
-   and you're back on Browse Gallery.
+5. Press **Alt+B** (Browse Gallery). Expect: "Loading the sound scheme gallery", then two
+   schemes, Essentials and River Voicing Glass, each with who made it and "of 23 events have a
+   sound". **Add** River Voicing Glass, choose it, and play a few events with Space: each is its
+   Glass sound and then a voice saying the event. Escape closes the gallery and you're back on
+   Browse Gallery.
 6. Choose Cancel in Sounds. Expect: the new scheme isn't kept.
 7. **Where the files go.** Each scheme keeps its own files in a folder inside
    `%APPDATA%\TheChatPlace\sounds`, named for the scheme's id (`glass`, `softbell`, `wood`, or

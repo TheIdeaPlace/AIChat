@@ -551,6 +551,58 @@ def test_a_hushed_send_is_used_up_with_sounds_off_too(frame, env):
     assert env["sounds"] == [se.SENT]
 
 
+def own_scheme_without_pass(frame, explicit_none):
+    """A scheme of your own with every sound but Agent reply handed on: one made before it
+    existed has no entry for it; one saved since has None."""
+    sid = "user-" + "c" * 32
+    events = {e.key: se.built_in_ref(e.sound, "glass") for e in se.EVENTS if e.id != se.HANDED_ON}
+    if explicit_none:
+        events["ReplyHandedOn"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine from before", "events": events}}
+    frame.speech.sound_scheme = sid
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_without_pass_in_the_scheme_a_codex_hand_off_sounds_as_before(frame, env, monkeypatch,
+                                                                      explicit_none):
+    own_scheme_without_pass(frame, explicit_none)
+    assert not frame._sound_scheme_has(se.HANDED_ON)
+    codex_conversation(frame)
+    hushed = []
+    monkeypatch.setattr(frame, "_agent_deliver_unhushed",
+                        lambda *a, **k: hushed.append(set(frame._sound_hushed_sends or ())) or True)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE]
+    assert hushed == [set()]  # the send to Claude wasn't hushed
+
+
+def test_a_codex_members_turn_with_the_conversations_text_queued_is_silent(frame, env):
+    codex_conversation(frame)
+    frame._agent_sent_texts[("codex", "cdx-1")] = ["Review the lock too."]
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Part one."),),
+                                 queued=("Review the lock too.",)))
+    assert env["sounds"] == [] and not frame._agent_sound_owed
+
+
+def test_a_codex_members_turn_with_your_own_text_queued_keeps_its_sound(frame, env):
+    codex_conversation(frame)
+    frame._agent_sent_texts[("codex", "cdx-1")] = ["Review the lock too."]
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Part one."),),
+                                 queued=("Something I typed in the Codex chat.",)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._agent_sound_owed
+
+
+def test_a_held_back_reply_sound_still_plays_if_the_conversation_raises(frame, env, monkeypatch):
+    codex_conversation(frame)
+
+    def broken(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(frame, "_agent_turn_ended", broken)
+    with pytest.raises(RuntimeError):
+        frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._agent_sound_owed
+
+
 def test_what_goes_on_its_own_holds_back_in_a_presentation(frame, env, monkeypatch):
     monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
     frame._sound(se.SENT, "own:own-1", on_its_own=True)

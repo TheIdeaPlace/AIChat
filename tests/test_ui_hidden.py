@@ -12497,6 +12497,28 @@ def test_agent_conversation_sounds_each_hand_off_once_and_the_limit_as_a_reply(f
     assert not frame._agent_sound_owed and not frame._sound_hushed_sends
 
 
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_agent_conversation_hand_offs_sound_as_before_without_pass_in_the_scheme(
+        frame, env, fake_runner, explicit_none):
+    """A scheme of your own from before Agent reply handed on (no entry), or with None for
+    it: a hand-off is never quieter than it was, so it's the reply and then the send."""
+    from thechatplace import sound_events as se
+    sid = "user-" + "d" * 32
+    events = {e.key: se.built_in_ref(e.sound, "wood") for e in se.EVENTS if e.id != se.HANDED_ON}
+    if explicit_none:
+        events["ReplyHandedOn"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine", "events": events}}
+    frame.speech.sound_scheme = sid
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    _finish(frame, "own-2", "Built v1.")
+    assert env["sounds"] == [se.SENT, se.FINISHED, se.SENT]
+    assert not frame._agent_sound_owed and not frame._sound_hushed_sends
+
+
 def test_agent_conversation_sounds_when_you_approve_each_hand_off(frame, env, fake_runner,
                                                                   monkeypatch):
     """Approving each hand-off: every reply waits for you, so it's Reply finished, and your

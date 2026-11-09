@@ -86,6 +86,14 @@ class SoundHost:
         except Exception:  # noqa: BLE001 - a sound never breaks a turn
             pass
 
+    def _sound_scheme_has(self, event_id: str) -> bool:
+        """Whether the scheme playing gives an event a sound. A scheme of your own made before
+        the event existed has none for it, nor has one where you chose None."""
+        try:
+            return sound_events.resolve(event_id, self._sound_scheme()) is not None
+        except Exception:  # noqa: BLE001 - a sound never breaks a turn
+            return False
+
     def _sound_hush_send(self, key: str) -> None:
         if self._sound_hushed_sends is None:
             self._sound_hushed_sends = set()
