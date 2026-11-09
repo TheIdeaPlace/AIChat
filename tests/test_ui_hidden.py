@@ -7822,14 +7822,28 @@ def test_settings_access_keys_are_all_different(frame, env, monkeypatch):
         dialog.Destroy()
 
 
+def test_turning_the_check_off_stops_the_one_still_waiting(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    frame._startup_update_check = wx.CallLater(60_000, lambda: None)
+    try:
+        monkeypatch.setattr(dialogs.SettingsDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(dialogs.SettingsDialog, "get_settings",
+                            lambda self: dataclasses.replace(self._original,
+                                                             check_updates_at_start=False))
+        frame.on_settings()
+        assert not frame._startup_update_check.IsRunning()
+        assert speech.SpeechSettings.load().check_updates_at_start is False
+    finally:
+        frame._startup_update_check.Stop()
+
+
 @pytest.mark.parametrize("on", [True, False])
-def test_startup_update_check_follows_the_setting(env, monkeypatch, on):
+def test_startup_update_check_follows_the_setting(env, on):
     from thechatplace.ui import main_frame
-    from thechatplace.updater import AVAILABLE, CheckResult
+    from thechatplace.updater import AVAILABLE, CURRENT, CheckResult
     saved = speech.SpeechSettings()
     saved.check_updates_at_start = on
     saved.save()
-    monkeypatch.setattr(main_frame, "UPDATE_CHECK_DELAY_MS", 50)
     updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
     store = OwnSessionStore(env["tmp"] / "own.json")
     window = main_frame.MainFrame(store=store, updates=updates, check_updates_at_start=True)
@@ -7837,18 +7851,26 @@ def test_startup_update_check_follows_the_setting(env, monkeypatch, on):
         # The first start after an update still says so either way.
         assert window._startup_update_notice.IsRunning()
         window._startup_update_notice.Stop()
+        timer = getattr(window, "_startup_update_check", None)
         if on:
-            assert pump(lambda: updates.calls == ["quiet check"] and not window._update_busy)
+            # Scheduled as the quiet check; run now rather than waiting for
+            # the timer, which a hidden window on a CI runner may not get.
+            assert timer.IsRunning()
+            timer.Stop()
+            assert timer.callable == window.check_for_updates and timer.args == (False,)
+            timer.callable(*timer.args)
+            assert pump(lambda: not window._update_busy)
+            assert updates.calls == ["quiet check"]
             assert window.status_parts.get("update").IsShown()
         else:
-            assert getattr(window, "_startup_update_check", None) is None
-            pump(lambda: False, timeout=0.5)
+            assert timer is None
             assert updates.calls == []
             assert not window.status_parts.get("update").IsShown()
-            # Help, Check for Updates still looks, and finds it.
+            # Help, Check for Updates still looks.
+            updates.result = CheckResult(CURRENT, "0.1.0", "0.1.0")
             window.check_for_updates(True)
             assert pump(lambda: not window._update_busy)
-            assert updates.calls[0] == "check"
+            assert updates.calls == ["check"]
     finally:
         window.stop_timers()
         window._pool.shutdown(wait=True)
