@@ -178,11 +178,14 @@ def test_every_copy_question_says_make_a_new_copy(monkeypatch):
     host.set_off(CodexTool("notes", "connected", (), False), True, lambda *a: None)
     host.set_off(CodexTool("gone", "removed", (), False, True), True, lambda *a: None)
     from thechatplace.ui.codex_extras import copy_note
-    note = " " + copy_note(tools=False)
-    assert asked[0].startswith("Make a new copy of this chat with notes on? Its tools can reach")
-    assert asked[0].endswith("so turn on only a tool you trust." + note)
-    assert asked[1] == "Make a new copy of this chat with notes off?" + note
-    assert asked[2] == "Make a new copy of this chat without gone? It's no longer in Codex's configuration." + note
+    note = copy_note(tools=False)
+    # The question comes last, as Branch's does (#602), so it's the last thing
+    # a screen reader says before the buttons.
+    assert asked[0] == (note + " A tool can reach websites and services outside this chat's folder, so "
+                        "turn on only a tool you trust. Make a new copy of this chat with notes on?")
+    assert asked[1] == note + " Make a new copy of this chat with notes off?"
+    assert asked[2] == ("gone is no longer in Codex's configuration. " + note
+                        + " Make a new copy of this chat without gone?")
     assert not any("Create" in text for text in asked)
 
 
@@ -211,10 +214,37 @@ def test_a_tools_copy_says_it_cant_change_files_without_asking(monkeypatch):
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
     host.set_off(CodexTool("notes", "off"), False, lambda *a: None)
     key = key_name("Ctrl+Shift+O")
-    assert asked[0].endswith(f"The new chat can't change files without asking, and doesn't keep the original's "
-                             f"model, effort or Chat Options. Change Permission Mode ({key}) lets it edit files.")
+    assert asked[0].startswith(f"The new chat can't change files without asking, and doesn't keep the "
+                               f"original's model, effort or Chat Options. Change Permission Mode ({key}) "
+                               f"lets it edit files. ")
     assert "connected tools" not in asked[0]
     assert said[-1] == ("Opened Chat (tools copy). " + copy_note(short=True) + " The original chat is kept.")
     assert said[-1] == (f"Opened Chat (tools copy). It can't change files without asking; Change Permission "
                         f"Mode ({key}) lets it edit. The original chat is kept.")
     assert opened and copy.forked_from == "Chat"
+
+
+def test_a_tools_copy_finished_after_the_dialog_closed_still_says_it(monkeypatch):
+    """Closing Connected Tools while the copy is made only saves it; that
+    message says what the copy can do too (#602)."""
+    wx = pytest.importorskip("wx")
+    from thechatplace.ui.codex_extras import copy_note
+    host = _host(True)
+    said, opened = [], []
+    copy = SimpleNamespace(title="Chat (tools copy)", forked_from=None)
+    host.frame.store.get = lambda *a, **k: host.record
+    host.frame.store.add = lambda record: None
+    host.frame._store_write = lambda write, record: True
+    host.frame._feedback = said.append
+    host.frame.open_session = opened.append
+    host.frame.refresh_sessions = lambda: None
+    host.frame.sessions = SimpleNamespace(copy_with_tools=lambda *a: copy)
+    jobs = []
+    host.frame._codex_work = lambda action, done: jobs.append((action, done))
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    host.set_off(CodexTool("notes", "off"), False, lambda *a: None)
+    host.close()
+    action, done = jobs.pop()
+    done(action(), None)
+    assert said[-1] == "Saved Chat (tools copy). No prompt was sent. " + copy_note(short=True)
+    assert opened == []

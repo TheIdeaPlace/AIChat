@@ -84,3 +84,34 @@ def test_codex_chat_options_note_names_no_mode_that_isnt_there():
     note = CODEX_CHAT_OPTIONS_NOTE + ' ' + CODEX_CHAT_OPTIONS_LATER_NOTE
     assert 'Folder edits' not in note and 'grant' not in note
     assert 'only when its permission mode lets it edit files' in note
+
+
+def _models():
+    from thechatplace.providers.codex_models import CodexModel
+    return [CodexModel('other', 'Other model', ('low',), 'low', False),
+            CodexModel('main', 'Main model', ('low', 'xhigh'), 'low', True)]
+
+
+def test_change_effort_offers_a_listed_models_own_efforts():
+    assert codex_extras.codex_effort_plan(_models(), 'other') == (_models()[0], False)
+
+
+def test_change_effort_on_codexs_default_offers_its_default_models_efforts():
+    # Refused before (#596); choosing an effort names that model (pinned).
+    assert codex_extras.codex_effort_plan(_models(), None) == (_models()[1], True)
+    assert codex_extras.codex_effort_plan(_models(), '') == (_models()[1], True)
+
+
+def test_change_effort_says_what_to_do_when_it_cant_offer_any():
+    said = codex_extras.codex_effort_plan(_models(), 'retired')
+    assert said.startswith("retired isn't in Codex's list of models now") and 'Change Model' in said
+    said = codex_extras.codex_effort_plan(_models()[:1], None)
+    assert "Codex didn't say which model is its default" in said and 'Change Model' in said
+    for said in (codex_extras.codex_effort_plan(_models(), 'retired'), codex_extras.codex_effort_plan([], None)):
+        assert 'available Codex model first' not in said
+
+
+def test_chat_options_during_a_turn_say_what_you_typed_is_kept():
+    wait = codex_extras.CHAT_OPTIONS_WAIT
+    assert 'still working' in wait and 'what you typed stays here' in wait
+    assert 'Wait until' not in wait

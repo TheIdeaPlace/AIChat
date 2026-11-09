@@ -91,7 +91,48 @@ def copy_note(*, short=False, tools=True):
             f"Change Permission Mode ({key}) lets it edit files.")
 
 
+def codex_effort_plan(models, model):
+    """Which model's efforts Change Effort offers for a Codex chat on
+    ``model`` (None: Codex's default), as ``(choice, pinned)``, or what to
+    say instead. A chat on Codex's default was refused, though New Session
+    offers its efforts (#596): it gets the efforts of the model Codex marks as
+    its default, and ``pinned`` says choosing one also names that model, as
+    Codex takes an effort only with a model. A model Codex no longer lists
+    can't be given an effort at all (codex_owned refuses it), so that's said
+    with what to do."""
+    if model:
+        chosen = next((m for m in models if m.model == model), None)
+        if chosen is not None:
+            return chosen, False
+        return (f"{model} isn't in Codex's list of models now, so its effort can't be changed. "
+                "Change Model, on the File menu, chooses another.")
+    chosen = next((m for m in models if m.is_default), None)
+    if chosen is None:
+        return ("Codex didn't say which model is its default, so its effort can't be changed. "
+                "Change Model, on the File menu, chooses a model.")
+    return chosen, True
+
+
+#: Said when OK is pressed in a Codex chat's Chat Options during a turn. The
+#: runtime changes a chat's settings only between turns (prepare_policy, a
+#: verified barrier: #184, #467), and a queued message goes the moment a turn
+#: ends, so the change can't wait to be made then; the dialog stays open with
+#: what you typed instead of losing it (#596).
+CHAT_OPTIONS_WAIT = ("Codex is still working in this chat, and Chat Options change only between "
+                     "turns. Press OK again once it has finished; what you typed stays here.")
+
+
 class CodexExtras:
+    def _codex_has_work(self, key):
+        """Whether a Codex chat has a turn running, a send on its way or
+        messages queued: what prepare_policy refuses a change during."""
+        from ..sessions import WORKING
+        if getattr(self, '_codex_send_pending', {}).get(key):
+            return True
+        state = self._codex_states.get(key)
+        return state is not None and bool(state.state == WORKING or state.outcome == 'inProgress'
+                                          or getattr(state, 'queued', ()) or getattr(state, 'requests', ()))
+
     def _codex_mark(self):
         """Where the keyboard is when a picker is asked for, for
         _codex_may_open once Codex has answered."""
@@ -203,7 +244,7 @@ class CodexExtras:
             dialog = ChatOptionsDialog(self, info.title, record.cwd,
                 options=ChatOptions(instructions=current.get('instructions') or ''),
                 folders=current.get('extra_roots', ()), provider='codex', existing=True,
-                feedback=self._feedback)
+                feedback=self._feedback, busy=lambda: CHAT_OPTIONS_WAIT if self._codex_has_work(info.key) else '')
             try:
                 if dialog.ShowModal() == wx.ID_OK:
                     prepare('prepare_chat_options', (dialog.options().instructions, dialog.chosen_folders()))
@@ -228,25 +269,36 @@ class CodexExtras:
                 return
             if not self._codex_may_open(mark, "Codex's models are"):
                 return
+            from ..ui_text import CODEX_DEFAULT
             model, effort = current.get('model'), current.get('effort')
             if what == 'model':
+                # Codex's default first, as in New Session, so a chat can go
+                # back to it: no model chosen, and its effort with it (#596).
+                values = [None, *models]
                 index = self._choose('Change Model', f'Model for {info.title}, from its next turn:',
-                    [m.label + (' (now)' if m.model == model else '') for m in models])
+                    [CODEX_DEFAULT + (' (now)' if not model else '')]
+                    + [m.label + (' (now)' if m.model == model else '') for m in models])
                 if index is None:
                     return
-                chosen = models[index]
-                model, effort = chosen.model, None
+                chosen = values[index]
+                model, effort = (chosen.model if chosen else None), None
             else:
-                chosen = next((m for m in models if m.model == model), None)
-                if chosen is None:
-                    self._feedback('Choose an available Codex model first.')
+                plan = codex_effort_plan(models, model)
+                if isinstance(plan, str):
+                    self._feedback(plan)
                     return
+                chosen, pinned = plan
                 values = [None, *chosen.efforts]
-                index = self._choose('Change Effort', f'Effort for {info.title}, from its next turn:',
+                on = f", on {chosen.label}, Codex's default model" if pinned else ''
+                index = self._choose('Change Effort', f'Effort for {info.title}{on}, from its next turn:',
                     effort_rows(values, effort))
                 if index is None:
                     return
                 effort = values[index]
+                # Codex takes an effort only with a model named, so a chat on
+                # Codex's default names the model that default is (#596).
+                if effort is not None and pinned:
+                    model = chosen.model
             prepare('prepare_settings', (model, effort))
         self._load_codex_models(loaded)
 

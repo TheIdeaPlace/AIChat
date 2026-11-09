@@ -424,6 +424,28 @@ def test_a_problem_arriving_during_a_setting_change_is_held_for_it(frame, env, m
     frame._codex_policy_pending.clear()
 
 
+def test_a_codex_retry_plays_service_trouble_once_with_what_is_said(frame, env, monkeypatch):
+    """A Claude chat's retry plays Service trouble with its words; a Codex
+    or Copilot one only spoke (#596). Once per retry said, not per update."""
+    from thechatplace import sound_events
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import WORKING
+    record = owned(frame, env)
+    said = []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    frame.speech.sounds_on = True
+    env['sounds'].clear()
+    retrying = CodexChatState(record.cli_session_id, WORKING, 'turn', 'inProgress', retry='Reconnecting, try 1 of 5.')
+    frame._on_codex_update(retrying)
+    frame._on_codex_update(replace(retrying))
+    assert said.count('Codex original: Reconnecting, try 1 of 5.') == 1
+    assert env['sounds'].count(sound_events.TROUBLE) == 1
+    frame._on_codex_update(replace(retrying, retry='Reconnecting, try 2 of 5.'))
+    assert env['sounds'].count(sound_events.TROUBLE) == 2
+
+
 def test_only_one_setting_change_at_a_time(frame, env, monkeypatch):
     record = owned(frame, env)
     calls = _change(frame, monkeypatch)
@@ -508,6 +530,107 @@ def test_the_effort_picker_names_codexs_default_and_reads_as_words(frame, env, m
     frame._change_codex_settings(record.to_info(), 'effort')
     assert offered == [('Change Effort', f'Effort for {record.title}, from its next turn:',
                         ["Codex's default", 'Low', 'Extra high'])]
+
+
+def _settings_sent(frame, monkeypatch, choose):
+    """Change Model and Change Effort with two models, the second Codex's
+    default: what each picker offered, and the (model, effort) sent."""
+    from thechatplace.providers.codex_models import CodexModel
+    _change(frame, monkeypatch)
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('other', 'Other model', ('low',), 'low', False),
+        CodexModel('main', 'Main model', ('low', 'xhigh'), 'low', True)], False))
+    offered, sent = [], []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k:
+                        offered.append((title, prompt, rows)) or choose)
+    def action(name, rec, *args):
+        sent.append((name, args))
+        raise ValueError('')
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    return offered, sent
+
+
+def test_change_model_can_go_back_to_codexs_default(frame, env, monkeypatch):
+    """Change Model listed only Codex's models, so a chat could never go back
+    to Codex's default, as Change Effort's first row does for effort (#596)."""
+    record = owned(frame, env)
+    offered, sent = _settings_sent(frame, monkeypatch, 0)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert offered == [('Change Model', f'Model for {record.title}, from its next turn:',
+                        ["Codex's default", 'Other model', 'Main model'])]
+    assert sent == [('prepare_settings', (None, None))]
+
+
+def test_change_model_marks_the_model_now(frame, env, monkeypatch):
+    record = owned(frame, env)
+    record.provider_options['model'] = 'main'
+    offered, sent = _settings_sent(frame, monkeypatch, 1)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert offered[0][2] == ["Codex's default", 'Other model', 'Main model (now)']
+    assert sent == [('prepare_settings', ('other', None))]
+
+
+@pytest.mark.parametrize('choose,model,effort', [(0, None, None), (2, 'main', 'xhigh')])
+def test_change_effort_works_on_codexs_default_model(frame, env, monkeypatch, choose, model, effort):
+    """Change Effort refused a chat on Codex's default model ("Choose an
+    available Codex model first"). It offers the efforts of the model Codex
+    says is its default, and an effort names that model, as Codex takes an
+    effort only with one (#596)."""
+    record = owned(frame, env)
+    record.provider_options.pop('model')
+    record.provider_options.pop('effort')
+    offered, sent = _settings_sent(frame, monkeypatch, choose)
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert offered == [('Change Effort', f"Effort for {record.title}, on Main model, Codex's default model, "
+                        'from its next turn:', ["Codex's default (now)", 'Low', 'Extra high'])]
+    assert sent == [('prepare_settings', (model, effort))]
+
+
+def test_change_effort_on_a_model_codex_no_longer_lists_says_what_to_do(frame, env, monkeypatch):
+    record = owned(frame, env)
+    record.provider_options['model'] = 'retired'
+    offered, sent = _settings_sent(frame, monkeypatch, 0)
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert not offered and not sent
+    assert env['feedback'][-1] == ("retired isn't in Codex's list of models now, so its effort can't be "
+                                   'changed. Change Model, on the File menu, chooses another.')
+
+
+def test_codex_chat_options_stay_open_with_what_you_typed_during_a_turn(frame, env, monkeypatch):
+    """OK in a Codex chat's Chat Options during a turn lost the edit: the
+    runtime changes settings only between turns. It stays open and says so,
+    and OK once the turn has finished goes on (#596)."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import IDLE, WORKING
+    from thechatplace.ui import dialogs
+    from thechatplace.ui.codex_extras import CHAT_OPTIONS_WAIT
+    record = owned(frame, env)
+    key = record.to_info().key
+    frame._codex_states[key] = CodexChatState(record.cli_session_id, WORKING, 'turn', 'inProgress')
+    _change(frame, monkeypatch)
+    calls = []
+
+    def action(name, rec, *args):
+        calls.append(name)
+        raise ValueError('')
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    results = []
+    real = dialogs.ChatOptionsDialog
+
+    def shown(self):
+        self.instructions.SetValue('Answer in French.')
+        self.on_ok()
+        results.append((self.instructions.GetValue(), env['feedback'][-1]))
+        frame._codex_states[key] = CodexChatState(record.cli_session_id, IDLE, 'turn', 'completed')
+        self.on_ok()
+        return wx.ID_OK
+    monkeypatch.setattr(real, 'ShowModal', shown)
+    ended = []
+    monkeypatch.setattr(dialogs, '_end_modal', lambda dialog, code: ended.append(code))
+    frame._change_codex_settings(record.to_info(), 'chat options')
+    assert results == [('Answer in French.', CHAT_OPTIONS_WAIT)]
+    assert ended == [wx.ID_OK]
+    assert calls == ['prepare_chat_options']
 
 
 @pytest.mark.parametrize('command, said', [('/memories on', 'Codex memories are on for Codex original.'),

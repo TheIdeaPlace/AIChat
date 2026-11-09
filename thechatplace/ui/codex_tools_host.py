@@ -236,12 +236,16 @@ class CodexConnectedTools:
         # Every tools copy is made read-only with approval on request, as
         # Rewind's and Branch's are (codex_runtime.copy_with_tools), so each
         # question says so, as theirs do. It keeps the tools you chose (#602).
-        consent = ('Make a new copy of this chat with ' + server.name + ' on? Its tools can reach '
-                   "websites and services outside this chat's folder, so turn on only a tool you "
-                   'trust.' if not off else
-                   'Make a new copy of this chat without ' + server.name + "? It's no longer in "
-                   "Codex's configuration." if server.missing else
-                   'Make a new copy of this chat with ' + server.name + ' off?') + ' ' + copy_note(tools=False)
+        # The question comes last, as Branch's does, so it's the last thing a
+        # screen reader says before the buttons. The tool's own warning comes
+        # after the note: a tool runs outside Codex's file rules.
+        note = copy_note(tools=False)
+        consent = (note + " A tool can reach websites and services outside this chat's folder, so "
+                   'turn on only a tool you trust. Make a new copy of this chat with ' + server.name
+                   + ' on?' if not off else
+                   server.name + " is no longer in Codex's configuration. " + note
+                   + ' Make a new copy of this chat without ' + server.name + '?' if server.missing else
+                   note + ' Make a new copy of this chat with ' + server.name + ' off?')
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                          self.dialog or self.frame) != wx.YES:
@@ -262,7 +266,8 @@ class CodexConnectedTools:
                 return
             if self.closed:
                 self.frame.refresh_sessions()
-                self.frame._feedback('Saved ' + copy.title + '. No prompt was sent.')
+                self.frame._feedback('Saved ' + copy.title + '. No prompt was sent. '
+                                     + copy_note(short=True))
                 return
             self.record, self.info = copy, copy.to_info()
             self.frame.open_session(self.info)

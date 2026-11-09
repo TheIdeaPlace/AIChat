@@ -50,7 +50,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+C | Copy the message's last code block |
 | Ctrl+Enter on a queued message | Send it now (Claude chats): Claude stops what it's doing and answers it |
 | Ctrl+Alt+Enter on a queued message | Steer it: into the running turn now, without stopping it |
-| Ctrl+Shift+Z on one of your messages | Rewind to Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here. A Codex copy can't change files without asking. The original chat is kept. Branch from Here, on a message's menu, starts a new chat from that point; in Codex it includes the whole turn containing that message |
+| Ctrl+Shift+Z on one of your messages | Rewind to Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't, and a Codex copy can't change files without asking. The original chat is kept. Branch from Here, on a message's menu, starts a new chat from that point; in Codex it includes the whole turn containing that message |
 | Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on Code Blocks for this message: read and copy each code block |
 | Ctrl+F, then F3 and Shift+F3 | Find a message containing some text (its whole text, not just the first line), then the next or previous one |
 | End | Newest message |
