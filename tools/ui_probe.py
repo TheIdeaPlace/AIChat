@@ -1292,11 +1292,15 @@ def d_codex_review_history(frame, env):
                             'approval_policy': 'on-request', 'approvals_reviewer': 'auto_review'})
     host = CodexPermissions(frame, record.to_info(), record)
     host.load = lambda done: done([], None)
-    host.native = lambda done: done('Recent automatic review decisions (oldest first):\n\n'
-        'Codex automatic review allowed the request.\nCommand: git status\nReason: Read the project status.\n\n'
-        'Codex automatic review denied the request.\nReason: Access was outside the requested task.')
+    from thechatplace.ui.permission_hosts import REVIEW_HISTORY_HEADING, review_history_text
+    # Oldest first, as the history is kept; Chat Permissions shows it newest first.
+    host.native = lambda done: done(review_history_text([
+        ('turn-1', 'review-1', 'Codex automatic review denied the request.\n'
+         'Reason: Access was outside the requested task.'),
+        ('turn-2', 'review-2', 'Codex automatic review allowed the request.\nCommand: git status\n'
+         'Reason: Read the project status.')]))
     dialog = ChatPermissionsDialog(frame, record.title, host)
-    wx.CallAfter(dialog.note.ShowPosition, dialog.note.GetValue().index('Recent automatic review decisions'))
+    wx.CallAfter(dialog.note.ShowPosition, dialog.note.GetValue().index(REVIEW_HISTORY_HEADING))
     return lambda: frame._modal(dialog)
 
 
@@ -1650,18 +1654,18 @@ def d_codex_commands(frame, env):
 
 
 def d_codex_collaboration(frame, env):
-    return lambda: frame._choose('Codex Collaboration Mode',
-        'Mode for Codex review, from its next turn:',
-        ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
+    from thechatplace.ui.codex_extras import PLAN_MODE_TITLE, PLAN_MODE_CHOICES
+    return lambda: frame._choose(PLAN_MODE_TITLE,
+        'Mode for Codex review, from its next turn:', list(PLAN_MODE_CHOICES))
 
 
 def d_codex_rewind(frame, env):
     from thechatplace.rewind import RewindPlan
     from thechatplace.transcript import ChatMessage, USER
+    from thechatplace.ui.codex_extras import REWIND_FILES_NOTE
     from thechatplace.ui.dialogs import RewindDialog
     message = ChatMessage(USER, 'Review the parser before editing it.', key='native-turn:user-message')
-    plan = RewindPlan('Codex review', message, 'native-turn',
-        files_problem='Codex conversation branching leaves files as they are. File checkpoints are not available here.')
+    plan = RewindPlan('Codex review', message, 'native-turn', files_problem=REWIND_FILES_NOTE)
     return lambda: frame._modal(RewindDialog(frame, plan))
 
 
@@ -2372,7 +2376,7 @@ SURFACES = {
     "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
-    "codex-collaboration": ("dialog", d_codex_collaboration, "Choose native Codex Plan or Default mode"),
+    "codex-collaboration": ("dialog", d_codex_collaboration, "Choose Codex Plan or Default mode"),
     "codex-rewind": ("dialog", d_codex_rewind, "Codex conversation rewind with files left unchanged"),
     "codex-attachments": ("window", s_codex_attachments, "Codex reply with image and document attachments"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,

@@ -28,6 +28,21 @@ CODEX_REVIEW_NOTE = ('Automatic approval review lets Codex review eligible reque
                      'The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply.')
 
 
+#: Chat Permissions' heading for a Codex chat's decision history. Not "your
+#: saved rules", which sat just below Codex's own "saved command rules" in the
+#: same text (#596).
+REVIEW_HISTORY_HEADING = ('Recent decisions made for you, by automatic review and by Allow for '
+                          'This Chat (newest first):')
+
+
+def review_history_text(reviews) -> str:
+    """The decisions ``review_history`` gives, ``(turn, identity, text)``
+    oldest first, as Chat Permissions shows them: newest first, the order
+    Lists' Approvals has (lists.approval_items), so the same history doesn't
+    read in two orders (#596)."""
+    return REVIEW_HISTORY_HEADING + '\n\n' + '\n\n'.join(row[2] for row in reversed(list(reviews)))
+
+
 class ClaudePermissions:
     can_remove = True
     empty_text = chat_permissions.EMPTY
@@ -189,8 +204,7 @@ class CodexPermissions:
                 if failed:
                     done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
                 elif reviews:
-                    done(text + '\n\nRecent approval decisions, from automatic review and your saved rules (oldest first):\n\n'
-                         + '\n\n'.join(row[2] for row in reviews))
+                    done(text + '\n\n' + review_history_text(reviews))
                 else:
                     done(text)
             self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)

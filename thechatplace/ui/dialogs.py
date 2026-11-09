@@ -5992,6 +5992,15 @@ CHAT_OPTIONS_NOTE = (
 NO_MORE_FOLDERS = "No more folders."
 #: Added for a chat that already exists.
 CHAT_OPTIONS_LATER_NOTE = "Changes apply from the chat's next message."
+#: A Codex chat's note. There's no "Folder edits mode": the folders are
+#: writable only under Change Permission Mode's "Can edit files" choices
+#: (#596).
+CODEX_CHAT_OPTIONS_NOTE = (
+    "Instructions are sent with each Codex turn. Codex can change files in these folders only "
+    "when its permission mode lets it edit files.")
+#: ...and once the chat has started.
+CODEX_CHAT_OPTIONS_LATER_NOTE = ("A folder you remove is left out of the next turn. Changes apply "
+                                 "when you choose OK.")
 
 
 class ChatOptionsDialog(wx.Dialog):
@@ -6071,9 +6080,8 @@ class ChatOptionsDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALL, 10)
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
-        note = ("Instructions are sent with each Codex turn. Additional folders are writable only "
-                "in Folder edits mode. Removing a folder removes that grant from the next turn. "
-                "Changes apply after you save these options." if provider == "codex" else
+        note = (CODEX_CHAT_OPTIONS_NOTE + (" " + CODEX_CHAT_OPTIONS_LATER_NOTE if existing else "")
+                if provider == "codex" else
                 CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)

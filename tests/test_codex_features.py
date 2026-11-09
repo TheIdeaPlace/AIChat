@@ -1124,9 +1124,9 @@ def test_goal_lines_say_what_was_not_reported():
 
 def test_a_terminal_that_had_already_ended_is_not_called_stopped():
     from thechatplace.providers.codex_features import terminal_stopped_text
-    assert terminal_stopped_text({'terminated': False}) == 'That terminal had already finished.'
-    assert terminal_stopped_text({'terminated': True}) == 'Codex terminal stopped.'
-    assert terminal_stopped_text({}) == 'Codex terminal stopped.'
+    assert terminal_stopped_text({'terminated': False}) == 'That background task had already finished.'
+    assert terminal_stopped_text({'terminated': True}) == 'Background task stopped.'
+    assert terminal_stopped_text({}) == 'Background task stopped.'
 
 
 def test_revert_is_no_longer_a_native_control():
