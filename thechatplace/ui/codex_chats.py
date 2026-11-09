@@ -374,19 +374,32 @@ class CodexChats(SoundHost, CodexExtras):
             self._feedback('Codex permissions are unavailable or already being changed.')
             after()
             return
-        from .permission_hosts import CODEX_REVIEW_MODES
-        choices = CODEX_REVIEW_MODES
-        current = (record.provider_options.get('sandbox', 'read-only'),
-                   record.provider_options.get('approval_policy', 'on-request'),
-                   record.provider_options.get('approvals_reviewer', 'user'))
+        from .permission_hosts import CODEX_REVIEW_MODES, CODEX_PLAN, CODEX_PLAN_LABEL, codex_mode_label
+        # Plan is offered here as Claude's is, and is the same saved mode as
+        # /plan's, so the two always agree (#596, decision 17).
+        choices = CODEX_REVIEW_MODES + [(CODEX_PLAN, CODEX_PLAN_LABEL)]
+        grant = (record.provider_options.get('sandbox', 'read-only'),
+                 record.provider_options.get('approval_policy', 'on-request'),
+                 record.provider_options.get('approvals_reviewer', 'user'))
+        in_plan = record.provider_options.get('collaboration') == CODEX_PLAN
+        current = CODEX_PLAN if in_plan else grant
+        plan_access = codex_mode_label(dict(record.provider_options, collaboration=None)) if in_plan else ''
         selected = self._change_setting('Change Permission Mode',
-            codex_permission_prompt(self, info.title, record.cwd),
+            codex_permission_prompt(self, info.title, record.cwd, plan_access),
             choices, current)
         if selected is None:
             after()
             return
-        if len(selected) == 2:
+        if isinstance(selected, tuple) and len(selected) == 2:
             selected += ('user',)
+        if selected == CODEX_PLAN:
+            action, arguments = 'prepare_mode', (CODEX_PLAN,)
+        elif in_plan and selected == grant:
+            action, arguments = 'prepare_mode', ('default',)
+        elif in_plan:
+            action, arguments = 'prepare_policy', selected + ('default',)
+        else:
+            action, arguments = 'prepare_policy', selected
         before_cwd, before_options = record.cwd, dict(record.provider_options)
         earlier = self._codex_states.get(info.key)
         earlier_problem = earlier.problem if earlier is not None else ''
@@ -426,12 +439,15 @@ class CodexChats(SoundHost, CodexExtras):
                 else:
                     self._codex_policy_pending.discard(info.key)
                     label = next(label for value, label in choices if value == selected)
-                    self._feedback(f'Codex permissions for {info.title}: {label}.')
+                    ended = ' Plan mode is off.' if in_plan and selected != CODEX_PLAN else ''
+                    self._feedback(f'Codex permissions for {info.title}: {label}.{ended}')
                 self._update_send_state()
+                if self._open is not None and self._open.key == info.key:
+                    self._update_heading()  # it says ", plan mode" (#596)
                 self.refresh_sessions()
                 after()
             self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
-        self._codex_work(lambda: self.sessions.owned_action('prepare_policy', record, *selected), prepared)
+        self._codex_work(lambda: self.sessions.owned_action(action, record, *arguments), prepared)
 
     def _prepare_codex_owned(self, generation):
         info = self._open

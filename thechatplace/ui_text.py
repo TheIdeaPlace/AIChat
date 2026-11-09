@@ -89,8 +89,8 @@ SHORTCUTS = [
         ("Ctrl+Shift+N", "Continue the selected chat from the desktop app, a terminal or "
                          "another app here, as a copy you can reply to (the original isn't "
                          "changed)"),
-        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access and "
-                         "approval reviewer, or Copilot agent mode, plan mode or Auto for the "
+        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access, "
+                         "approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the "
                          "selected (or loaded) Chat Place session (File, Change Effort and Change "
                          "Model are beside it)"),
         ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
@@ -146,10 +146,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude and Codex chats): start a new "
                                                  "chat just before it, with your message ready to change "
                                                  "and send. Claude can also restore files changed with "
-                                                 "its edit tools in chats started here; Codex doesn't, "
-                                                 "and a Codex copy can't change files without asking. "
-                                                 "The original "
-                                                 "chat is kept. Branch from Here, on a message's menu, "
+                                                 "its edit tools in chats started here; Codex doesn't. "
+                                                 "The new chat keeps the original's settings, and the "
+                                                 "original chat is kept. Branch from Here, on a message's menu, "
                                                  "starts a new chat from that point; in Codex it includes "
                                                  "the whole turn containing that message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",

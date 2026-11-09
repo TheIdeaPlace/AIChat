@@ -48,8 +48,11 @@ def test_new_owned_thread_pins_runtime_options_and_returns_fresh_store_records()
         'mcp_servers': {}, 'features': {'plugins': False, 'apps': False, 'goals': False}}
     record = lease.record()
     assert record.provider == 'codex' and record.started and record.created_ms == 100_000
-    record.provider_options['model'] = 'changed'
-    assert lease.record().provider_options['model'] == 'gpt-default'
+    # No model chosen: saved as none, so the chat follows Codex's default
+    # (#596, decision 19); Codex's own answer is still the proof's model.
+    assert 'model' not in record.provider_options and lease.model == 'gpt-default'
+    record.provider_options['sandbox'] = 'changed'
+    assert lease.record().provider_options['sandbox'] == 'read-only'
     assert 'turn/start' not in CodexLifecycleConnection.METHODS
 
 

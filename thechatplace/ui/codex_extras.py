@@ -52,11 +52,11 @@ PLAN_MODE_CHOICES = ['Default: carry out the task with this chat\'s permissions.
                      'Plan: discuss and produce a plan first.']
 
 #: Why Rewind can't put a Codex chat's files back, and what the new chat
-#: can do (#596, finding 4). The dialog shows it for Files only too, which
-#: makes no chat, so it says "a rewound chat", not "the new chat".
+#: keeps (#596, finding 4 and decision 3). The dialog shows it for Files
+#: only too, which makes no chat, so it says "a rewound chat", not "the new
+#: chat".
 REWIND_FILES_NOTE = ("Codex doesn't put files back, so only the conversation goes back. "
-                     "A rewound Codex chat can't change files without asking until you "
-                     "change its permission mode.")
+                     "A rewound Codex chat keeps the original's settings.")
 
 
 def effort_rows(values, now):
@@ -69,26 +69,21 @@ def effort_rows(values, now):
 
 
 def copy_note(*, short=False, tools=True):
-    """What a Codex copy (Rewind, Branch, Copy with Tool) can do. A copy is
-    made read-only with approval on request, so it can't change files
-    without asking, and The Chat Place gives it none of the original's model,
-    effort, Chat Options or connected tools (codex_runtime.fork). Only the
-    guide said so: someone who rewinds to retry an edit would find Codex
-    can't (#596). Whether copies should keep the original's settings instead
-    is Kelly's question (K3); this only says what's true now.
+    """What a Codex copy (Rewind, Branch, Copy with Tool) keeps: the
+    original's permission mode, model, effort, Plan mode and Chat Options,
+    and its connected tools unless it's a tools copy, as Claude's copies keep
+    theirs (codex_runtime._kept_settings; #596, decision 3). Copies used to
+    start read-only on Codex's defaults, which these notes said.
 
     ``short`` is for when the copy has opened, and is said once the window
-    is on it, so it names nothing of "this chat". The full note, for a
-    question asked before, says what the copy doesn't keep; ``tools=False``
-    leaves connected tools out of that, for a tools copy, which has the ones
-    you chose."""
-    from ..ui_text import key_name
-    key = key_name('Ctrl+Shift+O')
+    is on it, so it names nothing of "this chat". The full note is for a
+    question asked before; ``tools=False`` leaves connected tools out of it,
+    for a tools copy, which has the ones you chose."""
     if short:
-        return f"It can't change files without asking; Change Permission Mode ({key}) lets it edit."
-    kept = 'model, effort, Chat Options or connected tools' if tools else 'model, effort or Chat Options'
-    return (f"The new chat can't change files without asking, and doesn't keep the original's {kept}. "
-            f"Change Permission Mode ({key}) lets it edit files.")
+        return "It keeps the original's settings."
+    kept = ('permission mode, model, effort, Chat Options and connected tools' if tools
+            else 'permission mode, model, effort and Chat Options')
+    return f"The new chat keeps the original's {kept}."
 
 
 def codex_effort_plan(models, model):
@@ -274,10 +269,9 @@ class CodexExtras:
             if what == 'model':
                 # Codex's default first, as in New Session, so a chat can go
                 # back to it, and to its effort (#596). As in New Session, the
-                # chat is then saved on the model that default is now (Codex
-                # names it; CodexOwnedThread.record), and doesn't follow a later
-                # change of default, so the row names that model when Codex
-                # says which it is.
+                # chat then follows Codex's default at each turn (decision 19;
+                # codex_runtime._follow_default); the row names the model that
+                # default is now, when Codex says which it is.
                 default = next((m for m in models if m.is_default), None)
                 values = [None, *models]
                 index = self._choose('Change Model', f'Model for {info.title}, from its next turn:',
@@ -350,7 +344,8 @@ class CodexExtras:
             said = f'Opened {title}. {copy_note(short=True)} The original chat is kept.'
             self._feedback(said + (' Change your message and send when ready.' if before else ''))
         self._feedback(f'Creating {title}.')
-        self._codex_work(lambda: self.sessions.branch(info, title, anchor, before), created)
+        own = self.store.get(info.cli_session_id, provider='codex')
+        self._codex_work(lambda: self.sessions.branch(info, title, anchor, before, own=own), created)
 
     def _codex_commands(self, info, *, skills_only=False):
         mark = self._codex_mark()

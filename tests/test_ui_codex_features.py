@@ -26,8 +26,8 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     record = owned(frame, env)
     message = transcript_from_thread(history()).messages[0]
     calls, opened = [], []
-    def branch(info, title, anchor, before):
-        calls.append((info, title, anchor, before))
+    def branch(info, title, anchor, before, own=None):
+        calls.append((info, title, anchor, before, own))
         return OwnSession('new-copy', title, info.cwd, provider='codex')
     monkeypatch.setattr(frame.sessions, 'branch', branch)
     monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
@@ -36,21 +36,22 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     monkeypatch.setattr(RewindDialog, 'ShowModal', lambda self: wx.ID_OK)
     frame._branch_codex(record.to_info(), message, before=True)
     assert pump(lambda: opened)
-    assert calls[0][2:] == ('turn-1', True)
+    # The saved record goes along, so the copy keeps its settings even if
+    # the original isn't loaded (#596, decision 3).
+    assert calls[0][2:] == ('turn-1', True, record)
     assert opened[0].cli_session_id != record.cli_session_id
     assert frame._codex_drafts[opened[0].key] == 'Hi'
     assert frame.store.get(record.cli_session_id, provider='codex') is record
-    # The copy can't change files without asking, and says so, briefly, as it opens (#596).
-    assert env['feedback'][-1] == ("Opened Codex original (rewound). It can't change files without asking; "
-        f'Change Permission Mode ({key_name("Ctrl+Shift+O")}) lets it edit. The original chat is kept. '
-        'Change your message and send when ready.')
+    # The copy keeps the original's settings, and says so, briefly, as it opens (#596).
+    assert env['feedback'][-1] == ("Opened Codex original (rewound). It keeps the original's settings. "
+        'The original chat is kept. Change your message and send when ready.')
 
 
 def test_codex_branch_says_what_the_copy_can_do_before_and_after(frame, env, monkeypatch):
     record = owned(frame, env)
     message = transcript_from_thread(history()).messages[0]
     asked, opened = [], []
-    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before:
+    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before, own=None:
                         OwnSession('branch-copy', title, info.cwd, provider='codex'))
     monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
     monkeypatch.setattr(frame, 'open_session', opened.append)
@@ -754,3 +755,53 @@ def test_read_status_on_a_removed_server_says_what_is_wrong(frame, env, monkeypa
         assert told == [row.text()]
     finally:
         dialog.Destroy()
+
+
+def test_change_permission_mode_offers_plan_and_leaves_it_with_a_grant(frame, env, monkeypatch):
+    """Plan is in Change Permission Mode for Codex, as Claude's is, saved as
+    the mode /plan chooses; another row takes the chat out of it, with the
+    new grant in the same change (#596, decision 17)."""
+    from test_codex_runtime import policy_runtime
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+    from thechatplace.ui.permission_hosts import CODEX_PLAN, CODEX_PLAN_LABEL, CodexPermissions
+    service, connection, record = policy_runtime(env['tmp'])
+    original = connection.request
+    connection.request = lambda method, params: (
+        {'data': [{'name': 'Plan', 'mode': 'plan'}, {'name': 'Default', 'mode': 'default'}]}
+        if method == 'collaborationMode/list' else original(method, params))
+    frame.store.add(record)
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(connection, runtime=service)])
+    info = record.to_info()
+    asked, answers = [], [CODEX_PLAN, ('workspace-write', 'on-request', 'user')]
+    def change_setting(title, prompt, choices, now):
+        asked.append((prompt, choices, now))
+        return answers.pop(0)
+    monkeypatch.setattr(frame, '_selected_session', lambda: info)
+    monkeypatch.setattr(frame, '_change_setting', change_setting)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *args, **kwargs: None)
+    try:
+        frame.on_change_permission_mode()
+        assert pump(lambda: not frame._codex_policy_pending)
+        prompt, choices, now = asked[0]
+        assert choices[-1] == (CODEX_PLAN, CODEX_PLAN_LABEL) and now == ('read-only', 'on-request', 'user')
+        assert 'In Plan mode' not in prompt
+        saved = frame.store.get(record.cli_session_id, 'codex')
+        assert saved.provider_options['collaboration'] == 'plan'
+        assert saved.provider_options['sandbox'] == 'read-only'
+        assert env['feedback'][-1] == f'Codex permissions for {record.title}: {CODEX_PLAN_LABEL}.'
+        assert CodexPermissions(frame, info, saved).mode_text().endswith(', in Plan mode')
+        frame.on_change_permission_mode()
+        assert pump(lambda: not frame._codex_policy_pending)
+        prompt, _choices, now = asked[1]
+        assert now == CODEX_PLAN
+        assert 'In Plan mode, with file access: Read-only; asks before allowing changes.' in ' '.join(prompt.split())
+        saved = frame.store.get(record.cli_session_id, 'codex')
+        assert saved.provider_options['collaboration'] == 'default'
+        assert saved.provider_options['sandbox'] == 'workspace-write'
+        assert env['feedback'][-1].endswith('Can edit files in this folder; asks before anything else. '
+                                            'Plan mode is off.')
+        assert service.ready(saved)
+    finally:
+        service.close()

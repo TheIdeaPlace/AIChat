@@ -204,10 +204,12 @@ class SessionController:
             raise ValueError("This provider cannot continue this chat")
         return self._provider(source).fork_owned(source, title, **options)
 
-    def branch(self, source, title, turn_id, before=False):
+    def branch(self, source, title, turn_id, before=False, own=None):
+        """``own``: the source's saved record, so the copy can keep its
+        settings even if the chat isn't loaded (#596, decision 3)."""
         if not self.capabilities(source).branch:
             raise ValueError('This provider cannot branch this chat')
-        return self._provider(source).branch(source, title, turn_id, before)
+        return self._provider(source).branch(source, title, turn_id, before, own=own)
 
     def skills(self, session):
         return self._provider(session).skills(session)
@@ -218,8 +220,8 @@ class SessionController:
     def connected_tool_action(self, session, name, action, login_id=None):
         return self._provider(session).connected_tool_action(session, name, action, login_id)
 
-    def copy_with_tools(self, source, title, names, apps=()):
-        return self._provider(source).copy_with_tools(source, title, names, apps)
+    def copy_with_tools(self, source, title, names, apps=(), own=None):
+        return self._provider(source).copy_with_tools(source, title, names, apps, own=own)
 
     def session_tool_owner(self, caller):
         provider = self._providers.get('codex')

@@ -45,6 +45,12 @@ class CodexOwnedThread:
     instructions: str | None = None
     apps: tuple = ()
     session_tool_caller: str = field(default="", repr=False)
+    #: The model the chat asked for, which is what's saved; None is Codex's
+    #: default, followed at each turn (codex_runtime._follow_default), as
+    #: ``saved_effort`` is for effort. ``model`` is the one Codex reports and
+    #: each turn pins. Chats saved before 0.5 always named a model and keep it
+    #: (#596, decision 19).
+    saved_model: str | None = None
 
     @property
     def allowed_tools(self):
@@ -55,7 +61,9 @@ class CodexOwnedThread:
         # the runtime identity/configuration proof used by an executor.
         if self.ephemeral:
             raise ValueError("Ephemeral Codex chats cannot be saved for later resume")
-        options = {"model": self.model, "sandbox": self.policy.sandbox, "approval_policy": self.policy.approval}
+        options = {"sandbox": self.policy.sandbox, "approval_policy": self.policy.approval}
+        if self.saved_model is not None:
+            options["model"] = self.saved_model
         if self.policy.reviewer != 'user':
             options['approvals_reviewer'] = self.policy.reviewer
         if self.policy.workspace_root:
@@ -142,7 +150,7 @@ class CodexOwnedThreads:
             raise CodexRpcError('Saved Codex workspace scope could not be verified')
         self.verify_loaded(proof, empty=empty)
         return replace(proof, cwd=checked.cwd, model=checked.model, effort=checked.effort,
-                       saved_effort=checked.saved_effort,
+                       saved_effort=checked.saved_effort, saved_model=checked.saved_model,
                        policy=checked.policy, instructions=checked.instructions, title=record.title)
 
     def _require_mode(self, mode):
@@ -172,9 +180,10 @@ class CodexOwnedThreads:
             try:
                 self._require_mode(collaboration)
             except CodexFeatureError:
-                if method != 'thread/resume':
+                if method not in ('thread/resume', 'thread/fork'):
                     raise
-                # A saved mode must not lock a chat out on a Codex without it.
+                # A saved mode must not lock a chat out on a Codex without it,
+                # nor stop a copy that keeps the original's mode (#596).
                 # Choosing a mode (thread/start) still says it isn't available.
                 collaboration, unavailable_mode = None, collaboration
         if passive and (not ephemeral or sandbox != 'read-only' or approval_policy != 'never'):
@@ -304,7 +313,7 @@ class CodexOwnedThreads:
         created_ms = created * 1000 if type(created) is int and created >= 0 else 0
         proof = CodexOwnedThread(actual_id, policy.workspace_root or result["cwd"], result["model"], title,
                                  created_ms, self.connection, ephemeral, effective_effort, policy, mcp_servers, collaboration,
-                                 saved_effort=effort, unavailable_mode=unavailable_mode, instructions=instructions, session_tool_caller=caller, apps=apps)
+                                 saved_effort=effort, saved_model=model, unavailable_mode=unavailable_mode, instructions=instructions, session_tool_caller=caller, apps=apps)
         accept = getattr(self.connection, "_accept_owned_thread", None)
         if callable(accept) and not ephemeral:
             accept(proof)
@@ -319,7 +328,8 @@ class CodexOwnedThreads:
 
     def fork(self, source: SessionInfo, title, *, ephemeral=False, model=None, effort=None,
              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
-             last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), instructions=None, extra_roots=(), apps=()):
+             last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), instructions=None, extra_roots=(), apps=(),
+             collaboration=None, allow_retired=False):
         if (not isinstance(source, SessionInfo) or source.provider != "codex"
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
@@ -328,7 +338,8 @@ class CodexOwnedThreads:
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
                             last_turn_id=last_turn_id, before_turn_id=before_turn_id, passive=passive,
-                            mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps)
+                            mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps,
+                            collaboration=collaboration, allow_retired=allow_retired)
 
     @staticmethod
     def _saved_options(record):

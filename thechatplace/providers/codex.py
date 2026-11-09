@@ -689,8 +689,12 @@ class CodexProvider:
             options['approvals_reviewer'] = approvals_reviewer
         return self.runtime.fork(source, title, model=model, effort=effort, instructions=instructions, extra_roots=extra_roots, **options)
 
-    def prepare_policy_owned(self, record, sandbox, approval_policy, approvals_reviewer='user'):
-        return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer)
+    def prepare_policy_owned(self, record, sandbox, approval_policy, approvals_reviewer='user', mode=None):
+        """``mode``: Change Permission Mode's grant rows also take a chat out
+        of Plan ('default'), as its Plan row puts one in (#596, decision 17)."""
+        if mode is None:
+            return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer)
+        return self.runtime.prepare_policy(record, sandbox, approval_policy, approvals_reviewer, collaboration=mode)
 
     def prepare_chat_options_owned(self, record, instructions, folders):
         return self.runtime.prepare_chat_options(record, instructions, folders)
@@ -704,11 +708,11 @@ class CodexProvider:
     def feature_owned(self, record, method, arguments=None):
         return self.runtime.feature(record, method, arguments)
 
-    def branch(self, source, title, turn_id, before=False):
+    def branch(self, source, title, turn_id, before=False, own=None):
         self._check(source)
         if self.runtime is None:
             raise ValueError('Codex execution is unavailable')
-        return self.runtime.fork_at(source, title, turn_id, before)
+        return self.runtime.fork_at(source, title, turn_id, before, own=own)
 
     def skills(self, session):
         self._check(session)
@@ -772,11 +776,11 @@ class CodexProvider:
             return self.connected_tools(session)
         raise ValueError('Unknown connected tool action')
 
-    def copy_with_tools(self, source, title, names, apps=()):
+    def copy_with_tools(self, source, title, names, apps=(), own=None):
         self._check(source)
         if self.runtime is None or not source.is_own:
             raise ValueError('Open a Codex chat started here first')
-        return self.runtime.copy_with_tools(source, title, names, apps)
+        return self.runtime.copy_with_tools(source, title, names, apps, own=own)
 
     def finish_policy_owned(self, record, change, saved):
         if record.cli_session_id != change.proof.native_id:

@@ -538,7 +538,7 @@ def test_a_chat_on_a_retired_model_still_opens():
 def _retired_model_chat(tmp_path):
     """A chat on gpt-default, which the catalog has since stopped listing."""
     from test_codex_runtime import policy_runtime
-    service, connection, record = policy_runtime(tmp_path)
+    service, connection, record = policy_runtime(tmp_path, model='gpt-default')
     assert record.provider_options['model'] == 'gpt-default'
     original = connection.request
 

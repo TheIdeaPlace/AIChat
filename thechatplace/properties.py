@@ -91,13 +91,14 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,
                        now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
-                       subagent_count: Optional[int] = None) -> List[str]:
+                       subagent_count: Optional[int] = None, running_model: str = "") -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
     context window Claude Code reported for its model, 0 if none;
     ``subagent_count`` how many subagents' transcripts it has (#468), None
-    when that isn't known."""
+    when that isn't known; ``running_model`` the model a Codex chat is on
+    now, named for one that follows Codex's default (#596)."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
     name = info.provider_label or info.provider.capitalize()
@@ -129,7 +130,10 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Instructions for this chat: {instructions or 'none'}")
     if own is not None and info.provider == 'codex':
         options = own.provider_options
-        lines.append(f"Model chosen: {options.get('model') or CODEX_DEFAULT}")
+        # A chat on Codex's default follows it at each turn (#596, decision
+        # 19), so say which model that is now when Codex has said.
+        now = f' (now {running_model})' if running_model else ''
+        lines.append(f"Model chosen: {options.get('model') or CODEX_DEFAULT + now}")
         lines.append(f"Effort: {codex_effort_label(options['effort']) if options.get('effort') else CODEX_DEFAULT}")
         sandbox = options.get('sandbox', 'read-only')
         lines.append('Sandbox: ' + {'read-only': 'read-only', 'workspace-write': 'can edit files in its folder'}.get(sandbox, 'not reported'))
