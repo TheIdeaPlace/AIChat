@@ -11,6 +11,8 @@ import sys
 
 import wx
 
+from ..ui_text import key_name
+
 #: The first sentence of the note says what changing a tool does (#596).
 NOTE = ("In a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On "
         "or Off makes a new copy of the chat with that choice, and this chat stays as it is. "
@@ -30,12 +32,13 @@ COULD_NOT_SAY = 'Codex could not say.'
 
 
 def _press(label, platform=None):
-    """A button named for pressing: "Copy with Tool On (Alt+O)". A Mac's
-    buttons have no Alt mnemonic, so there it's the button's name alone."""
+    """Copy with Tool On or Off, named for pressing: "Copy with Tool On
+    (Alt+O)" (both labels have &O). A Mac's buttons have no Alt mnemonic, so
+    there it's the button's name alone."""
     name = label.replace('&', '')
-    if (platform or sys.platform) == 'darwin' or '&' not in label:
+    if (platform or sys.platform) == 'darwin':
         return name
-    return f"{name} (Alt+{label[label.index('&') + 1].upper()})"
+    return f"{name} ({key_name('Alt+O', platform)})"
 
 
 def _login_command(name):
