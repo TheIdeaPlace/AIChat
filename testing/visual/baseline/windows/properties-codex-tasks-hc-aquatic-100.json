@@ -60,8 +60,8 @@
     "Status: Working",
     "Started: 11 October 2026 at 14:05 (2 hours ago)",
     "Last activity: 11 October 2026 at 14:05 (2 hours ago)",
-    "Model chosen: configured Codex model",
-    "Effort: configured Codex effort",
+    "Model chosen: Codex's default",
+    "Effort: Codex's default",
     "Sandbox: read-only",
     "Approval policy: on request",
     "Approval reviewer: human"

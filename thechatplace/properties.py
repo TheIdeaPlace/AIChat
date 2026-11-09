@@ -22,7 +22,7 @@ from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_l
 from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, THINKING,
                          TOOL, USER, ChatMessage, Transcript)
 from . import tasklist, usage
-from .ui_text import codex_effort_label
+from .ui_text import CODEX_DEFAULT, codex_effort_label
 
 
 def _plural(count: int, word: str) -> str:
@@ -129,8 +129,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Instructions for this chat: {instructions or 'none'}")
     if own is not None and info.provider == 'codex':
         options = own.provider_options
-        lines.append(f"Model chosen: {options.get('model') or 'configured Codex model'}")
-        lines.append(f"Effort: {codex_effort_label(options['effort']) if options.get('effort') else 'configured Codex effort'}")
+        lines.append(f"Model chosen: {options.get('model') or CODEX_DEFAULT}")
+        lines.append(f"Effort: {codex_effort_label(options['effort']) if options.get('effort') else CODEX_DEFAULT}")
         sandbox = options.get('sandbox', 'read-only')
         lines.append('Sandbox: ' + {'read-only': 'read-only', 'workspace-write': 'can edit files in its folder'}.get(sandbox, 'not reported'))
         lines.append('Approval policy: ' + {'on-request': 'on request', 'never': 'never ask'}.get(options.get('approval_policy', 'on-request'), 'not reported'))

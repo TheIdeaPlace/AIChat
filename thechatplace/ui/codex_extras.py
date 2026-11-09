@@ -8,22 +8,23 @@ from ..transcript import USER, ASSISTANT
 from .dialogs import CommandPickerDialog, LinesDialog, RewindDialog, AskAsideDialog
 
 
+#: Ctrl+/ reads these aloud, so they're in a user's words: no "native" (#596).
 COMMANDS = (
     ('model', 'Choose the model for this chat from its next turn.'),
     ('reasoning', 'Choose reasoning effort for this chat from its next turn.'),
-    ('plan', 'Choose native Codex Plan mode or return to Default mode.'),
+    ('plan', 'Choose Plan mode, or go back to Default mode.'),
     ('compact', 'Compact this chat\'s context now.'),
-    ('goal', 'Read this chat\'s native goal and its usage.'),
-    ('goal pause', 'Pause the native goal; the current turn may finish.'),
-    ('goal clear', 'Clear the native goal.'),
+    ('goal', 'Read this chat\'s Codex goal and its usage.'),
+    ('goal pause', 'Pause the goal; the current turn may finish.'),
+    ('goal clear', 'Clear the goal.'),
     ('memories on', 'Allow this chat to use and contribute to Codex memories.'),
     ('memories off', 'Disable Codex memories for this chat.'),
-    ('background', 'List background terminals and stop one.'),
+    ('background', 'List background tasks and stop one.'),
     ('skills', 'Choose a Codex skill to include explicitly in the next message.'),
 )
 
 
-#: Each control's native call, and what's said while Codex is asked: these take
+#: Each control's call, and what's said while Codex is asked: these take
 #: seconds, and an unspoken wait sounds like a key that didn't work.
 CONTROLS = {
     '/compact': ('thread/compact/start', {}, 'Asking Codex to compact this chat.'),
@@ -32,8 +33,62 @@ CONTROLS = {
     '/goal clear': ('thread/goal/clear', {}, 'Asking Codex to clear the goal.'),
     '/memories on': ('thread/memoryMode/set', {'mode': 'enabled'}, 'Asking Codex to turn memories on.'),
     '/memories off': ('thread/memoryMode/set', {'mode': 'disabled'}, 'Asking Codex to turn memories off.'),
-    '/background': ('thread/backgroundTerminals/list', {}, "Getting Codex's background terminals."),
+    '/background': ('thread/backgroundTerminals/list', {}, "Getting this chat's background tasks."),
 }
+
+#: What's said once Codex has done a control with nothing to show: what is
+#: now so, not that Codex "accepted" a command (#596). ``{title}`` is the chat's.
+CONTROL_DONE = {
+    '/goal pause': 'Goal paused for {title}.',
+    '/goal clear': 'Goal cleared for {title}.',
+    '/memories on': 'Codex memories are on for {title}.',
+    '/memories off': 'Codex memories are off for {title}.',
+}
+
+#: The /plan picker. "Collaboration mode" is Codex's name inside; the guide
+#: and the release notes call it Plan mode (#596).
+PLAN_MODE_TITLE = 'Plan Mode'
+PLAN_MODE_CHOICES = ['Default: carry out the task with this chat\'s permissions.',
+                     'Plan: discuss and produce a plan first.']
+
+#: Why Rewind can't put a Codex chat's files back, and what the new chat
+#: can do (#596, finding 4). The dialog shows it for Files only too, which
+#: makes no chat, so it says "a rewound chat", not "the new chat".
+REWIND_FILES_NOTE = ("Codex doesn't put files back, so only the conversation goes back. "
+                     "A rewound Codex chat can't change files without asking until you "
+                     "change its permission mode.")
+
+
+def effort_rows(values, now):
+    """Change Effort's rows for a Codex chat: None is whatever Codex is set
+    to use, so it's named as Codex's, not "Configured effort", and the
+    others read as words ("Extra high", not "xhigh") (#596)."""
+    from ..ui_text import CODEX_DEFAULT, codex_effort_label
+    return [(CODEX_DEFAULT if v is None else codex_effort_label(v)) + (' (now)' if v == now else '')
+            for v in values]
+
+
+def copy_note(*, short=False, tools=True):
+    """What a Codex copy (Rewind, Branch, Copy with Tool) can do. A copy is
+    made read-only with approval on request, so it can't change files
+    without asking, and The Chat Place gives it none of the original's model,
+    effort, Chat Options or connected tools (codex_runtime.fork). Only the
+    guide said so: someone who rewinds to retry an edit would find Codex
+    can't (#596). Whether copies should keep the original's settings instead
+    is Kelly's question (K3); this only says what's true now.
+
+    ``short`` is for when the copy has opened, and is said once the window
+    is on it, so it names nothing of "this chat". The full note, for a
+    question asked before, says what the copy doesn't keep; ``tools=False``
+    leaves connected tools out of that, for a tools copy, which has the ones
+    you chose."""
+    from ..ui_text import key_name
+    key = key_name('Ctrl+Shift+O')
+    if short:
+        return f"It can't change files without asking; Change Permission Mode ({key}) lets it edit."
+    kept = 'model, effort, Chat Options or connected tools' if tools else 'model, effort or Chat Options'
+    return (f"The new chat can't change files without asking, and doesn't keep the original's {kept}. "
+            f"Change Permission Mode ({key}) lets it edit files.")
 
 
 class CodexExtras:
@@ -104,12 +159,13 @@ class CodexExtras:
             # Pending, as for a permission change (#385): a failure is said
             # once, by what's below, and not by the chat's update as well.
             self._codex_policy_pending.add(info.key)
-            self._feedback(f'Verifying the Codex {what}.')
+            self._feedback(f'Checking the new {what} with Codex.')
 
             def prepared(change, failed):
                 if failed:
                     self._codex_policy_pending.discard(info.key)
-                    self._feedback(change or f'Could not change the Codex {what}. The chat keeps its current one.')
+                    from ..ui_text import with_stop_key
+                    self._feedback(with_stop_key(change or f'Could not change the Codex {what}. The chat keeps its current one.'))
                     return
                 updated = change.record()
                 saved = self.store.get(record.cli_session_id, provider='codex') is record and self._store_write(self.store.update, record.cli_session_id,
@@ -120,10 +176,18 @@ class CodexExtras:
                 def finished(_result, problem):
                     self._codex_policy_pending.discard(info.key)
                     latched = getattr(self._codex_states.get(info.key), 'problem', '')
+                    from ..ui_text import with_stop_key
                     if latched and latched != earlier:
-                        self._feedback(latched)
+                        # The usual failure: the runtime latched what went
+                        # wrong, ending with what Stop does; the key is ours
+                        # to name (#596).
+                        self._feedback(with_stop_key(latched))
                     elif problem:
-                        self._feedback(f'Could not activate the Codex {what}. Use Stop to recheck this chat.')
+                        # Stop is the recheck (#385): with no turn running it
+                        # checks the chat with Codex again, so say why to
+                        # press it (#596).
+                        from ..providers.codex_runtime import STOP_TO_RECHECK
+                        self._feedback(with_stop_key(f"Codex didn't confirm the new {what}. " + STOP_TO_RECHECK))
                     elif not saved:
                         self._feedback(f'Could not save the Codex {what}. The chat keeps its current one.')
                     else:
@@ -148,8 +212,8 @@ class CodexExtras:
             return
         if what == 'mode':
             # Nothing to wait for, so this opens straight from the key press.
-            index = self._choose('Codex Collaboration Mode', 'Mode for ' + info.title + ', from its next turn:',
-                ['Default: carry out the task with this chat\'s permissions.', 'Plan: discuss and produce a plan first.'])
+            index = self._choose(PLAN_MODE_TITLE, 'Mode for ' + info.title + ', from its next turn:',
+                list(PLAN_MODE_CHOICES))
             if index is not None:
                 prepare('prepare_mode', (('default', 'plan')[index],))
             return
@@ -178,8 +242,8 @@ class CodexExtras:
                     self._feedback('Choose an available Codex model first.')
                     return
                 values = [None, *chosen.efforts]
-                index = self._choose('Change Effort', f'Reasoning effort for {info.title}:',
-                    [('Configured effort' if v is None else v) + (' (now)' if v == effort else '') for v in values])
+                index = self._choose('Change Effort', f'Effort for {info.title}, from its next turn:',
+                    effort_rows(values, effort))
                 if index is None:
                     return
                 effort = values[index]
@@ -200,16 +264,15 @@ class CodexExtras:
         draft = message.text if before else ''
         title = rewind.rewound_title(info.title) if before else rewind.branch_title(info.title)
         if before:
-            plan = rewind.RewindPlan(info.title, message, anchor,
-                files_problem='Codex conversation branching leaves files as they are. File checkpoints are not available here.')
+            plan = rewind.RewindPlan(info.title, message, anchor, files_problem=REWIND_FILES_NOTE)
             dialog = RewindDialog(self, plan, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return
             finally:
                 dialog.Destroy()
-        elif wx.MessageBox('The new Codex chat will include the whole turn containing this message. '
-                'Files stay as they are, and the original chat is kept. Branch here?',
+        elif wx.MessageBox('A new Codex chat will start with the whole turn containing this message, '
+                'and this chat is kept. ' + copy_note() + ' Branch here?',
                 'Branch from Here', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             return
 
@@ -226,8 +289,8 @@ class CodexExtras:
             self.open_session(record.to_info())
             self.refresh_sessions()
             self.reply_text.SetFocus()
-            self._feedback(f'Opened {title}. The original chat and its files are kept. '
-                           'Change your message and send when ready.' if before else f'Opened {title}.')
+            said = f'Opened {title}. {copy_note(short=True)} The original chat is kept.'
+            self._feedback(said + (' Change your message and send when ready.' if before else ''))
         self._feedback(f'Creating {title}.')
         self._codex_work(lambda: self.sessions.branch(info, title, anchor, before), created)
 
@@ -316,30 +379,39 @@ class CodexExtras:
                 # The end of the compaction is what gets said (_on_owned_update).
                 self._status(f'{info.title}: Codex is compacting its context.')
             else:
-                self._feedback('Codex accepted ' + command[1:] + ' for ' + info.title + '.')
+                self._feedback(CONTROL_DONE[command].format(title=info.title))
             self._refresh_chat()
         self._codex_work(lambda: self.sessions.owned_action('feature', record, method, args), done)
 
     def _codex_background(self, record, result, mark):
+        # "Background task" throughout, as File, Stop Background Task and a
+        # Claude chat say it: "terminal" sounded like a window (#596).
         rows = result.get('data', [])
         if not isinstance(rows, list) or not rows:
-            self._feedback('No background terminals are running in this Codex chat.')
+            self._feedback('No background tasks are running in this Codex chat.')
             return
         rows = [r for r in rows if isinstance(r, dict) and isinstance(r.get('processId'), str)]
         if not rows:
-            self._feedback('Codex did not return readable background terminal details.')
+            self._feedback('Codex did not return readable background task details.')
             return
-        if not self._codex_may_open(mark, "Codex's background terminals are"):
+        if not self._codex_may_open(mark, "This chat's background tasks are"):
             return
-        index = self._choose('Stop Background Task', 'Stop which Codex terminal?',
-            [str(r.get('command') or r['processId']) for r in rows])
-        if index is None or wx.MessageBox('Stop the selected terminal? The Codex turn and other terminals continue.',
+        names = [str(r.get('command') or r['processId']) for r in rows]
+        index = self._choose('Stop Background Task', f'Background tasks in {record.title}. Stop which?', names)
+        if index is None:
+            return
+        # The command, on one line and not too long to hear, as Claude's
+        # question names its task.
+        command = ' '.join(names[index].split())
+        command = command if len(command) <= 200 else command[:199] + '…'
+        if wx.MessageBox(f'Stop {command}? The turn and other '
+                'background tasks carry on.',
                 'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             return
-        self._feedback('Stopping the terminal.')
+        self._feedback('Stopping the background task.')
         self._codex_work(lambda: self.sessions.owned_action('feature', record,
             'thread/backgroundTerminals/terminate', {'processId': rows[index]['processId']}),
-            lambda result, error: self._feedback((result or 'Could not stop the terminal.')
+            lambda result, error: self._feedback((result or 'Could not stop the background task.')
                                                  if error else terminal_stopped_text(result)))
 
     def _codex_message(self, info, text):

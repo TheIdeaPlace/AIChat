@@ -3,11 +3,11 @@
  "class": "NewSessionDialog",
  "size": [
   1020,
-  930
+  968
  ],
  "client": [
   998,
-  874
+  912
  ],
  "dpi": [
   144,
@@ -172,7 +172,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "B&ranch (choose one, or type a new name):",
+   "label": "Branch (choose one, or type a new name):",
    "rect": [
     10,
     180,
@@ -210,10 +210,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Title:",
+   "label": "Start from:",
    "rect": [
     10,
     221,
+    86,
+    26
+   ],
+   "best": [
+    86,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Start from (for a new branch in a new worktree)",
+   "label": "",
+   "rect": [
+    349,
+    218,
+    639,
+    33
+   ],
+   "best": [
+    345,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "The remote's main branch, fetched first"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    262,
     37,
     26
    ],
@@ -232,7 +271,7 @@
    "label": "",
    "rect": [
     351,
-    220,
+    261,
     639,
     33
    ],
@@ -249,10 +288,10 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Mo&del:",
+   "label": "Model:",
    "rect": [
     10,
-    262,
+    303,
     56,
     26
    ],
@@ -271,27 +310,27 @@
    "label": "",
    "rect": [
     349,
-    259,
+    300,
     639,
     33
    ],
    "best": [
-    237,
+    159,
     33
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex model"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Effort:",
+   "label": "Effort:",
    "rect": [
     10,
-    303,
+    344,
     49,
     26
    ],
@@ -310,19 +349,19 @@
    "label": "",
    "rect": [
     349,
-    300,
+    341,
     639,
     33
    ],
    "best": [
-    230,
+    159,
     33
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex effort"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
@@ -330,7 +369,7 @@
    "label": "Permission m&ode:",
    "rect": [
     10,
-    344,
+    385,
     143,
     26
    ],
@@ -349,7 +388,7 @@
    "label": "",
    "rect": [
     349,
-    341,
+    382,
     639,
     33
    ],
@@ -364,12 +403,50 @@
    "value": "Can edit files in this folder; asks before anything else"
   },
   {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hat Options...",
+   "rect": [
+    349,
+    423,
+    150,
+    36
+   ],
+   "best": [
+    150,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "None chosen",
+   "rect": [
+    507,
+    428,
+    481,
+    26
+   ],
+   "best": [
+    105,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "About &permissions:",
    "rect": [
     10,
-    384,
+    469,
     155,
     26
    ],
@@ -388,19 +465,19 @@
    "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
-    412,
+    497,
     978,
-    218
+    168
    ],
    "best": [
     191,
-    218
+    208
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions are verified before sending. Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricte"
+   "value": "Codex uses your ChatGPT sign-in. Choose a model and effort level, or leave them on Codex's default. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions are verified before sending. Automatic approval review lets Codex review eligible requests instead of asking you. It can deny requests, and does not grant unrestricte"
   },
   {
    "class": "StaticText",
@@ -408,7 +485,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    638,
+    673,
     113,
     26
    ],
@@ -427,9 +504,9 @@
    "label": "",
    "rect": [
     12,
-    676,
+    711,
     978,
-    138
+    141
    ],
    "best": [
     191,
@@ -447,7 +524,7 @@
    "label": "&Start",
    "rect": [
     747,
-    830,
+    868,
     114,
     36
    ],
@@ -466,7 +543,7 @@
    "label": "Cancel",
    "rect": [
     871,
-    830,
+    868,
     114,
     36
    ],

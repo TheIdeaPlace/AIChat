@@ -280,6 +280,25 @@ def test_kept_folders_are_listed_after_rules_and_can_be_removed(tmp_path):
     assert seen[-1] == ([], None) and kept.allowed_tools == [] and kept.allowed_dirs == []
 
 
+def test_codex_decision_history_reads_newest_first_as_lists_does(tmp_path):
+    """#596: Chat Permissions and Lists' Approvals show the same history, so
+    in the same order, under a heading that doesn't say "saved rules"."""
+    from thechatplace import codex_saved_rules
+    from thechatplace.lists import approval_items
+    from thechatplace.ui.permission_hosts import REVIEW_HISTORY_HEADING
+    frame = Frame(tmp_path)
+    host, _record = _codex(tmp_path, frame)
+    kept = (("turn-1", "older", "Older decision."), ("turn-2", "newer", "Newer decision."))
+    frame.sessions.owned_action = lambda name, *args: kept
+    frame._load_codex_saved_rules = lambda folder, callback: callback(([], [], 0, ""), False)
+    listed = []
+    host.native(listed.append)
+    native = codex_saved_rules.describe([], [], 0, "")
+    assert listed == [native + "\n\n" + REVIEW_HISTORY_HEADING + "\n\nNewer decision.\n\nOlder decision."]
+    assert "newest first" in REVIEW_HISTORY_HEADING and "saved rules" not in REVIEW_HISTORY_HEADING
+    assert [item.detail for item in approval_items(kept)][0].startswith("Newer")
+
+
 def test_codex_file_failures_are_truthful_errors_even_without_safe_native_reason(tmp_path):
     frame = Frame(tmp_path)
     host, record = _codex(tmp_path, frame)

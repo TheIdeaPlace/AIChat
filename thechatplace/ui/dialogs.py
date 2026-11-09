@@ -21,7 +21,7 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import (choose_access_key, codex_effort_label, key_name, mark_access_key,
+from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, mark_access_key,
                        shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
@@ -919,7 +919,8 @@ class NewSessionDialog(wx.Dialog):
                     note = "This chat may still be working in Copilot CLI. " + note
                 self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
         elif provider == "codex":
-            self.model.Set(["Configured Codex model"] + [choice.label for choice in self._codex_models])
+            # "Codex's default", as Change Effort and Properties say it (#596).
+            self.model.Set([CODEX_DEFAULT] + [choice.label for choice in self._codex_models])
             self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
             self.model.Enable(bool(self._codex_models))
             self._on_codex_model()
@@ -929,7 +930,7 @@ class NewSessionDialog(wx.Dialog):
             self.mode.SetSelection(self._codex_choices[2])
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
-                "or leave the configured defaults. "
+                "or leave them on Codex's default. "
                 "Choose read-only or allow edits in this folder, with human or automatic approval review. "
                 "Human requests appear in Answer. Permissions are verified before sending. " + CODEX_REVIEW_NOTE + ' ' + self._saved_rules_note() +
                 (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
@@ -1020,7 +1021,7 @@ class NewSessionDialog(wx.Dialog):
             return
         index = self.model.GetSelection() - 1
         efforts = self._codex_models[index].efforts if 0 <= index < len(self._codex_models) else ()
-        self.effort_choice.Set(["Configured Codex effort"] + [codex_effort_label(value) for value in efforts])
+        self.effort_choice.Set([CODEX_DEFAULT] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
         self._sync_access_keys()
@@ -1059,7 +1060,7 @@ class NewSessionDialog(wx.Dialog):
             self._on_provider()
             if self.IsShown():
                 self._feedback("Codex model choices are available." if self._codex_models else
-                               "Codex model choices are unavailable. Configured defaults remain available.")
+                               "Codex model choices are unavailable. Codex's defaults remain available.")
 
 
 class GitHubRepoDialog(wx.Dialog):
@@ -6008,6 +6009,15 @@ CHAT_OPTIONS_NOTE = (
 NO_MORE_FOLDERS = "No more folders."
 #: Added for a chat that already exists.
 CHAT_OPTIONS_LATER_NOTE = "Changes apply from the chat's next message."
+#: A Codex chat's note. There's no "Folder edits mode": the folders are
+#: writable only under Change Permission Mode's "Can edit files" choices
+#: (#596).
+CODEX_CHAT_OPTIONS_NOTE = (
+    "Instructions are sent with each Codex turn. Codex can change files in these folders only "
+    "when its permission mode lets it edit files.")
+#: ...and once the chat has started.
+CODEX_CHAT_OPTIONS_LATER_NOTE = ("A folder you remove is left out of the next turn. Changes apply "
+                                 "when you choose OK.")
 
 
 class ChatOptionsDialog(wx.Dialog):
@@ -6087,9 +6097,8 @@ class ChatOptionsDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALL, 10)
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
-        note = ("Instructions are sent with each Codex turn. Additional folders are writable only "
-                "in Folder edits mode. Removing a folder removes that grant from the next turn. "
-                "Changes apply after you save these options." if provider == "codex" else
+        note = (CODEX_CHAT_OPTIONS_NOTE + (" " + CODEX_CHAT_OPTIONS_LATER_NOTE if existing else "")
+                if provider == "codex" else
                 CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
