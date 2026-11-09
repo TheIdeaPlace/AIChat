@@ -9,6 +9,11 @@ and runs in CI (#230).
     tools/orca_speech.sh                    run the steps, report, exit 1 on a failure
     tools/orca_speech.sh --record           say what each step spoke, check nothing
     tools/orca_speech.sh --json out.json    and save every step's speech
+    tools/orca_speech.sh --keep DIR         and keep Orca's debug log and the app's output
+
+Orca 46 took new objects for dead ones now and then, and said nothing about
+them, which failed a different step on each run; tools/orca-customizations.py
+puts that right, and the report says how often it did (#579).
 
 ``orca_speech.sh`` makes the session bus, virtual screen and accessibility bus
 and then runs ``check`` here. ``check`` starts Orca with a debug log, starts
@@ -332,9 +337,10 @@ STEPS = [
     # mode, with Copilot asking to run npm test and npm run lint already
     # allowed for the chat.
     # Orca 46 reads the row the focus lands on, not the list's name.
-    Step("a Copilot chat asks to run a command", [], trigger="copilot",
-         expect=["What changed"],
-         expect_dbus=["Copilot needs your answer", "npm test"]),
+    Step("a Copilot chat", [], trigger="copilot", expect=["What changed"]),
+    # Orca 46 says it too, from the window, as the chat is in front.
+    Step("it asks to run a command", [], trigger="copilot-asks",
+         expect=["Copilot needs your answer", "npm test"]),
     # Agent, marked "(now)", is selected; Auto is the third choice.
     # Orca 46 reads the choice the list starts on, not the dialog's title
     # (CI on #426: worth a look for the choice dialog in general).
@@ -626,9 +632,20 @@ def copilot_chat(frame, env) -> None:
     frame.refresh_sessions(force=True)
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None,
                   timeout=10)
-    now["state"] = dataclasses.replace(now["state"], state=NEEDS_YOU, turn_id="2",
-                                       outcome="inProgress", requests=(request,))
-    frame._on_owned_update("copilot", now["state"])
+    # Opened twice and refreshed, the messages were filled three times in
+    # half a second with the focus in them, which no one opening a chat
+    # does: Orca was often still on a row already replaced, and read none
+    # (#579). So the focus goes there again now that they're settled, as
+    # Ctrl+2 would, and Copilot asks in a step of its own ("copilot-asks").
+    frame.session_list.SetFocus()
+    fake_env.pump(lambda: False, timeout=0.3)
+    frame.focus_messages()
+
+    def asks():
+        now["state"] = dataclasses.replace(now["state"], state=NEEDS_YOU, turn_id="2",
+                                           outcome="inProgress", requests=(request,))
+        frame._on_owned_update("copilot", now["state"])
+    env["copilot_asks"] = asks
 
 
 #: What each step's trigger does in ``serve`` (Step.trigger).
@@ -645,6 +662,7 @@ TRIGGERS = {
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
     "copilot": copilot_chat,
+    "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
 }
 
 
@@ -770,18 +788,24 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
             log.mark()
         # The first step's speech is the app starting, from the mark made
         # before it was started.
+        started = time.time()
         if step.trigger:
             (world / f"{step.trigger}.trigger").write_text("", encoding="utf-8")
         press(step.keys)
         spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
+        took = time.time() - started
         said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
         missing = [] if record else [e for e in expect if not _found(e, said)]
         refused = [] if record else [r for r in step.refuse if _found(r, said)]
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
-                         "passed": not missing and not refused})
+                         "passed": not missing and not refused,
+                         "started": time.strftime("%H:%M:%S", time.localtime(started)),
+                         "seconds": round(took, 1)})
         # As it goes: a job that runs out of time keeps no report at the end.
+        # The time it started finds the step in Orca's debug log (--keep).
         print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
+              f"[{results[-1]['started']}, {took:.1f}s] "
               f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}", flush=True)
     return results
 
@@ -800,6 +824,18 @@ def report(results: List[dict], version: tuple, record: bool) -> str:
         failed = sum(not r["passed"] for r in results)
         lines += ["", f"{len(results) - failed} of {len(results)} steps passed."]
     return "\n".join(lines)
+
+
+def orca_corrections(log_path: Path) -> str:
+    """What tools/orca-customizations.py did in this run: how often Orca 46
+    took a live object for dead and was put right (#579)."""
+    text = log_path.read_text("utf-8", "replace") if log_path.exists() else ""
+    if "TCP #579: dead objects are asked again" not in text:
+        return ("Orca's dead objects weren't corrected: newer Orca checks them itself, and "
+                "Orca 46 needs tools/orca-customizations.py to have loaded.")
+    count = text.count("TCP #579: an object Orca had taken for dead answers")
+    return (f"Orca took a live object for dead {count} times, and was put right each time "
+            "(tools/orca-customizations.py, #579).")
 
 
 def check(args) -> int:
@@ -830,8 +866,15 @@ def check(args) -> int:
             orca.wait(10)
         except subprocess.TimeoutExpired:
             orca.kill()
+    if args.keep:
+        keep = Path(args.keep)
+        keep.mkdir(parents=True, exist_ok=True)
+        for source in (log_path, work / "app.log"):
+            if source.exists():
+                shutil.copy(source, keep / source.name)
     text = report(results, version, args.record)
     print(text)
+    print(orca_corrections(log_path))
     if args.json:
         Path(args.json).write_text(json.dumps({"orca": list(version), "steps": results},
                                               indent=2), encoding="utf-8")
@@ -853,6 +896,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     c.add_argument("--record", action="store_true", help="report what was said, check nothing")
     c.add_argument("--json", help="save every step's speech here")
     c.add_argument("--orca-log", help="Orca's debug log (default: a temporary file)")
+    c.add_argument("--keep", help="copy Orca's debug log and the app's output here")
     args = parser.parse_args(argv)
     if args.command == "serve":
         return serve(Path(args.root))

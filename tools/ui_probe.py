@@ -2703,7 +2703,12 @@ def _orca_audit(window, out: Path, stem: str) -> dict:
                                 "--json", str(result_path)])
     end = time.time() + 30
     while process.poll() is None and time.time() < end:
-        _pump(0.05)
+        # Every question the audit asks waits for this loop to answer it, a
+        # few for each control: _pump's 20 ms sleep made each audit take
+        # about 2.4 seconds, and the whole run over 10 minutes (#579).
+        wx.GetApp().ProcessPendingEvents()
+        wx.YieldIfNeeded()
+        time.sleep(0.001)
     if process.poll() is None:
         process.kill()
         return {"error": "the audit didn't finish", "controls": [], "unnamed": []}
