@@ -126,7 +126,7 @@ def test_rewind_both_restores_files_and_branches_before_the_message(frame, env, 
     assert pump(lambda: calls and any("restored" in f for f in env["feedback"]))
     assert calls == [("own-rw", parts["second"]["uuid"], str(folder), 1)]
     assert frame.store.get("own-rw") is not None  # the original is kept
-    assert pump(lambda: "branch of Fixes" in frame.chat_list.GetString(0))
+    assert pump(lambda: "new copy of Fixes" in frame.chat_list.GetString(0))
     # Nothing ran until Send; then the copy is made, cut where chosen.
     assert fake_runner.instances == []
     frame.on_send()
@@ -228,7 +228,7 @@ def test_without_checkpoints_files_are_unavailable(frame, env, fake_runner, monk
     assert seen["default"] == rewind.CONVERSATION
     assert seen["labels"] == ["Conversation and files (unavailable)", "Conversation only",
                               "Files only (unavailable)"]
-    assert "no file checkpoints" in env["boxes"][-1]
+    assert "no saved copies of your files" in env["boxes"][-1]
     assert calls == [] and frame._open.cli_session_id == "own-rw"
 
 
@@ -263,6 +263,9 @@ def test_rewind_a_desktop_session_branches_but_leaves_files(frame, env, fake_run
     frame.on_rewind_to_here()
     assert seen["default"] == rewind.CONVERSATION
     assert "Claude desktop app session" in seen["happens"]
+    # Where it works, not how (#596).
+    assert "Files can be put back only for chats started in The Chat Place" in seen["happens"]
+    assert "writes to the chat" not in seen["happens"]
     own = frame.store.get(frame._open.cli_session_id)
     assert (own.fork_source, own.fork_at) == ("cli-c", "sys-1")
     assert (own.model, own.permission_mode) == ("", "auto")  # as Continue Here starts
@@ -356,10 +359,10 @@ def test_rewind_dialog_names_its_controls_and_says_what_happens(frame, env):
         assert "Fixes (rewound)" in dialog.happens.GetValue()
         dialog.what.SetSelection(2)
         dialog._describe()
-        assert "no file checkpoints" in dialog.happens.GetValue()
+        assert "no saved copies of your files" in dialog.happens.GetValue()
         dialog._go()
         assert dialog.choice == ""  # stays open, and says why
-        assert "no file checkpoints" in env["boxes"][-1]
+        assert "no saved copies of your files" in env["boxes"][-1]
         dialog.what.SetSelection(1)
         dialog._go()
         assert dialog.choice == rewind.CONVERSATION
