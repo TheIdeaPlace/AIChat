@@ -5197,6 +5197,157 @@ def test_a_codex_question_s_tab_stops_include_its_preview(frame):
         dialog.Destroy()
 
 
+def _enter_presser(dialog, monkeypatch):
+    """press(focus, ...) -> True when the dialog's key hook took the key.
+    Closing is recorded in ``closed`` rather than done."""
+    closed = []
+
+    def press(focus, shift=False, control=False, alt=False, key=wx.WXK_RETURN):
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(key)
+        event.SetShiftDown(shift)
+        event.SetControlDown(control)
+        event.SetAltDown(alt)
+        dialog._on_char_hook(event)
+        return not event.GetSkipped()
+    monkeypatch.setattr(dialog, "EndModal", lambda code: closed.append(code))
+    return press, closed
+
+
+def test_shift_enter_starts_a_new_line_in_an_own_answer_and_enter_sends(frame, monkeypatch):
+    """Shift+Enter in a question's own answer starts a new line, as in the
+    reply box; it used to send the answers, as Windows presses the default
+    button for it in a one-line box. Enter and Ctrl+Enter still send."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, multi, _t2), (_k3, _third, t3), (_k4, fourth, _t4) = dialog._controls
+        assert t1.IsMultiLine() and not t1.HasFlag(wx.TE_PROCESS_TAB)
+        # Plain, not rich: a rich box gives UI Automation "RichEdit Control"
+        # as its name rather than this one.
+        assert not t1.HasFlag(wx.TE_RICH2) and not t1.HasFlag(wx.TE_RICH)
+        assert t1.GetName() == "One: your own answer"
+        assert dialog._answer_boxes == [t for _k, _c, t in dialog._controls]
+        press, closed = _enter_presser(dialog, monkeypatch)
+        # Shift+Enter goes on to the box, which starts the line itself (as
+        # typed, so it's echoed); nothing is sent.
+        assert not press(t1, shift=True) and not closed
+        t1.SetValue("Green\nwith stripes")
+        assert first[-1].GetValue()  # typing chose Other
+        multi[0].SetValue(True)
+        t3.SetValue("Third")
+        fourth[0].SetValue(True)
+        assert press(t1) and closed == [wx.ID_OK]  # Enter sends, through Send Answers
+        assert press(t3, control=True) and len(closed) == 2  # and Ctrl+Enter
+        assert press(t1, key=wx.WXK_NUMPAD_ENTER) and len(closed) == 3
+        # The lines reach the answer; Claude's is tidied a line at a time.
+        t1.SetValue("  Green   and\n\n with   stripes \n")
+        assert dialog.answers()["First?"] == "Green and\n\nwith stripes"
+        # Several choices are joined with commas; an answer of several lines
+        # starts on a line of its own rather than after a comma.
+        _t2.SetValue("Fast\nthen slow")
+        assert multi[0].GetValue() and multi[-1].GetValue()  # M, and Other by typing
+        assert dialog.answers()["Second?"] == "M\nFast\nthen slow"
+        _t2.SetValue("Fast")
+        assert dialog.answers()["Second?"] == "M, Fast"
+        # Enter anywhere else, Alt+Enter and other keys are left to the system.
+        assert not press(first[0])
+        assert not press(dialog.question_text)
+        assert not press(t1, alt=True)
+        assert not press(t1, key=ord("A"))
+        assert len(closed) == 3
+    finally:
+        dialog.Destroy()
+
+
+def test_a_secret_answer_stays_one_line(frame, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import QuestionDialog
+    request = SimpleNamespace(questions=lambda: [
+        {"id": "pin", "header": "PIN", "question": "Your PIN?", "isOther": True,
+         "isSecret": True, "options": []},
+        {"id": "note", "header": "Note", "question": "Anything else?", "isOther": True,
+         "options": []}])
+    dialog = QuestionDialog(frame, "Probe", request, provider="Codex")
+    try:
+        ((_k1, _c1, pin), (_k2, _c2, note)) = dialog._controls
+        assert pin.HasFlag(wx.TE_PASSWORD) and not pin.IsMultiLine()
+        assert dialog._answer_boxes == [note] and note.IsMultiLine()
+        press, closed = _enter_presser(dialog, monkeypatch)
+        beeps = []
+        monkeypatch.setattr(wx, "Bell", lambda: beeps.append(1))
+        # Shift+Enter in the one-line secret box is taken, so Windows doesn't
+        # press Send Answers for it; it beeps. Enter still goes on to send.
+        assert press(pin, shift=True) and not closed and beeps == [1]
+        assert not press(pin) and beeps == [1]
+        # Codex's answer goes exactly as typed, its lines and all.
+        note.SetValue("First line\nSecond line")
+        pin.SetValue("1234")
+        assert dialog.answers() == {"pin": "1234", "note": "First line\nSecond line"}
+    finally:
+        dialog.Destroy()
+
+
+def test_shift_enter_starts_a_new_line_in_a_plan_s_note(frame, monkeypatch):
+    from thechatplace.ui.dialogs import PlanDialog
+
+    class Plan:
+        def plan(self):
+            return "# Plan\n1. Go"
+    dialog = PlanDialog(frame, "Probe", Plan(), [("acceptEdits", "Accept edits")], "acceptEdits")
+    try:
+        note = dialog.note
+        assert note.IsMultiLine() and not note.HasFlag(wx.TE_PROCESS_TAB)
+        assert note.GetName() == "What to change (for Keep Planning)"
+        assert dialog.GetDefaultItem() is dialog.keep_button
+        press, closed = _enter_presser(dialog, monkeypatch)
+        assert not press(note, shift=True) and not closed  # the box's own new line
+        note.SetValue("Fewer steps\nand tests first\n")
+        assert dialog.note_text() == "Fewer steps\nand tests first"
+        assert press(note) and closed == [wx.ID_OK] and not dialog.approved  # Keep Planning
+        assert press(note, control=True) and len(closed) == 2 and not dialog.approved
+        assert not press(dialog.plan_text) and not press(dialog.mode)
+        assert len(closed) == 2
+    finally:
+        dialog.Destroy()
+
+
+def test_shift_enter_starts_a_new_line_in_a_reason_for_deny(frame, monkeypatch):
+    from thechatplace.ui.dialogs import DENY, PermissionDialog
+    dialog = PermissionDialog(frame, "Hub probe", _request(tool="WebFetch",
+                                                           tool_input={"url": "https://x"}))
+    try:
+        reason = dialog.reason
+        assert reason.IsMultiLine() and not reason.HasFlag(wx.TE_PROCESS_TAB)
+        assert reason.GetName() == "Reason to give Claude if you deny (optional)"
+        press, closed = _enter_presser(dialog, monkeypatch)
+        assert not press(reason, shift=True) and not closed  # the box's own new line
+        reason.SetValue("Not that site\nuse the docs")
+        assert dialog.reason_text() == "Not that site\nuse the docs"
+        assert press(reason) and closed == [wx.ID_OK] and dialog.choice == DENY
+        assert not press(dialog.request_text) and len(closed) == 1
+    finally:
+        dialog.Destroy()
+
+
+def test_a_multi_line_answer_reaches_claude(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    request = _request("q1", "AskUserQuestion", {"questions": [
+        {"question": "Which color?", "header": "Color", "options": [{"label": "Red"}]}]})
+    runner = _waiting_turn(frame, request)
+
+    class Answers(dialogs.QuestionDialog):
+        def ShowModal(self):
+            ((_kind, _controls, other_text),) = self._controls
+            other_text.SetValue("Green\nwith stripes")
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.QuestionDialog", Answers)
+    frame.on_answer()
+    assert runner.responses[0][1]["updatedInput"]["answers"] == {
+        "Which color?": "Green\nwith stripes"}
+
+
 def test_settings_reading_messages_options_follow_their_group_box(frame):
     from thechatplace.ui.dialogs import SettingsDialog
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())

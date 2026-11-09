@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     1050,
-    753
+    837
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1149,7 +1149,7 @@
    "class": "QuestionDialog",
    "size": [
     1050,
-    788
+    830
    ],
    "capture": "PrintWindow",
    "problems": [],

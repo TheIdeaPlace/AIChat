@@ -79,6 +79,20 @@ def test_question_card_and_answer_read_as_words():
     assert visible[1].list_line() == "You answered: Which colour? — Red"
 
 
+def test_an_answer_of_several_lines_is_indented_under_its_question():
+    """An answer typed with Shift+Enter (#591): its later lines are indented,
+    so none stands alone with no question in front of it."""
+    tr = parse_lines(lines(
+        assistant_block(tool_use_block("AskUserQuestion", {"questions": []}, "toolu_q"), "msg_1"),
+        tool_result("toolu_q", "Your questions have been answered.",
+                    toolUseResult={"questions": [], "answers": {
+                        "Which colour?": "Green\nwith stripes", "Size?": "Small"}}),
+    ))
+    answer = tr.visible()[-1]
+    assert answer.kind == t.ANSWER
+    assert answer.text == "Which colour? — Green\n    with stripes\nSize? — Small"
+
+
 def test_question_answer_falls_back_to_result_text():
     tr = parse_lines(lines(
         assistant_block(tool_use_block("AskUserQuestion", {"questions": "bad"}, "q"), "m"),

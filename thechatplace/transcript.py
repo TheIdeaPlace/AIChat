@@ -1012,7 +1012,11 @@ def _format_answers(tool_use_result, fallback: str) -> str:
     if isinstance(tool_use_result, dict):
         answers = tool_use_result.get("answers")
         if isinstance(answers, dict) and answers:
-            return "\n".join(f"{q} — {a}" for q, a in answers.items())
+            # An answer of several lines (Shift+Enter, #591) has its later
+            # lines indented under it, so none reads as a line on its own
+            # with no question in front of it.
+            return "\n".join(f"{q} — " + "\n    ".join(str(a).splitlines() or [""])
+                             for q, a in answers.items())
     text = fallback.strip()
     prefix = "Your questions have been answered:"
     if text.startswith(prefix):

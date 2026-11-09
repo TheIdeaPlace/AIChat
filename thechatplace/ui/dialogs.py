@@ -2060,6 +2060,17 @@ def _read_only_text(parent, value: str, name: str, min_height: int = 160,
     return text
 
 
+#: A box to type an answer in, of a few lines (answer_box_key). A plain
+#: multi-line edit box, not a rich one: Windows' rich edit box gives UI
+#: Automation its own name ("RichEdit Control") instead of the name
+#: set_accessible_name gives it, and these boxes have no label just before
+#: them for it to take one from. The plain box's name comes from MSAA, as the
+#: one-line box's did.
+ANSWER_BOX_STYLE = wx.TE_MULTILINE
+#: How tall it is, in design pixels: two or three lines.
+ANSWER_BOX_HEIGHT = 50
+
+
 class PermissionDialog(wx.Dialog):
     """Claude wants to use a tool: Allow, Allow for This Chat, Deny.
 
@@ -2078,7 +2089,10 @@ class PermissionDialog(wx.Dialog):
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Reason to give Claude if you deny (optional):"),
                   0, wx.LEFT, 8)
-        self.reason = wx.TextCtrl(self)
+        # A few lines: Shift+Enter starts a new one, Enter still presses Deny
+        # (answer_box_key).
+        self.reason = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
+        self.reason.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
         set_accessible_name(self.reason, "Reason to give Claude if you deny (optional)")
         sizer.Add(self.reason, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -2104,7 +2118,13 @@ class PermissionDialog(wx.Dialog):
         for button_id, choice in ((ID_ALLOW, ALLOW), (ID_ALLOW_SESSION, ALLOW_SESSION),
                                   (ID_DENY, DENY)):
             self.Bind(wx.EVT_BUTTON, lambda e, c=choice: self._choose(c), id=button_id)
+        self.deny_button = deny
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         wx.CallAfter(self.request_text.SetFocus)
+
+    def _on_char_hook(self, event):
+        if not answer_box_key(event, [self.reason], self.deny_button):
+            event.Skip()
 
     def _choose(self, choice: str):
         self.choice = choice
@@ -2520,6 +2540,8 @@ class QuestionDialog(wx.Dialog):
         self._questions = request.questions()
         self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
+        self._answer_boxes = []  # the multi-line Other boxes (answer_box_key)
+        self._one_line_boxes = []  # the secret ones (shift_enter_in_one_line_box)
         self._previews = {}  # option control -> its preview
         self.preview_text = None
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -2583,7 +2605,16 @@ class QuestionDialog(wx.Dialog):
                 other.Bind(wx.EVT_SET_FOCUS, self._on_option_focus)
                 controls.append(other)
                 box.Add(other, 0, wx.ALL, 4)
-                other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD if question.get("isSecret") else 0)
+                # A few lines, so an answer can have more than one: Shift+Enter
+                # starts a new line, Enter still sends (answer_box_key). A
+                # secret stays one line, as a password box.
+                if question.get("isSecret"):
+                    other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD)
+                    self._one_line_boxes.append(other_text)
+                else:
+                    other_text = wx.TextCtrl(parent_window, style=ANSWER_BOX_STYLE)
+                    other_text.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
+                    self._answer_boxes.append(other_text)
                 other_text._preserve_answer = provider == "Codex"
                 set_accessible_name(other_text, f"{header}: your own answer")
                 box.Add(other_text, 0, wx.EXPAND | wx.ALL, 4)
@@ -2714,6 +2745,9 @@ class QuestionDialog(wx.Dialog):
         set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
+        if (answer_box_key(event, self._answer_boxes, self._buttons[0])
+                or shift_enter_in_one_line_box(event, self._one_line_boxes)):
+            return
         focus = wx.Window.FindFocus()
         if (event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown()
                 and not event.AltDown() and self._tab_from(focus, not event.ShiftDown())):
@@ -2763,17 +2797,28 @@ class QuestionDialog(wx.Dialog):
             if not control.GetValue():
                 continue
             if control._hub_label == OTHER:
+                # Claude's is tidied, a line at a time: the lines typed with
+                # Shift+Enter stay lines. Codex's goes as typed.
                 typed = (other_text.GetValue() if getattr(other_text, "_preserve_answer", False)
-                         else " ".join(other_text.GetValue().split()))
+                         else "\n".join(" ".join(line.split())
+                                        for line in other_text.GetValue().splitlines()).strip())
                 if typed:
                     chosen.append(typed)
             else:
                 chosen.append(control._hub_label)
-        return ", ".join(chosen)
+        # Choices are joined with commas; an answer of several lines goes on
+        # lines of its own, rather than starting after a comma (#591).
+        joined = ""
+        for item in chosen:
+            if joined:
+                joined += "\n" if "\n" in item or "\n" in joined else ", "
+            joined += item
+        return joined
 
     def answers(self):
         """{question text: answer} as Claude Code expects it; several
-        choices are joined with commas."""
+        choices are joined with commas, and an answer of several lines
+        starts a line of its own."""
         return {question[self._answer_key]: self._answer_for(controls, other_text)
                 for (_kind, controls, other_text), question
                 in zip(self._controls, self._questions)}
@@ -2805,8 +2850,11 @@ class PlanDialog(wx.Dialog):
         self.mode.SetSelection(values.index(default_mode) if default_mode in values else 0)
         grid.Add(self.mode, 1, wx.EXPAND)
         grid.Add(wx.StaticText(self, label="&What to change (for Keep Planning):"), 0,
-                 wx.ALIGN_CENTER_VERTICAL)
-        self.note = wx.TextCtrl(self)
+                 wx.ALIGN_TOP)
+        # A few lines: Shift+Enter starts a new one, Enter still presses
+        # Keep Planning (answer_box_key).
+        self.note = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
+        self.note.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
         set_accessible_name(self.note, "What to change (for Keep Planning)")
         grid.Add(self.note, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
@@ -2829,7 +2877,13 @@ class PlanDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_CANCEL)
         approve.Bind(wx.EVT_BUTTON, lambda e: self._finish(True))
         keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(False))
+        self.keep_button = keep
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         wx.CallAfter(self.plan_text.SetFocus)
+
+    def _on_char_hook(self, event):
+        if not answer_box_key(event, [self.note], self.keep_button):
+            event.Skip()
 
     def _finish(self, approved: bool):
         self.approved = approved
@@ -3689,6 +3743,47 @@ def plain_enter(event) -> bool:
     """Enter (or the keypad's), with no modifier held."""
     return (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
             and not event.HasAnyModifiers())
+
+
+def answer_box_key(event, boxes, button) -> bool:
+    """Enter in a multi-line answer box (the Answer dialog's own answers, a
+    plan's note, a reason for Deny): Shift+Enter starts a new line, as in the
+    reply box, while Enter and Ctrl+Enter (Command+Return on a Mac) press
+    ``button``, the dialog's default, as Enter did when the box was one line.
+    Shift+Enter used to send, as Windows presses the default button for it
+    in a one-line box. The click goes through the button's own handler.
+    True if the key was taken.
+
+    Shift+Enter isn't taken: the box itself starts the new line, as for a
+    typed key, so a screen reader echoes it as it does in the reply box. A
+    multi-line box keeps Enter without a Ctrl for itself on Windows, and the
+    box has the key before any default button on GTK and on a Mac."""
+    focus = wx.Window.FindFocus()
+    if (event.GetKeyCode() not in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+            or not any(focus is box for box in boxes)):
+        return False
+    modifiers = event.GetModifiers()
+    if modifiers in (wx.MOD_NONE, wx.MOD_CONTROL) and button.IsEnabled():
+        click = wx.CommandEvent(wx.wxEVT_BUTTON, button.GetId())
+        click.SetEventObject(button)
+        button.GetEventHandler().ProcessEvent(click)
+        return True
+    return False
+
+
+def shift_enter_in_one_line_box(event, boxes) -> bool:
+    """Shift+Enter in a one-line answer box (a secret answer, a connected
+    tool's text field) does nothing but a beep: there's no new line to start,
+    and Windows would otherwise press the default button for it, sending an
+    answer, where the multi-line boxes start a new line (#591). Plain Enter
+    still sends. True if the key was taken."""
+    focus = wx.Window.FindFocus()
+    if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+            and event.GetModifiers() == wx.MOD_SHIFT
+            and any(focus is box for box in boxes)):
+        wx.Bell()
+        return True
+    return False
 
 
 def press_focused_button_on_a_mac(event) -> bool:
@@ -5850,6 +5945,9 @@ class ElicitationDialog(wx.Dialog):
             self._group_keys[event.GetKeyCode()].SetFocus()
             return
         if press_focused_button_on_a_mac(event):
+            return
+        if shift_enter_in_one_line_box(event, [c for c in self._controls.values()
+                                               if isinstance(c, wx.TextCtrl)]):
             return
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             focus = self._focus()
