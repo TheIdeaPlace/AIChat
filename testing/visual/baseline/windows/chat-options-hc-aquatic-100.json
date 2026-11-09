@@ -18,15 +18,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Agent:",
+   "label": "Run as &agent:",
    "rect": [
     10,
     13,
-    36,
+    72,
     16
    ],
    "best": [
-    36,
+    72,
     16
    ],
    "depth": 0,
@@ -36,12 +36,12 @@
   },
   {
    "class": "Choice",
-   "name": "Agent",
+   "name": "Run as agent",
    "label": "",
    "rect": [
-    87,
+    90,
     10,
-    507,
+    504,
     23
    ],
    "best": [
@@ -78,9 +78,9 @@
    "name": "Output style",
    "label": "",
    "rect": [
-    87,
+    90,
     41,
-    507,
+    504,
     23
    ],
    "best": [
@@ -234,7 +234,7 @@
   {
    "class": "TextCtrl",
    "name": "About these options",
-   "label": "Agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every message in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next message.",
+   "label": "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every turn in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next turn.",
    "rect": [
     12,
     434,
@@ -249,7 +249,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every message in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next message."
+   "value": "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every turn in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next turn."
   },
   {
    "class": "Button",

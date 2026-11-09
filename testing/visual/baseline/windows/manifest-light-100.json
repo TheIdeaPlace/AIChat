@@ -1467,7 +1467,7 @@
    "kind": "dialog",
    "png": "codex-rewind-light-100.png",
    "json": "codex-rewind-light-100.json",
-   "title": "Rewind Codex review to before your message: Review the parser before editing it.",
+   "title": "Retry Codex review from before your message: Review the parser before editing it.",
    "class": "RewindDialog",
    "size": [
     640,
@@ -1475,7 +1475,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Codex conversation rewind with files left unchanged"
+   "about": "Codex Retry from Here with files left unchanged"
   },
   "codex-attachments": {
    "kind": "window",
@@ -1699,13 +1699,13 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Stop Background Task: two tasks running"
+   "about": "View, Stop Background Task: two tasks running"
   },
   "rewind": {
    "kind": "dialog",
    "png": "rewind-light-100.png",
    "json": "rewind-light-100.json",
-   "title": "Rewind Visual probe to before your message: Make the uploader flush before it signals.",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
    "class": "RewindDialog",
    "size": [
     640,
@@ -1713,13 +1713,13 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Rewind to Here on your first message: Conversation only chosen"
+   "about": "Retry from Here on your first message: Conversation only chosen"
   },
   "rewind-files": {
    "kind": "dialog",
    "png": "rewind-files-light-100.png",
    "json": "rewind-files-light-100.json",
-   "title": "Rewind Visual probe to before your message: Make the uploader flush before it signals.",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
    "class": "RewindDialog",
    "size": [
     640,
@@ -1727,7 +1727,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Rewind to Here with Conversation and files chosen: the warning in What Happens"
+   "about": "Retry from Here with Conversation and files chosen: the warning in What Happens"
   },
   "whole-chat": {
    "kind": "dialog",
@@ -1797,7 +1797,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Lists: Approvals in a Codex chat"
+   "about": "View, Lists: Auto Approvals in a Codex chat"
   },
   "sounds-own-scheme": {
    "kind": "dialog",
@@ -1882,6 +1882,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Permission Mode for an owned Codex chat in Plan mode"
+  },
+  "rewind-files-only": {
+   "kind": "dialog",
+   "png": "rewind-files-only-light-100.png",
+   "json": "rewind-files-only-light-100.json",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Retry from Here with Files only chosen: the Put Files Back button"
   }
  },
  "seconds": 278.6
