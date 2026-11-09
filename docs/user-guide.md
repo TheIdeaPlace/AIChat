@@ -763,27 +763,29 @@ Help, **Sound Tutorial** (Alt+H, T) lists every event by name. Arrow to one and 
 
 ### Changing a sound
 
-In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the `sounds` folder in The Chat Place's data folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
+In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the scheme's own folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
 
-**Remove File** deletes the chosen sound file of your own, after saying which schemes use it; they play a built-in sound instead. The file is deleted straight away, even if you then choose Cancel.
+**Remove File** takes your sound file off the event, which goes back to its built-in sound. The file is deleted when you choose OK, unless another event in the scheme still uses it.
 
 Changes belong to the scheme showing: changing an event in Glass leaves Wood as it was.
+
+Each scheme keeps its sound files in a folder of its own, inside the `sounds` folder in The Chat Place's data folder (`%APPDATA%\TheChatPlace\sounds` on Windows), including Glass, Soft bell and Wood when you give them files of your own. A scheme only uses the files in its own folder.
 
 ### Sound schemes
 
 A sound scheme is a sound for each event. Glass, Soft bell and Wood come with The Chat Place, and you can make your own, share them, and take ones others have made. **Scheme Actions** (Alt+A in File, Sounds) has:
 
 - **New Scheme** starts a scheme of your own with every event silent, so you give sounds only to the events you want. A scheme of your own can use any built-in sound in any tone, such as "Rise (Soft bell)", and your own files.
-- **Copy Scheme** starts from the scheme showing instead.
-- **Rename Scheme** and **Delete Scheme**, for schemes of your own. Deleting a scheme keeps its sound files.
-- **Reset Scheme** puts Glass, Soft bell or Wood back to how it comes.
+- **Copy Scheme** starts from the scheme showing instead, with copies of its sound files.
+- **Rename Scheme** and **Delete Scheme**, for schemes of your own. Deleting a scheme deletes its sound files too.
+- **Reset Scheme** puts Glass, Soft bell or Wood back to how it comes, and deletes your sound files for it.
 - **Export Scheme** saves the scheme showing, and any sound files of yours it uses, as one `.tcpsounds` file. **Import Scheme** adds one as a new scheme of your own. If one of its sound files can't be used, you're told how many events now have no sound.
 
 QuickMail has sound schemes too, but its events are different, so a QuickMail scheme can't be imported here, and you're told so.
 
-**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and licence. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. The gallery isn't open yet, so for now Browse Gallery says it couldn't be reached; it will work without updating The Chat Place once it opens. The Chat Place checks the gallery's signature and every file before using anything from it.
+**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and license. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. The gallery isn't open yet, so for now Browse Gallery says it couldn't be reached; it will work without updating The Chat Place once it opens. The Chat Place checks the gallery's signature and every file before using anything from it.
 
-Nothing you do with schemes is kept until you choose OK, apart from removing a sound file, and the sound files a scheme brings in.
+Nothing you do with schemes is kept until you choose OK, and no sound file is deleted until then. Files you choose, or a scheme brings in, are copied straight away; choose Cancel and they're deleted again.
 
 ### Mute All Sounds
 

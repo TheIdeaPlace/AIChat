@@ -1158,8 +1158,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   answer, a reply finishing, another chat finishing, a chat needing you, your answer to it going,
   a failed or stopped turn,
   service trouble, compaction, a usage warning and a message from another session. Each event can
-  have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's
-  `sounds` folder so backups carry it), or none. The dialog also chooses the volume (80% to start),
+  have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the scheme's own
+  folder inside the data folder's `sounds` folder, so backups carry it and deleting the scheme
+  deletes it), or none. The dialog also chooses the volume (80% to start),
   the scheme (Glass, Soft bell, Wood or one of your own), which chats make the tool tick (**Tool sounds play for**)
   and which make the other sounds (**Other sounds play for**); the open chat always makes them all,
   and your answer to a chat that needed you always plays. Help, **Sound Tutorial** lists the events by name: Space or

@@ -10,7 +10,7 @@ import pytest
 import wx
 
 import fake_env
-from thechatplace import platform_paths, sound_events as se
+from thechatplace import sound_events as se
 from thechatplace.claude_cli import PermissionRequest, TurnEvent
 from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.providers.codex_runtime import CodexChatState
@@ -78,13 +78,3 @@ def test_odd_settings_fall_back_on_defaults(tmp_path, raw):
     assert loaded.sound_others == "all" and loaded.sound_schemes == {}
 
 
-def test_custom_files_lists_only_usable_names(monkeypatch, tmp_path):
-    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
-    assert se.custom_files() == []
-    folder = tmp_path / "sounds"
-    folder.mkdir()
-    (folder / "b.wav").write_bytes(b"x")
-    (folder / "A.WAV").write_bytes(b"x")
-    (folder / "note.txt").write_bytes(b"x")
-    (folder / "sub.wav").mkdir()
-    assert se.custom_files() == ["A.WAV", "b.wav"]
