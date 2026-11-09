@@ -1428,15 +1428,30 @@ def d_copilot_files(frame, env):
                                                       provider="Copilot"))
 
 
-def d_codex_mode(frame, env):
+def d_codex_mode(frame, env, plan=False):
+    """File, Change Permission Mode for an owned Codex chat, as
+    codex_chats._change_codex_permissions builds it: the four file access
+    rows and Plan (#596, decision 17), the chat's own marked "(now)". With
+    ``plan`` the chat is in Plan, and the text above the list says with what
+    file access."""
     from thechatplace.ui.dialogs import codex_permission_prompt, single_choice_dialog
-    from thechatplace.ui.permission_hosts import CODEX_REVIEW_MODES
+    from thechatplace.ui.permission_hosts import CODEX_PLAN, CODEX_PLAN_LABEL, CODEX_REVIEW_MODES
     title = 'Review saved command rules for a deliberately long synthetic chat title'
     folder = str(Path(env['folders']['Scratch']) / 'long-synthetic-project-folder' / 'nested-folder-for-permission-review')
-    dialog = single_choice_dialog(frame, codex_permission_prompt(frame, title, folder),
-        'Change Permission Mode', [label for value, label in CODEX_REVIEW_MODES])
-    dialog.SetSelection(3)
+    choices = CODEX_REVIEW_MODES + [(CODEX_PLAN, CODEX_PLAN_LABEL)]
+    now = CODEX_PLAN if plan else choices[3][0]
+    access = CODEX_REVIEW_MODES[3][1] if plan else ''
+    grant = choices[3][0]
+    dialog = single_choice_dialog(frame, codex_permission_prompt(frame, title, folder, access),
+        'Change Permission Mode', [label + (' (now)' if value == now else '')
+                                   + (' (file access now)' if plan and value == grant else '')
+                                   for value, label in choices])
+    dialog.SetSelection([value for value, _label in choices].index(now))
     return lambda: frame._modal(dialog)
+
+
+def d_codex_mode_plan(frame, env):
+    return d_codex_mode(frame, env, plan=True)
 
 
 def d_copilot_change_mode(frame, env):
@@ -2378,6 +2393,8 @@ SURFACES = {
                                 "Copilot asks to run a command it can keep for the chat"),
     "copilot-files": ("dialog", d_copilot_files, "Copilot asks to create a file, with its diff"),
     "codex-change-mode": ("dialog", d_codex_mode, "Change permissions for an owned Codex chat"),
+    "codex-change-mode-plan": ("dialog", d_codex_mode_plan,
+                               "Change Permission Mode for an owned Codex chat in Plan mode"),
     "copilot-change-mode": ("dialog", d_copilot_change_mode,
                             "Change Permission Mode for an owned Copilot chat in plan mode"),
     "properties-codex-owned": ("dialog", d_codex_owned_properties, "Verified owned Codex model and filesystem scope"),
@@ -2522,6 +2539,7 @@ DIALOG_CLASSES = {
     "copilot-files": "CodexPermissionDialog",
     "codex-models": "NewSessionDialog",
     "codex-change-mode": "SingleChoiceDialog",
+    "codex-change-mode-plan": "SingleChoiceDialog",
     "copilot-change-mode": "SingleChoiceDialog",
     "properties-codex-owned": "PropertiesDialog",
     "codex-continue": "NewSessionDialog",

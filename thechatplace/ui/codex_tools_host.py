@@ -236,9 +236,10 @@ class CodexConnectedTools:
         names = [name for name in names if name != server.name and name not in self.removed]
         if not off:
             (apps if server.app_id else names).append(server.app_id or server.name)
-        # Every tools copy is made read-only with approval on request, as
-        # Rewind's and Branch's are (codex_runtime.copy_with_tools), so each
-        # question says so, as theirs do. It keeps the tools you chose (#602).
+        # Every tools copy keeps the original's settings, as Rewind's and
+        # Branch's do (codex_runtime.copy_with_tools; #596, decision 3), so
+        # each question says so, as theirs do. Its tools are the ones you
+        # chose (#602).
         # The question comes last, as Branch's does, so it's the last thing a
         # screen reader says before the buttons, and starts by saying a copy is
         # made, so "the new chat" means something. The tool's own warning comes
@@ -281,7 +282,7 @@ class CodexConnectedTools:
                                  + ' The original chat is kept.')
             self.load(done)
         self.frame._codex_work(lambda: self.frame.sessions.copy_with_tools(source,
-            source.title + ' (tools copy)', names, apps), created)
+            source.title + ' (tools copy)', names, apps, own=record), created)
 
     def close(self):
         self.closed = True

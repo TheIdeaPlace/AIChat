@@ -22,6 +22,23 @@ CODEX_REVIEW_MODES = [(value + ('user',), label) for value, label in CODEX_MODES
     (('read-only', 'on-request', 'auto_review'), 'Read-only; automatic approval review'),
     (('workspace-write', 'on-request', 'auto_review'), 'Can edit files in this folder; automatic approval review')]
 
+#: Change Permission Mode's last row for a Codex chat (#596, decision 17):
+#: Codex's Plan mode, offered where Claude's is. Plan is a mode of its own
+#: (what /plan chooses) on top of the chat's file access, which it keeps;
+#: choosing a file access row takes the chat out of Plan.
+CODEX_PLAN = 'plan'
+CODEX_PLAN_LABEL = 'Plan: discuss and produce a plan first, keeping its file access'
+
+
+def codex_mode_label(options) -> str:
+    """A Codex chat's saved permission mode in words, ending ", in Plan
+    mode" when /plan or Change Permission Mode put it there."""
+    current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
+    label = dict(CODEX_REVIEW_MODES).get(current + (options.get('approvals_reviewer', 'user'),),
+                                         dict(CODEX_MODES).get(current, 'not recorded'))
+    return label + (', in Plan mode' if options.get('collaboration') == CODEX_PLAN else '')
+
+
 CODEX_REVIEW_NOTE = ('Automatic approval review lets Codex review eligible requests instead of asking you. '
                      'It can deny requests, and does not grant unrestricted access. Human review remains available. '
                      'Network access and access to temporary folders outside this folder require approval. '
@@ -141,10 +158,7 @@ class CodexPermissions:
         self.removal_effect = 'Codex will ask again on the next matching request. Work already approved may finish.'
 
     def mode_text(self) -> str:
-        options = self.record.provider_options
-        current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
-        return dict(CODEX_REVIEW_MODES).get(current + (options.get('approvals_reviewer', 'user'),),
-                                          dict(CODEX_MODES).get(current, 'not recorded'))
+        return codex_mode_label(self.record.provider_options)
 
     def can_change_mode(self):
         state = self.frame._codex_states.get(self.info.key)

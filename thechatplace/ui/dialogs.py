@@ -69,15 +69,19 @@ def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleC
     return dialog
 
 
-def codex_permission_prompt(parent, title, folder):
-    """Wrap only the native picker's prompt, using its actual GUI font (#257)."""
+def codex_permission_prompt(parent, title, folder, plan_access=''):
+    """Wrap only the native picker's prompt, using its actual GUI font (#257).
+    ``plan_access``: the file access of a chat in Plan mode, which the list
+    can't mark as well as Plan (#596, decision 17)."""
     from wx.lib.wordwrap import wordwrap
     from ..ui_text import CODEX_SAVED_RULES_NOTE
     from .permission_hosts import CODEX_REVIEW_NOTE
     dc = wx.ClientDC(parent)
     dc.SetFont(wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT))
     width = min(dip_width(parent, 560), screen_area(parent).width - dip_width(parent, 80))
-    text = (f'Codex permissions for {title}.\nFolder: {folder}.\n'
+    plan = (f'In Plan mode, with file access: {plan_access}. Choosing another mode ends Plan.\n'
+            if plan_access else '')
+    text = (f'Codex permissions for {title}.\nFolder: {folder}.\n' + plan +
             'Finish or Stop active work first.\n\n' + CODEX_REVIEW_NOTE + '\n\n' + CODEX_SAVED_RULES_NOTE)
     return '\n'.join(wordwrap(line, width, dc, breakLongWords=True).rstrip('\n')
                      for line in text.split('\n'))

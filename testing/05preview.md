@@ -241,11 +241,10 @@ Make a short chat with at least two of your messages and replies.
    send in it, the messages list has a message beginning "No messages yet. This chat is a new copy
    of" the original, "up to the point you chose." In Codex the copy includes the whole turn that
    reply is in, and first you're asked: "A new Codex chat will start with the whole turn
-   containing this message, and this chat is kept. The new chat can't change files without
-   asking, and doesn't keep the original's model, effort, Chat Options or connected tools. Change
-   Permission Mode (Ctrl+Shift+O) lets it edit files. Branch here?" Once it opens: "Opened …
-   (branch). It can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it
-   edit. The original chat is kept."
+   containing this message, and this chat is kept. The new chat keeps the original's permission
+   mode, model, effort, Chat Options and connected tools. Branch here?" Once it opens: "Opened …
+   (branch). It keeps the original's settings. The original chat is kept." Properties (Alt+Enter)
+   on the copy shows the original's model, effort and sandbox.
 2. Go back to the original and select your second message. Press **Ctrl+Shift+Z** (on a Mac,
    Command+Shift+Z in the messages). Expect: **Retry from Here** opens on **Conversation only**
    in **What goes back**, and the button is **Retry**. Arrow to **Files only**, then Tab to the
@@ -257,11 +256,10 @@ Make a short chat with at least two of your messages and replies.
    unchanged.
 5. **Codex.** Expect: only Conversation only; the file choices say they aren't available, and What
    happens says "Codex doesn't put files back, so only the conversation goes back. A retried Codex
-   chat can't change files without asking until you change its permission mode." Choose Retry.
-   Expect: "Opened … (retry). It can't change files without asking; Change Permission Mode
-   (Ctrl+Shift+O) lets it edit. The original chat is kept. Change your message and send when
-   ready." Ask the copy to change a test file. Expect: it asks first. Press **Ctrl+Shift+O**,
-   choose a mode that edits files, and ask again. Expect: it can.
+   chat keeps the original's settings." Choose Retry, on a chat that can edit files in its
+   folder. Expect: "Opened … (retry). It keeps the original's settings. The original chat is
+   kept. Change your message and send when ready." Ask the copy to change a test file in its
+   folder. Expect: it can, without asking, as the original could.
 5a. **Why files can't go back.** Open Retry from Here on a desktop app or terminal chat. Expect: the file
    choices say "(unavailable)", and What happens says "Files can be put back only for chats started
    in The Chat Place. Conversation only makes a new chat of your own from it." On a chat started
@@ -329,16 +327,15 @@ the steps that need an account.
    this tool on. Press Copy with Tool On (Alt+O) to make a copy with it on, then sign in from
    Connected Tools in that copy." No browser opens.
 2. On a server, choose **Copy with Tool On** (Alt+O). Expect: "A new copy of this chat will be
-   made, and this chat is kept. The new chat can't change files without asking, and doesn't keep
-   the original's model, effort or Chat Options. Change Permission Mode (Ctrl+Shift+O) lets it edit
-   files. A tool can reach websites, services and files outside this chat's folder, so turn on only
-   a tool you trust. Make a new copy of this chat with" the server "on?" The question is the last
-   thing you hear before the buttons. Say No. Expect: no new chat, nothing changed.
-3. Do it again and say Yes, for a server you trust. Expect: "Opened … (tools copy). It can't change
-   files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The original chat is
-   kept.", heard in full, with that server on, and the original unchanged. Ask the copy to use the server
-   for something harmless. Expect: it works, and servers you didn't choose stay off. Ask it to
-   change a test file. Expect: it asks first, as any Codex copy does.
+   made, and this chat is kept. The new chat keeps the original's permission mode, model, effort
+   and Chat Options. A tool can reach websites, services and files outside this chat's folder, so
+   turn on only a tool you trust. Make a new copy of this chat with" the server "on?" The question
+   is the last thing you hear before the buttons. Say No. Expect: no new chat, nothing changed.
+3. Do it again and say Yes, for a server you trust. Expect: "Opened … (tools copy). It keeps the
+   original's settings. The original chat is kept.", heard in full, with that server on, and the
+   original unchanged. Ask the copy to use the server for something harmless. Expect: it works,
+   and servers you didn't choose stay off. Ask it to change a test file. Expect: it does what the
+   original would: asks first in a read-only chat, edits in one that can edit its folder.
 4. Do the same with an app. Expect: only the chosen app can be used, and the original keeps its
    choice.
 5. In the copy, choose **Sign In** on the server. Expect: a dialog reading you the sign-in page's
@@ -434,12 +431,26 @@ Use a Codex chat started here.
    Expect: the first choice is "Codex's default", the label is "Effort for" the chat's name ",
    from its next turn:" and the choices read as words ("Extra high", not "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
    applies from the next turn. Cancel a picker once: the old choice stays. Try during a turn.
-   Expect: you're told to wait or stop first. New Session's Model and Effort for Codex, and
-   Properties (Alt+Enter) on a Codex chat left on the default, also say "Codex's default".
+   Expect: you're told to wait or stop first. New Session's Model and Effort for Codex say
+   "Codex's default". Properties (Alt+Enter) on a Codex chat left on the default, once it has
+   sent a message, says "Model chosen: Codex's default (last used" and the model it was on ")".
+1a. **Following Codex's default.** On a chat left on Codex's default, change the `model` line in
+   your Codex `config.toml` to another model Codex offers, then send a message. Expect: the
+   reply comes from the new model (Properties names it after "last used"), with no change made in The
+   Chat Place. Put `config.toml` back afterwards. A chat with a model chosen in Change Model
+   stays on it.
 2. **Plan mode.** Press Ctrl+/, choose `/plan`, and send it. Expect: a picker titled **Plan Mode**.
    Ctrl+/ reads `/plan` as "Choose Plan mode, or go back to Default mode." Choose **Plan**. Expect: the heading
    says Plan, and asking for a change gets a plan, not the change. Choose `/plan` again and
    **Default**, then send a message to carry it out.
+2a. **Plan in Change Permission Mode.** Press **Ctrl+Shift+O**. Expect: the list's last choice is
+   "Plan: discuss and produce a plan first, keeping its file access", and the chat's mode is
+   marked "(now)". Choose Plan. Expect: "Codex permissions for" the chat ": Plan: …" and the
+   heading says plan mode. Press Ctrl+Shift+O again. Expect: the text above the list says "In
+   Plan mode, with file access:" and the mode it had, Plan is marked "(now)", and that mode's row
+   is marked "(file access now)". Choose `/plan`
+   from Ctrl+/: Plan Mode agrees. Back in Change Permission Mode, choose a mode that edits
+   files. Expect: you hear it, then "Plan mode is off.", and the heading no longer says plan mode.
 3. **A control with a draft.** Put `/model` alone on the first line and some text below it. Send.
    Expect: the model picker opens, and your text stays in the reply box.
 4. **Moved on.** Choose Change Model and straight away type in the reply box. Expect: no picker over

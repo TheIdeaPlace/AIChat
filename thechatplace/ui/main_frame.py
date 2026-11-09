@@ -2965,10 +2965,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             elif (self._open is not None and self._open.key == info.key and self._chat_loaded):
                 transcript = dataclasses.replace(transcript, tasks=list(self._chat_tasks))
         model = transcript.model if transcript is not None else ""
+        running = getattr(self._codex_states.get(info.key), 'model', '') if info.provider == 'codex' else ''
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error, subagent_count=subagent_count)
+                read_error=error, subagent_count=subagent_count, running_model=running)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         lines = properties.with_branch_facts(lines, branch_facts)

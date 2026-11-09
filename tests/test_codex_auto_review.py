@@ -296,7 +296,10 @@ def test_policy_recovery_rechecks_native_state_and_saved_grant(tmp_path, monkeyp
     connection = SavedHistoryConnection()
     runtime = CodexChatRuntime(factory=lambda exe: connection)
     try:
-        record = runtime.create(str(tmp_path), 'Synthetic chat', approvals_reviewer='auto_review')
+        # The catalog vouches only for a model the chat chose; one on Codex's
+        # default names none to check (#596, decision 19).
+        record = runtime.create(str(tmp_path), 'Synthetic chat', approvals_reviewer='auto_review',
+                                model='gpt-default' if failure == 'model' else None)
         native = record.cli_session_id
         runtime.send(record, 'Initial synthetic turn')
         connection.events.append(decode_event('turn/completed', {
