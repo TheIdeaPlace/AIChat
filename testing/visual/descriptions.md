@@ -29,7 +29,9 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 
 **Since 0.5 (#468), in every Lists picture:** Kinds has a seventh row, Subagents, so it is 111 tall (it was 96) and shows all seven rows with no scroll bar. Everything below it starts 15 pixels lower. The chosen kind's list is 120 tall (it was 140), about seven and a half rows, and Details 170 (it was 165). The dialog stays 820 by 660, and the gaps between controls are as before. Each Claude chat's Kinds ends "Subagents" and a count; a Codex chat's reads "Subagents (0)", as the probe's Codex chats have none (#558).
 
-**Since #564, in every Lists picture:** Kinds has an eighth row, Approvals, last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Approvals, not available"; a Codex chat started here ends "Approvals" and a count.
+**Since #564, in every Lists picture:** Kinds has an eighth row, Auto Approvals (named Approvals until #596), last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Auto Approvals, not available"; a Codex chat started here ends "Auto Approvals" and a count. The Lists pictures in the baseline took this row only on 2026-11-09 (#596, #608): the ones before it still had seven rows.
+
+**Since #596 (2026-11-09, #608):** light-100 and hc-aquatic-100 pictures of every screen whose words changed: Retry from Here (was Rewind to Here) and its new Files only picture, codex-rewind, Chat Options ("Run as agent"), Settings' task-list check box ("from the next turn"), the About permissions notes of New Session (Claude, Codex and Copilot), which now name File, Chat Settings, Copilot's Chat Permissions note, the plain-text shortcuts, and every Lists picture. Contrast was measured from the pixels; nothing new fell below 4.5:1. The formatted shortcuts page's first screen didn't change (its High Contrast picture didn't draw in the VM twice, a WebView2 blank, so its baseline was kept).
 
 ## main-start: Main window as it opens: session list, no session loaded
 
@@ -514,7 +516,7 @@ The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print
 
 ## copilot-new: File, New Session with Copilot chosen as Provider
 
-The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372), before any Copilot chat here has listed its models. "Provider" shows "Copilot" with the focus outline. "Model" and "Effort" are greyed out and read "Copilot's configured model" and "Copilot's own setting" (#6D6D6D on #FAFAFA, 5.0:1); their labels and Branch's have no underlined letter (#515). Since #424 "Permission mode" is enabled and reads "Agent: asks before running commands or changing files", black on white (20.6:1); its other choice is Plan. "About permissions:" heads a read-only box, 644 by 117 since #424 (30 taller), that shows its whole seven-line paragraph, with a scroll bar: Copilot uses your GitHub Copilot sign-in and your plan's requests; Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs, with Copilot's own choice first, and File, Change Model changes it later; effort is Copilot's own; Permission mode chooses agent mode, which can change your files, or plan mode, which plans first and doesn't edit them, and File, Change Permission Mode switches it later; in both, Copilot asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny); and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph's text is black on white (21:1). "First message:" heads an empty box, 644 by 72 (30 shorter since #424), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic Permission mode is white on #202020 (16.3:1), the greyed text is #A6A6A6 on #202020 (6.7:1), the paragraph white on #202020 (16.3:1), and Start is filled light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
+The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372), before any Copilot chat here has listed its models. "Provider" shows "Copilot" with the focus outline. "Model" and "Effort" are greyed out and read "Copilot's configured model" and "Copilot's own setting" (#6D6D6D on #FAFAFA, 5.0:1); their labels and Branch's have no underlined letter (#515). Since #424 "Permission mode" is enabled and reads "Agent: asks before running commands or changing files", black on white (20.6:1); its other choice is Plan. "About permissions:" heads a read-only box, 644 by 117 since #424 (30 taller), that shows its whole seven-line paragraph, with a scroll bar: Copilot uses your GitHub Copilot sign-in and your plan's requests; Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs, with Copilot's own choice first, and Change Model, in File, Chat Settings, changes it later; effort is Copilot's own; Permission mode chooses agent mode, which can change your files, or plan mode, which plans first and doesn't edit them, and Change Permission Mode, in File, Chat Settings, switches it later (#596: the seven lines still all show); in both, Copilot asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny); and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph's text is black on white (21:1). "First message:" heads an empty box, 644 by 72 (30 shorter since #424), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic Permission mode is white on #202020 (16.3:1), the greyed text is #A6A6A6 on #202020 (6.7:1), the paragraph white on #202020 (16.3:1), and Start is filled light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
 
 **What looks off:** Nothing.
 
@@ -550,7 +552,7 @@ A 666 by 513 dialog titled "Chat Permissions: Copilot preview". "Permission mode
 
 ## chat-permissions-copilot-moved: Chat Permissions while a chat's commands ask until Restart Copilot (#426)
 
-The same dialog, with "Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you." as the first paragraph of the About box.
+The same dialog, with "Commands in this chat ask until you use Restart Copilot, in File, Chat Settings, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you." as the first paragraph of the About box.
 
 **What looks off:** Nothing.
 
@@ -941,15 +943,18 @@ caption, #919191 on #F3F3F3 (2.8:1), as every probe dialog's is, since the probe
 isn't in the foreground. The
 first row is selected. Neither choice nor button is clipped in either variant.
 
-**codex-rewind:** Conversation Only is selected in a three-choice group. The
-other two choices say unavailable. The large What Happens box explains the
-preserved-source copy and that files stay as they are. Its second paragraph, on two lines
-since #596, reads "The files stay as they are. Codex doesn't put files back, so only the
-conversation goes back. A rewound Codex chat can't change files without asking until you
-change its permission mode." (no "file checkpoints"; it says "a rewound chat" because Files
-only, which makes no chat, shows it too). Text is black on white (21:1), white on
-#202020 in High Contrast Aquatic (16.3:1). Rewind and Cancel are
-aligned at the bottom right, with generous space above them.
+**codex-rewind:** Retry from Here, titled "Retry Codex review from before your message:
+Review the parser before editing it." (#596, #608). Conversation Only is selected in the
+three-choice group "What goes back". The other two choices say unavailable. The large What
+Happens box says a new chat, "Codex review (retry)", starts with the conversation up to just
+before your message, and its second paragraph, on two lines, reads "The files stay as they are.
+Codex doesn't put files back, so only the conversation goes back. A retried Codex chat keeps the
+original's settings." (it says "a retried chat" because Files only, which makes no chat, shows
+it too). Text is black on white (21:1), white on #202020 in High Contrast Aquatic (16.3:1).
+Retry (the default, sized for Put Files Back, so wider than Cancel) and Cancel are aligned at
+the bottom right, with generous space above them. With Conversation only chosen the button
+reads Retry; Files only is unavailable here, so it never reads Put Files Back in a Codex chat
+except while that unavailable choice is selected.
 
 **codex-aside:** The shared 680 by 600 Ask Aside dialog has a question box, Stop,
 two history rows, a large Answer box, then Copy Answer, Clear List and Close in a
@@ -1002,15 +1007,15 @@ The same 751 by 360 dialog as usage. "Usage and context:" heads a white list, 71
 
 **What looks off:** The probe's first row says 2 tokens used and that the window's size isn't known, right above a breakdown with 14,431 tokens of messages and a free space figure. That's the made-up data: the breakdown is added to a session that has run no turn here.
 
-## stop-background-task: File, Stop Background Task (#468)
+## stop-background-task: View, Stop Background Task (#468; in File until #596)
 
 wx's standard single-choice dialog, 578 by 189. "Background work in Visual probe. Stop which?", then a list 532 by 49 with two rows: "Run the synthetic probe project's full Windows build and tests, running 3 minutes 10 seconds" (selected) and "Watch CI, running 1 minute 5 seconds". The long row fits, ending short of the scroll bar. A separator line, then OK (default) and Cancel at the bottom right. Selected row white on #0078D4 (4.5:1), the other black on white (21:1); in High Contrast Aquatic #263B50 on aqua (7.9:1) and white on #202020 (16.3:1), with OK filled aqua.
 
 **What looks off:** The list keeps a scroll bar though both rows fit, which is wx's own list, as in copilot-change-mode. The button that stops the task says OK.
 
-## chat-options: File, Chat Options (#468)
+## chat-options: File, Chat Settings, Chat Options (#468, #596)
 
-A 620 by 600 dialog titled "Chat Options: Visual probe". At the top two rows, label on the left: "Agent:" with a dropdown, focused, reading "code-reviewer (uses its own model, opus): Independent review of a change.", which fits with about 90 pixels to spare; and "Output style:" reading "Concise". Both are 507 wide. "Instructions for this chat:" heads a text box, 584 by 187, the largest part of the dialog, with two lines. "More folders:" heads a list 584 by 70 with one selected row, a folder's full path. "Add Folder..." and "Remove" sit under it at the left. "About these options:" heads a read-only box, 584 by 90, whose four lines show whole. OK (default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), boxes black on white, the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1), the selected row #263B50 on aqua (7.9:1), OK filled aqua, and the focused dropdown has a dotted outline, #DFDFDF on #202020 (12:1).
+A 620 by 600 dialog titled "Chat Options: Visual probe". At the top two rows, label on the left: "Run as agent:" (was "Agent:" until #596) with a dropdown, focused, reading "code-reviewer (uses its own model, opus): Independent review of a change.", which fits with about 85 pixels to spare; and "Output style:" reading "Concise". Both are 504 wide, starting at x=90 (3 pixels right of before, for the longer label). The About box's first sentence now begins "Run as agent runs the chat as one of the agents Claude Code knows...", and it ends "Changes apply from the chat's next turn." "Instructions for this chat:" heads a text box, 584 by 187, the largest part of the dialog, with two lines. "More folders:" heads a list 584 by 70 with one selected row, a folder's full path. "Add Folder..." and "Remove" sit under it at the left. "About these options:" heads a read-only box, 584 by 90, whose four lines show whole. OK (default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), boxes black on white, the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1), the selected row #263B50 on aqua (7.9:1), OK filled aqua, and the focused dropdown has a dotted outline, #DFDFDF on #202020 (12:1).
 
 **What looks off:** Nothing.
 
@@ -1032,17 +1037,23 @@ The same 680 by 380 layout as elicitation-url, titled "trip-planner asks: Visual
 
 **What looks off:** The Message box is mostly empty for one line.
 
-## rewind: Rewind to Here on your first message, with files (#468)
+## rewind: Retry from Here on your first message, with files (#468, #596)
 
-A 640 by 460 dialog titled "Rewind Visual probe to before your message: Make the uploader flush before it signals.", which fits the title bar. A framed group, "What to rewind", 608 by 91, holds three radio buttons: "Conversation and files", "Conversation only" (chosen, with a dotted focus outline) and "Files only". "What happens:" heads a read-only box, 608 by 259, with two paragraphs. The first, on three lines: the new chat, "Visual probe (rewound)", starts with no history, as your message was the first, your message goes in its reply box to change and send, and Visual probe is kept as it is, in the list. The second, on two lines: "The files stay as they are. Claude changed 1 file since this message: uploader.py. Choose Conversation and files or Files only to put it back." The lower two thirds of the box are empty, with a scroll bar. Rewind (the default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), the box black on white (21:1), and the focus outline #0F0F0F on #F0F0F0 (16.8:1). In High Contrast Aquatic text is white on #202020 (16.3:1), the group's frame is white, the focus outline #DFDFDF (12.2:1), and Rewind is filled aqua with #263B50 text (7.9:1). codex-rewind is the same dialog, as described under Codex conversation workflows.
+A 640 by 460 dialog titled "Retry Visual probe from before your message: Make the uploader flush before it signals.", which fits the title bar. A framed group, "What goes back", 608 by 91, holds three radio buttons: "Conversation and files", "Conversation only" (chosen, with a dotted focus outline) and "Files only". "What happens:" heads a read-only box, 608 by 259, with two paragraphs. The first, on three lines: the new chat, "Visual probe (retry)", starts with no history, as your message was the first, your message goes in its reply box to change and send, and Visual probe is kept as it is, in the list. The second, on two lines: "The files stay as they are. Claude changed 1 file since this message: uploader.py. Choose Conversation and files or Files only to put it back." The lower two thirds of the box are empty, with a scroll bar. Retry (the default) and Cancel are at the bottom right; Retry is wider than Cancel, as it is sized for Put Files Back, its name when Files only is chosen, so the row doesn't move. The button text is black on #FDFDFD (20.6:1). Labels are black on #F0F0F0 (18.4:1), the box black on white (21:1), and the focus outline #0F0F0F on #F0F0F0 (16.8:1). In High Contrast Aquatic text is white on #202020 (16.3:1), the group's frame is white, the focus outline #DFDFDF (12.2:1), and Retry is filled aqua with #263B50 text (7.9:1). codex-rewind is the same dialog, as described under Codex conversation workflows.
 
 **What looks off:** The box is mostly empty for two short paragraphs.
 
-## rewind-files: Rewind to Here with Conversation and files chosen, and its warning (#468)
+## rewind-files: Retry from Here with Conversation and files chosen, and its warning (#468, #596)
 
-The same 640 by 460 dialog and title as rewind, with "Conversation and files" chosen and carrying the dotted focus outline. "What happens:" heads the same 608 by 259 box, with three paragraphs. The first is rewind's. The second, on four lines: "Every file Claude changed with its edit tools anywhere in this chat goes back to the last version Claude Code saved before your message, which is usually Claude's own. Anything you edited by hand since Claude last changed that file is lost, even edits from before this message. Files Claude created since your message are removed, and files Claude never touched stay as they are. This can't be undone." The third, on two lines: "Claude changed 1 file since this message: uploader.py. Changes made by commands it ran (a build, a script) are never put back." All of it fits, with about 90 pixels of the box empty below it, and the words read whole with nothing cut off. Rewind (the default) and Cancel are at the bottom right. The text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), the group's frame is white and Rewind is filled aqua with #263B50 text.
+The same 640 by 460 dialog and title as rewind, with "Conversation and files" chosen and carrying the dotted focus outline. "What happens:" heads the same 608 by 259 box, with three paragraphs. The first is rewind's. The second, on four lines: "Every file Claude changed with its edit tools anywhere in this chat goes back to the last version Claude Code saved before your message, which is usually Claude's own. Anything you edited by hand since Claude last changed that file is lost, even edits from before this message. Files Claude created since your message are removed, and files Claude never touched stay as they are. This can't be undone." The third, on two lines: "Claude changed 1 file since this message: uploader.py. Changes made by commands it ran (a build, a script) are never put back." All of it fits, with about 90 pixels of the box empty below it, and the words read whole with nothing cut off. Retry (the default) and Cancel are at the bottom right. The text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), the group's frame is white and Retry is filled aqua with #263B50 text.
 
 **What looks off:** Nothing. "This can't be undone." sits at the end of the second paragraph in the same plain text as the rest.
+
+## rewind-files-only: Retry from Here with Files only chosen, and Put Files Back (#596)
+
+The same 640 by 460 dialog and title as rewind, with "Files only" chosen and carrying the dotted focus outline. "What happens:" heads the same 608 by 259 box, with three paragraphs: rewind-files' warning, on four lines; "Claude changed 1 file since this message: uploader.py. Changes made by commands it ran (a build, a script) are never put back.", on two; and "The conversation in Visual probe isn't changed." About 110 pixels of the box are empty below them. The default button reads "Put Files Back", with P underlined, and fits its button with room to spare; Cancel is beside it at the bottom right. Text is black on white (21:1), the buttons black on #FDFDFD (20.6:1). In High Contrast Aquatic text is white on #202020 (16.3:1) and Put Files Back is filled aqua with #263B50 text (7.9:1).
+
+**What looks off:** Nothing.
 
 ## codex-chat-options: Codex instructions and additional folders (#558)
 
@@ -1072,9 +1083,9 @@ on the selected aqua #8EE3F0 row (7.8933:1), and a visible light caret (12.2263:
 No new layout or theme defect was observed. Higher display scales were not
 captured in this review.
 
-## lists-codex-approvals: View, Lists: Approvals in a Codex chat (#564)
+## lists-codex-approvals: View, Lists: Auto Approvals in a Codex chat (#564, #596)
 
-The Lists dialog for "Codex history preview", on "Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands and Decisions say "not available", and Subagents reads "Subagents (0)" (#558). "List: Approvals (5):" holds five rows, newest first: "Allowed: git diff. Saved rule for this chat." (selected), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
+The Lists dialog for "Codex history preview", on "Auto Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands and Decisions say "not available", and Subagents reads "Subagents (0)" (#558). "List: Auto Approvals (5):" holds five rows, newest first: "Allowed: git diff. You allowed it for this chat." (selected; "Saved rule for this chat" until #596), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
 
 **What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
 

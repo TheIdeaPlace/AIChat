@@ -25,7 +25,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+O | Open the selected session in the Claude desktop app |
 | Ctrl+Shift+L | Copy Session Link (Claude chats): Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address |
 | Ctrl+Shift+N | Continue the selected chat from the desktop app, a terminal or another app here, as a copy you can reply to (the original isn't changed) |
-| Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access, approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session (File, Change Effort and Change Model are beside it) |
+| Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access, approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session (in File, Chat Settings, with Change Model and Change Effort) |
 | Ctrl+Shift+W | Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead |
 | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode, and the commands and tools it may use without asking: for a Claude chat, those it keeps and the rules from Claude Code's own settings for its folder; for a Copilot chat, the commands allowed for it and your rules for Copilot (Delete or Remove takes one back, and Remove All takes them all) |
 | F5 | Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it) |
@@ -35,6 +35,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+E | Export the selected (or loaded) session as Markdown, a web page or plain text |
 | F2 | Rename the selected session (a desktop app or terminal session's new name shows only in The Chat Place) |
 | Applications key / Shift+F10 | The session's menu: load, provider-specific actions, copy its link, rename, Remote Control, groups, export, hide or delete |
+| Alt+F, I | Chat Settings: the selected (or loaded) chat's Change Model (M), Change Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat Options (O) |
 | Alt+F, O | Remote Control (Claude chats): reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on) |
 | Ctrl+G | Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu |
 | Delete | Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one |
@@ -50,11 +51,11 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+C | Copy the message's last code block |
 | Ctrl+Enter on a queued message | Send it now (Claude chats): Claude stops what it's doing and answers it |
 | Ctrl+Alt+Enter on a queued message | Steer it: into the running turn now, without stopping it |
-| Ctrl+Shift+Z on one of your messages | Rewind to Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't. The new chat keeps the original's settings, and the original chat is kept. Branch from Here, on a message's menu, starts a new chat from that point; in Codex it includes the whole turn containing that message |
+| Ctrl+Shift+Z on one of your messages | Retry from Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't. The new chat keeps the original's settings, and the original chat is kept. Branch from Here (Alt+F, F, or on a message's menu) starts a new chat from that point; in Codex it includes the whole turn containing that message |
 | Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks | Lists, on Code Blocks for this message: read and copy each code block |
 | Ctrl+F, then F3 and Shift+F3 | Find a message containing some text (its whole text, not just the first line), then the next or previous one |
 | End | Newest message |
-| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions, tasks, subagents and approvals, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac, and Control+Tab on Windows); Enter reads an item in full (a link opens, a subagent's conversation opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
+| Ctrl+Shift+I | Lists: code blocks, links, changed files, commands, decisions, tasks, subagents and auto approvals, for this message or the whole chat; it opens on the kind you used last, and the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a Mac, and Control+Tab on Windows); Enter reads an item in full (a link opens, a subagent's conversation opens), Ctrl+C copies, typing narrows the list (also from the session list and the reply box) |
 | Ctrl+L | Lists, on Links for the whole chat: Enter opens a link in your browser, Ctrl+C copies its address (also from the session list and the reply box) |
 | Ctrl+Shift+J | Lists, on Tasks for the whole chat: the task list, each step with whether it's to do, in progress or done |
 | Ctrl+T | Show or hide tool activity in the loaded session, and in Codex chats started here, the requests allowed for it |
@@ -67,7 +68,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box. During a turn it queues the message and sends it when the turn ends |
 | Ctrl+Shift+Enter | Send and save as a prompt: asks for the prompt's name (its first words to start with), saves it, then sends as Ctrl+Enter does; Escape at the name neither saves nor sends |
 | Ctrl+Alt+Enter | Steer: during a turn, send the message into it without stopping it; the AI takes it in at its next step and carries on. With no turn running, it sends as Ctrl+Enter does |
-| Ctrl+Period | Stop the running turn; a queued message goes back in the reply box |
+| Ctrl+Period | Stop the running turn; a queued message goes back in the reply box. View, Stop Background Task, just below it, ends one background task and lets the turn carry on |
 | Ctrl+/ | Insert a command or skill (Claude and Codex chats; type to search); it goes at the start of the reply box. Codex offers enabled skills and chat controls such as /plan and /compact |
 | Ctrl+Shift+F | Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); Delete in the attachments list removes one |
 | Ctrl+V with a picture or files copied | Attach the picture (a screenshot from Win+Shift+S, say), or files copied in File Explorer or the Finder, to a Claude or Codex message |

@@ -1071,7 +1071,7 @@ def fable_problem(actual: str, chosen: str, sent: bool = False,
             else "didn't send your message")
     return (f"Claude Code would have used Fable, {which}. Some plans bill Fable to usage "
             f"credits, so The Chat Place {done}. Choose another model with File, "
-            "Change Model, then send again.")
+            "Chat Settings, Change Model, then send again.")
 
 
 #: How long a finished turn waits for Claude Code to say it's idle (its SDK's

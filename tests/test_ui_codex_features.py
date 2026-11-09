@@ -43,7 +43,7 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     assert frame._codex_drafts[opened[0].key] == 'Hi'
     assert frame.store.get(record.cli_session_id, provider='codex') is record
     # The copy keeps the original's settings, and says so, briefly, as it opens (#596).
-    assert env['feedback'][-1] == ("Opened Codex original (rewound). It keeps the original's settings. "
+    assert env['feedback'][-1] == ("Opened Codex original (retry). It keeps the original's settings. "
         'The original chat is kept. Change your message and send when ready.')
 
 

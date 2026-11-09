@@ -111,17 +111,17 @@ def test_rewind_both_restores_files_and_branches_before_the_message(frame, env, 
     seen = answer_dialog(monkeypatch, rewind.BOTH)
     calls = stub_files(monkeypatch)
     frame.on_rewind_to_here()
-    assert seen["title"] == "Rewind Fixes to before your message: Change a.txt to two"
+    assert seen["title"] == "Retry Fixes from before your message: Change a.txt to two"
     # Conversation only until an arrow press chooses more (#468).
     assert seen["default"] == rewind.CONVERSATION
     assert "a.txt" in seen["happens"] and "Fixes is kept as it is" in seen["happens"]
     # The new chat: unstarted, cut just before the message, settings carried.
     own = frame.store.get(frame._open.cli_session_id)
-    assert own.cli_session_id != "own-rw" and own.title == "Fixes (rewound)"
+    assert own.cli_session_id != "own-rw" and own.title == "Fixes (retry)"
     assert (own.fork_source, own.fork_at, own.started) == ("own-rw", "sys-1", False)
     assert (own.model, own.permission_mode) == ("sonnet", "acceptEdits")
     assert frame.reply_text.GetValue() == "Change a.txt to two"
-    assert any("Rewound to before your message in Fixes (rewound)" in f
+    assert any("Opened Fixes (retry), from before your message." in f
                for f in env["feedback"])
     assert pump(lambda: calls and any("restored" in f for f in env["feedback"]))
     assert calls == [("own-rw", parts["second"]["uuid"], str(folder), 1)]
@@ -155,7 +155,7 @@ def test_enter_on_rewind_as_it_opens_leaves_the_files_alone(frame, env, fake_run
     frame.on_rewind_to_here()
     assert seen["default"] == rewind.CONVERSATION
     assert seen["labels"] == ["Conversation and files", "Conversation only", "Files only"]
-    assert frame.store.get(frame._open.cli_session_id).title == "Fixes (rewound)"
+    assert frame.store.get(frame._open.cli_session_id).title == "Fixes (retry)"
     pump(lambda: False, timeout=0.3)
     assert calls == [] and not any("Putting the files" in f for f in env["feedback"])
 
@@ -282,7 +282,7 @@ def test_rewind_the_first_message_starts_a_chat_with_no_history(frame, env, fake
     assert (own.fork_source, own.fork_at, own.forked_from) == ("", "", "Fixes")
     assert pump(lambda: "no history" in frame.chat_list.GetString(0))
     frame.on_rewind_to_here()
-    assert env["feedback"][-1] == "Fixes (rewound) has no messages yet."
+    assert env["feedback"][-1] == "Fixes (retry) has no messages yet."
     frame.reply_text.SetValue("Create a.txt")
     frame.on_send()
     command = fake_runner.instances[-1].command
@@ -295,7 +295,7 @@ def test_rewind_needs_one_of_your_messages(frame, env, fake_runner, monkeypatch)
     choose(frame, ASSISTANT, 0)
     frame.on_rewind_to_here()
     assert env["feedback"][-1] == ("Choose one of your own messages in the messages list, "
-                                   "then Rewind to Here.")
+                                   "then Retry from Here.")
 
 
 def test_branch_from_a_reply_keeps_history_through_it(frame, env, fake_runner, monkeypatch):
@@ -318,14 +318,14 @@ def test_menus_offer_both_only_for_claude_chats(frame, env, fake_runner, monkeyp
     menu = frame._message_menu()
     try:
         labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
-        assert labels["Rewind to Here..."] and labels["Branch from Here"]
+        assert labels["Retry from Here..."] and labels["Branch from Here"]
     finally:
         menu.Destroy()
     choose(frame, ASSISTANT, 0)
     menu = frame._message_menu()
     try:
         labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
-        assert not labels["Rewind to Here..."] and labels["Branch from Here"]
+        assert not labels["Retry from Here..."] and labels["Branch from Here"]
     finally:
         menu.Destroy()
 
@@ -341,7 +341,7 @@ def test_codex_chats_are_refused_with_a_reason(frame, env, fake_runner):
 def test_nothing_loaded_says_so(frame, env):
     frame.unload_session()
     frame.on_rewind_to_here()
-    assert env["feedback"][-1] == "Load a chat first, then choose a message to rewind from."
+    assert env["feedback"][-1] == "Load a chat first, then choose a message to retry from."
 
 
 def test_rewind_dialog_names_its_controls_and_says_what_happens(frame, env):
@@ -353,13 +353,22 @@ def test_rewind_dialog_names_its_controls_and_says_what_happens(frame, env):
     plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True)
     dialog = RewindDialog(frame, plan)
     try:
-        assert dialog.what.GetLabel() == "&What to rewind"
+        assert dialog.what.GetLabel() == "&What goes back"
         assert dialog.happens.GetName() == "What happens"
         assert dialog.selected() == rewind.CONVERSATION
-        assert "Fixes (rewound)" in dialog.happens.GetValue()
+        assert "Fixes (retry)" in dialog.happens.GetValue()
+        assert dialog.go.GetLabel() == "&Retry"
         dialog.what.SetSelection(2)
         dialog._describe()
         assert "no saved copies of your files" in dialog.happens.GetValue()
+        # Files only makes no chat: the button says what it does (#596).
+        assert dialog.go.GetLabel() == "&Put Files Back"
+        assert dialog.button_label() == "Put Files Back"
+        dialog.what.SetSelection(0)
+        dialog._describe()
+        assert dialog.go.GetLabel() == "&Retry"
+        dialog.what.SetSelection(2)
+        dialog._describe()
         dialog._go()
         assert dialog.choice == ""  # stays open, and says why
         assert "no saved copies of your files" in env["boxes"][-1]
@@ -414,11 +423,16 @@ def test_enter_in_what_happens_says_where_to_go(frame, env, monkeypatch):
         return event.GetSkipped()
     try:
         assert not enter(dialog.happens)
-        assert said == ["Tab to Rewind, or to Cancel."]
+        assert said == ["Tab to Retry, or to Cancel."]
         assert ended == [] and dialog.choice == ""
-        # Elsewhere Enter goes on to Rewind, the default button, and isn't said.
+        # Elsewhere Enter goes on to Retry, the default button, and isn't said.
         assert enter(dialog.what)
-        assert said == ["Tab to Rewind, or to Cancel."]
+        assert said == ["Tab to Retry, or to Cancel."]
+        # With Files only chosen, the button it names is Put Files Back (#596).
+        dialog.what.SetSelection(2)
+        dialog._describe()
+        assert not enter(dialog.happens)
+        assert said[-1] == "Tab to Put Files Back, or to Cancel."
     finally:
         dialog.Destroy()
 

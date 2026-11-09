@@ -52,8 +52,8 @@ PERMISSION_NOTE = (
     "asks for permission, asks you a question or has a plan for you to approve, "
     "the turn waits: The Chat Place announces it, the session shows as needing "
     "you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that "
-    "don't support effort levels ignore it. File, Change Permission Mode and Change "
-    "Effort change them later."))
+    "don't support effort levels ignore it. Change Permission Mode and Change Effort, "
+    "in File, Chat Settings, change them later."))
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -162,10 +162,11 @@ def copilot_auto_warning(folder: str) -> str:
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
                 "your Copilot plan. Model lists the models Copilot offered your last Copilot "
                 "chat here, each with the premium requests a message costs; Copilot's own "
-                "choice is first. File, Change Model changes it later. Effort is Copilot's "
+                "choice is first. Change Model, in File, Chat Settings, changes it later. "
+                "Effort is Copilot's "
                 "own. Permission mode chooses agent mode, which can change your files, or "
-                "plan mode, which plans first and doesn't edit them; File, Change Permission "
-                "Mode switches it later. In both, Copilot asks before it runs a command or "
+                "plan mode, which plans first and doesn't edit them; Change Permission "
+                "Mode, in File, Chat Settings, switches it later. In both, Copilot asks before it runs a command or "
                 "changes a file: "
                 "each request appears in Answer, where you can allow it once or deny it. "
                 "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
@@ -1405,7 +1406,7 @@ class SettingsDialog(wx.Dialog):
         self.task_list = wx.CheckBox(body, label=_wrapped(
             self, "Let Claude &keep a task list in The Chat Place's sessions, as it does in "
                   "the desktop app, so View, Tasks shows how far along it is "
-                  "(from the next message)",
+                  "(from the next turn)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.task_list.SetValue(speech.task_list)
         outer.Add(self.task_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -2175,7 +2176,7 @@ class CodexPermissionDialog(wx.Dialog):
             detail += ('\n\nAllow for This Chat runs ' + chat_rule.description
                        + ', again without asking, in this chat only, while every path in it '
                        "stays inside the folder. It can run what's in the folder, which Copilot "
-                       "may change first. File, Chat Permissions lists it, to remove.")
+                       "may change first. File, Chat Settings, Chat Permissions lists it, to remove.")
         elif chat_rule is not None:
             from ..providers.codex_permissions import NOTICE
             from ..providers.codex_requests import SAVED_RULE_NOTE
@@ -5299,15 +5300,20 @@ class ExportChatsDialog(ChatChooserDialog):
 
 
 class RewindDialog(wx.Dialog):
-    """Rewind to Here (#468): what to take back to before one of your
-    messages, the conversation, the files or both, with what
-    that will do in words. ``plan`` is a ``rewind.RewindPlan``; ``choice``
-    holds what was chosen once Rewind is pressed.
+    """Retry from Here (#468; "Rewind to Here" until #596): what to take
+    back to before one of your messages, the conversation, the files or
+    both, with what that will do in words. ``plan`` is a
+    ``rewind.RewindPlan``; ``choice`` holds what was chosen once the
+    button is pressed. The button is Retry, or Put Files Back when Files
+    only is chosen, so the choice that changes files names itself (#596).
 
     A choice that can't be done for this chat stays in the group, saying
-    "(unavailable)", and What Happens says why; Rewind on it says so and
+    "(unavailable)", and What Happens says why; the button on it says so and
     the dialog stays open. One is always chosen, so Tab stops on the group
     (#428)."""
+
+    RETRY_LABEL = "&Retry"
+    FILES_LABEL = "&Put Files Back"
 
     def __init__(self, parent, plan, feedback=None):
         from .. import rewind
@@ -5315,7 +5321,7 @@ class RewindDialog(wx.Dialog):
         self._feedback = feedback or (lambda text: None)
         self._choices = [value for value, _label in rewind.CHOICES]
         said = plan.message.first_line(60)
-        super().__init__(parent, title=f"Rewind {plan.chat_title} to before your message: {said}",
+        super().__init__(parent, title=f"Retry {plan.chat_title} from before your message: {said}",
                          size=dialog_size(parent, 640, 460),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.choice = ""
@@ -5326,7 +5332,7 @@ class RewindDialog(wx.Dialog):
             labels.append(label)
         # The access key on the group's label (wx.RadioBox), so Alt+W goes
         # to the chosen option and a screen reader names the group.
-        self.what = wx.RadioBox(self, label="&What to rewind", choices=labels,
+        self.what = wx.RadioBox(self, label="&What goes back", choices=labels,
                                 majorDimension=1, style=wx.RA_SPECIFY_COLS)
         self.what.SetSelection(self._choices.index(plan.default_choice()))
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -5340,8 +5346,11 @@ class RewindDialog(wx.Dialog):
         self.happens.SetMinSize(dip(self, -1, 180))
         sizer.Add(self.happens, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        go = wx.Button(self, wx.ID_OK, "&Rewind")
+        # Wide enough for either name, so the row doesn't move as it changes.
+        go = wx.Button(self, wx.ID_OK, self.FILES_LABEL)
+        go.SetMinSize(go.GetBestSize())
         go.SetDefault()
+        self.go = go
         row.Add(go, 0, wx.RIGHT, 6)
         row.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
@@ -5353,7 +5362,7 @@ class RewindDialog(wx.Dialog):
         if gtk_a11y.IS_LINUX:
             # As in Settings: wxGTK links a radio box's label to the control
             # after it at idle time, so Orca would read What Happens as
-            # "What to rewind". A few idle events at most.
+            # "What goes back". A few idle events at most.
             tries = [0]
 
             def unlink(event):
@@ -5368,23 +5377,36 @@ class RewindDialog(wx.Dialog):
     def selected(self) -> str:
         return self._choices[max(0, self.what.GetSelection())]
 
+    def _button_label_marked(self) -> str:
+        """The button's label for the chosen option, with its "&"."""
+        from .. import rewind
+        return self.FILES_LABEL if self.selected() == rewind.FILES else self.RETRY_LABEL
+
+    def button_label(self) -> str:
+        """The button's name for the chosen option, without its "&"."""
+        return self._button_label_marked().replace("&", "")
+
     def _describe(self):
         self.happens.ChangeValue(self._plan.describe(self.selected()))
         self.happens.SetInsertionPoint(0)
+        label = self._button_label_marked()
+        if self.go.GetLabel() != label:
+            self.go.SetLabel(label)
+            self.Layout()
 
     def _on_key(self, event):
         if (event.AltDown() and not (event.ControlDown() or event.ShiftDown())
                 and event.GetKeyCode() == ord("W")):
             # Windows doesn't take a radio box's label's access key, so
-            # Alt+W, shown on "What to rewind", did nothing (#468).
+            # Alt+W, shown on "What goes back", did nothing (#468).
             self.what.SetFocus()
             return
         if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
                 and self._focus() is self.happens):
             # A read-only box keeps Enter for itself, so this was silent. It
-            # says where to go, and doesn't press Rewind: nothing that may
-            # change files should start from reading about it.
-            self._feedback("Tab to Rewind, or to Cancel.")
+            # says where to go, and doesn't press the button: nothing that
+            # may change files should start from reading about it.
+            self._feedback(f"Tab to {self.button_label()}, or to Cancel.")
             return
         if press_focused_button_on_a_mac(event):
             return
@@ -6014,15 +6036,15 @@ class ElicitationDialog(wx.Dialog):
         self.action, self.content = DECLINE, None
         self.EndModal(wx.ID_OK)
 CHAT_OPTIONS_NOTE = (
-    "Agent runs the chat as one of the agents Claude Code knows for its folder, with that "
-    "agent's instructions and tools. Instructions are added to Claude's own for every message "
+    "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with "
+    "that agent's instructions and tools. Instructions are added to Claude's own for every turn "
     "in this chat. Output style changes how Claude writes its replies. More folders lets "
     "Claude work in other folders too; they show in Chat Permissions, where you can take one "
     "back.")
 #: More Folders' one row when there are none.
 NO_MORE_FOLDERS = "No more folders."
 #: Added for a chat that already exists.
-CHAT_OPTIONS_LATER_NOTE = "Changes apply from the chat's next message."
+CHAT_OPTIONS_LATER_NOTE = "Changes apply from the chat's next turn."
 #: A Codex chat's note. There's no "Folder edits mode": the folders are
 #: writable only under Change Permission Mode's "Can edit files" choices
 #: (#596).
@@ -6068,9 +6090,11 @@ class ChatOptionsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        grid.Add(wx.StaticText(self, label="&Agent:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        # "Run as agent", not "Agent": an agent conversation and a subagent
+        # are other things (#596).
+        grid.Add(wx.StaticText(self, label="Run as &agent:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.agent = wx.Choice(self)
-        set_accessible_name(self.agent, "Agent")
+        set_accessible_name(self.agent, "Run as agent")
         grid.Add(self.agent, 1, wx.EXPAND)
         grid.Add(wx.StaticText(self, label="Output &style:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.style = wx.Choice(self)

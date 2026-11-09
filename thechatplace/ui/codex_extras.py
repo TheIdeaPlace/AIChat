@@ -51,16 +51,16 @@ PLAN_MODE_TITLE = 'Plan Mode'
 PLAN_MODE_CHOICES = ['Default: carry out the task with this chat\'s permissions.',
                      'Plan: discuss and produce a plan first.']
 
-#: Why Rewind can't put a Codex chat's files back, and what the new chat
-#: keeps (#596, finding 4 and decision 3). The dialog shows it for Files
-#: only too, which makes no chat, so it says "a rewound chat", not "the new
+#: Why Retry from Here can't put a Codex chat's files back, and what the new
+#: chat keeps (#596, finding 4 and decision 3). The dialog shows it for Files
+#: only too, which makes no chat, so it says "a retried chat", not "the new
 #: chat".
 REWIND_FILES_NOTE = ("Codex doesn't put files back, so only the conversation goes back. "
-                     "A rewound Codex chat keeps the original's settings.")
+                     "A retried Codex chat keeps the original's settings.")
 #: The same for a chat started elsewhere, whose settings The Chat Place
 #: doesn't have: its copy starts as a new chat does (codex_runtime._kept_settings).
 REWIND_FILES_NOTE_ELSEWHERE = ("Codex doesn't put files back, so only the conversation goes back. "
-                               "A rewound Codex chat asks before changing files, and uses Codex's "
+                               "A retried Codex chat asks before changing files, and uses Codex's "
                                "default model and effort.")
 
 
@@ -321,7 +321,7 @@ class CodexExtras:
         if not self._require_capability('branch', info):
             return
         if message is None or message.kind not in (USER, ASSISTANT) or (before and message.kind != USER):
-            self._feedback('Choose one of your messages to rewind, or a message or reply to branch from.')
+            self._feedback('Choose one of your messages to retry from, or a message or reply to branch from.')
             return
         try:
             anchor = turn_anchor(message)

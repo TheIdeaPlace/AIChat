@@ -152,10 +152,10 @@ def test_what_a_change_says():
                               added_dirs=["C:\\A"])
     assert change.options_changed
     assert change.said("Build") == ("Build: agent Explore, new instructions, 1 more folder, "
-                                    "from its next message.")
+                                    "from its next turn.")
     removed = co.OptionsChange(ChatOptions("Explore", "x", "Concise"), ChatOptions())
     assert removed.said("Build") == ("Build: no agent, no instructions, your output style "
-                                     "setting, from its next message.")
+                                     "setting, from its next turn.")
 
 
 # -- what Claude Code offers ----------------------------------------------------------------

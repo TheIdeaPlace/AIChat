@@ -1020,7 +1020,7 @@ def test_a_turn_on_an_unchosen_fable_is_stopped():
     assert fable_problem("claude-fable-5-1", "") == (
         "Claude Code would have used Fable, Claude Code's default model. Some plans bill Fable "
         "to usage credits, so The Chat Place didn't send your message. Choose another model "
-        "with File, Change Model, then send again.")
+        "with File, Chat Settings, Change Model, then send again.")
     assert "instead of Opus, the model this session chose" in fable_problem(
         "claude-fable-5-1", "opus")
     assert "as soon as it started" in fable_problem("claude-fable-5-1", "", sent=True)

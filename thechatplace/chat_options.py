@@ -286,4 +286,5 @@ class OptionsChange:
                          + ("s" if len(self.removed_dirs) != 1 else "") + " removed")
         if not parts:
             return "Chat options unchanged."
-        return f"{title}: " + ", ".join(parts) + ", from its next message."
+        # "Turn", as every other change of a chat's settings says (#596).
+        return f"{title}: " + ", ".join(parts) + ", from its next turn."
