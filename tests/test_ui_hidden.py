@@ -1950,6 +1950,9 @@ def test_after_an_answer_the_messages_list_says_working_not_needs_you(frame, env
     with you in the list, where a change waits until you leave (#596).
     With another request still waiting, it still needs you."""
     from thechatplace.claude_cli import allow_response
+    # Away from the list while the request comes, so its name says so (on
+    # Linux the hidden list can really have focus).
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
     _waiting_turn(frame, _request("r1"), _request("r2", tool_input={"command": "git tag v1"}))
     settle(frame)
     assert frame._open.state == "needs you"
@@ -1969,6 +1972,7 @@ def test_after_an_answer_the_messages_list_says_working_not_needs_you(frame, env
 
 
 def test_answer_later_leaves_the_messages_list_saying_needs_you(frame, env, monkeypatch):
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
     _waiting_turn(frame, _request())
     settle(frame)
     monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
@@ -13744,11 +13748,16 @@ def test_after_answering_a_runtime_chat_the_messages_list_says_working(frame, en
         seen.append((len(shown), frame.messages_label.GetLabel()))
         return original(action, done)
     monkeypatch.setattr(frame, "_codex_work", work)
+    # Away from the list while the request comes (on Linux the hidden list
+    # can really have focus).
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
     try:
         frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
         assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
                     timeout=COPILOT_WAIT)
-        assert pump(lambda: "needs you" in frame.messages_label.GetLabel())
+        assert pump(lambda: frame._open.state == "needs you"), frame._open.state
+        assert pump(lambda: "needs you" in frame.messages_label.GetLabel()), \
+            frame.messages_label.GetLabel()
         monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
         frame.on_answer()
         assert pump(lambda: any(count == 1 for count, _label in seen), timeout=COPILOT_WAIT)
