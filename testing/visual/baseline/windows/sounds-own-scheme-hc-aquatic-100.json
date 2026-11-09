@@ -312,7 +312,7 @@
     "Message steered into the turn: None",
     "Steered message taken: None",
     "Queued message sent: None",
-    "Queued message deleted: None",
+    "Queued message removed: None",
     "You stopped a turn: None",
     "Reply finished: Rise (Wood)",
     "Another chat finished: None"

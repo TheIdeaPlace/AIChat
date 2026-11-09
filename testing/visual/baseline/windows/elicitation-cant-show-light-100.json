@@ -37,7 +37,7 @@
   {
    "class": "TextCtrl",
    "name": "Note",
-   "label": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later.",
+   "label": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later. Decline tells the tool no. Answer Later leaves the turn waiting until you come back and decline, or stop the turn.",
    "rect": [
     10,
     26,
@@ -46,13 +46,13 @@
    ],
    "best": [
     127,
-    98
+    158
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later."
+   "value": "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later. Decline tells the tool no. Answer Later leaves the turn waiting until you come back and decline, or stop the turn."
   },
   {
    "class": "StaticText",

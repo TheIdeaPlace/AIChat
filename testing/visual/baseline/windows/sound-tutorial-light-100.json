@@ -80,7 +80,7 @@
     "Message steered into the turn",
     "Steered message taken",
     "Queued message sent",
-    "Queued message deleted",
+    "Queued message removed",
     "You stopped a turn",
     "Reply finished",
     "Another chat finished"
