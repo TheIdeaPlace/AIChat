@@ -1944,6 +1944,39 @@ def test_answer_later_leaves_it_waiting(frame, env, monkeypatch):
     assert "still waiting" in env["feedback"][-1]
 
 
+def test_after_an_answer_the_messages_list_says_working_not_needs_you(frame, env, monkeypatch):
+    """Orca, coming back to the messages from the Answer dialog, read
+    "Messages in … (needs you …)": the state came with the next snapshot,
+    with you in the list, where a change waits until you leave (#596).
+    With another request still waiting, it still needs you."""
+    from thechatplace.claude_cli import allow_response
+    _waiting_turn(frame, _request("r1"), _request("r2", tool_input={"command": "git tag v1"}))
+    settle(frame)
+    assert frame._open.state == "needs you"
+    assert "needs you" in frame.messages_label.GetLabel()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    monkeypatch.setattr(frame, "_ask", lambda title, request, own: (
+        allow_response(request), "Allowed.", {}))
+    frame.on_answer()
+    assert "needs you" in frame.messages_label.GetLabel()  # r2 is still waiting
+    frame.on_answer()
+    label = frame.messages_label.GetLabel()
+    assert "needs you" not in label and "(working" in label, label
+    assert frame._open.state == "working"
+    settle(frame)  # the snapshot agrees, so nothing is held back to say on leaving
+    assert "(working" in frame.messages_label.GetLabel()
+    assert frame._pending_messages_label is None
+
+
+def test_answer_later_leaves_the_messages_list_saying_needs_you(frame, env, monkeypatch):
+    _waiting_turn(frame, _request())
+    settle(frame)
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
+    monkeypatch.setattr(frame, "_ask", lambda *a: None)
+    frame.on_answer()
+    assert "needs you" in frame.messages_label.GetLabel()
+
+
 def test_allow_for_session_keeps_the_rule_for_later_turns(frame, env, fake_runner, monkeypatch):
     from thechatplace.ui import dialogs
     request = _request(suggestions=[{"type": "addRules", "behavior": "allow",
@@ -13681,6 +13714,47 @@ def test_answering_a_copilot_request_asks_in_copilots_name_and_denies(frame, env
         assert shown[0][2].command == "echo synthetic"
         assert _copilot_state(frame).replies[-1][1] == "Denied"
         assert "Answer sent to Copilot." in env["feedback"]
+    finally:
+        runtime.close()
+
+
+def test_after_answering_a_runtime_chat_the_messages_list_says_working(frame, env, monkeypatch):
+    """As for Claude (#596): the answer goes in the background and the state
+    that says it was taken comes later, with you back in the list, where a
+    change waits until you leave. The list says working as the dialog closes."""
+    from thechatplace.ui import codex_chats
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "ask")
+    shown, seen = [], []
+
+    class Dialog:
+        def __init__(self, parent, title, request, detail="", *, chat_rule=None, provider="Codex"):
+            shown.append(request)
+            self.choice = "allow_once"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Dialog)
+    original = frame._codex_work
+
+    def work(action, done):
+        # The label as the answer is handed to the background.
+        seen.append((len(shown), frame.messages_label.GetLabel()))
+        return original(action, done)
+    monkeypatch.setattr(frame, "_codex_work", work)
+    try:
+        frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
+                    timeout=COPILOT_WAIT)
+        assert pump(lambda: "needs you" in frame.messages_label.GetLabel())
+        monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+        frame.on_answer()
+        assert pump(lambda: any(count == 1 for count, _label in seen), timeout=COPILOT_WAIT)
+        label = next(label for count, label in seen if count == 1)
+        assert "needs you" not in label and "(working" in label, label
+        assert pump(lambda: _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
     finally:
         runtime.close()
 

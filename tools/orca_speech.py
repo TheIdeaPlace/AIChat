@@ -161,8 +161,10 @@ STEPS = [
          refuse=["Messages in Visual probe", "Answer sent"]),
     Step("Up reads the first line: still in the box", ["Up"], expect=["zebra"],
          refuse=["Messages in Visual probe"]),
-    Step("Enter sends the answer", ["Return"], expect=["Messages in Visual probe"],
-         expect_dbus=["Answer sent"]),
+    # The messages say Claude is working again, not that it still needs you
+    # (#596): the state came later, held back while you were in the list.
+    Step("Enter sends the answer", ["Return"], expect=["Messages in Visual probe", "working"],
+         refuse=["needs you"], expect_dbus=["Answer sent"]),
     # A connected tool asks for input (#468): Answer opens on its message,
     # and Tab goes to the form's first box.
     Step("a connected tool asks", [], trigger="elicitation", expect=["needs you"]),
