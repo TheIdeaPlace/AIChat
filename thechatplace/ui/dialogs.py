@@ -930,7 +930,7 @@ class NewSessionDialog(wx.Dialog):
             self.mode.SetSelection(self._codex_choices[2])
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
-                "or leave the configured defaults. "
+                "or leave them on Codex's default. "
                 "Choose read-only or allow edits in this folder, with human or automatic approval review. "
                 "Human requests appear in Answer. Permissions are verified before sending. " + CODEX_REVIEW_NOTE + ' ' + self._saved_rules_note() +
                 (" Model choices could not be loaded; configured defaults remain available." if self._codex_model_error else
