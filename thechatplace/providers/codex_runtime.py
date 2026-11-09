@@ -175,11 +175,11 @@ class CodexChatRuntime:
         return proof.record()
 
     def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), instructions=None, extra_roots=(), apps=(),
-               collaboration=None):
+               collaboration=None, keep_mode=False, allow_retired=False):
         connection, _ = self._binding()
         proof = CodexOwnedThreads(connection).start(cwd, title, model=model, effort=effort,
             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer, mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps,
-            collaboration=collaboration)
+            collaboration=collaboration, keep_mode=keep_mode, allow_retired=allow_retired)
         return self._remember(proof, new=True)
 
     def history_route(self, native_id):
@@ -229,25 +229,51 @@ class CodexChatRuntime:
         chat's, Allow for This Chat's remembered approvals are kept by chat so
         the copy's start empty, and a grant to edit a folder is kept only while
         the folder is still the one it was given for, as resuming the original
-        requires (codex_owned._saved_options). The loaded chat's settings come
-        first; ``own`` (its saved record) is for one not loaded here."""
+        requires (codex_owned._saved_options), extra folders included.
+
+        Only settings that are both saved and confirmed are kept. A chat with
+        a latched problem, a permission change in progress or one awaiting
+        Stop's recheck may hold a grant on its loaded thread that was never
+        saved (#184), so no copy is made from it; nor from a loaded chat whose
+        settings differ from ``own``, its saved record. A chat not loaded here
+        is copied from ``own``; with neither (a chat started elsewhere) the
+        copy starts as any new chat does, read-only on Codex's defaults."""
+        from .codex_features import CodexFeatureError
+        native_id = source.cli_session_id
         with self._lock:
-            proof = self._proofs.get(source.cli_session_id)
+            proof = self._proofs.get(native_id)
+            unsettled = (bool(self._problems.get(native_id)) or native_id in self._policy_changes
+                         or native_id in self._policy_recoveries)
+        own = own if (isinstance(own, OwnSession) and own.provider == 'codex'
+                      and own.cli_session_id == native_id and own.started is True) else None
+        if unsettled:
+            raise CodexFeatureError('copy_unconfirmed')
         if proof is not None and proof.connection.owns_runtime(proof):
             options = proof.record().provider_options
-        elif (isinstance(own, OwnSession) and own.provider == 'codex'
-                and own.cli_session_id == source.cli_session_id and own.started is True):
-            options = CodexOwnedThreads._saved_options(own)
+            if own is not None and own.provider_options != options:
+                raise CodexFeatureError('copy_unconfirmed')
+        elif own is not None:
+            options = dict(own.provider_options)
         else:
             return {}
         sandbox = options.get('sandbox', 'read-only')
         approval = options.get('approval_policy', 'on-request')
-        if sandbox == 'workspace-write':
-            try:
-                CodexPolicy(sandbox, approval, options.get('workspace_root', '')).verify_workspace(source.cwd)
-            except CodexRpcError:
-                raise CodexRpcError("This chat's folder isn't the one it was allowed to edit any more, "
-                                    'so no copy was made. Change its permission mode first.') from None
+        roots = tuple(options.get('extra_roots', ()))
+        try:
+            # Every folder the grant names must still be itself: a replaced
+            # path must not silently grant a new scope.
+            if any(platform_paths.codex_workspace_root(p) != p for p in roots):
+                raise CodexFeatureError('copy_folder_moved')
+            if sandbox == 'workspace-write':
+                CodexPolicy(sandbox, approval, options.get('workspace_root', ''),
+                            extra_roots=roots).verify_workspace(source.cwd)
+        except (CodexRpcError, ValueError, OSError):
+            raise CodexFeatureError('copy_folder_moved') from None
+        try:
+            CodexOwnedThreads._saved_options(OwnSession(native_id, source.title, source.cwd, provider='codex',
+                                                        started=True, provider_options=dict(options)))
+        except (CodexRpcError, ValueError, OSError):
+            raise CodexFeatureError('copy_unconfirmed') from None
         return dict(model=options.get('model'), effort=options.get('effort'), sandbox=sandbox,
                     approval_policy=approval, approvals_reviewer=options.get('approvals_reviewer', 'user'),
                     instructions=options.get('instructions'), extra_roots=tuple(options.get('extra_roots', ())),
@@ -536,10 +562,10 @@ class CodexChatRuntime:
                      and not self._executor.snapshot(proof).turn_id and source.cli_session_id not in self._sending)
         kept = dict(self._kept_settings(source, own), mcp_servers=names, apps=apps)
         if empty:
-            # A new thread takes Plan only if this Codex offers it; a mode
-            # saved but unavailable here (proof.unavailable_mode) stays out.
-            kept['collaboration'] = proof.collaboration
-            return self.create(source.cwd, title, **kept)
+            # A new thread, but the copy keeps the original's mode as a fork
+            # would: saved, even if this Codex can't offer it (#596), and its
+            # model even if retired since.
+            return self.create(source.cwd, title, keep_mode=True, allow_retired=True, **kept)
         return self.fork(source, title, allow_retired=True, **kept)
 
     def feature(self, record, method, arguments=None):
@@ -741,7 +767,10 @@ class CodexChatRuntime:
             return proof
         followed = replace(proof, model=model, effort=effort)
         with self._lock:
-            if self._proofs.get(proof.native_id) is not proof or not proof.connection.owns_runtime(proof):
+            # Not once Stop has come in: it holds this proof, and the turn
+            # it stops goes on the model it had.
+            if (self._proofs.get(proof.native_id) is not proof or not proof.connection.owns_runtime(proof)
+                    or proof.native_id in self._stopping):
                 return proof
             proof.connection._accept_owned_thread(followed)
             self._proofs[proof.native_id] = followed
@@ -892,8 +921,15 @@ class CodexChatRuntime:
         # prevent interrupting a turn whose identity is already verified.
         proof, executor = self._context(record, allow_problem=True)
         with self._lock:
-            if proof.native_id in self._reopening or self._proofs.get(proof.native_id) is not proof:
+            # A turn about to start may have just moved this chat to Codex's
+            # current default (_follow_default): the same chat on the same
+            # connection, so Stop goes on with that proof. Anything else
+            # (another connection, a reopen) still has to be reopened.
+            current = self._proofs.get(proof.native_id)
+            if (proof.native_id in self._reopening or current is None
+                    or current.connection is not proof.connection):
                 raise CodexRpcError('Reopen this Codex chat before stopping')
+            proof = current
             repeated = proof.native_id in self._stopping and proof.native_id not in self._sending
             self._stops[proof.native_id] = self._stops.get(proof.native_id, 0) + 1
             pending = self._pending_dispatch.pop(proof.native_id, None)

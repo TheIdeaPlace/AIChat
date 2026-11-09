@@ -420,10 +420,10 @@ Use a Codex chat started here.
    applies from the next message. Cancel a picker once: the old choice stays. Try during a turn.
    Expect: you're told to wait or stop first. New Session's Model and Effort for Codex say
    "Codex's default". Properties (Alt+Enter) on a Codex chat left on the default, once it has
-   sent a message, says "Model chosen: Codex's default (now" and the model it's on ")".
+   sent a message, says "Model chosen: Codex's default (last used" and the model it was on ")".
 1a. **Following Codex's default.** On a chat left on Codex's default, change the `model` line in
    your Codex `config.toml` to another model Codex offers, then send a message. Expect: the
-   reply comes from the new model (Properties names it after "now"), with no change made in The
+   reply comes from the new model (Properties names it after "last used"), with no change made in The
    Chat Place. Put `config.toml` back afterwards. A chat with a model chosen in Change Model
    stays on it.
 2. **Plan mode.** Press Ctrl+/, choose `/plan`, and send it. Expect: a picker titled **Plan Mode**.
@@ -434,7 +434,8 @@ Use a Codex chat started here.
    "Plan: discuss and produce a plan first, keeping its file access", and the chat's mode is
    marked "(now)". Choose Plan. Expect: "Codex permissions for" the chat ": Plan: …" and the
    heading says plan mode. Press Ctrl+Shift+O again. Expect: the text above the list says "In
-   Plan mode, with file access:" and the mode it had, and Plan is marked "(now)". Choose `/plan`
+   Plan mode, with file access:" and the mode it had, Plan is marked "(now)", and that mode's row
+   is marked "(file access now)". Choose `/plan`
    from Ctrl+/: Plan Mode agrees. Back in Change Permission Mode, choose a mode that edits
    files. Expect: you hear it, then "Plan mode is off.", and the heading no longer says plan mode.
 3. **A control with a draft.** Put `/model` alone on the first line and some text below it. Send.

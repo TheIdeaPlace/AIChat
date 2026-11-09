@@ -131,9 +131,10 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     if own is not None and info.provider == 'codex':
         options = own.provider_options
         # A chat on Codex's default follows it at each turn (#596, decision
-        # 19), so say which model that is now when Codex has said.
-        now = f' (now {running_model})' if running_model else ''
-        lines.append(f"Model chosen: {options.get('model') or CODEX_DEFAULT + now}")
+        # 19), so say which model it was last on: the next turn takes the
+        # default as it is then, which may have changed since.
+        last = f' (last used {running_model})' if running_model else ''
+        lines.append(f"Model chosen: {options.get('model') or CODEX_DEFAULT + last}")
         lines.append(f"Effort: {codex_effort_label(options['effort']) if options.get('effort') else CODEX_DEFAULT}")
         sandbox = options.get('sandbox', 'read-only')
         lines.append('Sandbox: ' + {'read-only': 'read-only', 'workspace-write': 'can edit files in its folder'}.get(sandbox, 'not reported'))

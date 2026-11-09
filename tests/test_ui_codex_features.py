@@ -66,6 +66,29 @@ def test_codex_branch_says_what_the_copy_can_do_before_and_after(frame, env, mon
                                    + ' The original chat is kept.')
 
 
+def test_a_branch_of_a_chat_started_elsewhere_says_it_starts_on_codexs_defaults(frame, env, monkeypatch):
+    """A Codex CLI chat has no settings here to keep: its copy starts as a
+    new chat does, and the question and message say so (review of #609)."""
+    from dataclasses import replace as replaced
+    record = owned(frame, env)
+    info = replaced(record.to_info(), is_own=False)
+    message = transcript_from_thread(history()).messages[0]
+    asked, opened, passed = [], [], []
+    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before, own=None:
+                        passed.append(own) or OwnSession('branch-copy', title, info.cwd, provider='codex'))
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame._branch_codex(info, message)
+    assert pump(lambda: opened)
+    from thechatplace.ui.codex_extras import copy_note
+    assert passed == [None]
+    assert copy_note(own=False) in asked[0] and 'keeps the original' not in asked[0]
+    assert env['feedback'][-1] == ('Opened Codex original (branch). ' + copy_note(short=True, own=False)
+                                   + ' The original chat is kept.')
+
+
 def test_codex_attachments_are_separate_from_a_claude_chat_with_the_same_id(frame, env):
     record = owned(frame, env)
     document = env['tmp'] / 'spec.txt'
@@ -794,8 +817,11 @@ def test_change_permission_mode_offers_plan_and_leaves_it_with_a_grant(frame, en
         assert CodexPermissions(frame, info, saved).mode_text().endswith(', in Plan mode')
         frame.on_change_permission_mode()
         assert pump(lambda: not frame._codex_policy_pending)
-        prompt, _choices, now = asked[1]
+        prompt, shown, now = asked[1]
         assert now == CODEX_PLAN
+        # The file access Plan keeps is marked too.
+        assert shown[0] == (('read-only', 'on-request', 'user'),
+                            'Read-only; asks before allowing changes (file access now)')
         assert 'In Plan mode, with file access: Read-only; asks before allowing changes.' in ' '.join(prompt.split())
         saved = frame.store.get(record.cli_session_id, 'codex')
         assert saved.provider_options['collaboration'] == 'default'

@@ -462,7 +462,9 @@ def policy_runtime(tmp_path, model=None):
             result = super().request(method, params)
             if method in ('thread/start', 'thread/resume', 'thread/fork'):
                 from thechatplace.providers.codex_policy import CodexPolicy
-                policy = CodexPolicy.choose(params['cwd'], params['sandbox'], params['approvalPolicy'])
+                roots = params['config'].get('sandbox_workspace_write', {}).get('writable_roots', ())
+                policy = CodexPolicy.choose(params['cwd'], params['sandbox'], params['approvalPolicy'],
+                                            extra_roots=roots)
                 result.update(cwd=params['cwd'], sandbox=policy.turn_policy(), approvalPolicy=policy.approval,
                               approvalsReviewer=params['config']['approvals_reviewer'])
                 if params.get('model'):

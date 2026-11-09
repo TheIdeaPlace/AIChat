@@ -381,12 +381,19 @@ class CodexChats(SoundHost, CodexExtras):
         grant = (record.provider_options.get('sandbox', 'read-only'),
                  record.provider_options.get('approval_policy', 'on-request'),
                  record.provider_options.get('approvals_reviewer', 'user'))
-        in_plan = record.provider_options.get('collaboration') == CODEX_PLAN
+        # A Plan saved on a Codex without it runs in Default (unavailable_mode),
+        # so it isn't shown as the chat's mode; choosing Plan says it's missing.
+        in_plan = (record.provider_options.get('collaboration') == CODEX_PLAN and not getattr(
+            self._codex_states.get(info.key), 'plan_unavailable', False))
         current = CODEX_PLAN if in_plan else grant
         plan_access = codex_mode_label(dict(record.provider_options, collaboration=None)) if in_plan else ''
+        # In Plan, the file access it keeps is marked too, so arrowing the
+        # list says which row leaves Plan with the access it has.
+        shown = [(value, label + (' (file access now)' if in_plan and value == grant else ''))
+                 for value, label in choices]
         selected = self._change_setting('Change Permission Mode',
             codex_permission_prompt(self, info.title, record.cwd, plan_access),
-            choices, current)
+            shown, current)
         if selected is None:
             after()
             return

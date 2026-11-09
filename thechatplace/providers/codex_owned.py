@@ -169,7 +169,9 @@ class CodexOwnedThreads:
     def _create(self, method, cwd, title, *, native_id=None, ephemeral=False, model=None, effort=None,
                 sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
                 last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), collaboration=None,
-                allow_retired=False, instructions=None, extra_roots=(), apps=()):
+                allow_retired=False, instructions=None, extra_roots=(), apps=(), keep_mode=False):
+        """``keep_mode``: a mode kept from another chat (a copy), which, like
+        a saved one, stays saved if this Codex can't offer it."""
         from .codex_tools import server_names, app_ids
         mcp_servers = server_names(mcp_servers)
         apps = app_ids(apps)
@@ -180,7 +182,7 @@ class CodexOwnedThreads:
             try:
                 self._require_mode(collaboration)
             except CodexFeatureError:
-                if method not in ('thread/resume', 'thread/fork'):
+                if method not in ('thread/resume', 'thread/fork') and not keep_mode:
                     raise
                 # A saved mode must not lock a chat out on a Codex without it,
                 # nor stop a copy that keeps the original's mode (#596).
@@ -321,10 +323,11 @@ class CodexOwnedThreads:
 
     def start(self, cwd, title, *, ephemeral=False, model=None, effort=None,
               sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), collaboration=None,
-              allow_retired=False, instructions=None, extra_roots=(), apps=()):
+              allow_retired=False, instructions=None, extra_roots=(), apps=(), keep_mode=False):
         return self._create("thread/start", cwd, title, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
-                            mcp_servers=mcp_servers, collaboration=collaboration, allow_retired=allow_retired, instructions=instructions, extra_roots=extra_roots, apps=apps)
+                            mcp_servers=mcp_servers, collaboration=collaboration, allow_retired=allow_retired, instructions=instructions, extra_roots=extra_roots, apps=apps,
+                            keep_mode=keep_mode)
 
     def fork(self, source: SessionInfo, title, *, ephemeral=False, model=None, effort=None,
              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',

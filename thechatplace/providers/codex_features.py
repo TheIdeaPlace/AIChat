@@ -17,6 +17,14 @@ class CodexFeatureError(CodexRpcError):
         'unavailable': 'This Codex chat is not ready. Use Stop to recheck its connection first.',
         'failed': 'Codex could not confirm this operation. Check the chat before trying again.',
         'settings_pending': 'Send a normal message with this chat\'s changed settings before compacting its context.',
+        # A copy keeps the original's settings (#596, decision 3), so only
+        # settings that are saved and confirmed, for the folders they were
+        # given for.
+        'copy_unconfirmed': ("This chat's permissions haven't been confirmed, so no copy was made. Press "
+                             'Stop to have The Chat Place check this chat with Codex, then try again.'),
+        'copy_folder_moved': ("This chat's folder, or one of its additional folders, isn't the one it was "
+                              'allowed to edit any more, so no copy was made. Change its permission mode '
+                              'or Chat Options first.'),
     }
 
     def __init__(self, code):

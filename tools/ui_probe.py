@@ -1426,8 +1426,11 @@ def d_codex_mode(frame, env, plan=False):
     choices = CODEX_REVIEW_MODES + [(CODEX_PLAN, CODEX_PLAN_LABEL)]
     now = CODEX_PLAN if plan else choices[3][0]
     access = CODEX_REVIEW_MODES[3][1] if plan else ''
+    grant = choices[3][0]
     dialog = single_choice_dialog(frame, codex_permission_prompt(frame, title, folder, access),
-        'Change Permission Mode', [label + (' (now)' if value == now else '') for value, label in choices])
+        'Change Permission Mode', [label + (' (now)' if value == now else '')
+                                   + (' (file access now)' if plan and value == grant else '')
+                                   for value, label in choices])
     dialog.SetSelection([value for value, _label in choices].index(now))
     return lambda: frame._modal(dialog)
 

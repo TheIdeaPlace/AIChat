@@ -1860,8 +1860,9 @@ Mode switches between agent mode, plan mode and Auto (see "Copilot plan mode" an
 Auto, your rules and Allow for This Chat").</p>
 <p>For a Codex chat started here, <strong>Change Permission Mode</strong> switches between read-only and editing
 files in its folder, with you or automatic approval review checking requests, and its last choice
-is <strong>Plan</strong>, as for Claude. Plan keeps the file access the chat has, and the text above the list
-says which; choosing any other mode takes the chat out of Plan. Finish or stop the
+is <strong>Plan</strong>, as for Claude. Plan keeps the file access the chat has: the text above the list says
+which, and that choice is marked "(file access now)". Choosing any other mode, that one included,
+takes the chat out of Plan. Finish or stop the
 turn first. The chat keeps its history, and the new mode applies from its next message, even
 before its first. Until the new mode has been checked with Codex and saved, the old one stays in
 effect. If that fails, sending stays off: press <strong>Stop</strong> (Ctrl+Period) to have The Chat Place
@@ -1871,8 +1872,8 @@ once checked with Codex and saved, they apply from the next message. Change Effo
 is <strong>Codex's default</strong>, and so is Change Model's, which names the model that is now, such as
 "Codex's default (GPT-5.5)". Choosing it puts the chat on Codex's default and its default effort,
 and the chat follows that default at each turn, so it moves to a new one if Codex's default
-changes. Properties (Alt+Enter) says "Model chosen: Codex's default (now …)" with the model it's
-on. On a chat with no model chosen, Change Effort offers the efforts of Codex's default model, and
+changes. Properties (Alt+Enter) says "Model chosen: Codex's default (last used …)" with the model
+it was last on. On a chat with no model chosen, Change Effort offers the efforts of Codex's default model, and
 choosing one puts the chat on that model.
 A model Codex no longer lists can't take an effort: Change Effort says so, and Change Model chooses
 another. <code>/plan</code> in Insert Command or Skill (Ctrl+/) also chooses Plan or Default, and agrees with
@@ -2114,8 +2115,13 @@ branching from a turn that's running waits for it to finish. Both keep the origi
 and Plan mode, as a Claude copy does. What you allowed in the original with Allow for This Chat
 stays with the original. Branch from Here says so before it makes one, and you hear it again when the copy
 opens, for example after Rewind to Here: "Opened &lt;title&gt; (rewound). It keeps the original's
-settings. The original chat is kept. Change your message and send when ready." If the chat's
-folder is no longer the one it was allowed to edit, no copy is made, and you hear why.</p>
+settings. The original chat is kept. Change your message and send when ready." No copy is made,
+and you hear why, if the chat's folder or one of its additional folders is no longer the one it
+was allowed to edit, or if a change to its permissions hasn't been confirmed; press <strong>Stop</strong>
+(Ctrl+Period) to have it checked.</p>
+<p>A copy of a Codex chat started elsewhere, such as in the Codex app or CLI, has no settings here to
+keep: it asks before changing files and uses Codex's default model and effort, as the question
+and the message when it opens say. Change Permission Mode (Ctrl+Shift+O) in it lets it edit.</p>
 <p>Copilot chats don't have these yet.</p>
 <h3>Sending a reply to another chat</h3>
 <p>Two agents can work on the same thing, with you passing their words between them: Claude builds

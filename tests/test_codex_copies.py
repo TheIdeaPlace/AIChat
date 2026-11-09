@@ -7,6 +7,8 @@ import pytest
 
 from thechatplace.own_store import OwnSession
 from thechatplace.providers.codex_events import CodexEvent
+from thechatplace.codex_diagnostics import safe_reason
+from thechatplace.providers.codex_features import CodexFeatureError
 from thechatplace.providers.codex_rpc import CodexRpcError
 from test_codex_runtime import policy_runtime, wait
 
@@ -189,9 +191,97 @@ def test_a_copy_isnt_made_when_the_folder_isnt_the_one_allowed(tmp_path):
         with service._lock:
             service._proofs.pop(record.cli_session_id)
         before = len(connection.calls)
-        with pytest.raises((CodexRpcError, ValueError)):
+        with pytest.raises(CodexFeatureError) as refused:
             service.fork_at(record.to_info(), 'Copy', 'native-turn', own=moved)
+        # Said in words, not "Codex could not create the branch."
+        assert safe_reason(refused.value).startswith("This chat's folder, or one of its additional folders, "
+                                                     "isn't the one it was allowed to edit any more")
         assert not any(m == 'thread/fork' for m, _ in connection.calls[before:])
+    finally:
+        service.close()
+
+
+def test_a_copy_isnt_made_when_an_extra_folder_has_moved(tmp_path, monkeypatch):
+    # Loaded or not, a saved additional folder that now resolves somewhere
+    # else must not become writable in the copy.
+    from thechatplace import platform_paths
+    extra = tmp_path / 'shared'
+    extra.mkdir()
+    service, connection, record, _ = _service(tmp_path)
+    try:
+        change = service.prepare_policy(record, 'workspace-write', 'on-request')
+        record = change.record()
+        service.finish_policy(change, True)
+        change = service.prepare_chat_options(record, None, [str(extra.resolve())])
+        record = change.record()
+        service.finish_policy(change, True)
+        assert record.provider_options['extra_roots'] == [str(extra.resolve())]
+        resolve = platform_paths.codex_workspace_root
+        monkeypatch.setattr(platform_paths, 'codex_workspace_root', lambda p: (
+            str(tmp_path / 'elsewhere') if p == str(extra.resolve()) else resolve(p)))
+        before = len(connection.calls)
+        with pytest.raises(CodexFeatureError) as refused:
+            service.fork_at(record.to_info(), 'Copy', 'native-turn', own=record)
+        assert refused.value.code == 'copy_folder_moved'
+        assert not any(m == 'thread/fork' for m, _ in connection.calls[before:])
+    finally:
+        service.close()
+
+
+def test_a_grant_that_failed_to_save_never_reaches_a_copy(tmp_path):
+    # A chat not loaded here resumes with the new grant before it's saved;
+    # if the save fails, the loaded thread holds a grant only Stop's recheck
+    # may clear (#184). A copy then must not take it (review of #609).
+    service, connection, record, _ = _service(tmp_path)
+    try:
+        with service._lock:
+            service._proofs.pop(record.cli_session_id)
+        change = service.prepare_policy(record, 'workspace-write', 'never')
+        service.finish_policy(change, False)
+        assert record.provider_options['sandbox'] == 'read-only'
+        before = len(connection.calls)
+        for copy in (lambda: service.fork_at(record.to_info(), 'Copy', 'native-turn', own=record),
+                     lambda: service.copy_with_tools(record.to_info(), 'Tools copy', [], own=record)):
+            with pytest.raises(CodexFeatureError) as refused:
+                copy()
+            assert refused.value.code == 'copy_unconfirmed'
+            assert 'Press Stop' in safe_reason(refused.value)
+        assert not any(m in ('thread/fork', 'thread/start') and not p.get('ephemeral')
+                       for m, p in connection.calls[before:])
+    finally:
+        service.close()
+
+
+def test_a_pending_change_or_a_saved_record_that_disagrees_makes_no_copy(tmp_path):
+    service, connection, record, _ = _service(tmp_path)
+    try:
+        change = service.prepare_policy(record, 'workspace-write', 'on-request')
+        with pytest.raises(CodexFeatureError):
+            service.fork_at(record.to_info(), 'Copy', 'native-turn', own=record)
+        service.finish_policy(change, True)
+        # The store still has the old grant: loaded and saved disagree.
+        with pytest.raises(CodexFeatureError) as refused:
+            service.fork_at(record.to_info(), 'Copy', 'native-turn', own=record)
+        assert refused.value.code == 'copy_unconfirmed'
+        copy = service.fork_at(record.to_info(), 'Copy', 'native-turn', own=change.record())
+        assert copy.provider_options['sandbox'] == 'workspace-write'
+    finally:
+        service.close()
+
+
+def test_an_empty_tools_copy_keeps_a_plan_this_codex_lacks(tmp_path):
+    service, connection, record, _ = _service(tmp_path)
+    try:
+        change = service.prepare_mode(record, 'plan')
+        record = change.record()
+        service.finish_policy(change, True)
+        original = connection.request
+        connection.request = lambda method, params: (
+            {'data': [{'name': 'Default', 'mode': 'default'}]} if method == 'collaborationMode/list'
+            else original(method, params))
+        copy = service.copy_with_tools(record.to_info(), 'Tools copy', [], own=record)
+        assert copy.provider_options['collaboration'] == 'plan'
+        assert service._proofs[copy.cli_session_id].unavailable_mode == 'plan'
     finally:
         service.close()
 
@@ -230,6 +320,36 @@ def test_a_default_named_only_by_the_catalog_is_followed_with_its_own_effort(tmp
         turn = [p for m, p in connection.calls if m == 'turn/start'][-1]
         assert (turn['model'], turn['effort']) == ('gpt-next', 'medium')
     finally:
+        service.close()
+
+
+def test_stop_while_the_default_is_looked_up_still_stops_the_turn(tmp_path):
+    # Stop pressed while a turn is about to start, during the lookup, must
+    # neither be refused nor lost (review of #609).
+    import threading
+    service, connection, record, settings = _service(tmp_path)
+    original = connection.request
+    entered, release = threading.Event(), threading.Event()
+
+    def request(method, params):
+        if method == 'config/read' and params.get('cwd') and 'includeLayers' not in params:
+            entered.set()
+            assert release.wait(5)
+        return original(method, params)
+    try:
+        settings.update(model='gpt-other')
+        connection.request = request
+        sender = threading.Thread(target=service.send, args=(record, 'Go'))
+        sender.start()
+        assert entered.wait(5)
+        service.stop(record)
+        release.set()
+        sender.join(5)
+        assert any(m == 'turn/interrupt' for m, _ in connection.calls)
+        # Stop came first, so the turn went on the model it had.
+        assert [p for m, p in connection.calls if m == 'turn/start'][-1]['model'] == 'gpt-default'
+    finally:
+        release.set()
         service.close()
 
 
@@ -341,7 +461,7 @@ def test_properties_name_the_model_a_default_chat_is_on_now():
     info = SessionInfo(OWN, 'codex:x', 'Chat', '/w', 'x', provider='codex')
     own = OwnSession('x', 'Chat', '/w', provider='codex', started=True, provider_options={})
     lines = session_properties(info, own=own, now_ms=0, running_model='gpt-5.5')
-    assert "Model chosen: Codex's default (now gpt-5.5)" in lines
+    assert "Model chosen: Codex's default (last used gpt-5.5)" in lines
     assert "Model chosen: Codex's default" in session_properties(info, own=own, now_ms=0)
     own.provider_options['model'] = 'gpt-other'
     assert 'Model chosen: gpt-other' in session_properties(info, own=own, now_ms=0, running_model='gpt-other')

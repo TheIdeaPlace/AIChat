@@ -59,6 +59,19 @@ def test_a_copy_says_it_keeps_the_originals_settings():
         assert 'this chat' not in note and 'without asking' not in note
 
 
+def test_a_copy_of_a_chat_started_elsewhere_says_it_starts_on_codexs_defaults(monkeypatch):
+    # The Chat Place has no settings for it to keep (review of #609).
+    monkeypatch.setattr('sys.platform', 'win32')
+    assert codex_extras.copy_note(own=False) == (
+        "The new chat asks before changing files, and uses Codex's default model and effort. "
+        'Change Permission Mode (Ctrl+Shift+O) in it lets it edit files.')
+    assert codex_extras.copy_note(short=True, own=False) == (
+        "It asks before changing files; Change Permission Mode (Ctrl+Shift+O) lets it edit.")
+    assert "keeps the original" not in codex_extras.REWIND_FILES_NOTE_ELSEWHERE
+    monkeypatch.setattr('sys.platform', 'darwin')
+    assert '(Cmd+Shift+O)' in codex_extras.copy_note(own=False)
+
+
 def test_rewinds_files_note_has_no_checkpoints_and_fits_files_only_too():
     note = codex_extras.REWIND_FILES_NOTE
     assert 'checkpoint' not in note.lower()

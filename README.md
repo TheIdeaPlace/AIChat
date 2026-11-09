@@ -684,7 +684,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
   such as "Codex's default (GPT-5.5)": the chat goes on Codex's default and its default effort,
   and follows that default at each turn, so it moves to a new one if Codex's default changes;
-  Properties says "Model chosen: Codex's default (now …)". Change Effort's first choice is **Codex's
+  Properties says "Model chosen: Codex's default (last used …)". Change Effort's first choice is **Codex's
   default** too, and its others read as words, such as "Extra high". On a chat with no model
   chosen, it offers the efforts of Codex's default model, and choosing one puts the chat on that
   model. A model Codex no longer lists can't take an effort: Change Effort says so, and Change
@@ -699,8 +699,11 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   Chat Options, connected tools and Plan mode, as a Claude copy does; what you allowed in the
   original with Allow for This Chat stays with the original. Branch from Here's question says so
   first, and when the copy opens you hear, for example, "Opened Fix the build (branch). It keeps
-  the original's settings. The original chat is kept." If the chat's folder is no longer the one
-  it was allowed to edit, no copy is made, and you hear why.
+  the original's settings. The original chat is kept." No copy is made, and you hear why, if the
+  chat's folder or one of its additional folders is no longer the one it was allowed to edit, or
+  if a change to its permissions hasn't been confirmed (press Stop to have it checked). A copy of
+  a Codex chat started elsewhere asks before changing files and uses Codex's default model and
+  effort, as the question and the message say.
 - **Ask Aside** (Ctrl+Shift+Y) also works for Codex chats on this computer, including ones
   started elsewhere. Each question uses a temporary copy of the chat that can only read files,
   in a separate Codex process, and your ChatGPT plan. Commands, connected tools, hooks,
@@ -721,7 +724,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   turns; the heading says when Plan is selected. **Plan** is also the last choice in File,
   **Change Permission Mode** (Ctrl+Shift+O), as for Claude, and the two always agree. Plan keeps
   the chat's file access, which Change Permission Mode names above its list ("In Plan mode, with
-  file access: …"). Choose Default, or another mode in Change Permission Mode, to carry out the
+  file access: …") and marks "(file access now)" in it. Choose Default, or another mode in Change Permission Mode, to carry out the
   plan; you hear "Plan mode is off." If the chat is opened on a version of Codex without
   Plan mode, you hear so and it runs in Default; Plan stays saved.
 - A model, effort or mode Codex doesn't confirm is said and changes nothing; the chat can go on
