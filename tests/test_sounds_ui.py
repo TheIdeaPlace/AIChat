@@ -501,14 +501,24 @@ def codex_conversation(frame, mode="auto"):
     return conversation
 
 
+def fake_deliver(frame, monkeypatch, seen=None):
+    """A send to a member that goes, as the real one does: the conversation now waits on it."""
+    def deliver(conversation, index, text, relay=True):
+        if seen is not None:
+            seen.append((index, set(frame._sound_hushed_sends or ())))
+        member = conversation.members[index]
+        frame._agent_awaiting[member.identity] = (conversation.conversation_id, relay)
+        return True
+    monkeypatch.setattr(frame, "_agent_deliver_unhushed", deliver)
+
+
 def test_a_codex_members_reply_handed_on_sounds_once_and_not_as_a_reply(frame, env, monkeypatch):
     codex_conversation(frame)
-    delivered = []
-    monkeypatch.setattr(frame, "_agent_deliver_unhushed",
-                        lambda c, index, text, relay=True: delivered.append(index) or True)
+    seen = []
+    fake_deliver(frame, monkeypatch, seen)
     frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed: one bug."),)))
     frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed: one bug."),)))
-    assert delivered == [0]
+    assert seen == [(0, {"own:own-1"})]  # the send to Claude was hushed while it went
     assert env["sounds"] == [se.HANDED_ON]
     assert not frame._agent_sound_owed and not frame._sound_hushed_sends
 
@@ -528,7 +538,7 @@ def test_a_codex_member_failing_in_a_conversation_sounds_failed_only(frame, env)
 def test_a_reply_handed_on_follows_other_sounds_play_for(frame, env, monkeypatch):
     codex_conversation(frame)
     frame.speech.sound_others = se.OTHERS_NONE
-    monkeypatch.setattr(frame, "_agent_deliver_unhushed", lambda *a, **k: True)
+    fake_deliver(frame, monkeypatch)
     frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
     assert env["sounds"] == []
 
@@ -568,12 +578,20 @@ def test_without_pass_in_the_scheme_a_codex_hand_off_sounds_as_before(frame, env
     own_scheme_without_pass(frame, explicit_none)
     assert not frame._sound_scheme_has(se.HANDED_ON)
     codex_conversation(frame)
-    hushed = []
-    monkeypatch.setattr(frame, "_agent_deliver_unhushed",
-                        lambda *a, **k: hushed.append(set(frame._sound_hushed_sends or ())) or True)
+    seen = []
+    fake_deliver(frame, monkeypatch, seen)
     frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
     assert env["sounds"] == [se.FINISHED_ELSEWHERE]
-    assert hushed == [set()]  # the send to Claude wasn't hushed
+    assert seen == [(0, set())]  # the send to Claude wasn't hushed
+
+
+def test_a_codex_hand_off_refused_at_once_is_not_handed_on(frame, env, monkeypatch):
+    """The send to the next member went nowhere (the real _agent_send_failed pops the wait
+    on it): its reply sounds as one waiting for you, not as handed on."""
+    codex_conversation(frame)
+    monkeypatch.setattr(frame, "_agent_deliver_unhushed", lambda *a, **k: True)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._sound_hushed_sends
 
 
 def test_a_codex_members_turn_with_the_conversations_text_queued_is_silent(frame, env):
