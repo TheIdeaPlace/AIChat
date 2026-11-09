@@ -761,10 +761,7 @@ class CodexProvider:
             raise ValueError('Open a Codex chat started here first')
         connection, allowed = self.runtime.tools_context(session.cli_session_id)
         if name not in allowed:
-            # Codex signs in to and reloads a server only for a chat that has
-            # it on, and a chat's tools are set when it's made (#596).
-            raise ValueError('This tool is off in this chat. Press Copy with Tool On to make a copy '
-                             'with it on, then use it from Connected Tools in that copy.')
+            raise ValueError('Enable this connected tool in a copy first')
         if action == 'login':
             return connection.request('mcpServer/oauth/login', {
                 'name': name, 'threadId': session.cli_session_id, 'timeoutSecs': 180})

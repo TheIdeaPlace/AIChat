@@ -308,7 +308,7 @@ STEPS = [
          expect=["Connected Tools: Codex review", "project-notes"], refuse=["unlabeled", "unlabelled"]),
     Step("Delete says which button makes a copy", ["Delete"],
          expect=["a tool changes only in a new copy", "Copy with Tool Off"],
-         refuse=["Create a new copy"]),
+         refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote

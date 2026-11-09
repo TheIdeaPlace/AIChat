@@ -7,6 +7,7 @@ Delete is pressed in the list and when Sign In can't work (#596). Whether
 Codex can change a chat's tools in place is #597; signing in without such a
 chat, #598.
 """
+import re
 import sys
 
 import wx
@@ -41,10 +42,22 @@ def _press(label, platform=None):
     return f"{name} ({key_name('Alt+O', platform)})"
 
 
-def _login_command(name):
-    """The Codex CLI command that signs in to server ``name`` (checked against
-    codex-cli 0.163: ``codex mcp login <NAME>``), quoted if it has spaces."""
-    return 'codex mcp login ' + (f'"{name}"' if any(c.isspace() for c in name) else name)
+#: What ``codex mcp add`` accepts in a server's name (codex-cli 0.163: "use
+#: letters, numbers, '-', '_', ':', '@', '/', '.'"). None of them means
+#: anything to a shell, except '@' first in PowerShell (splatting).
+_PLAIN_NAME = re.compile(r'[A-Za-z0-9_:/.-][A-Za-z0-9_:@/.-]*')
+
+
+def _login_command(name, platform=None):
+    """The Codex CLI command that signs in to server ``name`` (codex-cli
+    0.163: ``codex mcp login <NAME>``). A name ``codex mcp add`` would take
+    goes as it is; any other (hand-written in config.toml) is single-quoted,
+    which PowerShell (Windows' terminal) and a Mac's or Linux's shell all
+    take, each with its own way of putting a quote inside."""
+    if _PLAIN_NAME.fullmatch(name):
+        return 'codex mcp login ' + name
+    inner = "''" if (platform or sys.platform) == 'win32' else "'\\''"
+    return "codex mcp login '" + name.replace("'", inner) + "'"
 
 
 class CodexConnectedTools:
@@ -91,7 +104,7 @@ class CodexConnectedTools:
         ``mcpServer/oauth/login`` takes the chat), #596."""
         if not self.can_turn_off:
             return ('This chat wasn\'t started in The Chat Place. To sign in to this tool, use Codex '
-                    'in a terminal: ' + _login_command(server.name) + '.')
+                    'in a terminal: ' + _login_command(server.name, platform) + '.')
         return ('Sign In works only in a chat with this tool on. Press '
                 + _press('Copy with Tool &On', platform) + ' to make a copy with it on, '
                 'then sign in from Connected Tools in that copy.')
@@ -222,8 +235,9 @@ class CodexConnectedTools:
         consent = ('Make a new copy of this chat with ' + server.name + ' on? Its tools can reach '
                    "websites and services outside this chat's folder, so turn on only a tool you "
                    'trust.' if not off else
-                   'Create a new copy without ' + server.name + "? It's no longer in Codex's configuration."
-                   if server.missing else 'Create a new copy with ' + server.name + ' turned off?')
+                   'Make a new copy of this chat without ' + server.name + "? It's no longer in "
+                   "Codex's configuration." if server.missing else
+                   'Make a new copy of this chat with ' + server.name + ' off?')
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                          self.dialog or self.frame) != wx.YES:

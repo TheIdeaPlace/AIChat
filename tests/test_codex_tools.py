@@ -146,12 +146,38 @@ def test_sign_in_for_a_chat_from_elsewhere_gives_the_codex_command():
     assert host.sign_in_text(CodexTool("notes", "needs-auth", read_only=True)) == (
         "This chat wasn't started in The Chat Place. To sign in to this tool, use Codex in a "
         "terminal: codex mcp login notes.")
-    assert host.sign_in_text(CodexTool("my notes", "needs-auth", read_only=True)).endswith(
-        'codex mcp login "my notes".')
 
 
-def test_the_provider_refuses_a_tool_that_is_off_with_the_steps():
-    runtime = SimpleNamespace(tools_context=lambda native: (FakeConnection(), ("other",)))
-    info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=True)
-    with pytest.raises(ValueError, match="This tool is off in this chat. Press Copy with Tool On"):
-        codex.CodexProvider.connected_tool_action(_provider(FakeConnection(), runtime), info, "notes", "login")
+@pytest.mark.parametrize("name,platform,said", [
+    # Every character codex mcp add allows (codex-cli 0.163) goes as it is.
+    ("my-notes_2", "win32", "codex mcp login my-notes_2"),
+    ("team/notes.v2", "linux", "codex mcp login team/notes.v2"),
+    ("me@work:notes", "darwin", "codex mcp login me@work:notes"),
+    # PowerShell would take a leading @ as splatting.
+    ("@work", "win32", "codex mcp login '@work'"),
+    # Hand-written in config.toml: single quotes, a quote inside as each shell needs.
+    ("my notes", "win32", "codex mcp login 'my notes'"),
+    ("Kelly's notes", "win32", "codex mcp login 'Kelly''s notes'"),
+    ("Kelly's notes", "darwin", "codex mcp login 'Kelly'\\''s notes'"),
+    ("$(rm -rf ~)", "linux", "codex mcp login '$(rm -rf ~)'"),
+])
+def test_the_login_command_is_safe_to_paste_in_each_systems_terminal(name, platform, said):
+    pytest.importorskip("wx")
+    from thechatplace.ui.codex_tools_host import _login_command
+    assert _login_command(name, platform) == said
+
+
+def test_every_copy_question_says_make_a_new_copy(monkeypatch):
+    wx = pytest.importorskip("wx")
+    host = _host(True)
+    host.frame.store.get = lambda *a, **k: host.record
+    host.load = lambda done: None
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.NO)
+    host.set_off(CodexTool("notes", "off"), False, lambda *a: None)
+    host.set_off(CodexTool("notes", "connected", (), False), True, lambda *a: None)
+    host.set_off(CodexTool("gone", "removed", (), False, True), True, lambda *a: None)
+    assert asked[0].startswith("Make a new copy of this chat with notes on? Its tools can reach")
+    assert asked[1] == "Make a new copy of this chat with notes off?"
+    assert asked[2] == "Make a new copy of this chat without gone? It's no longer in Codex's configuration."
+    assert not any("Create" in text for text in asked)

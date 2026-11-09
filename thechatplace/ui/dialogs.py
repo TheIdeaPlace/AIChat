@@ -5569,7 +5569,15 @@ class ConnectedToolsDialog(wx.Dialog):
             # one key: Delete says how instead (#596). A chat that can't
             # change its tools still hears why from on_toggle.
             if not getattr(self.host, 'delete_toggles', True) and self.host.can_turn_off:
-                self._tell(self.host.delete_text(self._selected()))
+                # The same checks as the button's first: while loading or
+                # copying, after a failed read, or on a row with no tool.
+                server = self._server_for("change", self.list)
+                if server is None:
+                    return
+                if not getattr(server, "can_be_denied", True):
+                    self._tell(f"{server.label} can't be turned off here.")
+                    return
+                self._tell(self.host.delete_text(server))
                 return
             self.on_toggle()
             return
