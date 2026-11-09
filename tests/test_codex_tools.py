@@ -101,3 +101,57 @@ def test_a_row_gives_no_count_until_its_tools_are_known():
     assert "0 tools" not in CodexTool("signin", "needs-auth", (), False).text()
     assert "1 tool" in CodexTool("one", "connected", ("find",), False).text()
     assert "0 tools" in CodexTool("none", "connected", (), False).text()
+
+
+# -- what the Connected Tools dialog says in a Codex chat (#596) ----------------------------
+
+
+def _host(own):
+    pytest.importorskip("wx")
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={}) if own else None
+    frame = SimpleNamespace(store=SimpleNamespace(get=lambda *a, **k: record))
+    return CodexConnectedTools(frame, SimpleNamespace(cli_session_id="c-1", is_own=own, title="Chat"))
+
+
+def test_the_codex_note_says_first_that_a_change_is_a_new_copy():
+    from thechatplace.ui import codex_tools_host
+    own, elsewhere = _host(True).note(), _host(False).note()
+    assert own.startswith("In a Codex chat, a tool can't be turned on or off in the chat itself: "
+                          "Copy with Tool On or Off makes a new copy of the chat with that choice, "
+                          "and this chat stays as it is.")
+    assert own == codex_tools_host.NOTE and elsewhere == codex_tools_host.NOTE_READ_ONLY
+    for note in (own, elsewhere):
+        # The developer words of #596's finding 26, and a plugin nobody's offered.
+        for word in ("MCP", "sandbox", "Plugin", "read-only", "Configured", "CLI"):
+            assert word not in note
+        assert "codex mcp add" in note
+    assert "codex mcp login" in elsewhere
+
+
+@pytest.mark.parametrize("platform,key", [("win32", " (Alt+O)"), ("linux", " (Alt+O)"), ("darwin", "")])
+def test_delete_and_sign_in_name_the_button_and_its_key_where_it_has_one(platform, key):
+    host = _host(True)
+    on, off = CodexTool("notes", "off"), CodexTool("notes", "connected", (), False)
+    assert host.delete_text(on, platform) == (
+        f"In a Codex chat, a tool changes only in a new copy: press Copy with Tool On{key} to make one.")
+    assert host.delete_text(off, platform).endswith(f"press Copy with Tool Off{key} to make one.")
+    assert host.sign_in_text(on, platform) == (
+        f"Sign In works only in a chat with this tool on. Press Copy with Tool On{key} to make a "
+        "copy with it on, then sign in from Connected Tools in that copy.")
+
+
+def test_sign_in_for_a_chat_from_elsewhere_gives_the_codex_command():
+    host = _host(False)
+    assert host.sign_in_text(CodexTool("notes", "needs-auth", read_only=True)) == (
+        "This chat wasn't started in The Chat Place. To sign in to this tool, use Codex in a "
+        "terminal: codex mcp login notes.")
+    assert host.sign_in_text(CodexTool("my notes", "needs-auth", read_only=True)).endswith(
+        'codex mcp login "my notes".')
+
+
+def test_the_provider_refuses_a_tool_that_is_off_with_the_steps():
+    runtime = SimpleNamespace(tools_context=lambda native: (FakeConnection(), ("other",)))
+    info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=True)
+    with pytest.raises(ValueError, match="This tool is off in this chat. Press Copy with Tool On"):
+        codex.CodexProvider.connected_tool_action(_provider(FakeConnection(), runtime), info, "notes", "login")
