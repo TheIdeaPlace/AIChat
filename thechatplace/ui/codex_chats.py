@@ -865,10 +865,15 @@ class CodexChats(SoundHost, CodexExtras):
             reply = '\n\n'.join(text for _identity, text in state.replies)
             # /compact runs as a turn of its own, which answers nothing (#467).
             compacted = getattr(state, 'compaction', False) and state.outcome == 'completed'
+            agent_quiet = getattr(self, '_agent_quiet', None)
+            quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
             if compacted:
                 self._sound(sound_events.COMPACTED, key)
             elif state.outcome == 'completed':
-                self._sound_turn_end(key)
+                # In an agent conversation, the conversation sounds it as it's handed on
+                # or waits for you (#248).
+                if not (quiet and self._agent_owe_reply_sound(provider, state.native_id)):
+                    self._sound_turn_end(key)
             elif state.outcome == 'failed':
                 self._sound(sound_events.FAILED, key)
             elif stop_asked:
@@ -882,8 +887,6 @@ class CodexChats(SoundHost, CodexExtras):
             # Use the same configured announcement level as Claude replies.
             if reply and not compacted:
                 text = announce.reply_text(record.title, reply, self.speech.announce)
-            agent_quiet = getattr(self, '_agent_quiet', None)
-            quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
             if not quiet:  # an agent conversation says it, by its own name (#248)
                 self._say(text, interrupt=False)
             if state.outcome != 'interrupted' and not quiet:
@@ -905,10 +908,16 @@ class CodexChats(SoundHost, CodexExtras):
         if fresh_terminal:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
-                agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
-                            more_queued=bool(state.queued),
-                            detail=state.problem or '',
-                            files=tuple(getattr(state, 'changed_paths', ())))
+                try:
+                    agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
+                                more_queued=bool(state.queued),
+                                queued_ours=self._agent_queued_is_ours(
+                                    provider, state.native_id, state.queued),
+                                detail=state.problem or '',
+                                files=tuple(getattr(state, 'changed_paths', ())))
+                finally:
+                    # Whatever happened there, a held-back reply sound isn't lost.
+                    self._agent_pay_reply_sound(provider, state.native_id)
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog

@@ -704,6 +704,10 @@ your next message. That setting applies only to Claude.</p>
 <td>Low rise: the same rise, lower and softer</td>
 </tr>
 <tr>
+<td>Agent reply handed on</td>
+<td>Pass: the rise's start, then a leap up like a send, a little softer, when an agent conversation passes one agent's reply to the next by itself. A reply that waits for you is Reply finished (or Another chat finished)</td>
+</tr>
+<tr>
 <td>Ask Aside answered</td>
 <td>Aside: three quiet notes, down and back</td>
 </tr>
@@ -763,7 +767,7 @@ your next message. That setting applies only to Claude.</p>
 <li><strong>Export Scheme</strong> saves the scheme showing, and any sound files of yours it uses, as one <code>.tcpsounds</code> file. <strong>Import Scheme</strong> adds one as a new scheme of your own. If one of its sound files can't be used, you're told how many events now have no sound.</li>
 </ul>
 <p>QuickMail has sound schemes too, but its events are different, so a QuickMail scheme can't be imported here, and you're told so.</p>
-<p><strong>Browse Gallery</strong> (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; <strong>Details</strong> has its description and license. <strong>Add</strong> (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where <strong>Update</strong> replaces your copy. The gallery isn't open yet, so for now Browse Gallery says it couldn't be reached; it will work without updating The Chat Place once it opens. The Chat Place checks the gallery's signature and every file before using anything from it.</p>
+<p><strong>Browse Gallery</strong> (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; <strong>Details</strong> has its description and license. <strong>Add</strong> (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where <strong>Update</strong> replaces your copy. For The Chat Place it has two so far: <strong>Essentials</strong>, only the sounds you'd otherwise miss, and <strong>River Voicing Glass</strong>, where each Glass sound is followed by a voice saying what happened, which helps while you learn the sounds. If the gallery can't be reached, it says so, and <strong>Reload</strong> tries again. The Chat Place checks the gallery's signature and every file before using anything from it.</p>
 <p>Nothing you do with schemes is kept until you choose OK, and no sound file is deleted until then. Files you choose, or a scheme brings in, are copied straight away; choose Cancel and they're deleted again.</p>
 <h3>Mute All Sounds</h3>
 <p><strong>Ctrl+Shift+X</strong>, or View, <strong>Mute All Sounds</strong>, silences everything at once, including a sound that's playing. Press it again to bring them back. It says "Sounds muted" or "Sounds on", even with announcements set to silent.</p>
@@ -2154,6 +2158,12 @@ reply is set aside, and you hear so.</p>
   why; your next message goes back to that agent. A message from you, or a reply you hand on,
   starts it again with a fresh count.</li>
 </ul>
+<p>With sounds on, a reply that goes across by itself plays <strong>Agent reply handed on</strong>, so you can
+follow an automatic conversation with nothing said. A reply that waits for you, in either mode,
+plays <strong>Reply finished</strong> (<strong>Another chat finished</strong> if the conversation isn't open). In a scheme
+with no sound for Agent reply handed on, such as Essentials, one of your own made before it,
+or one where you chose None for it, a reply that goes across sounds as a reply, followed by
+<strong>Message sent</strong> if the scheme has it.</p>
 <p>In either mode, the relay finishes when an agent ends its reply with DONE once the others have
 replied since your last message, when the replies start repeating each other, or when the
 agents are only thanking each other. A DONE before the others have had their say goes on to

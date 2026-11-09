@@ -66,9 +66,39 @@ class Window(AgentChats):
         self.said, self.feedback, self.notified, self.copied = [], [], [], []
         self.claude_accepts = True
         self.refreshes = 0
+        self._agent_sound_owed = set()
+        self.sounds, self.hushed = [], set()
 
     def _modal_open(self):
         return False
+
+    # sounds (SoundHost's, recorded)
+    def _sound(self, event_id, key=None, own=True, on_its_own=False):
+        self.sounds.append((event_id, key))
+
+    def _sound_turn_end(self, key, own=True):
+        self.sounds.append(('reply', key))
+
+    pass_plays = True  # whether the scheme has Agent reply handed on
+
+    def _sound_scheme_has(self, event_id):
+        return self.pass_plays
+
+    def _sound_hush_send(self, key):
+        self.hushed.add(key)
+
+    def _sound_unhush_send(self, key):
+        self.hushed.discard(key)
+
+    def member_replied(self, provider, native, reply, failed=False, **kw):
+        """What a member chat does at a turn's end: hold its reply sound back
+        if the conversation started the turn, let the conversation decide,
+        then play what it didn't take."""
+        if not failed and reply.strip():
+            if not self._agent_owe_reply_sound(provider, native):
+                self._sound_turn_end(self._agent_sound_key(provider, native))
+        self._agent_turn_ended(provider, native, reply, failed, **kw)
+        self._agent_pay_reply_sound(provider, native)
 
     def _owned_action(self, action, record, *args):
         self.actions.append(action)
@@ -1811,3 +1841,181 @@ def test_quitting_a_chat_the_conversation_wasnt_waiting_for_changes_nothing(tmp_
     w._agent_stopped_by_quit('claude', 'c1')
     assert w.saved.stop_reason == stopped_before and w.saved.stop_reason != "Stopped."
     w._agent_stopped_by_quit('claude', 'not-a-member')
+
+
+# -- sounds (#250, #248) ------------------------------------------------------------------
+
+HANDED_ON = 'handed_on'
+
+
+def test_each_reply_handed_on_sounds_once_and_the_stop_sounds_as_a_reply(tmp_path):
+    """Automatic mode: each reply that goes on by itself is Agent reply handed
+    on, never Reply finished; the reply that waits for you at the limit is
+    Reply finished, from the member that sent it."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    replies = ['Built v1.', 'Bug in v1: the lock.', 'Fixed the lock in v2.', 'v2 looks right now.']
+    speakers = [('claude', 'c1'), ('codex', 'x1'), ('claude', 'c1'), ('codex', 'x1')]
+    for (provider, native), reply in zip(speakers, replies):
+        w.member_replied(provider, native, reply)
+    assert w.sounds == [(HANDED_ON, 'own:c1'), (HANDED_ON, 'codex:x1'),
+                        (HANDED_ON, 'own:c1'), ('reply', 'codex:x1')]
+    assert not w._agent_sound_owed
+
+
+def test_the_send_a_hand_off_makes_is_hushed_until_it_has_gone(tmp_path):
+    """The send to the next agent makes no sound of its own: Agent reply
+    handed on has said it. Claude's sounds at once; Codex's comes back later,
+    and only a failure clears the hush early."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    assert not w.hushed  # your own send isn't hushed
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.hushed == {'codex:x1'}  # its send result comes later
+    _native, _text, on_result = w.codex_sent[-1]
+    on_result('Codex could not confirm this send.', True)
+    assert not w.hushed
+
+
+def test_a_hand_off_to_claude_leaves_nothing_hushed(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('@Codex review it.')
+    w.member_replied('codex', 'x1', 'One bug.')
+    assert w.claude_sent and not w.hushed
+    assert w.sounds == [(HANDED_ON, 'codex:x1')]
+
+
+def test_a_hand_off_that_cant_go_sounds_as_a_reply_waiting(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('@Codex review it.')
+    w.claude_accepts = False
+    w.member_replied('codex', 'x1', 'One bug.')
+    assert w.saved.stop_reason == "Couldn't pass Codex's reply to Claude."
+    assert w.sounds == [('reply', 'codex:x1')] and not w.hushed
+
+
+def test_approving_each_hand_off_sounds_each_reply_as_a_reply(tmp_path):
+    w = Window(tmp_path)
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built it.')
+    assert w.sounds == [('reply', 'own:c1')]
+    assert w.saved.pending is not None
+
+
+@pytest.mark.parametrize('reply', ['All fixed and tested.\n\nDONE',
+                                   'Thanks, that all looks right to me.'])
+def test_a_relay_that_stops_itself_sounds_as_a_reply(tmp_path, reply):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Thanks, that all looks right to me!')
+    w.member_replied('codex', 'x1', reply)
+    assert w.sounds[-1] == ('reply', 'codex:x1')
+    assert [s for s, _k in w.sounds].count(HANDED_ON) == 1
+
+
+def test_a_failed_member_has_only_its_own_failure_sound(tmp_path):
+    """The member chat plays Turn failed; the conversation adds nothing."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'usage limit', failed=True)
+    assert w.sounds == [] and not w._agent_sound_owed
+
+
+def test_replies_to_a_message_you_sent_everyone_each_sound_as_replies(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('@all Ready?')
+    w.member_replied('claude', 'c1', 'Ready.')
+    w.member_replied('codex', 'x1', 'Ready too.')
+    assert w.sounds == [('reply', 'own:c1'), ('reply', 'codex:x1')]
+
+
+def test_a_turn_with_more_of_the_conversation_queued_has_no_sound(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Part one.', more_queued=True)
+    assert w.sounds == [] and not w._agent_sound_owed
+    w.member_replied('claude', 'c1', 'All of it.')
+    assert w.sounds == [(HANDED_ON, 'own:c1')]
+
+
+def test_a_reply_in_the_member_chat_itself_sounds_as_ever(tmp_path):
+    """You wrote in the member chat: the conversation isn't waiting on it."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.member_replied('claude', 'c1', 'Something you asked it directly.')
+    assert w.sounds == [('reply', 'own:c1')]
+
+
+def test_stop_clears_a_hush_that_never_came_back(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w._stop_codex_owned = lambda info, take_back=None: None
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.hushed == {'codex:x1'}
+    w._agent_stop(w._open)
+    assert not w.hushed
+
+
+def test_your_next_send_to_a_member_clears_a_stale_hush(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.hushed.add('codex:x1')
+    w.send('@Codex review it.')
+    assert not w.hushed
+
+
+def test_a_renamed_member_keeps_its_held_back_sound(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    assert w._agent_owe_reply_sound('claude', 'c1')
+    w._agent_rename_member('claude', 'c1', 'c2')
+    assert w._agent_sound_owed == {('claude', 'c2')}
+
+
+def test_a_scheme_without_pass_hears_a_hand_off_as_before(tmp_path):
+    """A scheme of your own from before Agent reply handed on, or with None
+    chosen for it: never quieter than before, so the reply sounds and the
+    send to the next agent isn't hushed."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.pass_plays = False
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.codex_sent and w.sounds == [('reply', 'own:c1')]
+    assert not w.hushed
+
+
+def test_a_hand_off_refused_at_once_is_not_handed_on(tmp_path):
+    """A Codex send refused before it went (Rewind putting files back): the
+    conversation stays paused as _agent_send_failed left it, with the reply's
+    sound, not Agent reply handed on, and nothing hushed."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+
+    def refused(record, text, announce_send=True, restore=True, on_result=None):
+        on_result('Still putting files back in this folder.', True)
+    w._send_codex_owned = refused
+    w.send('Build it.')
+    w.member_replied('claude', 'c1', 'Built v1.')
+    assert w.sounds == [('reply', 'own:c1')] and not w.hushed
+    saved = w.saved
+    assert saved.paused and saved.stop_reason == "Couldn't send to Codex."
+    assert saved.exchanges == 0  # this copy wasn't saved over it
+    assert 'Built v1.' in w.reply_text.GetValue()
+
+
+def test_a_send_that_raises_leaves_nothing_hushed(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+
+    def broken(*a, **k):
+        raise RuntimeError('boom')
+    w._agent_deliver_unhushed = broken
+    with pytest.raises(RuntimeError):
+        w._agent_deliver(w.saved, 1, 'x', hush=True)
+    assert not w.hushed
+
+
+def test_text_you_queued_in_the_member_chat_keeps_the_reply_sound(tmp_path):
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Build it.')
+    assert not w._agent_queued_is_ours('claude', 'c1', ['My own note'])
+    sent = w._agent_last_sent[('claude', 'c1')]
+    assert w._agent_queued_is_ours('claude', 'c1', ['My own note\n\n' + sent.strip()])
+    w.member_replied('claude', 'c1', 'Part one.', more_queued=True, queued_ours=False)
+    assert w.sounds == [('reply', 'own:c1')]

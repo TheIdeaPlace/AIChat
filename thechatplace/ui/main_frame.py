@@ -334,6 +334,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._turn_said: Dict[str, tuple] = {}
         self._agent_codex_preparing: set = set()
         self._agent_answered_early: set = set()
+        #: Members whose reply's sound waits for their conversation to say
+        #: whether it was handed on or waits for you (#248).
+        self._agent_sound_owed: set = set()
         #: The files each member's running turn has edited (phase 3).
         self._agent_turn_files: Dict[tuple, list] = {}
         #: Members that refused you mid-turn (an approval doesn't pause
@@ -3890,7 +3893,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # member doesn't reach.
             if quiet and not self._compaction_notices.get(session_id, {}).get("notified", False):
                 self._sound(sound_events.COMPACTED, key)
-        else:
+        elif not (quiet and self._agent_owe_reply_sound("claude", session_id)):
             self._sound_turn_end(key)
 
     def _notify_turn_end(self, session_id, title, event, denials, detail, stopped=False):
@@ -5632,11 +5635,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._give_back(session_id, "\n\n".join(unsent), is_open)
             self._update_send_state()
             failed_turn = event.kind == "failed" or event.is_error
-            self._agent_turn_ended(
-                "claude", session_id, event.text, failed_turn,
-                more_queued=session_id in self._runners,
-                detail=(usage.friendly_error(event.text) if failed_turn
-                        else f"{detail}: " + "; ".join(denials) if denials else ""))
+            try:
+                self._agent_turn_ended(
+                    "claude", session_id, event.text, failed_turn,
+                    more_queued=session_id in self._runners,
+                    queued_ours=self._agent_queued_is_ours("claude", session_id, [queued or ""]),
+                    detail=(usage.friendly_error(event.text) if failed_turn
+                            else f"{detail}: " + "; ".join(denials) if denials else ""))
+            finally:
+                # Whatever happened there, a held-back reply sound isn't lost.
+                self._agent_pay_reply_sound("claude", session_id)
             self.refresh_sessions()
 
     def _answered_with_background(self, session_id: str, title: str, event: TurnEvent,
@@ -5649,12 +5657,27 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         denials = event.denials or self._denials.get(session_id, [])
         self._denials[session_id] = []  # said now, not again at the turn's end
         quiet = self._agent_quiet("claude", session_id)
-        self._agent_answered(
-            "claude", session_id, event.text, event.is_error,
-            detail=(usage.friendly_error(event.text) if event.is_error else
-                    f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
-                    + "; ".join(denials) if denials else ""),
-            more_queued=bool(self._queued.get(session_id)))
+        key = self._own_key(session_id)
+        if event.is_error:
+            self._sound(sound_events.FAILED, key)
+        elif denials:
+            self._sound(sound_events.NEEDS_YOU, key)
+        elif not (quiet and self._agent_owe_reply_sound("claude", session_id)):
+            # The turn's end, later, has no new answer to sound (#161). In an agent
+            # conversation, the conversation sounds it as it's handed on or waits (#248).
+            self._sound_turn_end(key)
+        try:
+            self._agent_answered(
+                "claude", session_id, event.text, event.is_error,
+                detail=(usage.friendly_error(event.text) if event.is_error else
+                        f"{len(denials)} tool{'s were' if len(denials) != 1 else ' was'} refused: "
+                        + "; ".join(denials) if denials else ""),
+                more_queued=bool(self._queued.get(session_id)),
+                queued_ours=self._agent_queued_is_ours("claude", session_id,
+                                                       self._queued.get(session_id) or ()))
+        finally:
+            # Whatever happened there, a held-back reply sound isn't lost.
+            self._agent_pay_reply_sound("claude", session_id)
         if event.is_error:
             self._said_problems[session_id] = announce.status_text(event.text or "error", 120)
         elif denials:
@@ -5665,13 +5688,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._clear_activity()
         self._store_write(self.store.update, session_id, unread=not is_open,
                           last_activity_ms=int(time.time() * 1000))
-        key = self._own_key(session_id)
-        if event.is_error:
-            self._sound(sound_events.FAILED, key)
-        elif denials:
-            self._sound(sound_events.NEEDS_YOU, key)
-        else:
-            self._sound_turn_end(key)  # the turn's end, later, has no new answer to sound (#161)
         if quiet:
             pass  # its conversation says it when the turn ends (#248)
         elif event.is_error:

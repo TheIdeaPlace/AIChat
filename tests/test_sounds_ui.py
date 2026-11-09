@@ -486,6 +486,141 @@ def test_a_codex_send_failing_for_an_agent_conversation_sounds(frame, env, monke
     assert env["sounds"] == [se.NOT_SENT]
 
 
+# ---------------------------------------------------------------- agent conversations (#248)
+
+def codex_conversation(frame, mode="auto"):
+    """Claude (own-1) and Codex (cdx-1) in a conversation that isn't loaded, waiting on
+    Codex's reply to a message it sent."""
+    from thechatplace import agents
+    members = [agents.Member("claude", "own-1", "Claude", ""),
+               agents.Member("codex", "cdx-1", "Codex", "")]
+    conversation = agents.new_conversation("Pair", members, mode=mode, turn_limit=5)
+    frame.agents.add(conversation)
+    frame.speech.agent_auto_mode = True
+    frame._agent_awaiting[("codex", "cdx-1")] = (conversation.conversation_id, True)
+    return conversation
+
+
+def fake_deliver(frame, monkeypatch, seen=None):
+    """A send to a member that goes, as the real one does: the conversation now waits on it."""
+    def deliver(conversation, index, text, relay=True):
+        if seen is not None:
+            seen.append((index, set(frame._sound_hushed_sends or ())))
+        member = conversation.members[index]
+        frame._agent_awaiting[member.identity] = (conversation.conversation_id, relay)
+        return True
+    monkeypatch.setattr(frame, "_agent_deliver_unhushed", deliver)
+
+
+def test_a_codex_members_reply_handed_on_sounds_once_and_not_as_a_reply(frame, env, monkeypatch):
+    codex_conversation(frame)
+    seen = []
+    fake_deliver(frame, monkeypatch, seen)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed: one bug."),)))
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed: one bug."),)))
+    assert seen == [(0, {"own:own-1"})]  # the send to Claude was hushed while it went
+    assert env["sounds"] == [se.HANDED_ON]
+    assert not frame._agent_sound_owed and not frame._sound_hushed_sends
+
+
+def test_a_codex_members_reply_waiting_for_your_hand_off_sounds_as_a_reply(frame, env):
+    codex_conversation(frame, mode="approve")
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed: one bug."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE]
+
+
+def test_a_codex_member_failing_in_a_conversation_sounds_failed_only(frame, env):
+    codex_conversation(frame)
+    frame._on_codex_update(codex("idle", "failed"))
+    assert env["sounds"] == [se.FAILED]
+
+
+def test_a_reply_handed_on_follows_other_sounds_play_for(frame, env, monkeypatch):
+    codex_conversation(frame)
+    frame.speech.sound_others = se.OTHERS_NONE
+    fake_deliver(frame, monkeypatch)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == []
+
+
+def test_a_hushed_send_is_silent_once_and_never_hushes_yours(frame, env):
+    frame._sound_hush_send("codex:cdx-1")
+    frame._sound(se.SENT, "codex:cdx-1")  # your key press: plays, and the hush stays
+    frame._sound(se.SENT, "codex:cdx-1", on_its_own=True)  # the hand-off's: silent
+    frame._sound(se.QUEUED, "codex:cdx-1", on_its_own=True)  # the hush is used up
+    frame._sound(se.SENT, "own:own-1", on_its_own=True)  # another chat's
+    assert env["sounds"] == [se.SENT, se.QUEUED, se.SENT]
+
+
+def test_a_hushed_send_is_used_up_with_sounds_off_too(frame, env):
+    frame.speech.sounds_on = False
+    frame._sound_hush_send("own:own-1")
+    frame._sound(se.SENT, "own:own-1", on_its_own=True)
+    frame.speech.sounds_on = True
+    frame._sound(se.SENT, "own:own-1", on_its_own=True)
+    assert env["sounds"] == [se.SENT]
+
+
+def own_scheme_without_pass(frame, explicit_none):
+    """A scheme of your own with every sound but Agent reply handed on: one made before it
+    existed has no entry for it; one saved since has None."""
+    sid = "user-" + "c" * 32
+    events = {e.key: se.built_in_ref(e.sound, "glass") for e in se.EVENTS if e.id != se.HANDED_ON}
+    if explicit_none:
+        events["ReplyHandedOn"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine from before", "events": events}}
+    frame.speech.sound_scheme = sid
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_without_pass_in_the_scheme_a_codex_hand_off_sounds_as_before(frame, env, monkeypatch,
+                                                                      explicit_none):
+    own_scheme_without_pass(frame, explicit_none)
+    assert not frame._sound_scheme_has(se.HANDED_ON)
+    codex_conversation(frame)
+    seen = []
+    fake_deliver(frame, monkeypatch, seen)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE]
+    assert seen == [(0, set())]  # the send to Claude wasn't hushed
+
+
+def test_a_codex_hand_off_refused_at_once_is_not_handed_on(frame, env, monkeypatch):
+    """The send to the next member went nowhere (the real _agent_send_failed pops the wait
+    on it): its reply sounds as one waiting for you, not as handed on."""
+    codex_conversation(frame)
+    monkeypatch.setattr(frame, "_agent_deliver_unhushed", lambda *a, **k: True)
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._sound_hushed_sends
+
+
+def test_a_codex_members_turn_with_the_conversations_text_queued_is_silent(frame, env):
+    codex_conversation(frame)
+    frame._agent_sent_texts[("codex", "cdx-1")] = ["Review the lock too."]
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Part one."),),
+                                 queued=("Review the lock too.",)))
+    assert env["sounds"] == [] and not frame._agent_sound_owed
+
+
+def test_a_codex_members_turn_with_your_own_text_queued_keeps_its_sound(frame, env):
+    codex_conversation(frame)
+    frame._agent_sent_texts[("codex", "cdx-1")] = ["Review the lock too."]
+    frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Part one."),),
+                                 queued=("Something I typed in the Codex chat.",)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._agent_sound_owed
+
+
+def test_a_held_back_reply_sound_still_plays_if_the_conversation_raises(frame, env, monkeypatch):
+    codex_conversation(frame)
+
+    def broken(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(frame, "_agent_turn_ended", broken)
+    with pytest.raises(RuntimeError):
+        frame._on_codex_update(codex("idle", "completed", replies=(("r1", "Reviewed."),)))
+    assert env["sounds"] == [se.FINISHED_ELSEWHERE] and not frame._agent_sound_owed
+
+
 def test_what_goes_on_its_own_holds_back_in_a_presentation(frame, env, monkeypatch):
     monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
     frame._sound(se.SENT, "own:own-1", on_its_own=True)
@@ -1019,11 +1154,11 @@ def test_each_built_in_scheme_keeps_its_own_changes(dialog):
     dialog.scheme.SetStringSelection("Wood")
     dialog._scheme_chosen()
     assert "Reply finished: Rise" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (22 of 22 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (23 of 23 events have a sound):"
     dialog.scheme.SetStringSelection("Glass")
     dialog._scheme_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (21 of 22 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (22 of 23 events have a sound):"
     settings = dialog.get_settings()
     assert settings.sound_scheme == "glass"
     assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
@@ -1373,7 +1508,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
     dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
     try:
         assert pump(lambda: dialog.list.GetCount() == 1)
-        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 22 events have a sound. "
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 23 events have a sound. "
                                             "Update available.")
         assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
@@ -1507,12 +1642,12 @@ def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
 
 
 def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
-    assert dialog._events_name() == "Sound events, 22 of 22 events have a sound"
+    assert dialog._events_name() == "Sound events, 23 of 23 events have a sound"
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert dialog._events_name() == "Sound events, 21 of 22 events have a sound"
-    assert dialog.events.GetName() == "Sound events, 21 of 22 events have a sound"
+    assert dialog._events_name() == "Sound events, 22 of 23 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 22 of 23 events have a sound"
 
 
 # ---------------------------------------------------------------- Help, Sound Tutorial
@@ -1550,7 +1685,7 @@ def test_sound_tutorial_lists_event_names_only_on_the_first(frame):
     try:
         assert dialog.GetTitle() == "Sound Tutorial"
         assert dialog.events.GetItems() == [e.label for e in se.EVENTS]
-        assert len(dialog.events.GetItems()) == 22
+        assert len(dialog.events.GetItems()) == 23
         assert dialog.events.GetSelection() == 0
         assert dialog.events.GetName() == "Sound events"
         assert "in the Wood scheme" in dialog.intro.GetLabel().replace("\n", " ")

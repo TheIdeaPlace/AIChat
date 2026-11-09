@@ -35,7 +35,9 @@ and another thing in the next is worse than no sound. These rules replace that s
    note dropping an octave instead. Ask Aside's failure starts like its answer and then bends
    down. Another chat's reply is the reply an octave lower. Your answer to a chat that needed you
    is the send's leap, then a step down to A5, the note Needs you calls on. A file written is the
-   compacted settle made smaller: two notes instead of three, a fourth instead of an octave.
+   compacted settle made smaller: two notes instead of three, a fourth instead of an octave. An
+   agent's reply handed on to the next agent starts as the reply does and then leaps on as the
+   send does: an answer that arrives and goes straight out again.
 5. **Short.** Work-going-on sounds are under a tenth of a second plus a short ring. Nothing is longer
    than a second.
 6. **A tone doesn't change the meaning.** Glass, Soft bell and Wood play the same notes in a
@@ -83,6 +85,7 @@ sound starts.
 | --- | --- | --- |
 | Reply finished | A turn in the loaded chat finishes with a reply | `reply`: G4, D5, G5, rising open fifths |
 | Another chat finished | The same, in a chat that isn't loaded | `otherreply`: G3, D4, G4: the same shape, an octave lower and softer |
+| Agent reply handed on | In an agent conversation, one agent's reply goes to the next agent by itself (automatic hand-offs), so the conversation goes on without you. Played instead of the member's reply sound and of the send to the next agent | `handon`: G4, D5, then D6 at 0.14: the reply's first two notes, then the send's octave leap instead of coming to rest; 0.40, a little softer than the reply |
 | Ask Aside answered | Your aside question has its answer | `aside`: E5, A4, E5, quiet: down and back |
 
 ### Needs you
@@ -116,6 +119,51 @@ result, something written and put away, so it joined Housekeeping beside a compa
 (which is the conversation rewritten) and took that family's settling chord, smaller and softer.
 It's in the middle register, more than an octave below the tick, three times its length and
 nearly twice its level. Like every sound but Tool ran, it follows "Other sounds play for".
+
+### Agent conversations (#248)
+
+Kelly asked whether conversations with several agents need events of their own. Each member is a
+chat of its own, so everything that happens inside a member's turn already had its sound: Tool
+ran, File changed, Still working (for any member while the conversation is loaded), Needs you,
+Answer sent, Turn failed (a member failing, whether the relay stops or, after "@all", the others
+carry on), Service trouble, You stopped a turn (Ctrl+Period stops every member), Message not sent
+(a message to a member that couldn't go), Compacted and the usage warning. Your own message to
+the conversation, and a reply you hand on with Ctrl+Shift+E, are Message sent.
+
+One moment had no sound that meant it: a reply that goes from one agent to the next by itself.
+It played Reply finished, which means "your turn", and then Message sent for the conversation's
+send, though you'd sent nothing. In an automatic conversation that says only when it stops, the
+two were the only sign of a hand-off, and they said the wrong thing. So it got its own event,
+Agent reply handed on, which plays instead of both. Reply finished (or Another chat finished)
+keeps one meaning in a conversation too: it has stopped and waits for you. That covers each
+reply when you approve every hand-off, the relay finishing (DONE, repeating replies, agents only
+thanking each other), the turn limit, a pause for something refused or unanswered, a hand-off
+that couldn't go, and each reply to a message you sent to "@all".
+
+Those stops have no sounds of their own: each waits for you in the same way, and what stopped it
+is said. A reply waiting for your hand-off isn't Needs you either: nothing is blocked, and in
+Approve each mode it's every turn, so a loud urgent sound would wear thin.
+
+A member turn that ends with more of the conversation's text queued for it has no reply sound:
+nobody waits on that reply, and nothing is said. What follows differs by provider. A Claude
+member's chat sends the queued text as a new turn, which plays Message sent. Codex and Copilot
+take it into their own queue, which plays nothing. If the text queued is only your own, typed
+in the member chat itself, the reply sounds as usual.
+
+**Never quieter than before.** A scheme with no sound for Agent reply handed on hears a hand-off
+as it did before the event existed: the reply's sound, then Message sent for the send to the
+next agent. That covers a scheme of your own made before it (it has no entry for the event, and
+a scheme of your own plays nothing for an event it doesn't keep), one where you chose None, and
+Essentials. Choosing None counts the same as having no entry, on purpose: once the dialog
+saves a scheme of your own, a missing event is written as None, so the two can't be told
+apart, and silencing hand-offs for everyone whose old scheme was saved again would make them
+quieter than before, which nobody chose. To hear nothing at a hand-off, give Reply finished
+and Message sent None too.
+
+Essentials, the gallery's scheme of only the sounds you'd otherwise miss, doesn't take Agent
+reply handed on: it's news of progress, and when the conversation needs you it plays Reply
+finished, Needs you or Turn failed, which Essentials has. By the rule above, an automatic
+hand-off in Essentials plays its Reply finished (or Another chat finished), as before.
 
 ## How they're made
 

@@ -744,6 +744,7 @@ Every event has a sound of its own, and events that belong together sound alike:
 | You stopped a turn | Stop: a quick, damped drop, low |
 | Reply finished | Rise: three notes rising |
 | Another chat finished | Low rise: the same rise, lower and softer |
+| Agent reply handed on | Pass: the rise's start, then a leap up like a send, a little softer, when an agent conversation passes one agent's reply to the next by itself. A reply that waits for you is Reply finished (or Another chat finished) |
 | Ask Aside answered | Aside: three quiet notes, down and back |
 | Needs you | Call: one note three times fast, then a leap up, for a permission, a question or a plan to approve |
 | Answer sent | Answer: the send's leap, then a step down to the call's note, when your answer to a question, a permission, a plan or a form has gone. It plays for any chat |
@@ -783,7 +784,7 @@ A sound scheme is a sound for each event. Glass, Soft bell and Wood come with Th
 
 QuickMail has sound schemes too, but its events are different, so a QuickMail scheme can't be imported here, and you're told so.
 
-**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and license. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. The gallery isn't open yet, so for now Browse Gallery says it couldn't be reached; it will work without updating The Chat Place once it opens. The Chat Place checks the gallery's signature and every file before using anything from it.
+**Browse Gallery** (Alt+B) lists schemes others have made and shared, each listened to before it's published. Each row says the scheme, who made it, and how many events have a sound; **Details** has its description and license. **Add** (or Enter on a row) takes one as a new scheme of your own. A scheme you've added says "Added", and one with a newer version in the gallery says "Update available", where **Update** replaces your copy. For The Chat Place it has two so far: **Essentials**, only the sounds you'd otherwise miss, and **River Voicing Glass**, where each Glass sound is followed by a voice saying what happened, which helps while you learn the sounds. If the gallery can't be reached, it says so, and **Reload** tries again. The Chat Place checks the gallery's signature and every file before using anything from it.
 
 Nothing you do with schemes is kept until you choose OK, and no sound file is deleted until then. Files you choose, or a scheme brings in, are copied straight away; choose Cancel and they're deleted again.
 
@@ -2115,6 +2116,13 @@ reply is set aside, and you hear so.
   why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
   why; your next message goes back to that agent. A message from you, or a reply you hand on,
   starts it again with a fresh count.
+
+With sounds on, a reply that goes across by itself plays **Agent reply handed on**, so you can
+follow an automatic conversation with nothing said. A reply that waits for you, in either mode,
+plays **Reply finished** (**Another chat finished** if the conversation isn't open). In a scheme
+with no sound for Agent reply handed on, such as Essentials, one of your own made before it,
+or one where you chose None for it, a reply that goes across sounds as a reply, followed by
+**Message sent** if the scheme has it.
 
 In either mode, the relay finishes when an agent ends its reply with DONE once the others have
 replied since your last message, when the replies start repeating each other, or when the
