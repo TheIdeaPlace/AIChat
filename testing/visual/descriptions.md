@@ -1013,7 +1013,7 @@ A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual pro
 
 ## elicitation-cant-show: A connected tool's form that can only be declined (#468)
 
-The same 680 by 380 layout as elicitation-url, titled "trip-planner asks: Visual probe". "Note:" heads the top box, with the text cursor in it: "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later. Decline tells the tool no. Answer Later leaves the turn waiting until you come back and decline, or stop the turn.", wrapped to two lines that fit with room for a third (black on white, 21:1; white on #202020 in High Contrast Aquatic, 16.3:1) (#599). "Message:" heads the lower box, with "Where would you like to go?". Only Decline (the default) and Answer Later are at the bottom right. Colours are as in elicitation-url.
+The same 680 by 380 layout as elicitation-url, titled "trip-planner asks: Visual probe". "Note:" heads the top box, with the text cursor in it: "This form asks for something The Chat Place can't show (Trip), so you can only decline it or answer later. Decline tells the tool no. Answer Later leaves the turn waiting until you come back and decline, or stop the turn.", wrapped to two lines that fit with room for a third (black on white, 21:1; white on #202020 in High Contrast Aquatic, 16.3:1) (#599). "Message:" heads the lower box, with "Where would you like to go?". Only Decline (the default) and Answer Later are at the bottom right. Colors are as in elicitation-url.
 
 **What looks off:** The Message box is mostly empty for one line.
 

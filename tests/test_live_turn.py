@@ -582,7 +582,7 @@ def test_retry_words():
     (529, "the service is overloaded"),
     (429, "the service is busy"),
     (401, "signing in failed"),
-    (403, "signing in failed"),
+    (403, "the service refused the request (error 403)"),
     (418, "the service had a problem (error 418)"),
 ])
 def test_a_status_with_no_kind_is_said_in_words(status, reason):
@@ -591,6 +591,18 @@ def test_a_status_with_no_kind_is_said_in_words(status, reason):
     # A kind Claude Code names is said as that, whatever the status.
     assert live_turn.retry_reason({"error": "overloaded", "error_status": 503}) == \
         "the service is overloaded"
+
+
+def test_a_kind_and_its_status_say_the_same_words():
+    """A rate limit or a server error reads the same whether Claude Code names
+    the kind, gives only the status, or both (#596)."""
+    reason = live_turn.retry_reason
+    assert reason({"error": "rate_limit"}) == reason({"error_status": 429}) == \
+        reason({"error": "rate_limit", "error_status": 429}) == "the service is busy"
+    assert reason({"error": "server_error", "error_status": 503}) == \
+        reason({"error_status": 503}) == "the service had a problem (error 503)"
+    # No number to give: the same words without one.
+    assert reason({"error": "server_error"}) == "the service had a problem"
 
 
 @pytest.mark.parametrize("error", sorted(live_turn._RETRY_REASONS))

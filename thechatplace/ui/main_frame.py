@@ -2049,7 +2049,24 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         in the list, where a state change is held back until you leave, so
         coming back from the dialog said "needs you" (#596)."""
         info = self._open
-        if info is None or info.key != key or still_waiting or info.state != NEEDS_YOU:
+        if info is None or still_waiting or info.state != NEEDS_YOU:
+            return
+        if info.provider == AGENTS:
+            # A member answered in the open agent conversation: it's working
+            # again only if nothing else in it waits on you (agents.rows).
+            conversation = self._agent_conversation(info)
+            if conversation is None or key not in {m.key for m in conversation.members}:
+                return
+            if conversation.pending is not None and not conversation.pending.finished:
+                return  # a hand-off waits for you
+            for member in conversation.members:
+                if member.key == key:
+                    continue
+                state = self._codex_states.get(member.key)
+                if (member.provider == "claude" and self._pending.get(member.native_id)
+                        or state is not None and state.requests):
+                    return
+        elif info.key != key:
             return
         # A copy: the snapshot's row for it stays as read until the next
         # snapshot, rather than changing under the session list.

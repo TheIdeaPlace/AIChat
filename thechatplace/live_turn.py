@@ -18,8 +18,10 @@ from .claude_cli import describe_elapsed, mode_label, model_spoken
 #: api_retry's ``error`` values (Claude Code's error kinds), in words.
 _RETRY_REASONS = {
     "overloaded": "the service is overloaded",
-    "rate_limit": "the service is busy (rate limited)",
-    "server_error": "the service had an error",
+    # The same words as the status alone says (status_reason), so a retry
+    # reads the same whichever of the two Claude Code sends (#596).
+    "rate_limit": "the service is busy",
+    "server_error": "the service had a problem",
     "authentication_failed": "signing in failed",
     "oauth_org_not_allowed": "your organization isn't allowed",
     "account_on_hold": "your account is on hold",
@@ -40,18 +42,24 @@ def status_reason(status: int) -> str:
         return "the service is overloaded"
     if status == 429:
         return "the service is busy"
-    if status in (401, 403):
+    if status == 401:
         return "signing in failed"
+    if status == 403:
+        # Not always signing in: an account or organization can be refused too.
+        return "the service refused the request (error 403)"
     return f"the service had a problem (error {status})"
 
 
 def retry_reason(data: dict) -> str:
     """Why Claude Code is retrying, in words."""
     error = str(data.get("error") or "")
+    status = data.get("error_status")
+    has_status = type(status) is int and bool(status)
+    if error == "server_error" and has_status:
+        return status_reason(status)  # with its number, as for a status alone
     if error in _RETRY_REASONS:
         return _RETRY_REASONS[error]
-    status = data.get("error_status")
-    if type(status) is int and status:
+    if has_status:
         return status_reason(status)
     # No answer at all: "unknown" with no status, as captured with Claude
     # Code 2.1.296 when the connection failed.

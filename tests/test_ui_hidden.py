@@ -12762,6 +12762,36 @@ def test_agent_conversation_answer_with_background_work_handed_on_once(frame, en
     assert env["sounds"] == [se.SENT, se.HANDED_ON]
 
 
+def test_answering_a_member_says_the_agent_conversation_is_working(frame, env, fake_runner,
+                                                                   monkeypatch):
+    """The answer is the member's, the open chat the conversation's: the
+    conversation's messages say working too, unless another member still
+    waits on you (#596)."""
+    from thechatplace.claude_cli import allow_response
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    assert "own-2" in frame._runners
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    for session_id, request_id in (("own-2", "r1"), ("own-1", "r2")):
+        request = _request(request_id)
+        frame._on_turn_event({"id": session_id}, "x",
+                             TurnEvent("permission", text=request.summary(), request=request))
+    settle(frame)
+    assert frame._open.provider == "agents" and frame._open.state == "needs you"
+    assert "needs you" in frame.messages_label.GetLabel()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    monkeypatch.setattr(frame, "_ask", lambda title, request, own: (
+        allow_response(request), "Allowed.", {}))
+    frame.on_answer()  # the first member's: the second still waits
+    assert len(frame._pending["own-2"]) + len(frame._pending["own-1"]) == 1
+    assert "needs you" in frame.messages_label.GetLabel()
+    frame.on_answer()
+    label = frame.messages_label.GetLabel()
+    assert "needs you" not in label and "(working" in label, label
+
+
 def test_agent_conversation_relayed_text_never_answers_a_waiting_question(frame, env, fake_runner):
     from thechatplace.claude_cli import PermissionRequest
     _agent_conversation(frame, env, mode="auto")
@@ -13764,6 +13794,76 @@ def test_after_answering_a_runtime_chat_the_messages_list_says_working(frame, en
         label = next(label for count, label in seen if count == 1)
         assert "needs you" not in label and "(working" in label, label
         assert pump(lambda: _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+    finally:
+        runtime.close()
+
+
+def _answer_copilot_in_the_list(frame, env, monkeypatch, fail=False, second=False):
+    """A Copilot chat asks; Answer allows it with you back in the messages.
+    ``fail``: the answer never reaches Copilot (the background work reports
+    an error). ``second``: another request is waiting too. Returns the
+    runtime (to close) and the list's label once the answer was handled."""
+    import dataclasses
+    from thechatplace.ui import codex_chats
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "ask")
+    shown = []
+
+    class Dialog:
+        def __init__(self, parent, title, request, detail="", *, chat_rule=None, provider="Codex"):
+            shown.append(request)
+            self.choice = "allow_once"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Dialog)
+    original = frame._codex_work
+    handled = []
+
+    def work(action, done):
+        if shown and fail:
+            done(None, RuntimeError("Copilot has gone"))
+            handled.append(True)
+            return None
+        if shown:
+            handled.append(True)
+        return original(action, done)
+    monkeypatch.setattr(frame, "_codex_work", work)
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
+    assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
+                timeout=COPILOT_WAIT)
+    assert pump(lambda: "needs you" in frame.messages_label.GetLabel()), \
+        frame.messages_label.GetLabel()
+    if second:
+        state = _copilot_state(frame)
+        other = dataclasses.replace(state.requests[0], request_id="other-request")
+        frame._codex_states[frame._open.key] = dataclasses.replace(
+            state, requests=(*state.requests, other))
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    frame.on_answer()
+    assert pump(lambda: handled, timeout=COPILOT_WAIT)
+    return runtime, frame.messages_label.GetLabel()
+
+
+def test_a_runtime_answer_that_fails_puts_needs_you_back(frame, env, monkeypatch):
+    """The list said working as the dialog closed; the answer never went, so
+    it says needs you again, at once (#596)."""
+    runtime, label = _answer_copilot_in_the_list(frame, env, monkeypatch, fail=True)
+    try:
+        assert "needs you" in label, label
+        assert frame._open.state == "needs you"
+        assert any("could not be answered" in text for text in env["feedback"])
+    finally:
+        runtime.close()
+
+
+def test_a_runtime_chat_with_another_request_waiting_still_needs_you(frame, env, monkeypatch):
+    runtime, label = _answer_copilot_in_the_list(frame, env, monkeypatch, second=True)
+    try:
+        assert "needs you" in label and "(working" not in label, label
     finally:
         runtime.close()
 
