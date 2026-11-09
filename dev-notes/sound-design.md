@@ -75,7 +75,7 @@ sound starts.
 | Message steered | Your message goes into the running turn without stopping it | `steer`: D5, E5, then D6: the send with a step on the way |
 | Steer taken | Claude has your steered message, at its next step. (Codex accepts one as it's sent, so there only Message steered plays.) | `steertaken`: A5, B5, C-sharp 6, D6, a soft quick climb to the note the steer ended on |
 | Queued message sent | A message that was waiting goes, on its own, when the turn ends | `queuesent`: D5 twice, then D6: the held note leaping into a send |
-| Queued message deleted | You delete a queued message (Delete, or its menu) | `queuedelete`: D5 twice, then D4, quiet: the held note dropping instead of leaping. Added after Kelly found it missing |
+| Queued message removed | You remove a queued message (Delete, or its menu's Remove Queued Message) | `queuedelete`: D5 twice, then D4, quiet: the held note dropping instead of leaping. Added after Kelly found it missing |
 | You stopped a turn | Stop, from you | `stop`: C4 dropping to F3, quick and damped |
 | Answer sent | You send an answer to what a chat was waiting on you for: a question, a permission (Allow, Allow for This Chat or Refuse), a plan, a connected tool's form; Claude, Codex or Copilot. Not when you leave it for later, or it couldn't be sent | `answer`: D5 leaping to D6, then A5: the send's leap coming to rest on the note Needs you calls on. Plays whichever chat it was for, as the answer to your key press. Added at Kelly's request |
 
