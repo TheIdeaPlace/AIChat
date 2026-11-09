@@ -1025,7 +1025,7 @@ class CodexChats(SoundHost, CodexExtras):
                 # Not taken: back to what the chat's own state says.
                 current = self._codex_states.get(info.key)
                 if current is not None and self._open.state != current.state:
-                    self._open.state = current.state
+                    self._open = replace(self._open, state=current.state)
                     self._update_messages_label(arriving=True)
                     self._update_heading()
             if not error:

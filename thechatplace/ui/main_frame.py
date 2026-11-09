@@ -2051,7 +2051,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         if info is None or info.key != key or still_waiting or info.state != NEEDS_YOU:
             return
-        info.state, info.detail = WORKING, ""
+        # A copy: the snapshot's row for it stays as read until the next
+        # snapshot, rather than changing under the session list.
+        self._open = dataclasses.replace(info, state=WORKING, detail="")
         self._update_messages_label(arriving=True)
         self._update_heading()
 
