@@ -52,32 +52,43 @@ PLAN_MODE_CHOICES = ['Default: carry out the task with this chat\'s permissions.
                      'Plan: discuss and produce a plan first.']
 
 #: Why Rewind can't put a Codex chat's files back, and what the new chat
-#: can do: it's read-only until you change its mode (#596, finding 4).
+#: can do (#596, finding 4). The dialog shows it for Files only too, which
+#: makes no chat, so it says "a rewound chat", not "the new chat".
 REWIND_FILES_NOTE = ("Codex doesn't put files back, so only the conversation goes back. "
-                     "The new chat can read files but not change them until you change "
-                     "its permission mode.")
+                     "A rewound Codex chat can't change files without asking until you "
+                     "change its permission mode.")
 
 
 def effort_rows(values, now):
     """Change Effort's rows for a Codex chat: None is whatever Codex is set
     to use, so it's named as Codex's, not "Configured effort", and the
     others read as words ("Extra high", not "xhigh") (#596)."""
-    from ..ui_text import codex_effort_label
-    return [("Codex's default" if v is None else codex_effort_label(v)) + (' (now)' if v == now else '')
+    from ..ui_text import CODEX_DEFAULT, codex_effort_label
+    return [(CODEX_DEFAULT if v is None else codex_effort_label(v)) + (' (now)' if v == now else '')
             for v in values]
 
 
-def copy_note(subject='It'):
-    """What a Codex copy (Rewind, Branch) can do when it opens. A copy is
-    made read-only, on Codex's default model and effort, with no Chat
-    Options or connected tools (codex_runtime.fork), and only the guide said
-    so: someone who rewinds to retry an edit would find Codex can't edit
-    (#596). Whether copies should keep the original's settings instead is
-    Kelly's question (K3); this only says what's true now."""
+def copy_note(*, short=False, tools=True):
+    """What a Codex copy (Rewind, Branch, Copy with Tool) can do. A copy is
+    made read-only with approval on request, so it can't change files
+    without asking, and The Chat Place gives it none of the original's model,
+    effort, Chat Options or connected tools (codex_runtime.fork). Only the
+    guide said so: someone who rewinds to retry an edit would find Codex
+    can't (#596). Whether copies should keep the original's settings instead
+    is Kelly's question (K3); this only says what's true now.
+
+    ``short`` is for when the copy has opened, and is said once the window
+    is on it, so it names nothing of "this chat". The full note, for a
+    question asked before, says what the copy doesn't keep; ``tools=False``
+    leaves connected tools out of that, for a tools copy, which has the ones
+    you chose."""
     from ..ui_text import key_name
-    return (f"{subject} can read files but not change them, and uses Codex's default model and "
-            "effort, without this chat's Chat Options or connected tools. Change Permission Mode "
-            f"({key_name('Ctrl+Shift+O')}) lets it edit files.")
+    key = key_name('Ctrl+Shift+O')
+    if short:
+        return f"It can't change files without asking; Change Permission Mode ({key}) lets it edit."
+    kept = 'model, effort, Chat Options or connected tools' if tools else 'model, effort or Chat Options'
+    return (f"The new chat can't change files without asking, and doesn't keep the original's {kept}. "
+            f"Change Permission Mode ({key}) lets it edit files.")
 
 
 class CodexExtras:
@@ -153,7 +164,8 @@ class CodexExtras:
             def prepared(change, failed):
                 if failed:
                     self._codex_policy_pending.discard(info.key)
-                    self._feedback(change or f'Could not change the Codex {what}. The chat keeps its current one.')
+                    from ..ui_text import with_stop_key
+                    self._feedback(with_stop_key(change or f'Could not change the Codex {what}. The chat keeps its current one.'))
                     return
                 updated = change.record()
                 saved = self.store.get(record.cli_session_id, provider='codex') is record and self._store_write(self.store.update, record.cli_session_id,
@@ -164,16 +176,18 @@ class CodexExtras:
                 def finished(_result, problem):
                     self._codex_policy_pending.discard(info.key)
                     latched = getattr(self._codex_states.get(info.key), 'problem', '')
+                    from ..ui_text import with_stop_key
                     if latched and latched != earlier:
-                        self._feedback(latched)
+                        # The usual failure: the runtime latched what went
+                        # wrong, ending with what Stop does; the key is ours
+                        # to name (#596).
+                        self._feedback(with_stop_key(latched))
                     elif problem:
                         # Stop is the recheck (#385): with no turn running it
                         # checks the chat with Codex again, so say why to
                         # press it (#596).
-                        from ..ui_text import key_name
-                        self._feedback(f"Codex didn't confirm the new {what}. Press Stop "
-                                       f"({key_name('Ctrl+Period')}) to have The Chat Place check "
-                                       'this chat with Codex, then try again.')
+                        from ..providers.codex_runtime import STOP_TO_RECHECK
+                        self._feedback(with_stop_key(f"Codex didn't confirm the new {what}. " + STOP_TO_RECHECK))
                     elif not saved:
                         self._feedback(f'Could not save the Codex {what}. The chat keeps its current one.')
                     else:
@@ -257,9 +271,8 @@ class CodexExtras:
                     return
             finally:
                 dialog.Destroy()
-        elif wx.MessageBox('The new Codex chat will include the whole turn containing this message. '
-                + copy_note('The new chat') + ' Files stay as they are, and the original chat is kept. '
-                'Branch here?',
+        elif wx.MessageBox('A new Codex chat will start with the whole turn containing this message, '
+                'and this chat is kept. ' + copy_note() + ' Branch here?',
                 'Branch from Here', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             return
 
@@ -276,7 +289,7 @@ class CodexExtras:
             self.open_session(record.to_info())
             self.refresh_sessions()
             self.reply_text.SetFocus()
-            said = f'Opened {title}. {copy_note()} The original chat is kept.'
+            said = f'Opened {title}. {copy_note(short=True)} The original chat is kept.'
             self._feedback(said + (' Change your message and send when ready.' if before else ''))
         self._feedback(f'Creating {title}.')
         self._codex_work(lambda: self.sessions.branch(info, title, anchor, before), created)

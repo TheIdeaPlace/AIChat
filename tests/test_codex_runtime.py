@@ -603,7 +603,8 @@ def test_permission_change_to_downgraded_sandbox_blocks_with_the_sandbox_reason(
         assert not service.ready(record)
         assert 'Windows sandbox' in service._problems[record.cli_session_id]
         assert 'usually means' in service._problems[record.cli_session_id]
-        assert service._problems[record.cli_session_id].endswith('Use Stop to recheck this chat before sending.')
+        from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+        assert service._problems[record.cli_session_id].endswith(STOP_TO_RECHECK)
         assert 'reload' not in str(refused.value).lower()
     finally:
         service.close()

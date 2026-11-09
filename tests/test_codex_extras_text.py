@@ -43,21 +43,41 @@ def test_effort_rows_name_codexs_default_and_read_as_words(now, rows):
     assert codex_extras.effort_rows([None, 'low', 'xhigh'], now) == rows
 
 
-def test_a_copy_says_it_can_read_but_not_change_files_and_how_to_let_it(monkeypatch):
+def test_a_copy_says_it_cant_change_files_without_asking_and_how_to_let_it(monkeypatch):
     monkeypatch.setattr('sys.platform', 'win32')
-    note = codex_extras.copy_note()
-    assert note.startswith('It can read files but not change them')
-    assert "Codex's default model and effort" in note
-    assert 'Change Permission Mode (Ctrl+Shift+O)' in note
-    assert codex_extras.copy_note('The new chat').startswith('The new chat can read')
+    # Before: what the copy doesn't keep, named as the original's.
+    assert codex_extras.copy_note() == (
+        "The new chat can't change files without asking, and doesn't keep the original's model, "
+        'effort, Chat Options or connected tools. Change Permission Mode (Ctrl+Shift+O) lets it edit files.')
+    # A tools copy has the tools you chose.
+    assert 'connected tools' not in codex_extras.copy_note(tools=False)
+    assert "the original's model, effort or Chat Options." in codex_extras.copy_note(tools=False)
+    # Once open, the window is on the copy: short, and nothing about "this chat".
+    short = codex_extras.copy_note(short=True)
+    assert short == "It can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit."
+    for note in (codex_extras.copy_note(), short, codex_extras.REWIND_FILES_NOTE):
+        assert 'this chat' not in note and 'read files but not' not in note
     monkeypatch.setattr('sys.platform', 'darwin')
-    assert '(Cmd+Shift+O)' in codex_extras.copy_note()
+    assert '(Cmd+Shift+O)' in codex_extras.copy_note() and '(Cmd+Shift+O)' in codex_extras.copy_note(short=True)
 
 
-def test_rewinds_files_note_has_no_checkpoints_and_says_the_copy_cant_edit():
+def test_rewinds_files_note_has_no_checkpoints_and_fits_files_only_too():
     note = codex_extras.REWIND_FILES_NOTE
     assert 'checkpoint' not in note.lower()
-    assert 'only the conversation goes back' in note and 'not change them' in note
+    assert 'only the conversation goes back' in note
+    # Files only makes no chat, and shows this note too.
+    assert 'A rewound Codex chat' in note and 'The new chat' not in note
+
+
+@pytest.mark.parametrize('platform, key', [('win32', 'Ctrl+Period'), ('darwin', 'Cmd+Period')])
+def test_the_window_names_stops_key_in_a_providers_stop_advice(platform, key):
+    from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+    from thechatplace.ui_text import with_stop_key
+    said = with_stop_key('Codex lost it. ' + STOP_TO_RECHECK, platform)
+    assert said == f'Codex lost it. Press Stop ({key}) to have The Chat Place check this chat with Codex before you send again.'
+    assert with_stop_key(said, platform) == said  # never twice
+    assert with_stop_key('Nothing about it.', platform) == 'Nothing about it.'
+    assert with_stop_key('', platform) == ''
 
 
 def test_codex_chat_options_note_names_no_mode_that_isnt_there():

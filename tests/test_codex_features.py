@@ -573,7 +573,7 @@ def test_a_retired_model_recovers_with_stop_after_a_permission_change_fails_to_s
     try:
         change = service.prepare_policy(record, 'workspace-write', 'on-request')
         service.finish_policy(change, False)
-        assert 'Use Stop' in service.snapshot(record.cli_session_id).problem
+        assert 'Press Stop' in service.snapshot(record.cli_session_id).problem
         assert service.recover(record) == 'permissions'
         assert not service.snapshot(record.cli_session_id).problem
         assert service.send(record, 'Hello') is not None
@@ -907,7 +907,10 @@ def test_a_setting_saved_when_the_connection_went_says_what_was_changing():
         service.finish_policy(change, True)
         problem = service.snapshot(record.cli_session_id).problem
         assert 'model or effort' in problem and 'permissions' not in problem
-        assert problem.endswith('Use Stop to recheck this chat before sending.')
+        from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+        assert problem == ("The new model or effort couldn't be saved, or Codex didn't confirm the change. "
+                           + STOP_TO_RECHECK)
+        assert STOP_TO_RECHECK.startswith('Press Stop to have The Chat Place check this chat')
     finally:
         service.close()
 

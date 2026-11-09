@@ -40,10 +40,9 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     assert opened[0].cli_session_id != record.cli_session_id
     assert frame._codex_drafts[opened[0].key] == 'Hi'
     assert frame.store.get(record.cli_session_id, provider='codex') is record
-    # The copy is read-only on Codex's defaults, and says so as it opens (#596).
-    assert env['feedback'][-1] == ('Opened Codex original (rewound). It can read files but not change them, '
-        "and uses Codex's default model and effort, without this chat's Chat Options or connected tools. "
-        f'Change Permission Mode ({key_name("Ctrl+Shift+O")}) lets it edit files. The original chat is kept. '
+    # The copy can't change files without asking, and says so, briefly, as it opens (#596).
+    assert env['feedback'][-1] == ("Opened Codex original (rewound). It can't change files without asking; "
+        f'Change Permission Mode ({key_name("Ctrl+Shift+O")}) lets it edit. The original chat is kept. '
         'Change your message and send when ready.')
 
 
@@ -59,10 +58,11 @@ def test_codex_branch_says_what_the_copy_can_do_before_and_after(frame, env, mon
     monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
     frame._branch_codex(record.to_info(), message)
     assert pump(lambda: opened)
-    assert 'The new chat can read files but not change them' in asked[0]
-    assert asked[0].endswith('Files stay as they are, and the original chat is kept. Branch here?')
-    assert env['feedback'][-1].startswith('Opened Codex original (branch). It can read files but not change them')
-    assert env['feedback'][-1].endswith('The original chat is kept.')
+    from thechatplace.ui.codex_extras import copy_note
+    assert asked == ['A new Codex chat will start with the whole turn containing this message, and this '
+                     'chat is kept. ' + copy_note() + ' Branch here?']
+    assert env['feedback'][-1] == ('Opened Codex original (branch). ' + copy_note(short=True)
+                                   + ' The original chat is kept.')
 
 
 def test_codex_attachments_are_separate_from_a_claude_chat_with_the_same_id(frame, env):
@@ -470,7 +470,30 @@ def test_a_setting_codex_did_not_confirm_says_why_to_press_stop(frame, env, monk
     monkeypatch.setattr(frame.sessions, 'owned_action', action)
     frame._change_codex_settings(record.to_info(), 'model')
     assert env['feedback'][-1] == (f"Codex didn't confirm the new model. Press Stop ({key_name('Ctrl+Period')}) to have "
-                                   'The Chat Place check this chat with Codex, then try again.')
+                                   'The Chat Place check this chat with Codex before you send again.')
+
+
+def test_a_setting_change_the_runtime_latched_says_its_problem_with_stops_key(frame, env, monkeypatch):
+    """The usual failure (#596): finish_policy latches the chat's problem,
+    which the runtime words with what Stop does, and the window adds the key."""
+    from thechatplace.providers.codex_runtime import CodexChatState, STOP_TO_RECHECK
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))))
+    real = frame.sessions.owned_action
+    latched = "The new model or effort couldn't be saved, or Codex didn't confirm the change. " + STOP_TO_RECHECK
+
+    def action(name, rec, *args):
+        if name == 'finish_policy':
+            frame._codex_states[record.to_info().key] = CodexChatState(
+                record.cli_session_id, STATUS_UNAVAILABLE, problem=latched)
+            return None
+        return real(name, rec, *args)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == latched.replace('Press Stop ', f'Press Stop ({key_name("Ctrl+Period")}) ')
+    assert 'Use Stop' not in env['feedback'][-1]
 
 
 def test_the_effort_picker_names_codexs_default_and_reads_as_words(frame, env, monkeypatch):

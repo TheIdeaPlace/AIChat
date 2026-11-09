@@ -11145,7 +11145,7 @@ def test_codex_model_picker_keeps_defaults_and_restores_provider_choices(frame):
         assert dialog.values()[-1] == 'synthetic-one' and dialog.effort() == 'future-effort'
         dialog.model.SetSelection(2)
         dialog._on_codex_model()
-        assert dialog.effort() == '' and list(dialog.effort_choice.GetStrings()) == ['Configured Codex effort', 'High']
+        assert dialog.effort() == '' and list(dialog.effort_choice.GetStrings()) == ["Codex's default", 'High']
         dialog.provider_choice.SetSelection(0)
         dialog._on_provider()
         assert dialog.model.GetSelection() == 2
