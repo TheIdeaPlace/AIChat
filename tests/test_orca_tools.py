@@ -8,6 +8,34 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
 import orca_names  # noqa: E402
+import orca_speech  # noqa: E402
+
+
+def test_every_step_trigger_does_something():
+    """A trigger with no action would leave its step waiting for nothing."""
+    triggers = {step.trigger for step in orca_speech.STEPS if step.trigger}
+    assert triggers - set(orca_speech.TRIGGERS) == set()
+
+
+def _log(corrections, loaded=True):
+    lines = [orca_speech.LOADED + " (cache cleared with clear_cache_single)"] if loaded else []
+    return "\n".join(lines + [f"{orca_speech.CORRECTED} (frame), so it isn't"] * corrections)
+
+
+def test_corrections_are_counted_by_step_and_a_jump_is_warned_about():
+    results = [{"step": "quiet", "corrected": 0}, {"step": "busy", "corrected": 3},
+               {"step": "a jump", "corrected": 12}]
+    lines = orca_speech.orca_corrections(_log(15), results, ceiling=10)
+    assert lines[0].startswith("Orca took a live object for dead 15 times")
+    assert "      3  busy" in lines and "     12  a jump" in lines
+    assert not any("quiet" in line for line in lines)
+    warnings = [line for line in lines if line.startswith("::warning::")]
+    assert len(warnings) == 1 and warnings[0].startswith("::warning::a jump: Orca took 12")
+
+
+def test_an_orca_without_the_correction_says_so():
+    lines = orca_speech.orca_corrections(_log(0, loaded=False), [])
+    assert lines[0].startswith("Orca's dead objects weren't corrected")
 
 
 def test_crashes_are_told_from_failures_and_timeouts():
@@ -56,8 +84,32 @@ def test_a_crash_is_run_again_once_from_where_it_stopped(tmp_path, capsys):
 def test_a_surface_that_crashes_twice_fails(tmp_path):
     probe = FakeProbe(crash={"b": 2})
     _code, problems = orca_names.run(tmp_path, ["a", "b", "c"], probe=probe)
-    assert problems == ["b: the probe crashed (SIGSEGV) on it twice"]
+    assert problems == ["b: the probe crashed (SIGSEGV) again, after running again once "
+                        "for a crash on b"]
     assert len(probe.calls) == 2
+
+
+def test_two_surfaces_that_crash_once_each_fail(tmp_path):
+    """One rerun in the whole run, not one per surface."""
+    probe = FakeProbe(crash={"a": 1, "c": 1})
+    _code, problems = orca_names.run(tmp_path, ["a", "b", "c", "d"], probe=probe)
+    assert problems == ["c: the probe crashed (SIGSEGV) again, after running again once "
+                        "for a crash on a"]
+    assert probe.calls == [["a", "b", "c", "d"], ["a", "b", "c", "d"]]
+
+
+def test_a_crash_after_the_last_surface_fails(tmp_path):
+    def probe(folder, names):
+        return 139, {name: {"png": f"{name}.png"} for name in names}
+    _code, problems = orca_names.run(tmp_path, ["a"], probe=probe)
+    assert problems == ["the probe crashed (SIGSEGV) after its last surface, closing"]
+
+
+def test_an_odd_exit_after_the_last_surface_fails(tmp_path):
+    def probe(folder, names):
+        return 2, {name: {"png": f"{name}.png"} for name in names}
+    _code, problems = orca_names.run(tmp_path, ["a"], probe=probe)
+    assert problems == ["the probe exited with 2 after its last surface"]
 
 
 def test_an_unnamed_control_is_never_run_again(tmp_path):

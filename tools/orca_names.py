@@ -11,9 +11,11 @@ setup can't pass as a clean one (#230).
 
 ``--run`` runs the probe itself, in a desktop of its own. A probe that
 crashes (a segfault in GTK or AT-SPI, which isn't a finding about names) is
-started again, once, on the surface it crashed on and those it hadn't
-reached, and the log says so (#579). A surface it crashes on twice fails. A
-control without a name is never run again: it fails.
+started again on the surface it crashed on and those it hadn't reached, and
+the log says so (#579). That happens once in the whole run: a second crash,
+on any surface, fails, as does a crash after the last surface (closing). A
+control without a name is never run again: it fails. What the probe printed,
+GTK's warnings included, is in DIR/probe.log.
 """
 from __future__ import annotations
 
@@ -75,11 +77,18 @@ def _probe(folder: Path, names: List[str]) -> Tuple[int, Dict[str, dict]]:
     env = dict(os.environ, TCP_PROBE_ORCA="1")
     process = subprocess.Popen(command, cwd=str(ROOT), env=env, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, errors="replace")
-    for line in process.stdout:
-        # GTK's and ATK's warnings, thousands of them, say nothing here.
-        if "-CRITICAL **" not in line and line.strip():
-            print(line, end="", flush=True)
+    warnings = 0
+    # Everything the probe said goes in probe.log (kept with the pictures);
+    # GTK's and ATK's CRITICAL warnings, thousands of them, only there.
+    with (folder / "probe.log").open("a", encoding="utf-8") as log:
+        for line in process.stdout:
+            log.write(line)
+            if "-CRITICAL **" in line:
+                warnings += 1
+            elif line.strip():
+                print(line, end="", flush=True)
     process.wait()
+    print(f"({warnings} GTK and ATK CRITICAL warnings, in {folder / 'probe.log'})", flush=True)
     try:
         done = json.loads(manifest.read_text(encoding="utf-8"))["surfaces"]
     except (OSError, ValueError, KeyError):
@@ -89,7 +98,8 @@ def _probe(folder: Path, names: List[str]) -> Tuple[int, Dict[str, dict]]:
 
 def run(folder: Path, names: List[str], probe=_probe) -> Tuple[int, List[str]]:
     """The probe over ``names``, started again after a crash on the surfaces
-    it hadn't finished, but only once per surface. (exit code, problems)."""
+    it hadn't finished: once in the whole run, so a second crash anywhere
+    fails. (exit code, problems)."""
     folder.mkdir(parents=True, exist_ok=True)
     remaining, finished, crashes, problems = list(names), {}, {}, []
     code = 0
@@ -98,18 +108,27 @@ def run(folder: Path, names: List[str], probe=_probe) -> Tuple[int, List[str]]:
         finished.update(done)
         left = [n for n in remaining if n not in done]
         why = crashed(code)
-        if why is None or not left:
+        if why is None:
             if left:
                 problems.append(f"the probe stopped (exit {code}) before {', '.join(left)}")
+            elif code not in (0, 1):  # 1: a surface failed, reported below
+                problems.append(f"the probe exited with {code} after its last surface")
+            break
+        if not left:
+            # The app's own windows closing, or wx's: not something to run again.
+            problems.append(f"the probe crashed ({why}) after its last surface, closing")
             break
         culprit = left[0]
-        crashes[culprit] = crashes.get(culprit, 0) + 1
-        if crashes[culprit] > 1:
-            problems.append(f"{culprit}: the probe crashed ({why}) on it twice")
+        if crashes:
+            earlier = ", ".join(crashes)
+            problems.append(f"{culprit}: the probe crashed ({why}) again, after running "
+                            f"again once for a crash on {earlier}")
+            crashes[culprit] = why
             break
+        crashes[culprit] = why
         print(f"::warning::The probe crashed ({why}) on {culprit}. That's a crash, not an "
               f"unnamed control, so it starts again on {culprit} and the {len(left) - 1} "
-              "surfaces after it, once (#579).", flush=True)
+              "surfaces after it. Only once: another crash fails (#579).", flush=True)
         remaining = left
     # A surface that couldn't be shown has no audit to check, so it fails here.
     problems += [f"{name}: {str(entry['error']).strip().splitlines()[-1]}"

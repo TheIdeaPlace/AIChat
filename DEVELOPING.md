@@ -148,9 +148,10 @@ accessibility bus), with no person, sound or VM:
   and Keyboard Shortcuts, and checks what Orca said for each from its debug log. `--record`
   says what each step spoke without checking; add a step to `STEPS` in `tools/orca_speech.py`
   when a keyboard path changes. A step waits, up to 15 seconds, for everything it expects and
-  then for a moment's quiet, so it doesn't depend on how fast the runner is. `--keep DIR` keeps
-  Orca's debug log and the app's output (CI uploads them), and each step's line gives the time
-  it started, to find it in the log.
+  then for a moment's quiet, so it doesn't depend on how fast the runner is. `--keep DIR`
+  writes Orca's debug log and the app's output there from the start, so a run that fails or
+  runs out of time keeps them (CI uploads them), and each step's line gives the time it
+  started, to find it in the log.
 - The visual probe's Orca audit, run and checked by `tools/orca_names.py --run DIR`, fails on
   any control on any surface that Orca reaches without a name.
 - The ATK tests in `tests/test_linux.py` run with an accessibility bus.
@@ -164,21 +165,31 @@ row arrowed to and not read. The debug logs of the failed runs showed it every t
 the Copilot chat's step (the last point below).
 `tools/orca-customizations.py`, which `linux_a11y_session.sh` gives the test Orca
 only, has Orca ask such an object again before believing it dead, as newer Orca does
-(`revalidate_if_known_dead`). An object that really is gone still fails the question, so this
-takes away Orca's mistake and nothing else; the speech report ends by saying how often it
-corrected one. So:
+(`revalidate_if_known_dead`). It asks the app itself, not AT-SPI's cache, and an object the app
+says is defunct stays dead, so an object that really is gone still fails the question. That
+puts Orca right about 20 times a run, nearly always as a dialog opens. This fixes Orca 46's mistake in CI only: people using
+Orca 46 still meet it, and #606 asks whether the app can replace fewer rows and windows to make
+it rarer for them. The speech report ends with how often Orca was corrected, step by step (also
+`corrected` in the JSON), with a warning for a step above `CORRECTIONS_CEILING`, so a change
+that makes the app replace many more objects shows. So:
 
 - No step is run again after a failure. A failed step is a real difference in what Orca said,
   or a new kind of flakiness to investigate, not to retry.
 - The one exception is the names audit's probe crashing (a segfault in GTK or AT-SPI, seen
-  twice in 2026): `orca_names.py --run` starts it again, once, on the surface it crashed on and
-  those after it, with a warning in the log. A surface it crashes on twice fails, and a control
-  without a name is never run again.
+  twice in 2026): `orca_names.py --run` starts it again on the surface it crashed on and those
+  after it, with a warning in the log. That happens once a run: a second crash anywhere fails,
+  as does a crash after the last surface (the app's windows closing), and a control without a
+  name is never run again. What the probe printed, GTK's thousands of CRITICAL warnings
+  included, is in `probe-linux/probe.log`.
 - The audit used to take about 2.4 seconds a surface, waiting on the probe's 20 ms sleeps to
   answer each of AT-SPI's questions; the probe now answers at once, and the audit takes about
   0.2 seconds a surface, the whole step about 5 minutes for 131 surfaces.
 - A trigger that sets up a lot at once (the Copilot chat) lets the window settle before it
-  moves the focus, and what happens next (Copilot asking) is a step of its own.
+  moves the focus, and what happens next (Copilot asking) is a step of its own. That setup
+  opened the chat twice, which no one does; an update and a refresh with the focus in the
+  messages, which do happen, have a step of their own that checks the arrows still read the
+  rows around it. A step with `after_trigger` presses its keys only once its trigger has
+  finished.
 
 `build_linux.sh`, and so the release workflow's Linux jobs, also start the packed AppImage on a
 virtual screen and wait for its window. Orca runs one copy per user, so to run these on a PC
