@@ -603,7 +603,7 @@
    "class": "SingleChoiceDialog",
    "size": [
     596,
-    394
+    409
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1854,6 +1854,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Session with a branch that's in use in another worktree"
+  },
+  "codex-change-mode-plan": {
+   "kind": "dialog",
+   "png": "codex-change-mode-plan-light-100.png",
+   "json": "codex-change-mode-plan-light-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    600,
+    441
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Codex chat in Plan mode"
   }
  },
  "seconds": 278.6
