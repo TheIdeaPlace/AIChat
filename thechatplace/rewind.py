@@ -282,12 +282,16 @@ def branch_title(title: str) -> str:
 def unstarted_line(own) -> str:
     """What the messages list says for a branch not sent to yet, or "" for
     any other chat. Its history is only made by its first turn, so there's
-    nothing of its own to show until then."""
+    nothing of its own to show until then.
+
+    One wording for Rewind to Here and Branch from Here: the record doesn't
+    say which made it, and "a branch ... up to the message you chose" was
+    wrong for a rewind, which stops before it (explain-it review, #596)."""
     if own is None or own.started or not own.forked_from:
         return ""
     if own.fork_at:
-        return (f"No messages yet. This chat is a branch of {own.forked_from}, with its "
-                "conversation up to the message you chose. Send a message to start it.")
+        return (f"No messages yet. This chat is a new copy of {own.forked_from}, up to the "
+                "point you chose. Send a message to start it.")
     if not own.fork_source:
         return (f"No messages yet. This chat goes back to before your first message in "
                 f"{own.forked_from}, so it starts with no history. Send a message to start it.")
@@ -331,10 +335,11 @@ def plan_rewind(chat_title: str, transcript: Transcript, message: ChatMessage, *
     if not can_rewind_files:
         files_problem = files_reason or "The files can't be put back for this chat."
     elif message.uuid not in transcript.checkpoints:
+        # "Checkpoint" is Claude Code's word; say what it is (#596).
         files_problem = (
-            "There are no file checkpoints for this message, so the files can't be put "
-            "back. The Chat Place keeps them from this version on; messages sent before "
-            "that, or in another app, have none.")
+            "The Chat Place has no saved copies of your files from before this message, so "
+            "they can't be put back. Copies are kept only for messages sent in The Chat "
+            "Place from 0.5 on.")
     else:
         files_problem = ""
     return RewindPlan(chat_title=chat_title, message=message, cut=message.parent_uuid,
@@ -374,10 +379,10 @@ def result_from_output(returncode: Optional[int], stdout: str, stderr: str,
                                   f"your message \"{said}\"{files}.")
     reason = _reason(stderr) or _reason(stdout)
     if "not enabled" in reason.lower():
-        reason = "file checkpoints weren't kept for this chat"
+        reason = "it didn't save copies of the files for this chat"
     elif "no file checkpoint" in reason.lower():
         # Seen with Claude Code 2.1.296 for a message sent without them.
-        reason = "there's no file checkpoint for that message"
+        reason = "it didn't save copies of the files for that message"
     elif "not a user message" in reason.lower():
         reason = "it doesn't know that message in this chat"
     elif "no conversation found" in reason.lower():

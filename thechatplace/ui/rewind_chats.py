@@ -233,9 +233,11 @@ class RewindChats:
             return ""
         else:
             where = "a Claude desktop app session"
-        return (f"This is {where}. Only The Chat Place's own chats can have their files put "
-                "back: doing it writes to the chat. Conversation only makes a new chat of "
-                "your own from it.")
+        # Putting files back runs Claude Code on the chat itself, which is
+        # only ever done to the app's own (#468); that's no reason to give a
+        # user, so it says where it works instead (#596).
+        return (f"This is {where}. Files can be put back only for chats started in The Chat "
+                "Place. Conversation only makes a new chat of your own from it.")
 
     @property
     def _rewinding_files(self) -> set:

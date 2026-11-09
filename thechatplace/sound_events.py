@@ -75,7 +75,7 @@ EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(STEERED, "MessageSteered", "Message steered into the turn", "steer", answers_you=True),
     SoundEvent(STEER_TAKEN, "SteerTaken", "Steered message taken", "steertaken"),
     SoundEvent(QUEUED_SENT, "QueuedMessageSent", "Queued message sent", "queuesent"),
-    SoundEvent(QUEUED_DELETED, "QueuedMessageDeleted", "Queued message deleted", "queuedelete",
+    SoundEvent(QUEUED_DELETED, "QueuedMessageDeleted", "Queued message removed", "queuedelete",
                answers_you=True),
     SoundEvent(STOPPED, "TurnStopped", "You stopped a turn", "stop", answers_you=True),
     SoundEvent(FINISHED, "ReplyFinished", "Reply finished", "reply"),

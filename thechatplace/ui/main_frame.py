@@ -2004,9 +2004,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_messages_label()
         self._update_status_session()
 
-    def _update_messages_label(self):
+    def _update_messages_label(self, arriving: bool = False):
         """The chat list's label (its accessible name) carries the session's
-        state and whether it is read-only, so it is heard on arriving there."""
+        state and whether it is read-only, so it is heard on arriving there.
+        ``arriving``: focus is coming back to the list from a dialog, so the
+        name is set now, to be what's heard, even if the list has focus."""
         info = self._open
         if info is None:
             return
@@ -2028,7 +2030,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What the chat is, apart from its state: a change there (another
         # chat, a new title, read-only becoming yours) is said at once.
         identity = (info.key, info.title, kind)
-        if (self._messages_label_key == identity and self.chat_list.HasFocus()
+        if (not arriving and self._messages_label_key == identity and self.chat_list.HasFocus()
                 and self.messages_label.GetLabel() != f"&{label}:"):
             # Only the state changed, with you in the list: a screen reader
             # says a focused control's new name again, and on a braille
@@ -2038,6 +2040,39 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         self._set_messages_label(label)
         self._messages_label_key = identity
+
+    def _answered_open_chat(self, key: str, still_waiting: bool) -> None:
+        """An answer has just gone from the Answer dialog for chat ``key``.
+        If it's the open chat and nothing else waits on you there, it's
+        working again, and the messages list says so now, as focus comes back
+        to it. Left to the next snapshot or turn event, that arrived with you
+        in the list, where a state change is held back until you leave, so
+        coming back from the dialog said "needs you" (#596)."""
+        info = self._open
+        if info is None or still_waiting or info.state != NEEDS_YOU:
+            return
+        if info.provider == AGENTS:
+            # A member answered in the open agent conversation: it's working
+            # again only if nothing else in it waits on you (agents.rows).
+            conversation = self._agent_conversation(info)
+            if conversation is None or key not in {m.key for m in conversation.members}:
+                return
+            if conversation.pending is not None and not conversation.pending.finished:
+                return  # a hand-off waits for you
+            for member in conversation.members:
+                if member.key == key:
+                    continue
+                state = self._codex_states.get(member.key)
+                if (member.provider == "claude" and self._pending.get(member.native_id)
+                        or state is not None and state.requests):
+                    return
+        elif info.key != key:
+            return
+        # A copy: the snapshot's row for it stays as read until the next
+        # snapshot, rather than changing under the session list.
+        self._open = dataclasses.replace(info, state=WORKING, detail="")
+        self._update_messages_label(arriving=True)
+        self._update_heading()
 
     def _set_messages_label(self, label):
         self._pending_messages_label = None
@@ -4644,6 +4679,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Any answer you send, a refusal too (#250). No chat key: it answers your key press, so
         # "Other sounds play for" doesn't hold it back when the chat isn't the open one.
         self._sound(sound_events.ANSWER_SENT)
+        # Claude carries on with the turn whatever the answer, a refusal too.
+        self._answered_open_chat(self._own_key(session_id), bool(queue))
         if (isinstance(request, ElicitationRequest) and request.is_url
                 and response.get("action") == "accept" and is_web_url(request.url)):
             try:

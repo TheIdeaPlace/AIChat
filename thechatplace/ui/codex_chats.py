@@ -1014,8 +1014,21 @@ class CodexChats(SoundHost, CodexExtras):
             return
         finally:
             dialog.Destroy()
+        # The answer goes in the background, and the state that says it was
+        # taken comes later still, with you back in the messages: they say
+        # the chat is working now, as Claude's do (#596).
+        waiting_now = self._codex_states.get(info.key, state).requests or ()
+        self._answered_open_chat(info.key, any(r.request_id != request.request_id
+                                               for r in waiting_now))
         def done(_result, error):
             name = provider_name(info.provider)
+            if error and self._open is not None and self._open.key == info.key:
+                # Not taken: back to what the chat's own state says.
+                current = self._codex_states.get(info.key)
+                if current is not None and self._open.state != current.state:
+                    self._open = replace(self._open, state=current.state)
+                    self._update_messages_label(arriving=True)
+                    self._update_heading()
             if not error:
                 # Any answer that went, a refusal too (#250); for any chat, as for Claude's.
                 self._sound(sound_events.ANSWER_SENT)

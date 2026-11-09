@@ -168,7 +168,7 @@ def test_without_checkpoints_only_the_conversation_can_go_back():
     plan = rewind.plan_rewind("Fixes", tr, message, can_rewind_files=True)
     assert plan.default_choice() == rewind.CONVERSATION
     assert not plan.allowed(rewind.BOTH) and not plan.allowed(rewind.FILES)
-    assert "no file checkpoints" in plan.describe(rewind.FILES)
+    assert "no saved copies of your files" in plan.describe(rewind.FILES)
 
 
 def test_a_chat_that_is_not_ours_says_why_its_files_stay():
@@ -238,10 +238,10 @@ def test_success_says_how_many_files():
 
 
 @pytest.mark.parametrize("stderr,said", [
-    ("Error: File rewinding is not enabled.", "file checkpoints weren't kept for this chat"),
+    ("Error: File rewinding is not enabled.", "it didn't save copies of the files for this chat"),
     ("Error: --rewind-files requires a user message UUID, but x is not a user message in "
      "this session", "it doesn't know that message in this chat"),
-    ("No file checkpoint found for this message.", "there's no file checkpoint for that "
+    ("No file checkpoint found for this message.", "it didn't save copies of the files for that "
                                                    "message"),
     ("No conversation found with session ID: x", "it couldn't find this chat's "
                                                  "conversation"),
@@ -351,7 +351,8 @@ def test_unstarted_branch_line():
     from thechatplace.rewind import unstarted_line
     branch = OwnSession(cli_session_id="n-1", title="t", cwd=".", started=False,
                         fork_source="s-1", forked_from="Fixes", fork_at="u-1")
-    assert "branch of Fixes" in unstarted_line(branch)
+    assert unstarted_line(branch) == ("No messages yet. This chat is a new copy of Fixes, up to the "
+                                     "point you chose. Send a message to start it.")
     fresh = OwnSession(cli_session_id="n-1", title="t", cwd=".", started=False,
                        forked_from="Fixes")
     assert "no history" in unstarted_line(fresh)

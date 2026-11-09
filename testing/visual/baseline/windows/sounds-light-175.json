@@ -312,7 +312,7 @@
     "Message steered into the turn: Bend",
     "Steered message taken: Taken",
     "Queued message sent: Release",
-    "Queued message deleted: Withdraw",
+    "Queued message removed: Withdraw",
     "You stopped a turn: Stop",
     "Reply finished: Rise",
     "Another chat finished: Low rise"

@@ -18,8 +18,10 @@ from .claude_cli import describe_elapsed, mode_label, model_spoken
 #: api_retry's ``error`` values (Claude Code's error kinds), in words.
 _RETRY_REASONS = {
     "overloaded": "the service is overloaded",
-    "rate_limit": "the service is busy (rate limited)",
-    "server_error": "the service had an error",
+    # The same words as the status alone says (status_reason), so a retry
+    # reads the same whichever of the two Claude Code sends (#596).
+    "rate_limit": "the service is busy",
+    "server_error": "the service had a problem",
     "authentication_failed": "signing in failed",
     "oauth_org_not_allowed": "your organization isn't allowed",
     "account_on_hold": "your account is on hold",
@@ -32,14 +34,33 @@ _RETRY_REASONS = {
 }
 
 
+def status_reason(status: int) -> str:
+    """An HTTP status in words, as no one should have to know what 503
+    means. The number stays where it's a problem of the service's own, to
+    tell apart or look up."""
+    if status == 529:
+        return "the service is overloaded"
+    if status == 429:
+        return "the service is busy"
+    if status == 401:
+        return "signing in failed"
+    if status == 403:
+        # Not always signing in: an account or organization can be refused too.
+        return "the service refused the request (error 403)"
+    return f"the service had a problem (error {status})"
+
+
 def retry_reason(data: dict) -> str:
     """Why Claude Code is retrying, in words."""
     error = str(data.get("error") or "")
+    status = data.get("error_status")
+    has_status = type(status) is int and bool(status)
+    if error == "server_error" and has_status:
+        return status_reason(status)  # with its number, as for a status alone
     if error in _RETRY_REASONS:
         return _RETRY_REASONS[error]
-    status = data.get("error_status")
-    if type(status) is int and status:
-        return "the service is overloaded" if status == 529 else f"the service answered {status}"
+    if has_status:
+        return status_reason(status)
     # No answer at all: "unknown" with no status, as captured with Claude
     # Code 2.1.296 when the connection failed.
     return "it couldn't reach the service"
@@ -159,10 +180,10 @@ def mode_change(saved: str, mode: str, before_plan: str = "") -> Tuple[str, str]
     turn only: later turns don't take on more than you chose here."""
     chose = before_plan if saved == "plan" and before_plan else saved
     if mode == "plan" or _MODE_WIDTH.get(mode, 0) <= _MODE_WIDTH.get(chose, -1):
-        return mode, f"Claude Code switched to {mode_label(mode)} mode."
+        return mode, f"Claude switched to {mode_label(mode)} mode."
     # Out of the plan mode Claude chose for itself, back to what you chose.
     keep = chose if saved == "plan" and before_plan else ""
-    return keep, (f"Claude Code switched to {mode_label(mode)} mode for this turn. "
+    return keep, (f"Claude switched to {mode_label(mode)} mode for this turn. "
                   f"Later turns start in {mode_label(chose)} mode.")
 
 
