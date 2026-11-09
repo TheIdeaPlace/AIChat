@@ -71,7 +71,9 @@ def test_a_branch_of_a_chat_started_elsewhere_says_it_starts_on_codexs_defaults(
     new chat does, and the question and message say so (review of #609)."""
     from dataclasses import replace as replaced
     record = owned(frame, env)
-    info = replaced(record.to_info(), is_own=False)
+    from thechatplace.sessions import TERMINAL
+    info = replaced(record.to_info(), source=TERMINAL)
+    assert not info.is_own
     message = transcript_from_thread(history()).messages[0]
     asked, opened, passed = [], [], []
     monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before, own=None:
@@ -744,7 +746,7 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
             CodexTool('kept', 'connected', (), False)]
     asked, copied, boxes = [], [], []
     monkeypatch.setattr(frame.sessions, 'connected_tools', lambda info, **k: asked.append(k) or rows)
-    monkeypatch.setattr(frame.sessions, 'copy_with_tools', lambda s, t, names, apps: copied.append(names))
+    monkeypatch.setattr(frame.sessions, 'copy_with_tools', lambda s, t, names, apps, own=None: copied.append(names))
     monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: boxes.append(text) or wx.YES)
     jobs = []
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: jobs.append((action, done)))
