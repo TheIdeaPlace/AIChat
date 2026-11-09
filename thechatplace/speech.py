@@ -318,8 +318,10 @@ class SpeechSettings:
     def save(self, path: Optional[Path] = None) -> None:
         path = Path(path or DEFAULT_SETTINGS_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({**_unknown_settings(path), **asdict(self)}, indent=2),
-                        encoding="utf-8")
+        # Replaced whole, never left half written: what a newer release saved
+        # here (see _unknown_settings) couldn't be kept from a damaged file.
+        from .provider_storage import atomic_write_json
+        atomic_write_json(path, {**_unknown_settings(path), **asdict(self)})
 
 
 def _unknown_settings(path: Path) -> dict:

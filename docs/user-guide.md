@@ -2128,10 +2128,12 @@ Settings (Ctrl+Comma). Nothing is then checked or said at start, and the status 
 update until you choose Help, Check for Updates, which still works. This is useful if you went
 back to an older version and don't want to be offered the newer one every time.
 
-**Going back to an older version.** Uninstall The Chat Place, install the older version, and clear
-**Check for updates when The Chat Place starts**. Uninstalling leaves your chats, groups and
-settings in the data folder, and the older version uses them. Settings and chat options it doesn't
-know about are kept as they are, so they're all still there if you update again later.
+**Going back to an older version.** Remove The Chat Place (see "Uninstalling"), install the older
+version, and clear **Check for updates when The Chat Place starts**. You may hear about the newer
+version once, at the first start, before you can clear it. Removing the app leaves your chats,
+groups and settings in the data folder, and the older version uses them. Settings and chat options
+it doesn't know about are left as they are: it doesn't use them, but they're all still there if
+you update again later.
 
 The first time The Chat Place starts after an update, **The Chat Place Update Installed** says
 which version you now have. **See what's new** (Alt+W) opens that version's release notes in your

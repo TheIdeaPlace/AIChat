@@ -6630,6 +6630,13 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
             self.speech = dialog.get_settings()
         finally:
             dialog.Destroy()
+        if not self.speech.check_updates_at_start:
+            # Turned off in the first seconds after starting (the first start
+            # after going back to an older release): the check still waiting
+            # doesn't run either.
+            pending = getattr(self, "_startup_update_check", None)
+            if pending is not None:
+                pending.Stop()
         try:
             self.speech.save()
         except OSError as exc:
