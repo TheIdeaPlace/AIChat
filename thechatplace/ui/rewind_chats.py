@@ -1,4 +1,5 @@
-"""Rewind to Here and Branch from Here (#468): the window's side of rewind.py.
+"""Retry from Here (Rewind to Here until #596) and Branch from Here (#468):
+the window's side of rewind.py.
 
 Both make a new chat of The Chat Place's own from part of the loaded Claude
 chat's history, and Rewind to Here can put files back too. The new chat is
@@ -52,7 +53,7 @@ class RewindChats:
         if info.provider == "claude" and info.cowork and info.source != "kept":
             # Said instead of the general "isn't available for Claude chats".
             self._feedback(f"{info.title} is a Cowork session: its history is in the "
-                           "desktop app's own files, so it can't be rewound or branched "
+                           "desktop app's own files, so it can't be retried or branched "
                            "here. Open it in Claude.")
             return None
         if not self._require_capability("branch", info):
@@ -152,13 +153,13 @@ class RewindChats:
             else:
                 self._feedback('Wait for this Codex chat to load first.')
             return
-        found = self._rewind_source("rewind")
+        found = self._rewind_source("retry")
         if found is None:
             return
         info, message = found
         if not rewind.rewindable(message):
             self._feedback("Choose one of your own messages in the messages list, then "
-                           "Rewind to Here.")
+                           "Retry from Here.")
             return
         plan = rewind.plan_rewind(info.title, self._reader.transcript, message,
                                   can_rewind_files=self._can_rewind_files(info),
@@ -196,7 +197,7 @@ class RewindChats:
         if own is None:
             focus_back()
             return
-        said = (f"Rewound to before your message in {own.title}. Your message is in the "
+        said = (f"Opened {own.title}, from before your message. Your message is in the "
                 "reply box to change and send.")
         if pictures:
             said += " Attach its pictures again before sending."
@@ -264,7 +265,7 @@ class RewindChats:
         chat to hold the message yet: _send_now refuses into a chat that exists."""
         if not self._files_going_back_in(folder):
             return False
-        self._relay_kept(message, f"Rewind to Here is still putting files back in that folder, "
+        self._relay_kept(message, f"Retry from Here is still putting files back in that folder, "
                                   f"so {nothing_made} Your message wasn't sent.")
         return True
 
@@ -342,7 +343,7 @@ class RewindChats:
         self._update_send_state()
         self._feedback(result.text)
         if not result.ok:
-            wx.MessageBox(result.text, "Rewind to Here", wx.OK | wx.ICON_WARNING, self)
+            wx.MessageBox(result.text, "Retry from Here", wx.OK | wx.ICON_WARNING, self)
 
     # -- Branch from Here --------------------------------------------------------
 

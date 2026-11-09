@@ -10754,13 +10754,13 @@ def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeyp
     assert asked == [("review_history", "codex")]
     assert problem == "" and len(rows) == 6 and rows[0] == earlier and rows[-1][1] == 'saved-rule:7'
     items = lists.approval_items(rows)
-    assert items[0].row == 'Allowed: git status. Saved rule for this chat.'
+    assert items[0].row == 'Allowed: git status. You allowed it for this chat.'
     frame._codex_states.clear()
 
 
 @pytest.mark.parametrize("provider,is_own,expected", [
-    ("claude", True, "Approvals aren't listed for Claude chats yet."),
-    ("codex", False, "Approvals are listed only for Codex chats run in The Chat Place.")])
+    ("claude", True, "Auto approvals aren't listed for Claude chats yet."),
+    ("codex", False, "Auto approvals are listed only for Codex chats run in The Chat Place.")])
 def test_lists_approvals_says_why_when_it_cant_list(frame, provider, is_own, expected):
     from types import SimpleNamespace
     assert frame._approvals_for(SimpleNamespace(provider=provider, is_own=is_own)) == ([], expected)
@@ -11828,7 +11828,7 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
                                                    "Decisions (1)", "Tasks (1)",
-                                                   "Subagents (1)", "Approvals (1)"]
+                                                   "Subagents (1)", "Auto Approvals (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -14537,7 +14537,8 @@ def test_a_model_copilot_wont_switch_a_new_chat_to_is_said_once(frame, env, monk
         pump(lambda: False, timeout=1)  # let any later updates arrive
         notices = [text for text in said if "couldn't switch this chat" in text]
         assert notices == ["Refused Model: Copilot couldn't switch this chat to the model "
-                           "chosen, so it uses Copilot's own. File, Change Model chooses another."]
+                           "chosen, so it uses Copilot's own. File, Chat Settings, Change Model "
+                           "chooses another."]
         assert _copilot_state(frame).model == "auto"
     finally:
         runtime.close()

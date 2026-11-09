@@ -97,7 +97,7 @@ def test_plan_for_the_second_message_names_the_files_and_keeps_the_original():
     assert plan.default_choice() == rewind.CONVERSATION
     assert plan.allowed(rewind.BOTH) and plan.allowed(rewind.FILES)
     text = plan.describe(rewind.BOTH)
-    assert "Fixes (rewound)" in text and "Change a.txt to two" in text
+    assert "Fixes (retry)" in text and "Change a.txt to two" in text
     assert "Fixes is kept as it is" in text
     assert "Claude changed 1 file since this message: a.txt." in text
     assert "isn't changed" in plan.describe(rewind.FILES)
@@ -198,7 +198,7 @@ def test_many_files_are_counted_not_all_named():
 
 
 def test_titles():
-    assert rewind.rewound_title("Fix bug") == "Fix bug (rewound)"
+    assert rewind.rewound_title("Fix bug") == "Fix bug (retry)"
     assert rewind.branch_title("Fix bug") == "Fix bug (branch)"
 
 
@@ -245,8 +245,8 @@ def test_success_says_how_many_files():
                                                    "message"),
     ("No conversation found with session ID: x", "it couldn't find this chat's "
                                                  "conversation"),
-    ("error: unknown option '--rewind-files'", "this version of Claude Code can't rewind "
-                                               "files; update it and try again"),
+    ("error: unknown option '--rewind-files'", "this version of Claude Code can't put "
+                                               "files back; update it and try again"),
     ("Error: disk full", "disk full"),
     ("", "it stopped with exit code 1"),
 ])

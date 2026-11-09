@@ -34,7 +34,7 @@ def test_review_notices_read_back(status, outcome, routine):
 def test_saved_rule_notice_reads_back_as_routine():
     parsed = approvals.parse(7, RULE)
     assert (parsed.outcome, parsed.by, parsed.command) == (approvals.ALLOWED, approvals.BY_RULE, 'git diff')
-    assert parsed.row() == 'Allowed: git diff. Saved rule for this chat.'
+    assert parsed.row() == 'Allowed: git diff. You allowed it for this chat.'
 
 
 def test_unknown_text_is_never_hidden():
@@ -71,8 +71,8 @@ def test_lists_approvals_newest_first_and_whole_chat_in_either_scope():
     for scope in (lists.SCOPE_MESSAGE, lists.SCOPE_CHAT):
         items = lists.build(lists.APPROVALS, scope, [], None, [], [], lambda f: '', approvals=rows)
         assert [i.row.split(':')[0] for i in items] == ['Denied', 'Allowed']
-    assert lists.empty_text(lists.APPROVALS, lists.SCOPE_MESSAGE) == 'No approvals in this chat.'
-    assert lists.TITLES[lists.APPROVALS] == 'Approvals'
+    assert lists.empty_text(lists.APPROVALS, lists.SCOPE_MESSAGE) == 'No auto approvals in this chat.'
+    assert lists.TITLES[lists.APPROVALS] == 'Auto Approvals'
 
 
 def test_saved_rule_notices_fit_the_history_file(tmp_path):

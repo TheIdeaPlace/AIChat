@@ -97,17 +97,18 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
-    # Rewind to Here (#468) on that message of yours: it opens on the chosen
-    # option of What to Rewind, Tab reads What Happens, Shift+Tab goes back to
-    # the option, Escape comes back. The option is checked after Shift+Tab:
-    # as it opens, Orca's echo of the key can cut its reading short.
-    Step("rewind to here", ["ctrl+shift+z"],
-         expect=["Rewind Visual probe to before your message"],
+    # Retry from Here (#468, #596) on that message of yours: it opens on the
+    # chosen option of What Goes Back, Tab reads What Happens, Shift+Tab goes
+    # back to the option, Escape comes back. The option is checked after
+    # Shift+Tab: as it opens, Orca's echo of the key can cut its reading short.
+    Step("retry from here", ["ctrl+shift+z"],
+         expect=["Retry Visual probe from before your message"],
          refuse=["unlabeled", "unlabelled"]),
-    Step("rewind, what happens", ["Tab"], expect=["What happens"]),
-    Step("rewind, back to the chosen option", ["shift+Tab"],
+    Step("retry, what happens", ["Tab"], expect=["What happens"]),
+    Step("retry, the button", ["Tab"], expect=["Retry", "push button"]),
+    Step("retry, back to the chosen option", ["shift+Tab", "shift+Tab"],
          expect=["Conversation only"]),
-    Step("rewind closed, back in the messages", ["Escape"],
+    Step("retry closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
@@ -193,8 +194,8 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # File, Chat Options (#468), opened by the trigger: the item has no access
-    # key. It opens on Agent, and Tab goes through every control in turn. The
+    # Chat Options (#468): Codex's by the trigger, Claude's by File, Chat
+    # Settings. It opens on Run as Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
     Step("Codex Chat Options", [], trigger="codex-chat-options",
@@ -202,7 +203,10 @@ STEPS = [
     Step("Codex more folders", ["Tab"], expect=["More folders"]),
     Step("Codex add folder", ["Tab"], expect=["Add Folder"]),
     Step("Close Codex Chat Options", ["Escape"]),
-    Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
+    # File, Chat Settings (#596), by its access keys: the submenu opens on
+    # Change Model, and O is Chat Options.
+    Step("File, Chat Settings", ["alt+f", "i"], expect=["Change Model"]),
+    Step("Chat Options", ["o"], expect=["Chat Options: Visual probe", "Run as agent"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
@@ -264,8 +268,8 @@ STEPS = [
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # File, Stop Background Task (#468), opened by the trigger once the open
-    # chat's turn has background work: the item has no access key.
+    # View, Stop Background Task (#468, #596), opened by the trigger once the
+    # open chat's turn has background work: the item has no access key.
     Step("Stop Background Task", [], trigger="background",
          expect=["Stop Background Task", "Windows build, running"]),
     Step("the next task", ["Down"], expect=["Watch CI"]),
@@ -481,13 +485,6 @@ def stop_background_task(frame) -> None:
     wx.CallAfter(frame.on_stop_background_task)
 
 
-def chat_options(frame) -> None:
-    """File, Chat Options on the probe's own session, open by then (#468). After
-    the timer's call, as the dialog is modal."""
-    import wx
-    wx.CallAfter(frame.on_chat_options)
-
-
 def new_session_start_from(frame, in_use: bool = False) -> None:
     """New Session on a made-up repository with a remote (#561): A new
     worktree chosen and a new branch typed, so Start from is on, and the
@@ -637,7 +634,6 @@ TRIGGERS = {
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
     "codex-chat-options": lambda frame, env: _codex_dialog("d_codex_chat_options", frame, env),
-    "chat-options": lambda frame, env: chat_options(frame),
     "sounds": lambda frame, env: frame.on_sounds(),
     "start-from": lambda frame, env: new_session_start_from(frame),
     "branch-in-use": lambda frame, env: new_session_start_from(frame, in_use=True),

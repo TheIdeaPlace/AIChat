@@ -66,7 +66,8 @@ def test_rewinds_files_note_has_no_checkpoints_and_fits_files_only_too():
     assert 'checkpoint' not in note.lower()
     assert 'only the conversation goes back' in note
     # Files only makes no chat, and shows this note too.
-    assert 'A rewound Codex chat' in note and 'The new chat' not in note
+    assert 'A retried Codex chat' in note and 'The new chat' not in note
+    assert 'rewound' not in note.lower()  # Retry from Here, not Rewind (#596)
 
 
 @pytest.mark.parametrize('platform, key', [('win32', 'Ctrl+Period'), ('darwin', 'Cmd+Period')])

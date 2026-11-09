@@ -2004,7 +2004,8 @@ def d_lists_codex_owned_no_tasks(frame, env):
 
 
 def d_lists_codex_approvals(frame, env):
-    """Lists, Approvals (#564): automatic review's decisions and a saved rule's."""
+    """Lists, Auto Approvals (#564, #596): automatic review's decisions and
+    one you allowed for the chat."""
     import dataclasses
     from thechatplace import lists
     from thechatplace.providers.codex_events import decode_event
@@ -2067,7 +2068,7 @@ def d_usage_breakdown(frame, env):
 
 
 def d_stop_background_task(frame, env):
-    """File, Stop Background Task (#468): the running background work of a
+    """View, Stop Background Task (#468): the running background work of a
     turn, as main_frame builds the list, the longer description first."""
     from thechatplace import live_turn
     from thechatplace.ui.dialogs import single_choice_dialog
@@ -2227,17 +2228,17 @@ def d_relay(frame, env):
 
 
 def d_rewind(frame, env):
-    """Rewind to Here (#468) on the probe's own first message, with a file
-    checkpoint: the conversation and the uploader.py change can go back, and
-    it opens on Conversation only."""
+    """Retry from Here (#468, #596) on the probe's own first message, with a
+    file checkpoint: the conversation and the uploader.py change can go back,
+    and it opens on Conversation only."""
     _open(frame, "Visual probe")
     _select_message(frame, "Make the uploader flush")
     frame.chat_list.SetFocus()
     return frame.on_rewind_to_here
 
 
-def d_rewind_files(frame, env):
-    """Rewind to Here with Conversation and files chosen, an arrow press away
+def d_rewind_files(frame, env, choice=None):
+    """Retry from Here with Conversation and files chosen, an arrow press away
     from how it opens: What Happens has the warning that it can't be undone,
     the words most worth a look (#468). The dialog is made inside
     on_rewind_to_here, so it's chosen as it's made."""
@@ -2245,10 +2246,11 @@ def d_rewind_files(frame, env):
     from thechatplace.ui import rewind_chats
     from thechatplace.ui.dialogs import RewindDialog
     d_rewind(frame, env)
+    choice = choice or rewind.BOTH
 
     def choosing(parent, plan, **options):
         dialog = RewindDialog(parent, plan, **options)
-        dialog.what.SetSelection([value for value, _label in rewind.CHOICES].index(rewind.BOTH))
+        dialog.what.SetSelection([value for value, _label in rewind.CHOICES].index(choice))
         dialog._describe()
         return dialog
 
@@ -2259,6 +2261,13 @@ def d_rewind_files(frame, env):
         finally:
             rewind_chats.RewindDialog = RewindDialog
     return opener
+
+
+def d_rewind_files_only(frame, env):
+    """Retry from Here with Files only chosen: the button reads Put Files Back
+    (#596)."""
+    from thechatplace import rewind
+    return d_rewind_files(frame, env, rewind.FILES)
 
 
 def d_rename(frame, env):
@@ -2377,7 +2386,7 @@ SURFACES = {
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
     "codex-collaboration": ("dialog", d_codex_collaboration, "Choose Codex Plan or Default mode"),
-    "codex-rewind": ("dialog", d_codex_rewind, "Codex conversation rewind with files left unchanged"),
+    "codex-rewind": ("dialog", d_codex_rewind, "Codex Retry from Here with files left unchanged"),
     "codex-attachments": ("window", s_codex_attachments, "Codex reply with image and document attachments"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
                                "File, Chat Permissions with nothing kept"),
@@ -2413,14 +2422,14 @@ SURFACES = {
     "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
     "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
     "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
-    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Approvals in a Codex chat"),
+    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Auto Approvals in a Codex chat"),
     "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
     "usage": ("dialog", d_usage, "View, Usage and Context"),
     "usage-breakdown": ("dialog", d_usage_breakdown,
                         "Usage and Context with what fills a Claude chat's context"),
     "stop-background-task": ("dialog", d_stop_background_task,
-                             "File, Stop Background Task: two tasks running"),
+                             "View, Stop Background Task: two tasks running"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "usage-copilot": ("dialog", d_usage_copilot, "Copilot account allowances and reset reports"),
     "properties": ("dialog", d_properties, "View, Properties of a session"),
@@ -2435,9 +2444,11 @@ SURFACES = {
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
-    "rewind": ("dialog", d_rewind, "Rewind to Here on your first message: Conversation only chosen"),
+    "rewind": ("dialog", d_rewind, "Retry from Here on your first message: Conversation only chosen"),
     "rewind-files": ("dialog", d_rewind_files,
-                     "Rewind to Here with Conversation and files chosen: the warning in What Happens"),
+                     "Retry from Here with Conversation and files chosen: the warning in What Happens"),
+    "rewind-files-only": ("dialog", d_rewind_files_only,
+                          "Retry from Here with Files only chosen: the Put Files Back button"),
     "agent-new": ("dialog", d_agent_new, "File, New Agent Conversation: a new Claude chat and a "
                                          "new Codex chat"),
     "agent-new-three": ("dialog", d_agent_new_three, "New Agent Conversation with the Builder "
@@ -2562,6 +2573,7 @@ DIALOG_CLASSES = {
     "relay": "RelayDialog",
     "rewind": "RewindDialog",
     "rewind-files": "RewindDialog",
+    "rewind-files-only": "RewindDialog",
     "agent-new": "AgentConversationDialog",
     "agent-new-three": "AgentConversationDialog",
     "agent-new-copilot": "AgentConversationDialog",

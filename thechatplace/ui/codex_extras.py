@@ -51,11 +51,11 @@ PLAN_MODE_TITLE = 'Plan Mode'
 PLAN_MODE_CHOICES = ['Default: carry out the task with this chat\'s permissions.',
                      'Plan: discuss and produce a plan first.']
 
-#: Why Rewind can't put a Codex chat's files back, and what the new chat
-#: can do (#596, finding 4). The dialog shows it for Files only too, which
-#: makes no chat, so it says "a rewound chat", not "the new chat".
+#: Why Retry from Here can't put a Codex chat's files back, and what the new
+#: chat can do (#596, finding 4). The dialog shows it for Files only too,
+#: which makes no chat, so it says "a retried chat", not "the new chat".
 REWIND_FILES_NOTE = ("Codex doesn't put files back, so only the conversation goes back. "
-                     "A rewound Codex chat can't change files without asking until you "
+                     "A retried Codex chat can't change files without asking until you "
                      "change its permission mode.")
 
 
@@ -312,7 +312,7 @@ class CodexExtras:
         if not self._require_capability('branch', info):
             return
         if message is None or message.kind not in (USER, ASSISTANT) or (before and message.kind != USER):
-            self._feedback('Choose one of your messages to rewind, or a message or reply to branch from.')
+            self._feedback('Choose one of your messages to retry from, or a message or reply to branch from.')
             return
         try:
             anchor = turn_anchor(message)

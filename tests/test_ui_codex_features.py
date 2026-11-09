@@ -41,7 +41,7 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     assert frame._codex_drafts[opened[0].key] == 'Hi'
     assert frame.store.get(record.cli_session_id, provider='codex') is record
     # The copy can't change files without asking, and says so, briefly, as it opens (#596).
-    assert env['feedback'][-1] == ("Opened Codex original (rewound). It can't change files without asking; "
+    assert env['feedback'][-1] == ("Opened Codex original (retry). It can't change files without asking; "
         f'Change Permission Mode ({key_name("Ctrl+Shift+O")}) lets it edit. The original chat is kept. '
         'Change your message and send when ready.')
 

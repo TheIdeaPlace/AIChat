@@ -21,7 +21,7 @@ Linux; on a Mac, Tab to the control instead.
    use the Setup installer for these tests: it installs over your installed copy.
 3. If you want a backup first, use File, **Back Up Now**, and save it outside the build's folder.
 4. Make a test folder you don't mind changing, with two short text files: `preview-notes.txt`,
-   with three topics listed, and `rewind-example.txt`. Keep the Rewind file tests away from work
+   with three topics listed, and `rewind-example.txt`. Keep the Retry from Here file tests away from work
    you care about: putting files back can lose edits.
 5. Check Help, **Claude Code Sign-in** and **Codex Sign-in**. Codex must be turned on in Settings
    (Ctrl+Comma), which needs a restart. The work was checked against Codex 0.163.0 and Claude Code
@@ -224,11 +224,12 @@ In a Claude chat, then a Codex chat, with several messages.
 Ask Aside works for chats started here, Claude desktop and terminal chats, and local Codex chats
 started elsewhere. It isn't offered for Cowork chats, kept copies or Copilot.
 
-## 5. Rewind to Here and Branch from Here
+## 5. Retry from Here and Branch from Here
 
 Make a short chat with at least two of your messages and replies.
 
-1. In the messages, select a reply. Press **Shift+F10** and choose **Branch from Here**. Expect: a
+1. In the messages, select a reply. Press **Alt+F, F** (File, **Branch from Here**); next time, try
+   **Shift+F10** and **Branch from Here** instead. Expect: a
    new chat with "(branch)" in its title, and the original still listed. In Claude, before you
    send in it, the messages list has a message beginning "No messages yet. This chat is a new copy
    of" the original, "up to the point you chose." In Codex the copy includes the whole turn that
@@ -239,36 +240,38 @@ Make a short chat with at least two of your messages and replies.
    (branch). It can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it
    edit. The original chat is kept."
 2. Go back to the original and select your second message. Press **Ctrl+Shift+Z** (on a Mac,
-   Command+Shift+Z in the messages). Expect: **Rewind to Here** opens on **Conversation only**.
-3. Read **What happens** (Alt+H) and press Enter there. Expect: "Tab to Rewind, or to Cancel",
+   Command+Shift+Z in the messages). Expect: **Retry from Here** opens on **Conversation only**
+   in **What goes back**, and the button is **Retry**. Arrow to **Files only**, then Tab to the
+   button. Expect: it reads **Put Files Back**. Arrow back to Conversation only.
+3. Read **What happens** (Alt+H) and press Enter there. Expect: "Tab to Retry, or to Cancel",
    and nothing starts. Press Escape. Expect: back on the message, and no copy made.
-4. Open it again and choose Rewind. Expect: a new "(rewound)" chat ending just before that
+4. Open it again and choose Retry. Expect: a new "(retry)" chat ending just before that
    message, with your message in the reply box ready to change. The original and your files are
    unchanged.
 5. **Codex.** Expect: only Conversation only; the file choices say they aren't available, and What
-   happens says "Codex doesn't put files back, so only the conversation goes back. A rewound Codex
-   chat can't change files without asking until you change its permission mode." Choose Rewind.
-   Expect: "Opened … (rewound). It can't change files without asking; Change Permission Mode
+   happens says "Codex doesn't put files back, so only the conversation goes back. A retried Codex
+   chat can't change files without asking until you change its permission mode." Choose Retry.
+   Expect: "Opened … (retry). It can't change files without asking; Change Permission Mode
    (Ctrl+Shift+O) lets it edit. The original chat is kept. Change your message and send when
    ready." Ask the copy to change a test file. Expect: it asks first. Press **Ctrl+Shift+O**,
    choose a mode that edits files, and ask again. Expect: it can.
-5a. **Why files can't go back.** Open Rewind on a desktop app or terminal chat. Expect: the file
+5a. **Why files can't go back.** Open Retry from Here on a desktop app or terminal chat. Expect: the file
    choices say "(unavailable)", and What happens says "Files can be put back only for chats started
    in The Chat Place. Conversation only makes a new chat of your own from it." On a chat started
    here, try a message sent before 0.5. Expect: "The Chat Place has no saved copies of your files
    from before this message, so they can't be put back."
 6. **Claude, putting files back.** Ask Claude to change `rewind-example.txt` with its Edit tool,
-   not a command or a subagent (check with Ctrl+T). Note the file before and after. Open Rewind on
-   the message that asked for it and arrow to **Files only**. Expect: What happens names the file,
-   and warns that hand edits since Claude last changed it are lost and it can't be undone. Choose
-   Rewind. Expect: the file is back as it was, the conversation stays, and you hear "Files in" the
+   not a command or a subagent (check with Ctrl+T). Note the file before and after. Open Retry from
+   Here on the message that asked for it and arrow to **Files only**. Expect: What happens names the
+   file, and warns that hand edits since Claude last changed it are lost and it can't be undone.
+   Choose **Put Files Back**. Expect: the file is back as it was, the conversation stays, and you hear "Files in" the
    chat's name "restored to the versions saved before your message". Make another edit and try
    **Conversation and files**.
 7. **Hand edits are lost.** Have Claude edit the file, then edit it yourself and save. Send a
-   message that changes nothing, then another. Rewind to the last one with **Files only**. Expect:
-   What happens says Claude changed the file earlier, and it goes back too. After Rewind, the file
+   message that changes nothing, then another. Retry from the last one with **Files only**. Expect:
+   What happens says Claude changed the file earlier, and it goes back too. After Put Files Back, the file
    has Claude's version and your edit is gone.
-8. With a Codex chat in the same folder waiting on an approval, open Rewind in a Claude chat
+8. With a Codex chat in the same folder waiting on an approval, open Retry from Here in a Claude chat
    there. Expect: the file choices say "(unavailable)", and What happens says another chat is
    working in this folder. Answer the approval and let it finish; they're offered again.
 
@@ -282,7 +285,7 @@ Make a short chat with at least two of your messages and replies.
    moving your focus.
 3. On a long conversation, press Enter and then move to another subagent before it opens. Expect:
    it doesn't open over you, and you hear so.
-4. On the turn's message menu (Shift+F10), try **Subagent Conversations**. If a subagent edits a
+4. On the turn's message menu (Shift+F10), try **Subagents** (G). If a subagent edits a
    test file, Changed Files (Ctrl+Shift+D) names the subagent that made the change.
 5. **Codex.** Ask a Codex chat started here to hand a small task to a subagent. Open View,
    Subagents. Expect: each subagent, and in its conversation, who said what. If it asks for an
@@ -371,14 +374,17 @@ These need a server that really asks. Try with Claude, then with Codex.
 1. In New Session (Ctrl+N), choose Claude and press **Alt+H** (Chat Options). Type instructions
    such as "End each reply with the word previewcheck", choose OK, start the chat and ask
    something. Expect: the reply ends with that word. Properties (Alt+Enter) lists the instructions.
-2. Back in Chat Options, check **Agent** and **Output style**. If you have none, Default is fine. An
+2. Back in Chat Options, check **Run as agent** (Alt+A) and **Output style**. If you have none, Default is fine. An
    agent with its own model reads that way, such as "code-reviewer (uses its own model, opus)". One
    whose model could bill usage credits is refused when you choose OK, saying why.
-3. Use File, **Chat Options** on that chat and change the instructions. Expect: they apply from the
-   next message; a running turn carries on as it started.
+3. Press **Alt+F, I** (File, **Chat Settings**). Expect: Change Model, Change Effort, Change
+   Permission Mode, Chat Permissions and Chat Options, each with its letter (M, E, P, C, O). Press
+   **O** for Chat Options and change the instructions. Expect: "…, from its next turn."; a running
+   turn carries on as it started. With the menu shut, check **Ctrl+Shift+O** and **Ctrl+Shift+H**
+   still open Change Permission Mode and Chat Permissions.
 4. **More folders.** Add a separate test folder (**Add Folder**), choose OK, and check it's listed in
    Chat Permissions (Ctrl+Shift+H). Remove it and check it's gone.
-5. **Codex.** Open File, Chat Options on a Codex chat started here. Expect: it starts on
+5. **Codex.** Open File, Chat Settings, Chat Options on a Codex chat started here. Expect: it starts on
    **Instructions**, and Tab goes to More folders, Add Folder, Remove, About these options, OK and
    Cancel, then round again. Shift+Tab goes back. Escape closes without saving; Ctrl+Enter saves.
    Try instructions and a folder as in steps 1 and 4. Expect the note: "Instructions are sent with
@@ -391,7 +397,7 @@ These need a server that really asks. Try with Claude, then with Codex.
 
 ## 9. Live changes, thinking and retries
 
-1. **Claude, during a turn.** Use File, **Change Model** or **Change Permission Mode**
+1. **Claude, during a turn.** Use File, Chat Settings, **Change Model** or **Change Permission Mode**
    (Ctrl+Shift+O). Expect: "now and for later turns", or a plain reason it applies from the next
    turn. Change the mode twice quickly. Expect: the heading stays on your last choice.
 2. When Claude switches itself to plan mode, you hear "Claude switched to plan mode.", without
@@ -413,14 +419,14 @@ These need a server that really asks. Try with Claude, then with Codex.
 
 Use a Codex chat started here.
 
-1. **Model and effort.** While it's idle and on Codex's default model, use File, **Change
-   Effort**. Expect: Codex's default and the efforts that model offers, not a refusal. Use
+1. **Model and effort.** While it's idle and on Codex's default model, use File, Chat Settings,
+   **Change Effort**. Expect: Codex's default and the efforts that model offers, not a refusal. Use
    **Change Model**. Expect: the first row is "Codex's default" with the model that is in
    brackets, then the models Codex offers, the chat's own marked "(now)". Choose another, then
    choose Codex's default again: the chat goes back to that model. Use **Change Effort**.
    Expect: the first choice is "Codex's default", the label is "Effort for" the chat's name ",
    from its next turn:" and the choices read as words ("Extra high", not "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
-   applies from the next message. Cancel a picker once: the old choice stays. Try during a turn.
+   applies from the next turn. Cancel a picker once: the old choice stays. Try during a turn.
    Expect: you're told to wait or stop first. New Session's Model and Effort for Codex, and
    Properties (Alt+Enter) on a Codex chat left on the default, also say "Codex's default".
 2. **Plan mode.** Press Ctrl+/, choose `/plan`, and send it. Expect: a picker titled **Plan Mode**.
@@ -444,12 +450,13 @@ Use a Codex chat started here.
    a test chat. Expect: it can, and it leaves itself out of the list. Ask it to hide an idle test
    chat. Expect: it's hidden (File, Bring Back Session returns it). Ask it to hide itself, an open
    chat, or one that's working. Expect: each is refused.
-10. **Approvals.** Turn on automatic approval review (Ctrl+Shift+O) and ask for something that needs
+10. **Auto approvals.** Turn on automatic approval review (Ctrl+Shift+O) and ask for something that needs
     a few commands. With Show Tool Activity off, expect allowed requests not to be spoken or shown;
     one that isn't allowed is. Turn Show Tool Activity on: allowed ones are shown and spoken. Open
-    Lists (Ctrl+Shift+I) and press **Ctrl+8** (or choose **Approvals** in Kinds). Expect: each
-    request, newest first, as "Allowed:" or not, the command and who allowed it; Details has the
-    reason, and **Copy** copies the command. Open File, **Chat Permissions** (Ctrl+Shift+H).
+    Lists (Ctrl+Shift+I) and press **Ctrl+8** (or choose **Auto Approvals** in Kinds). Expect: each
+    request, newest first, as "Allowed:" or not, the command and who allowed it ("Automatic review"
+    or, after Allow for This Chat, "You allowed it for this chat"); Details has the
+    reason, and **Copy** copies the command. Open **Chat Permissions** (Ctrl+Shift+H).
     Expect: "Recent decisions made for you, by automatic review and by Allow for This Chat (newest
     first):", in the same order as Lists.
 
@@ -458,7 +465,7 @@ Use a Codex chat started here.
 In a test chat, ask the AI to start two background commands that each wait about 90 seconds, and to
 say when both are running without waiting for them.
 
-1. Choose File, **Stop Background Task** (in Codex you can also send `/background`). Expect: a list of
+1. Choose View, **Stop Background Task**, just below Stop Running Turn (in Codex you can also send `/background`). Expect: a list of
    both. Cancel once: both keep running. In Codex, it asks "Background tasks in" the chat's name
    ". Stop which?", and nothing says "terminal".
 2. Open it again and stop one. Expect: only that one ends; the turn and the other keep going. In
