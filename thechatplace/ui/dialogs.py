@@ -5410,7 +5410,9 @@ class ConnectedToolsDialog(wx.Dialog):
     ``load(done)``, ``sign_in(server, done)``, ``reconnect(server, done)``,
     ``set_off(server, off, done)``, ``note()`` and ``can_turn_off``), whose
     ``done`` comes back on the UI thread once the work is finished; whoever
-    opens it closes the host afterwards. Delete turns the row's server off for this chat (or on again).
+    opens it closes the host afterwards. Delete turns the row's server off for this chat (or on again),
+    unless the host's ``delete_toggles`` is False (Codex, whose change is a new copy): then Delete
+    says ``host.delete_text(server)`` and changes nothing (#596).
     """
 
     LOADING = "Reading this chat's connected tools..."
@@ -5563,6 +5565,20 @@ class ConnectedToolsDialog(wx.Dialog):
         # A Mac's Delete key is Backspace.
         if (event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK)
                 and not event.HasAnyModifiers()):
+            # In Codex, changing a tool makes a whole new chat, too much for
+            # one key: Delete says how instead (#596). A chat that can't
+            # change its tools still hears why from on_toggle.
+            if not getattr(self.host, 'delete_toggles', True) and self.host.can_turn_off:
+                # The same checks as the button's first: while loading or
+                # copying, after a failed read, or on a row with no tool.
+                server = self._server_for("change", self.list)
+                if server is None:
+                    return
+                if not getattr(server, "can_be_denied", True):
+                    self._tell(f"{server.label} can't be turned off here.")
+                    return
+                self._tell(self.host.delete_text(server))
+                return
             self.on_toggle()
             return
         event.Skip()

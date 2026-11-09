@@ -302,6 +302,15 @@ STEPS = [
     # stops it and stays, as the guide says, and the next closes the dialog.
     Step('Codex side question stopped', ['Escape'], expect_dbus=['Stopped asking']),
     Step('Codex side question closed', ['Escape'], expect=['Fix the flaky upload test']),
+    # Connected Tools in a Codex chat started here (#596): Delete in the list
+    # makes no copy of the chat, and says which button does.
+    Step("Codex Connected Tools", [], trigger="codex-tools",
+         expect=["Connected Tools: Codex review", "project-notes"], refuse=["unlabeled", "unlabelled"]),
+    Step("Delete says which button makes a copy", ["Delete"],
+         expect=["a tool changes only in a new copy", "Copy with Tool Off"],
+         refuse=["Make a new copy of this chat"]),
+    Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
+    Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote
     # has a main branch, with A new worktree chosen and a new branch typed.
     Step("New Session, a new branch in a new worktree", [], trigger="start-from",
@@ -520,6 +529,30 @@ def _codex_dialog(name, frame, env) -> None:
     getattr(ui_probe, name)(frame, env)()
 
 
+def codex_tools(frame, env) -> None:
+    """Connected Tools for a Codex chat started here (#596), over the window
+    without opening a Codex chat in it, so the steps after still have the
+    probe's sessions as they were. Its message boxes are real while it's
+    open: Delete says, in one, which button makes a copy."""
+    from types import SimpleNamespace
+    import wx
+    import wx._core
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(frame, SimpleNamespace(cli_session_id="codex-orca", is_own=False,
+                                                      title="Codex review"))
+    host.record = SimpleNamespace(cli_session_id="codex-orca", provider_options={})
+    host.can_turn_off = True
+    host.load = lambda done: done([CodexTool("project-notes", "connected", ("find_notes",), False)], "")
+    stand_in = wx.MessageBox
+    wx.MessageBox = wx._core.MessageBox
+    try:
+        frame._modal(ConnectedToolsDialog(frame, "Codex review", host))
+    finally:
+        wx.MessageBox = stand_in
+
+
 def copilot_chat(frame, env) -> None:
     """A Copilot chat of the app's own (tools/ui_probe.py's made-up Copilot
     session), open in agent mode, with npm run lint allowed for it and Copilot
@@ -605,6 +638,7 @@ TRIGGERS = {
     "branch-in-use": lambda frame, env: new_session_start_from(frame, in_use=True),
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
+    "codex-tools": codex_tools,
     "copilot": copilot_chat,
 }
 

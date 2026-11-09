@@ -262,7 +262,7 @@ def test_a_codex_chat_from_elsewhere_reads_as_read_only(frame, env):
     try:
         assert dialog.list.GetString(0) == "notes: configured, configured Codex MCP server"
         details = dialog.details.GetValue()
-        assert "can't be changed for it here" in details and "off for this chat" not in details
+        assert "can't be changed here" in details and "off for this chat" not in details
         assert dialog.toggle_btn.GetLabel() == "Turn &Off for This Chat"
         dialog.on_toggle()
         assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
@@ -301,6 +301,114 @@ def test_codex_consent_is_parented_on_the_dialog_not_the_disabled_window(frame, 
         assert parents == [dialog]
     finally:
         dialog.Destroy()
+
+
+@pytest.mark.parametrize("off,button", [(True, "Copy with Tool On"), (False, "Copy with Tool Off")])
+def test_delete_in_a_codex_chat_makes_no_copy_and_says_what_to_press(frame, env, monkeypatch, off, button):
+    """Delete turned a tool off in a Claude chat, and in a Codex chat made a
+    whole new chat from one key (#596): now it says which button makes one."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={"mcp_servers": [] if off else ["notes"]})
+    copied = []
+    codex_frame = _codex_frame(record)
+    codex_frame.sessions.copy_with_tools = lambda *a: copied.append(a)
+    host = CodexConnectedTools(codex_frame, _codex_info(is_own=True))
+    host.load = lambda done: done([CodexTool("notes", "connected", off_for_chat=off)], "")
+    asked = []
+    monkeypatch.setattr(host, "set_off", lambda *a: asked.append(a))
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        count = len(env["boxes"])
+        for code in (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE, wx.WXK_BACK):
+            _key(dialog, code)
+        assert asked == [] and copied == []
+        said = env["boxes"][count:]
+        assert len(said) == 3
+        key = "" if sys.platform == "darwin" else " (Alt+O)"
+        assert said[0] == f"In a Codex chat, a tool changes only in a new copy: press {button}{key} to make one."
+        assert dialog.list.GetString(0).startswith("notes")
+        # The button itself still makes the copy.
+        dialog.on_toggle()
+        assert len(asked) == 1 and asked[0][1] is (not off)
+    finally:
+        dialog.Destroy()
+
+
+def test_delete_in_a_codex_chat_checks_first_as_the_button_does(frame, env, monkeypatch):
+    """Delete said "press Copy with Tool Off" while the list was loading, after
+    a failed read, on an empty list and on the session tools, which can't be
+    turned off (#601's review): it answers as the button would instead."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={})
+    host = CodexConnectedTools(_codex_frame(record), _codex_info(is_own=True))
+    session_tools = CodexTool("ccd_session_mgmt", "connected", off_for_chat=False, is_session_tools=True)
+    host.load = lambda done: done([session_tools], "")
+    monkeypatch.setattr(host, "set_off", lambda *a: pytest.fail("Delete made a copy"))
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        _key(dialog, wx.WXK_DELETE)
+        assert env["boxes"][-1] == f"{session_tools.label} can't be turned off here."
+        dialog.busy = "Still reading the connected tools. Try again in a moment."
+        _key(dialog, wx.WXK_DELETE)
+        assert env["boxes"][-1] == dialog.busy
+        dialog.busy = ""
+        dialog._fill([])
+        _key(dialog, wx.WXK_DELETE)
+        assert env["boxes"][-1] == "Select a connected tool to change first."
+        dialog._failed("Codex could not say.")
+        _key(dialog, wx.WXK_DELETE)
+        assert env["boxes"][-1] == ("Couldn't read the connected tools. Codex could not say. "
+                                    "Press Refresh to try again.")
+        assert not any("Copy with Tool" in box for box in env["boxes"])
+    finally:
+        dialog.Destroy()
+
+
+def test_delete_in_a_codex_chat_from_elsewhere_still_says_why_not(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    host.load = lambda done: done([CodexTool("notes", "configured", off_for_chat=False, read_only=True)], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        _key(dialog, wx.WXK_DELETE)
+        assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_sign_in_says_how_for_an_off_tool_and_a_chat_from_elsewhere(frame, env):
+    """Sign In said "Open a chat started here with this tool enabled first."
+    (#596): now it says the steps, which differ by case."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    key = "" if sys.platform == "darwin" else " (Alt+O)"
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={})
+    own = CodexConnectedTools(_codex_frame(record), _codex_info(is_own=True))
+    own.load = lambda done: done([CodexTool("notes", "off")], "")
+    elsewhere = CodexConnectedTools(_codex_frame(), _codex_info())
+    elsewhere.load = lambda done: done([CodexTool("my notes", "needs-auth", off_for_chat=False, read_only=True)], "")
+    expected = [
+        "Couldn't start signing in to notes. Sign In works only in a chat with this tool on. Press "
+        f"Copy with Tool On{key} to make a copy with it on, then sign in from Connected Tools in that copy.",
+        "Couldn't start signing in to my notes. This chat wasn't started in The Chat Place. To sign in "
+        "to this tool, use Codex in a terminal: codex mcp login 'my notes'."]
+    for host, said in zip((own, elsewhere), expected):
+        dialog = ConnectedToolsDialog(frame, "Chat", host)
+        try:
+            dialog.on_sign_in()
+            assert env["boxes"][-1] == said
+        finally:
+            dialog.Destroy()
 
 
 def test_a_copilot_chat_hears_which_chats_have_connected_tools(frame, env, monkeypatch):
