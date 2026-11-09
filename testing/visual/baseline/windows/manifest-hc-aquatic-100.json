@@ -1855,6 +1855,20 @@
    "problems": [],
    "about": "New Session with a branch that's in use in another worktree"
   },
+  "sound-tutorial-from-sounds": {
+   "kind": "dialog",
+   "png": "sound-tutorial-from-sounds-hc-aquatic-100.png",
+   "json": "sound-tutorial-from-sounds-hc-aquatic-100.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    440,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
+  },
   "codex-change-mode-plan": {
    "kind": "dialog",
    "png": "codex-change-mode-plan-hc-aquatic-100.png",

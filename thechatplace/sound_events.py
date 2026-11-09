@@ -138,14 +138,14 @@ VOLUMES: List[int] = list(range(10, 101, 10))
 TOOLS_LOADED = "loaded"
 TOOLS_ALL = "all"
 TOOLS_LABELS: Dict[str, str] = {TOOLS_LOADED: "The open chat only",
-                               TOOLS_ALL: "The open chat and chats running in The Chat Place"}
+                               TOOLS_ALL: "The open chat and chats started in The Chat Place"}
 
 OTHERS_ALL = "all"
 OTHERS_OWN = "own"
 OTHERS_NONE = "none"
 OTHERS_LABELS: Dict[str, str] = {
     OTHERS_ALL: "The open chat and every chat in the list",
-    OTHERS_OWN: "The open chat and chats running in The Chat Place",
+    OTHERS_OWN: "The open chat and chats started in The Chat Place",
     OTHERS_NONE: "The open chat only",
 }
 
@@ -561,14 +561,16 @@ def apply_file_changes(changes: FileChanges, kept: Iterable[Scheme], ok: bool) -
 # -- Help, Sound Tutorial ------------------------------------------------------------
 
 
-def tutorial_intro(scheme: Scheme) -> str:
+def tutorial_intro(scheme: Scheme, from_sounds: bool = False) -> str:
     """The Sound Tutorial's one line: what to press, and which scheme you'll hear. A scheme of
-    your own called "Calm scheme" reads "the Calm scheme", not "the Calm scheme scheme"."""
+    your own called "Calm scheme" reads "the Calm scheme", not "the Calm scheme scheme".
+    Opened from File, Sounds (#596), it plays what Sounds shows, changes not yet kept included."""
     name = scheme.name.strip()
     if name.casefold().endswith(" scheme"):
         name = name[:-len(" scheme")].rstrip()
-    return (f"Arrow to an event and press Space to hear it in the {name} scheme. "
-            "Change sounds in File, Sounds.")
+    after = ("Changes you've made in Sounds play here, even before you choose OK." if from_sounds
+             else "Change sounds in File, Sounds.")
+    return f"Arrow to an event and press Space to hear it in the {name} scheme. {after}"
 
 
 def tutorial_note(event_id: str, scheme: Scheme) -> Optional[str]:

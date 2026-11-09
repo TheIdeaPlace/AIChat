@@ -966,12 +966,79 @@ def test_preview_of_none_stops_what_was_previewing(dialog, env):
 def test_get_settings_carries_everything_else_through(frame, dialog):
     frame.speech.session_order = "title"
     dialog._original = frame.speech
-    dialog.tools.SetStringSelection("The open chat and chats running in The Chat Place")
+    dialog.tools.SetStringSelection("The open chat and chats started in The Chat Place")
     dialog.others.SetStringSelection("The open chat only")
-    dialog.mute.SetValue(True)
     got = dialog.get_settings()
-    assert (got.sound_tools, got.sound_others, got.sounds_muted, got.session_order) == (
-        se.TOOLS_ALL, se.OTHERS_NONE, True, "title")
+    assert (got.sound_tools, got.sound_others, got.session_order) == (
+        se.TOOLS_ALL, se.OTHERS_NONE, "title")
+
+
+@pytest.mark.parametrize("muted", [True, False])
+def test_mute_is_not_in_the_dialog_and_ok_keeps_it_as_it_was(frame, env, monkeypatch, muted):
+    """View, Mute All Sounds is the one place to mute (#596): Sounds has no check box for it,
+    and OK leaves it as it was, in the saved settings and on the menu item too."""
+    frame._sound_set_mute(muted)
+    seen = []
+
+    def ok(self):
+        seen.extend(c.GetLabel() for c in self.GetChildren() if isinstance(c, wx.CheckBox))
+        self.play_sounds.SetValue(not self.play_sounds.GetValue())
+        return wx.ID_OK
+    monkeypatch.setattr(SoundsDialog, "ShowModal", ok)
+    frame.on_sounds()
+    assert seen and not any("mute" in label.lower() for label in seen)
+    assert frame.speech.sounds_muted is muted and SpeechSettings.load().sounds_muted is muted
+    assert frame.mute_item.IsChecked() is muted
+
+
+def test_sound_tutorial_button_plays_what_sounds_shows_and_comes_back(frame, env, monkeypatch):
+    """Sound Tutorial in File, Sounds (#596): the scheme and volume showing, a change not yet
+    kept included, with nothing saved; its words come from its own window; then focus is back
+    on the button."""
+    said = []
+    dialog = SoundsDialog(frame, frame.speech, frame._sound_player,
+                          say=lambda text, **kw: said.append((text, kw)))
+    try:
+        assert dialog.tutorial.GetLabel() == "Sound T&utorial..."
+        dialog.volume.SetStringSelection("30%")
+        dialog.scheme.SetStringSelection("Wood")
+        dialog._scheme_chosen()
+        select_event(dialog, se.FINISHED)
+        dialog.sound.SetStringSelection("None")
+        dialog._sound_chosen()
+        select_event(dialog, se.TOOL)
+        dialog._preview()  # still playing when the tutorial opens, so it's stopped
+        shown = {}
+
+        def listen(self):
+            # Stopped before the tutorial plays anything of its own.
+            shown["stopped_first"] = env["sound_stops"].count("stop_preview") > stops_before
+            shown["intro"] = self.intro.GetLabel().replace("\n", " ")
+            shown["dialog"] = self
+            pick(self, se.TOOL)
+            self.play()
+            pick(self, se.FINISHED)
+            self.play()  # None in what Sounds shows, though not kept yet
+            return wx.ID_CANCEL
+        monkeypatch.setattr(SoundTutorialDialog, "ShowModal", listen)
+        focused = []
+        monkeypatch.setattr(dialog.tutorial, "SetFocus", lambda: focused.append(True))
+        stops_before = env["sound_stops"].count("stop_preview")
+        previews_before = len(env["previews"])
+        dialog.on_tutorial()
+        assert shown["stopped_first"]
+        assert "in the Wood scheme" in shown["intro"] and "before you choose OK" in shown["intro"]
+        played = env["previews"][previews_before:]
+        assert len(played) == 1  # Tick only: Reply finished has no sound here
+        path, volume = played[0]
+        assert Path(path).parts[-2:] == ("wood", "tool.wav") and volume == 0.3
+        assert said == [("No sound.", {"force": True, "interrupt": False,
+                                       "window": shown["dialog"]})]
+        assert focused == [True]
+        assert frame.speech.sound_scheme == se.DEFAULT_SCHEME and frame.speech.sound_schemes == {}
+        assert SpeechSettings.load().sound_schemes == {}
+    finally:
+        dialog.Destroy()
 
 
 def test_on_sounds_saves_on_ok_and_stops_when_turned_off(frame, env, monkeypatch):
