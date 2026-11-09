@@ -339,3 +339,84 @@ def test_a_failed_migration_keeps_the_copilot_record_it_moved(tmp_path, monkeypa
     assert store.load_error  # the migration couldn't finish
     own = json.loads((tmp_path / "provider-sessions-copilot.json").read_text(encoding="utf-8"))
     assert [item["cli_session_id"] for item in own["sessions"]] == ["copilot-id"]
+
+
+# Fields 0.5 writes that this release doesn't know: 0.5 -> 0.4.1 -> 0.5 must
+# not lose them when 0.4.1 saves (marking a chat read, a turn ending).
+CLAUDE_NEWER = {"agent": "reviewer", "instructions": "Be brief.", "output_style": "Explanatory",
+                "disabled_mcp": ["github"], "prompt_fresh": True}
+CODEX_NEWER = {"provider_extras": {"collaboration": "plan", "mcp_servers": ["docs"]}}
+COPILOT_NEWER = {"some_later_field": [1, 2]}
+
+
+def _newer_layout(tmp_path):
+    claude = asdict(chat(unread=True))
+    claude.pop("provider")
+    claude.pop("provider_options")
+    (tmp_path / "sessions.json").write_text(json.dumps(
+        {"version": 1, "sessions": [{**claude, **CLAUDE_NEWER}]}), encoding="utf-8")
+    (tmp_path / "provider-sessions.json").write_text(json.dumps(
+        {"version": 2, "sessions": [{**asdict(chat("codex")), **CODEX_NEWER}]}), encoding="utf-8")
+    (tmp_path / "provider-sessions-copilot.json").write_text(json.dumps(
+        {"version": 2, "sessions": [{**asdict(copilot_chat()), **COPILOT_NEWER}]}), encoding="utf-8")
+    return tmp_path / "sessions.json"
+
+
+def _records(tmp_path, name):
+    return json.loads((tmp_path / name).read_text(encoding="utf-8"))["sessions"]
+
+
+def test_saving_keeps_fields_a_newer_release_wrote(tmp_path):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    assert not store.load_error
+    store.update("same-id", unread=False)                       # a Claude change
+    store.update("same-id", provider="codex", title="Renamed")  # a Codex one
+    claude, = _records(tmp_path, "sessions.json")
+    assert claude["unread"] is False
+    assert {k: claude[k] for k in CLAUDE_NEWER} == CLAUDE_NEWER
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["title"] == "Renamed" and codex["provider_extras"] == CODEX_NEWER["provider_extras"]
+    copilot, = _records(tmp_path, "provider-sessions-copilot.json")
+    assert copilot["some_later_field"] == [1, 2]
+    # And they still load, as this release reads them.
+    again = OwnSessionStore(path)
+    assert not again.load_error and again.get("same-id").unread is False
+
+
+def test_a_newer_field_never_overrides_what_this_release_knows(tmp_path):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.update("same-id", title="Mine")
+    claude, = _records(tmp_path, "sessions.json")
+    assert claude["title"] == "Mine"
+    assert "provider" not in claude and "provider_options" not in claude
+
+
+def test_newer_fields_follow_a_renamed_id_and_go_with_a_removed_chat(tmp_path):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.rename_id("same-id", "new-id")
+    claude, = _records(tmp_path, "sessions.json")
+    assert claude["cli_session_id"] == "new-id" and claude["agent"] == "reviewer"
+    store.remove("new-id")
+    assert _records(tmp_path, "sessions.json") == []
+    # A new chat later given the old id carries nothing of the removed one.
+    store.add(OwnSession("new-id", "Fresh", "/synthetic"))
+    fresh, = _records(tmp_path, "sessions.json")
+    assert "agent" not in fresh
+
+
+def test_a_failed_remove_keeps_the_newer_fields(tmp_path, monkeypatch):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+
+    def fail(*args, **kwargs):
+        raise OSError("synthetic failure")
+    monkeypatch.setattr(store, "save", fail)
+    with pytest.raises(OSError):
+        store.remove("same-id")
+    monkeypatch.undo()
+    store.save()
+    claude, = _records(tmp_path, "sessions.json")
+    assert claude["agent"] == "reviewer"

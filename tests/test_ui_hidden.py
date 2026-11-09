@@ -7450,6 +7450,83 @@ def test_settings_has_the_update_installed_choice(frame, env):
         dialog.Destroy()
 
 
+def test_settings_has_the_startup_update_check_choice(frame, env):
+    from thechatplace.ui.dialogs import SettingsDialog
+    assert frame.speech.check_updates_at_start is True
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options())
+    try:
+        box = dialog.check_updates
+        assert box.GetLabel() == "Check for up&dates when The Chat Place starts"
+        assert box.GetValue() is True
+        # Just before the update-installed choice, so Tab goes from one to the other.
+        boxes = [c for c in dialog._body.GetChildren() if isinstance(c, wx.CheckBox)]
+        assert boxes.index(dialog.update_notice) == boxes.index(box) + 1
+        box.SetValue(False)
+        assert dialog.get_settings().check_updates_at_start is False
+    finally:
+        dialog.Destroy()
+    frame.speech.check_updates_at_start = False
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options())
+    try:
+        assert dialog.check_updates.GetValue() is False   # reopened, it's kept
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_access_keys_are_all_different(frame, env, monkeypatch):
+    import re
+    from thechatplace.ui.dialogs import SettingsDialog
+    # Every optional control shown, so none is missed.
+    monkeypatch.setattr(platform_paths, "copilot_has_sessions", lambda: True)
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options(),
+                            clear_recent=lambda: None)
+    try:
+        keys = []
+        for control in dialog._body.GetChildren():
+            if isinstance(control, (wx.CheckBox, wx.Button, wx.StaticText, wx.RadioBox)):
+                found = re.search(r"&(\w)", control.GetLabel())
+                if found:
+                    keys.append(found.group(1).lower())
+        assert "d" in keys and len(keys) == len(set(keys)), keys
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_startup_update_check_follows_the_setting(env, monkeypatch, on):
+    from thechatplace.ui import main_frame
+    from thechatplace.updater import AVAILABLE, CheckResult
+    saved = speech.SpeechSettings()
+    saved.check_updates_at_start = on
+    saved.save()
+    monkeypatch.setattr(main_frame, "UPDATE_CHECK_DELAY_MS", 50)
+    updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    store = OwnSessionStore(env["tmp"] / "own.json")
+    window = main_frame.MainFrame(store=store, updates=updates, check_updates_at_start=True)
+    try:
+        # The first start after an update still says so either way.
+        assert window._startup_update_notice.IsRunning()
+        window._startup_update_notice.Stop()
+        if on:
+            assert pump(lambda: updates.calls == ["quiet check"] and not window._update_busy)
+            assert window.status_parts.get("update").IsShown()
+        else:
+            assert getattr(window, "_startup_update_check", None) is None
+            pump(lambda: False, timeout=0.5)
+            assert updates.calls == []
+            assert not window.status_parts.get("update").IsShown()
+            # Help, Check for Updates still looks, and finds it.
+            window.check_for_updates(True)
+            assert pump(lambda: not window._update_busy)
+            assert updates.calls[0] == "check"
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        if window:
+            window.Destroy()
+        wx.GetApp().ProcessPendingEvents()
+
+
 # -- links to sessions (#144) --------------------------------------------------------------
 
 

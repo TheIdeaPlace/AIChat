@@ -1186,6 +1186,14 @@ class SettingsDialog(wx.Dialog):
         outer.Add(self.agent_auto, 0, wx.LEFT | wx.RIGHT, 10)
         outer.AddSpacer(6)
 
+        # The look for a newer release a few seconds after starting. Off, only
+        # Help, Check for Updates looks: someone who went back to an older
+        # release isn't offered the newer one at every start.
+        self.check_updates = wx.CheckBox(
+            body, label="Check for up&dates when The Chat Place starts")
+        self.check_updates.SetValue(speech.check_updates_at_start)
+        outer.Add(self.check_updates, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # #141: the dialog at the first start after an update.
         self.update_notice = wx.CheckBox(
             body, label="&Tell me when an update has been installed, with a link to what's new")
@@ -1332,6 +1340,7 @@ class SettingsDialog(wx.Dialog):
                                                     if self.copilot_enabled is not None
                                                     else self._copilot_choice),
                                    update_installed_notice=self.update_notice.GetValue(),
+                                   check_updates_at_start=self.check_updates.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue())

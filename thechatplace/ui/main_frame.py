@@ -519,9 +519,12 @@ class MainFrame(CodexChats, RelayChats, AgentChats, SessionToolsHost, wx.Frame):
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
         self.session_list.SetFocus()
         if check_updates_at_start:
-            # A few seconds in, so the list is read first.
-            self._startup_update_check = wx.CallLater(UPDATE_CHECK_DELAY_MS,
-                                                      self.check_for_updates, False)
+            # A few seconds in, so the list is read first. Settings can turn
+            # it off: someone who went back to an older release isn't offered
+            # the newer one at every start. Help, Check for Updates still looks.
+            if self.speech.check_updates_at_start:
+                self._startup_update_check = wx.CallLater(UPDATE_CHECK_DELAY_MS,
+                                                          self.check_for_updates, False)
             # The first start after an update says so (#141), once the
             # window is up.
             self._startup_update_notice = wx.CallLater(UPDATE_NOTICE_DELAY_MS,
