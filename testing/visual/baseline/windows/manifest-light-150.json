@@ -1093,7 +1093,7 @@
    "class": "NewSessionDialog",
    "size": [
     1020,
-    930
+    968
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1121,7 +1121,7 @@
    "class": "NewSessionDialog",
    "size": [
     1020,
-    930
+    954
    ],
    "capture": "PrintWindow",
    "problems": [],
