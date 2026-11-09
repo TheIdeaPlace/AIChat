@@ -190,16 +190,15 @@ def test_every_copy_question_says_make_a_new_copy(monkeypatch):
     assert not any("Create" in text for text in asked)
 
 
-def test_a_tools_copy_says_it_cant_change_files_without_asking(monkeypatch):
-    """A tools copy is made read-only with approval on request, as Rewind's
-    and Branch's are, so the question and the message on open say so as
-    theirs do (#602). It keeps the tools you chose, so the question doesn't
-    say it drops them."""
+def test_a_tools_copy_says_it_keeps_the_originals_settings(monkeypatch):
+    """A tools copy keeps the original's settings, as Rewind's and Branch's
+    copies do, so the question and the message on open say so as theirs do
+    (#596, decision 3). Its tools are the ones you chose, so the question
+    doesn't name them; the saved record goes along, for a chat not loaded."""
     wx = pytest.importorskip("wx")
     from thechatplace.ui.codex_extras import copy_note
-    from thechatplace.ui_text import key_name
     host = _host(True)
-    said, opened = [], []
+    said, opened, made = [], [], []
     copy = SimpleNamespace(title="Chat (tools copy)", forked_from=None)
     copy.to_info = lambda: SimpleNamespace(cli_session_id="c-2", title=copy.title)
     host.frame.store.get = lambda *a, **k: host.record
@@ -208,21 +207,20 @@ def test_a_tools_copy_says_it_cant_change_files_without_asking(monkeypatch):
     host.frame._feedback = said.append
     host.frame.open_session = opened.append
     host.frame.refresh_sessions = lambda: None
-    host.frame.sessions = SimpleNamespace(copy_with_tools=lambda *a: copy)
+    host.frame.sessions = SimpleNamespace(copy_with_tools=lambda *a, **k: made.append(k) or copy)
     host.frame._codex_work = lambda action, done: done(action(), None)
     host.load = lambda done: None
     asked = []
+    original = host.record
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
     host.set_off(CodexTool("notes", "off"), False, lambda *a: None)
-    key = key_name("Ctrl+Shift+O")
-    assert asked[0].startswith(f"A new copy of this chat will be made, and this chat is kept. "
-                               f"The new chat can't change files without asking, and doesn't keep the "
-                               f"original's model, effort or Chat Options. Change Permission Mode ({key}) "
-                               f"lets it edit files. ")
-    assert "connected tools" not in asked[0]
+    assert asked[0].startswith("A new copy of this chat will be made, and this chat is kept. "
+                               "The new chat keeps the original's permission mode, model, effort and "
+                               "Chat Options. ")
+    assert "connected tools" not in asked[0] and "without asking" not in asked[0].split(". A tool")[0]
     assert said[-1] == ("Opened Chat (tools copy). " + copy_note(short=True) + " The original chat is kept.")
-    assert said[-1] == (f"Opened Chat (tools copy). It can't change files without asking; Change Permission "
-                        f"Mode ({key}) lets it edit. The original chat is kept.")
+    assert said[-1] == "Opened Chat (tools copy). It keeps the original's settings. The original chat is kept."
+    assert made == [{'own': original}]
     assert opened and copy.forked_from == "Chat"
 
 
@@ -240,7 +238,7 @@ def test_a_tools_copy_finished_after_the_dialog_closed_still_says_it(monkeypatch
     host.frame._feedback = said.append
     host.frame.open_session = opened.append
     host.frame.refresh_sessions = lambda: None
-    host.frame.sessions = SimpleNamespace(copy_with_tools=lambda *a: copy)
+    host.frame.sessions = SimpleNamespace(copy_with_tools=lambda *a, **k: copy)
     jobs = []
     host.frame._codex_work = lambda action, done: jobs.append((action, done))
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)

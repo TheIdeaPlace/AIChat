@@ -492,6 +492,14 @@ A 596 by 394 dialog (it was 300 tall), "Change Permission Mode" (Windows' own si
 
 **What looks off:** The path breaks in the middle of a word at 100%, because it has no spaces. The list shows a scroll bar though all four rows fit.
 
+Since #609 (#596, decision 17) the dialog is 596 by 409 and the list 79 tall, with a fifth choice, "Plan: discuss and produce a plan first, keeping its file access". The chat's own mode is marked "(now)": here "Can edit files in this folder; automatic approval review (now)", selected. All five rows fit; OK, Cancel and the separator moved down 15. Nothing else changed.
+
+## codex-change-mode-plan: Change Permission Mode for a Codex chat in Plan mode
+
+New in #609 (#596, decision 17). The same dialog for a chat in Plan mode, 600 by 441 at 100%. Under the folder's path, one more line wraps to two: "In Plan mode, with file access: Can edit files in this folder; automatic approval review. Choosing another" / "mode ends Plan.", then "Finish or Stop active work first." and the same two paragraphs. The list holds the same five choices. The fourth reads "Can edit files in this folder; automatic approval review (file access now)", and the fifth, "Plan: discuss and produce a plan first, keeping its file access (now)", is selected (white on #0078D4). All five fit, and nothing is cut off. In High Contrast Aquatic the text is white on near-black and the selected row is dark on aqua, as in codex-change-mode.
+
+**What looks off:** As in codex-change-mode, the path breaks mid-word, and the list shows a scroll bar though every row fits.
+
 ## codex-permission: Codex asks to run a command
 
 A 700 by 540 dialog titled "Codex needs permission: Codex preview". "Request:" heads a read-only box that fills the dialog (about 670 by 420), holding, with blank lines between: "Command:" and "git checkout -b fix"; "Folder:" and the folder's path; "This also needs:" with "Write access to" the folder's `.git` and "Network access to any site"; "Reason:" and "The sandbox blocked writing Git's HEAD.lock."; and "Codex also offered to keep allowing this, for the rest of the session or from now on. The Chat Place leaves that out: your answer covers this request only. Allow for This Chat isn't offered for this request, so approving it keeps nothing in Chat Permissions. The Chat Place can keep only some Git commands, with their usual options: status, switch, add, commit, push, fetch, diff and log.", wrapped onto four lines (#307). Every line fits the box. Four buttons sit at the bottom right: "Allow Once", "Deny" (the default, blue-outlined), "Deny and Stop Turn" and "Answer Later" (#284). In High Contrast Aquatic the box and buttons are white-outlined on near-black, and Deny is filled light aqua.

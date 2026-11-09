@@ -456,18 +456,25 @@ def test_new_problem_after_context_validation_blocks_direct_send_reservation():
         service.close()
 
 
-def policy_runtime(tmp_path):
+def policy_runtime(tmp_path, model=None):
     class PolicyConnection(Connection):
         def request(self, method, params):
             result = super().request(method, params)
-            if method in ('thread/start', 'thread/resume'):
+            if method in ('thread/start', 'thread/resume', 'thread/fork'):
                 from thechatplace.providers.codex_policy import CodexPolicy
-                policy = CodexPolicy.choose(params['cwd'], params['sandbox'], params['approvalPolicy'])
-                result.update(cwd=params['cwd'], sandbox=policy.turn_policy(), approvalPolicy=policy.approval)
+                roots = params['config'].get('sandbox_workspace_write', {}).get('writable_roots', ())
+                policy = CodexPolicy.choose(params['cwd'], params['sandbox'], params['approvalPolicy'],
+                                            extra_roots=roots)
+                result.update(cwd=params['cwd'], sandbox=policy.turn_policy(), approvalPolicy=policy.approval,
+                              approvalsReviewer=params['config']['approvals_reviewer'])
+                if params.get('model'):
+                    result['model'] = params['model']
+                if params['config'].get('model_reasoning_effort'):
+                    result['reasoningEffort'] = params['config']['model_reasoning_effort']
             return result
     connection = PolicyConnection()
     service = CodexChatRuntime(factory=lambda exe: connection)
-    record = service.create(str(tmp_path), 'Policy test')
+    record = service.create(str(tmp_path), 'Policy test', model=model)
     return service, connection, record
 
 

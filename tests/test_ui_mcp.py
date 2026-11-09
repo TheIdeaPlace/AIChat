@@ -304,9 +304,9 @@ def test_codex_consent_is_parented_on_the_dialog_not_the_disabled_window(frame, 
 
 
 @pytest.mark.parametrize("off", [True, False])
-def test_copy_with_tool_says_the_copy_cant_change_files_without_asking(frame, env, off):
-    """A tools copy is made read-only with approval on request, as Rewind's
-    and Branch's are: the question and the message on open say so (#602)."""
+def test_copy_with_tool_says_the_copy_keeps_the_originals_settings(frame, env, off):
+    """A tools copy keeps the original's settings, as Rewind's and Branch's
+    copies do: the question and the message on open say so (#596, decision 3)."""
     from types import SimpleNamespace
     from thechatplace.providers.codex_tools import CodexTool
     from thechatplace.ui.codex_extras import copy_note
@@ -317,7 +317,7 @@ def test_copy_with_tool_says_the_copy_cant_change_files_without_asking(frame, en
     copy.to_info = lambda: SimpleNamespace(cli_session_id="c-2", is_own=True, title=copy.title)
     said, opened = [], []
     codex_frame = _codex_frame(record)
-    codex_frame.sessions.copy_with_tools = lambda *a: copy
+    codex_frame.sessions.copy_with_tools = lambda *a, **k: copy
     codex_frame.store.add = lambda record: None
     codex_frame._store_write = lambda write, record: True
     codex_frame._feedback = said.append
@@ -334,10 +334,9 @@ def test_copy_with_tool_says_the_copy_cant_change_files_without_asking(frame, en
         assert asked[0].startswith("A new copy of this chat will be made, and this chat is kept. "
                                    + copy_note(tools=False) + " ")
         assert asked[0].endswith(" Make a new copy of this chat with notes " + ("on?" if off else "off?"))
-        assert "can't change files without asking" in asked[0] and "connected tools" not in asked[0]
-        key = key_name("Ctrl+Shift+O")
-        assert said[-1] == (f"Opened Chat (tools copy). It can't change files without asking; Change "
-                            f"Permission Mode ({key}) lets it edit. The original chat is kept.")
+        assert "keeps the original's permission mode" in asked[0] and "connected tools" not in asked[0]
+        assert said[-1] == ("Opened Chat (tools copy). It keeps the original's settings. "
+                            "The original chat is kept.")
         assert len(opened) == 1
     finally:
         dialog.Destroy()

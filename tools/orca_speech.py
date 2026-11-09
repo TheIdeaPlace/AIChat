@@ -210,6 +210,21 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Change Permission Mode for a Codex chat (#596, decision 17): Plan is its
+    # last choice. It starts on the chat's own mode, marked "(now)"; in Plan,
+    # on Plan, and Up reaches the file access rows. Before the Chat Options
+    # steps, not between them: Claude's Chat Options loads its folder's
+    # agents in the background, and right after these its first Tab came
+    # before that, so focus went back to Agent (#609's CI).
+    Step("Codex Change Permission Mode", [], trigger="codex-change-mode",
+         expect=["automatic approval review", "(now)"]),
+    Step("Codex Plan choice", ["Down"], expect=["Plan: discuss and produce a plan first"]),
+    Step("Close Codex Change Permission Mode", ["Escape"], expect=["Messages in Visual probe"]),
+    Step("Codex Change Permission Mode in Plan", [], trigger="codex-change-mode-plan",
+         expect=["Plan: discuss and produce a plan first", "(now)"]),
+    Step("Codex file access from Plan", ["Up"],
+         expect=["Can edit files in this folder", "(file access now)"]),
+    Step("Close Codex Change Permission Mode in Plan", ["Escape"], expect=["Messages in Visual probe"]),
     # File, Chat Options (#468), opened by the trigger: the item has no access
     # key. It opens on Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
@@ -686,6 +701,8 @@ TRIGGERS = {
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
+    "codex-change-mode": lambda frame, env: _codex_dialog("d_codex_mode", frame, env),
+    "codex-change-mode-plan": lambda frame, env: _codex_dialog("d_codex_mode_plan", frame, env),
     "codex-chat-options": lambda frame, env: _codex_dialog("d_codex_chat_options", frame, env),
     "chat-options": lambda frame, env: chat_options(frame),
     "sounds": lambda frame, env: frame.on_sounds(),

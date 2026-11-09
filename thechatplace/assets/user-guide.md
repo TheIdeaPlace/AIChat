@@ -391,9 +391,10 @@ as `/init` and `/code-review`, restoring files, editing a queued message and Rem
 
 ### Codex: agree on the approach first
 
-Press **Ctrl+/**, choose `/plan` and press **Ctrl+Enter**, then choose **Plan**. Codex then makes a
-plan in later turns. When you're ready for it to carry the plan out, do the same and choose
-**Default**. This is separate from what it's allowed to do.
+Press **Ctrl+Shift+O** (File, Change Permission Mode) and choose **Plan**, as for Claude, or press
+**Ctrl+/**, choose `/plan` and press **Ctrl+Enter**, then choose **Plan**. Codex then makes a plan
+in later turns, keeping the file access it had. When you're ready for it to carry the plan out,
+choose one of the other modes in Change Permission Mode, or **Default** in `/plan`.
 
 ### Codex: decide what it may do
 
@@ -442,10 +443,9 @@ running, and not in Ask Aside.
   if you need to.
 - **Taking something back or trying something else:** Rewind to Here and Branch from Here each make a
   new copy and keep the original, for the same reasons as in Claude. They take back the conversation
-  only, so your files stay as they are. The copy can't change files without asking until you press
-  **Ctrl+Shift+O** (File, Change Permission Mode) in it to let it edit. It doesn't keep the original's
-  model, effort, Chat Options, connected tools, automatic approval review or Plan mode. A branch
-  includes the whole turn containing the message you chose.
+  only, so your files stay as they are. The copy keeps the original's permission mode, model,
+  effort, Chat Options, connected tools and Plan mode, as a Claude copy does. A branch includes the
+  whole turn containing the message you chose.
 - **Just a question:** **Ctrl+Shift+Y** (File, Ask Aside) asks without adding to the chat, and works
   for Codex chats started elsewhere too.
 
@@ -456,15 +456,14 @@ running, and not in Ask Aside.
 - **Other services:** **View, Connected Tools (MCP)** lists the servers set up in Codex and apps from
   ChatGPT. Add a server with `codex mcp add` in a terminal. A tool can't be turned on or off in the
   chat itself: **Copy with Tool On** or **Copy with Tool Off** (Alt+O) makes a new copy of the chat
-  with that choice, and the original keeps its tools. Like any Codex copy, it can't change files
-  without asking until you press **Ctrl+Shift+O**; the question before it and the message when it
-  opens both say so. Sign In reads you the real web address before
+  with that choice, and the original keeps its tools. Like any Codex copy, it keeps the original's
+  other settings. Sign In reads you the real web address before
   opening it; finish signing in in the browser, then press Refresh if needed. Reconnect tries the
   servers again. A tool's forms and web pages come up in Answer (Ctrl+Shift+A), as for Claude; a
   request The Chat Place can't show at all is declined for you.
 - **A harder or lighter job:** File, **Change Model** and **Change Effort** work while the chat is idle.
-  Each starts with **Codex's default**. Change Model's names the model that is now, and the chat
-  stays on that model if Codex's default changes later. On a chat with no model chosen, Change
+  Each starts with **Codex's default**. Change Model's names the model that is now, and a chat on
+  Codex's default moves with it at each turn if it changes later. On a chat with no model chosen, Change
   Effort offers the efforts of Codex's default model, and choosing one puts the chat on that model.
   A model Codex no longer lists can't take an effort: Change Effort says so, and Change Model
   chooses another.
@@ -1307,8 +1306,10 @@ editable.
   `/background`. Send a control on its own first line; any draft below it stays in the reply
   box. These controls are handled here rather than sent as prompts.
 - **Plan mode.** `/plan` opens **Plan Mode**, where you choose Codex's **Plan** or **Default** mode
-  for later turns. The chat's heading says when Plan is selected. Plan mode keeps the chat's
-  permission settings; choose Default when you're ready for it to carry out the plan. If you open
+  for later turns. **Plan** is also the last choice in File, **Change Permission Mode**
+  (Ctrl+Shift+O), as for Claude, and the two always agree. The chat's heading says when Plan is
+  selected. Plan mode keeps the chat's file access; choose Default, or another mode in Change
+  Permission Mode, when you're ready for it to carry out the plan. If you open
   the chat on a version of Codex without Plan mode, you hear so and it runs in Default; Plan stays
   saved for when you update.
 - **Changing the model, effort or mode.** You hear "Checking the new model with Codex." (or
@@ -1663,7 +1664,8 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
       kind. File, Change Model changes it later, from the next turn. Fable isn't offered, because
       on some plans it bills to usage credits without asking; if a turn would run on Fable anyway,
       The Chat Place stops it before anything is sent, and says why.
-    - Codex: **Codex's default** (your Codex settings), or one of the models Codex offers. The
+    - Codex: **Codex's default** (your Codex settings), or one of the models Codex offers. A chat
+      on Codex's default uses whatever that is at each turn, so it moves with it if it changes. The
       list loads in the background; if it can't be loaded, Codex's default is still there.
       For which model suits which task, see [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md).
     - Copilot: the models Copilot offered your last Copilot chat here, each with its premium
@@ -1767,7 +1769,10 @@ Mode switches between agent mode, plan mode and Auto (see "Copilot plan mode" an
 Auto, your rules and Allow for This Chat").
 
 For a Codex chat started here, **Change Permission Mode** switches between read-only and editing
-files in its folder, with you or automatic approval review checking requests. Finish or stop the
+files in its folder, with you or automatic approval review checking requests, and its last choice
+is **Plan**, as for Claude. Plan keeps the file access the chat has: the text above the list says
+which, and that choice is marked "(file access now)". Choosing any other mode, that one included,
+takes the chat out of Plan. Finish or stop the
 turn first. The chat keeps its history, and the new mode applies from its next message, even
 before its first. Until the new mode has been checked with Codex and saved, the old one stays in
 effect. If that fails, sending stays off: press **Stop** (Ctrl+Period) to have The Chat Place
@@ -1775,12 +1780,14 @@ check the chat with Codex, or try Change Permission Mode again. Nothing is sent 
 **Change Model** and **Change Effort** also work when the chat is idle, with choices from Codex;
 once checked with Codex and saved, they apply from the next message. Change Effort's first choice
 is **Codex's default**, and so is Change Model's, which names the model that is now, such as
-"Codex's default (GPT-5.5)". Choosing it puts the chat on that model and its default effort; the
-chat stays on that model if Codex's default changes later. On a chat with no model chosen, Change
-Effort offers the efforts of Codex's default model, and choosing one puts the chat on that model.
+"Codex's default (GPT-5.5)". Choosing it puts the chat on Codex's default and its default effort,
+and the chat follows that default at each turn, so it moves to a new one if Codex's default
+changes. Properties (Alt+Enter) says "Model chosen: Codex's default (last used …)" with the model
+it was last on. On a chat with no model chosen, Change Effort offers the efforts of Codex's default model, and
+choosing one puts the chat on that model.
 A model Codex no longer lists can't take an effort: Change Effort says so, and Change Model chooses
-another. Codex's Plan mode is separate: use `/plan`
-in Insert Command or Skill (Ctrl+/) to choose Plan or Default without changing permissions.
+another. `/plan` in Insert Command or Skill (Ctrl+/) also chooses Plan or Default, and agrees with
+Change Permission Mode.
 
 Chats started elsewhere are set in the app or terminal where they run, so for them these items
 say so and change nothing.
@@ -2037,13 +2044,18 @@ Branch from Here makes a new copy with the whole turn containing the message you
 Codex's, including any later messages in that turn. It works only on a turn Codex has saved, so
 branching from a turn that's running waits for it to finish. Both keep the original chat.
 
-A Codex copy can't change files without asking, and doesn't keep the original's model, effort,
-Chat Options, connected tools, automatic approval review or Plan mode. Branch from Here says so
-before it makes one, and you hear it again when the copy opens, for example after Rewind to
-Here: "Opened <title> (rewound). It
-can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The
-original chat is kept. Change your message and send when ready." To let the copy edit files,
-press **Ctrl+Shift+O** (File, Change Permission Mode) in it.
+A Codex copy keeps the original's permission mode, model, effort, Chat Options, connected tools
+and Plan mode, as a Claude copy does. What you allowed in the original with Allow for This Chat
+stays with the original. Branch from Here says so before it makes one, and you hear it again when the copy
+opens, for example after Rewind to Here: "Opened <title> (rewound). It keeps the original's
+settings. The original chat is kept. Change your message and send when ready." No copy is made,
+and you hear why, if the chat's folder or one of its additional folders is no longer the one it
+was allowed to edit, or if a change to its permissions hasn't been confirmed; press **Stop**
+(Ctrl+Period) to have it checked.
+
+A copy of a Codex chat started elsewhere, such as in the Codex app or CLI, has no settings here to
+keep: it asks before changing files and uses Codex's default model and effort, as the question
+and the message when it opens say. Change Permission Mode (Ctrl+Shift+O) in it lets it edit.
 
 Copilot chats don't have these yet.
 
@@ -2506,12 +2518,10 @@ on or off in the chat itself.
 - **Copy with Tool On** or **Copy with Tool Off** (Alt+O) asks, then makes a new copy of the chat
   with that tool on or off. The original chat keeps its tools, as Codex sets a chat's tools when
   the chat is made. The copy's tools are saved with it and checked before every turn; every
-  other server, app and plugin stays off. Like any Codex copy, it can't change files without
-  asking until you press **Ctrl+Shift+O** (File, Change Permission Mode) in it, and it doesn't
-  keep the original's model, effort, Chat Options, automatic approval review or Plan mode. The
-  question before the copy says so, and when the copy opens you hear "Opened … (tools copy). It
-  can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The
-  original chat is kept."
+  other server, app and plugin stays off. Like any Codex copy, it keeps the original's permission
+  mode, model, effort, Chat Options and Plan mode; only that one tool differs. The question
+  before the copy says so, and when the copy opens you hear "Opened … (tools copy). It keeps the
+  original's settings. The original chat is kept."
 - **Delete** in the list makes no copy. It says which button to press instead, such as "In a
   Codex chat, a tool changes only in a new copy: press Copy with Tool On (Alt+O) to make one."
 - A tool can reach websites, services and files outside the chat's folder, so turn on only tools
@@ -3350,10 +3360,6 @@ support@theideaplace.net.
 - **Agent conversation:** two or three chats started here that pass their replies to each other,
   with you in the conversation.
 - **Ask Aside:** a quick question about a chat (Ctrl+Shift+Y) that isn't added to it.
-- **Can't change files without asking:** what a Codex copy made by Rewind to Here, Branch from
-  Here or Copy with Tool On or Off can do at first. You can reply to it; it can read files, but
-  asks before changing any. Change Permission Mode (Ctrl+Shift+O) lets it edit. Not the same as
-  read-only, below.
 - **Chat:** one conversation with an AI. The app's menus and labels call it a session.
 - **Chat started here:** a chat you started in The Chat Place, with New Session, Continue Here or
   an agent conversation. Only these can be replied to here. Its Kind is "Chat Place session".

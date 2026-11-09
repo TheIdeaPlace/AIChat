@@ -43,22 +43,33 @@ def test_effort_rows_name_codexs_default_and_read_as_words(now, rows):
     assert codex_extras.effort_rows([None, 'low', 'xhigh'], now) == rows
 
 
-def test_a_copy_says_it_cant_change_files_without_asking_and_how_to_let_it(monkeypatch):
-    monkeypatch.setattr('sys.platform', 'win32')
-    # Before: what the copy doesn't keep, named as the original's.
+def test_a_copy_says_it_keeps_the_originals_settings():
+    # Copies keep the original's settings, as Claude's do (#596, decision 3).
+    # Before: what the copy keeps, named as the original's.
     assert codex_extras.copy_note() == (
-        "The new chat can't change files without asking, and doesn't keep the original's model, "
-        'effort, Chat Options or connected tools. Change Permission Mode (Ctrl+Shift+O) lets it edit files.')
+        "The new chat keeps the original's permission mode, model, effort, Chat Options and "
+        'connected tools.')
     # A tools copy has the tools you chose.
-    assert 'connected tools' not in codex_extras.copy_note(tools=False)
-    assert "the original's model, effort or Chat Options." in codex_extras.copy_note(tools=False)
+    assert codex_extras.copy_note(tools=False) == (
+        "The new chat keeps the original's permission mode, model, effort and Chat Options.")
     # Once open, the window is on the copy: short, and nothing about "this chat".
     short = codex_extras.copy_note(short=True)
-    assert short == "It can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit."
+    assert short == "It keeps the original's settings."
     for note in (codex_extras.copy_note(), short, codex_extras.REWIND_FILES_NOTE):
-        assert 'this chat' not in note and 'read files but not' not in note
+        assert 'this chat' not in note and 'without asking' not in note
+
+
+def test_a_copy_of_a_chat_started_elsewhere_says_it_starts_on_codexs_defaults(monkeypatch):
+    # The Chat Place has no settings for it to keep (review of #609).
+    monkeypatch.setattr('sys.platform', 'win32')
+    assert codex_extras.copy_note(own=False) == (
+        "The new chat asks before changing files, and uses Codex's default model and effort. "
+        'Change Permission Mode (Ctrl+Shift+O) in it lets it edit files.')
+    assert codex_extras.copy_note(short=True, own=False) == (
+        "It asks before changing files; Change Permission Mode (Ctrl+Shift+O) lets it edit.")
+    assert "keeps the original" not in codex_extras.REWIND_FILES_NOTE_ELSEWHERE
     monkeypatch.setattr('sys.platform', 'darwin')
-    assert '(Cmd+Shift+O)' in codex_extras.copy_note() and '(Cmd+Shift+O)' in codex_extras.copy_note(short=True)
+    assert '(Cmd+Shift+O)' in codex_extras.copy_note(own=False)
 
 
 def test_rewinds_files_note_has_no_checkpoints_and_fits_files_only_too():

@@ -19,7 +19,7 @@ Session list:
   Ctrl+O: Open the selected session in the Claude desktop app
   Ctrl+Shift+L: Copy Session Link (Claude chats): Enter copies a Markdown link that opens the session in The Chat Place; the list also has the bare link, and where they apply its Open in Claude link and claude.ai address
   Ctrl+Shift+N: Continue the selected chat from the desktop app, a terminal or another app here, as a copy you can reply to (the original isn't changed)
-  Ctrl+Shift+O: Change Permission Mode: Claude permission modes, Codex file access and approval reviewer, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session (File, Change Effort and Change Model are beside it)
+  Ctrl+Shift+O: Change Permission Mode: Claude permission modes, Codex file access, approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session (File, Change Effort and Change Model are beside it)
   Ctrl+Shift+W: Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead
   Ctrl+Shift+H: Chat Permissions: the selected (or loaded) Chat Place chat's permission mode, and the commands and tools it may use without asking: for a Claude chat, those it keeps and the rules from Claude Code's own settings for its folder; for a Copilot chat, the commands allowed for it and your rules for Copilot (Delete or Remove takes one back, and Remove All takes them all)
   F5: Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it)
@@ -41,7 +41,7 @@ Messages:
   Ctrl+Shift+C: Copy the message's last code block
   Ctrl+Enter on a queued message: Send it now (Claude chats): Claude stops what it's doing and answers it
   Ctrl+Alt+Enter on a queued message: Steer it: into the running turn now, without stopping it
-  Ctrl+Shift+Z on one of your messages: Rewind to Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't, and a Codex copy can't change files without asking. The original chat is kept. Branch from Here, on a message's menu, starts a new chat from that point; in Codex it includes the whole turn containing that message
+  Ctrl+Shift+Z on one of your messages: Rewind to Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't. The new chat keeps the original's settings, and the original chat is kept. Branch from Here, on a message's menu, starts a new chat from that point; in Codex it includes the whole turn containing that message
   Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks: Lists, on Code Blocks for this message: read and copy each code block
   Ctrl+F, then F3 and Shift+F3: Find a message containing some text (its whole text, not just the first line), then the next or previous one
   End: Newest message
