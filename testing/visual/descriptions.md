@@ -890,6 +890,13 @@ fills the lower half; its four lines and all button labels fit. Compared with
 the previous pictures, two rows were added, Reconnect replaced Read Status,
 and Copy with Tool Off and Refresh moved 5 pixels left. No controls overlap.
 
+Since 2026-11-09 (#596), the Details box's note is plainer and starts with what
+changing a tool does in Codex ("In a Codex chat, a tool can't be turned on or off
+in the chat itself..."). It wraps to five lines, ending "...it's declined for
+you.", with room to spare in the box and no scroll bar needed. Nothing else
+moved. Measured again: black on white 21:1 in light, white on #202020 16.29:1
+in High Contrast Aquatic.
+
 Light has black text on white (21:1), with white selected text on blue #0078D4
 (4.5285:1). The existing dotted focus mark remains #FF872B on that blue,
 1.8874:1, below 3:1 ([#181](https://github.com/TheIdeaPlace/AIChat/issues/181)).
