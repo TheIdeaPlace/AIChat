@@ -116,6 +116,13 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    again. Expect: it still plays. Give an event None in File, Sounds first, and Space on it here
    says "No sound". Escape closes it. On a Mac, open it from the Help menu (VO+M) and check
    Space and Return play too.
+7. **From File, Sounds (#596).** Open File, Sounds. Expect: no Mute all sounds check box (View,
+   Mute All Sounds is the place for it). Choose Wood and give Reply finished None, but don't
+   choose OK. Press **Alt+U** (Sound Tutorial). Expect: the line above says the Wood scheme and
+   that your changes in Sounds play; Space on Reply finished says "No sound", and Tool ran plays
+   Wood's Tick. Escape. Expect: focus back on the Sound Tutorial button in Sounds. Cancel Sounds,
+   then open Help, Sound Tutorial. Expect: your saved scheme again, with Reply finished playing.
+   (Start from a saved scheme other than Wood so the difference is clear.)
 
 ### Sounds in use
 
@@ -130,7 +137,7 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
 3. Let a turn run in another chat while you stay in this one. Expect: Low rise when it finishes,
    and Write when it changes a file, but no Ticks. In File, Sounds, the setting is now called
    **Tool sounds play for** (Alt+T), and covers only the Tick; set it to **The open chat and chats
-   running in The Chat Place** and the other chat's Ticks play too. Set **Other sounds play for**
+   started in The Chat Place** and the other chat's Ticks play too. Set **Other sounds play for**
    to **The open chat only** and its Write and Low rise stop.
 4. **Steering.** While a Claude turn runs, type a message and press **Ctrl+Alt+Enter**. Expect:
    Bend, and then Taken when Claude takes it in. In Codex, only Bend plays. Queue a message with

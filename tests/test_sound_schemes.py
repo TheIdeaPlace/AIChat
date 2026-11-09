@@ -284,6 +284,17 @@ def test_sound_tutorial_says_the_scheme_once():
     assert "in the Quiet evenings scheme." in se.tutorial_intro(se.Scheme(USER, "Quiet evenings", False))
     # "Scheme" alone isn't a word followed by " scheme", so it stays.
     assert "in the Scheme scheme." in se.tutorial_intro(se.Scheme(USER, "Scheme", False))
+    # Opened from File, Sounds (#596), it says it plays what Sounds shows, not where to go.
+    assert se.tutorial_intro(se.built_in_scheme("wood"), from_sounds=True) == (
+        "Arrow to an event and press Space to hear it in the Wood scheme. "
+        "Your changes in Sounds play here before you choose OK.")
+
+
+def test_sound_choices_say_started_in_the_chat_place():
+    """#596: "started", not "running", as it covers chats started here that aren't working."""
+    labels = list(se.TOOLS_LABELS.values()) + list(se.OTHERS_LABELS.values())
+    assert "The open chat and chats started in The Chat Place" in labels
+    assert not any("running" in label for label in labels)
 
 
 def test_sound_tutorial_notes_only_what_cant_simply_play(data):
