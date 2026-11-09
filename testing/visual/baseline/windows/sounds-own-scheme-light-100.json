@@ -269,7 +269,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Sound &events (4 of 22 events have a sound):",
+   "label": "Sound &events (4 of 23 events have a sound):",
    "rect": [
     10,
     244,
@@ -287,7 +287,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Sound events, 4 of 22 events have a sound",
+   "name": "Sound events, 4 of 23 events have a sound",
    "label": "",
    "rect": [
     12,
