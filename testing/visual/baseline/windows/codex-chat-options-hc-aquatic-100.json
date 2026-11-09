@@ -156,7 +156,7 @@
   {
    "class": "TextCtrl",
    "name": "About these options",
-   "label": "Instructions are sent with each Codex turn. Additional folders are writable only in Folder edits mode. Removing a folder removes that grant from the next turn. Changes apply after you save these options.",
+   "label": "Instructions are sent with each Codex turn. Codex can change files in these folders only when its permission mode lets it edit files. A folder you remove is left out of the next turn. Changes apply when you choose OK.",
    "rect": [
     12,
     434,
@@ -171,7 +171,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Instructions are sent with each Codex turn. Additional folders are writable only in Folder edits mode. Removing a folder removes that grant from the next turn. Changes apply after you save these options."
+   "value": "Instructions are sent with each Codex turn. Codex can change files in these folders only when its permission mode lets it edit files. A folder you remove is left out of the next turn. Changes apply when you choose OK."
   },
   {
    "class": "Button",

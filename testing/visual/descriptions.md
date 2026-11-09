@@ -828,7 +828,7 @@ A 680 by 520 dialog. Permission mode and Change run across the top. A 648 by 186
 
 ## codex-review-history: Chat Permissions for a Codex chat with automatic approval review (#374)
 
-The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic review preview", laid out exactly like chat-permissions-codex. The mode box reads "Can edit files in this folder; automatic approval review", with Change... beside it. The list holds one selected row, "No command approvals are remembered for this chat.", and Remove..., Remove All... and Close sit below it. The About box (648 by 169) is scrolled to its end, which reads "Recent automatic review decisions (oldest first):", a blank line, "Codex automatic review allowed the request.", "Command: git status", "Reason: Read the project status.", a blank line, "Codex automatic review denied the request." and "Reason: Access was outside the requested task.", leaving about a third of the box empty below. The scroll thumb sits at the bottom of its track.
+The 680 by 520 Chat Permissions dialog, titled "Chat Permissions: Automatic review preview", laid out exactly like chat-permissions-codex. The mode box reads "Can edit files in this folder; automatic approval review", with Change... beside it. The list holds one selected row, "No command approvals are remembered for this chat.", and Remove..., Remove All... and Close sit below it. The About box (648 by 169) is scrolled to its end, which reads "Recent decisions made for you, by automatic review and by Allow for This Chat (newest first):" on one line that fits (the code's own heading since #596, which lists newest first as Lists does), a blank line, "Codex automatic review allowed the request.", "Command: git status", "Reason: Read the project status.", a blank line, "Codex automatic review denied the request." and "Reason: Access was outside the requested task.", leaving about a third of the box empty below. The scroll thumb sits at the bottom of its track.
 
 Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1) and the selected row #263B50 on aqua #8EE3F0 (7.9:1); in Desert the text is dark on cream (#FFFAEF, 10.4:1 or better) and the selected row cream on rust brown (#FFF5E3 on #903909, 7.0:1). At 175% (1190 by 910) the same lines show larger, with more space below them.
 
@@ -900,17 +900,28 @@ not mark that defect fixed.
 
 **codex-commands:** Search at the top, a large command/skill list below, and
 Insert/Cancel at the lower right. The twelve synthetic rows include /plan,
-Goal/memory/background controls and an explicit $code-reviewer skill. All rows
+Goal/memory/background controls and an explicit $code-reviewer skill. Since #596 no row
+says "native" or "terminal": /plan reads "Choose Plan mode, or go back to Default mode.",
+/goal "Read this chat's Codex goal and its usage." and /background "List background tasks
+and stop one."; the longest row, /skills, still fits. All rows
 fit without vertical scrolling at the captured size. Search has a visible focus
 border; the selected first row uses the system selection color.
 
 **codex-collaboration:** A compact single-choice dialog, 374 by 189 pixels in
-Light, with the prompt, two rows (Default and Plan), then OK and Cancel. The
+Light, titled "Plan Mode" (it was "Codex Collaboration Mode" before #596), with the
+prompt "Mode for Codex review, from its next turn:", two rows (Default and Plan), then
+OK and Cancel. The prompt is black on #F0F0F0 (18.4:1). The title is Windows' inactive
+caption, #919191 on #F3F3F3 (2.8:1), as every probe dialog's is, since the probe's window
+isn't in the foreground. The
 first row is selected. Neither choice nor button is clipped in either variant.
 
 **codex-rewind:** Conversation Only is selected in a three-choice group. The
 other two choices say unavailable. The large What Happens box explains the
-preserved-source copy and that files stay as they are. Rewind and Cancel are
+preserved-source copy and that files stay as they are. Its second paragraph, on two lines
+since #596, reads "The files stay as they are. Codex doesn't put files back, so only the
+conversation goes back. The new chat can read files but not change them until you change
+its permission mode." (no "file checkpoints"). Text is black on white (21:1), white on
+#202020 in High Contrast Aquatic (16.3:1). Rewind and Cancel are
 aligned at the bottom right, with generous space above them.
 
 **codex-aside:** The shared 680 by 600 Ask Aside dialog has a question box, Stop,
@@ -1014,7 +1025,11 @@ Two short instruction lines sit at its top left, with a visible insertion caret
 and generous blank space below. More folders labels a 584 by 70 list with one
 selected full path, ending Projects\Website. Add Folder and Remove sit below
 it on the left. About these options labels a 584 by 90 read-only box explaining
-per-turn instructions and the folder-editing permission scope in two lines.
+per-turn instructions and the folder-editing permission scope. Since #596 it reads,
+on three lines: "Instructions are sent with each Codex turn. Codex can change files in
+these folders only when its permission mode lets it edit files. A folder you remove is
+left out of the next turn. Changes apply when you choose OK." The third line ends at
+"choose OK." with the rest of the box empty, and no scroll is needed.
 OK and Cancel sit at the lower right. There are no Claude agent or output-style
 fields. All labels and the full folder path fit; no controls overlap.
 

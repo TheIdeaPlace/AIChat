@@ -128,7 +128,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "A new chat, Codex review (rewound), starts with the conversation up to just before it, and your message (\"Review the parser before editing it.\") goes in its reply box to change and send. Codex review is kept as it is, in the list.\n\nThe files stay as they are. Codex conversation branching leaves files as they are. File checkpoints are not available here."
+   "value": "A new chat, Codex review (rewound), starts with the conversation up to just before it, and your message (\"Review the parser before editing it.\") goes in its reply box to change and send. Codex review is kept as it is, in the list.\n\nThe files stay as they are. Codex doesn't put files back, so only the conversation goes back. The new chat can read files but not change them until you change its permi"
   },
   {
    "class": "Button",
