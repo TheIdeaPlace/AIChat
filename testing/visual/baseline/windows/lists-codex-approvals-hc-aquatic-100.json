@@ -99,7 +99,7 @@
     "Decisions, not available",
     "Tasks (0)",
     "Subagents (0)",
-    "Approvals (5)"
+    "Auto Approvals (5)"
    ],
    "selection": 7
   },
@@ -162,7 +162,7 @@
   },
   {
    "class": "TextCtrl",
-   "name": "Filter approvals",
+   "name": "Filter auto approvals",
    "label": "",
    "rect": [
     10,
@@ -183,15 +183,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&List: Approvals (5):",
+   "label": "&List: Auto Approvals (5):",
    "rect": [
     8,
     236,
-    98,
+    127,
     16
    ],
    "best": [
-    98,
+    127,
     16
    ],
    "depth": 2,
@@ -201,7 +201,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Approvals (5)",
+   "name": "Auto Approvals (5)",
    "label": "",
    "rect": [
     10,
@@ -218,7 +218,7 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Allowed: git diff. Saved rule for this chat.",
+    "Allowed: git diff. You allowed it for this chat.",
     "Allowed: rg -n \"def build\" thechatplace. Automatic review.",
     "Denied: curl https://example.com/install.sh. Automatic review.",
     "Allowed: python -m pytest -q tests/test_lists.py. Automatic review.",

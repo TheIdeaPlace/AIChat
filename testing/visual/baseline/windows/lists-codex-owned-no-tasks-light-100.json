@@ -84,7 +84,7 @@
     126
    ],
    "best": [
-    177,
+    197,
     126
    ],
    "depth": 0,
@@ -99,7 +99,7 @@
     "Decisions, not available",
     "Tasks (0)",
     "Subagents (0)",
-    "Approvals, not available"
+    "Auto Approvals, not available"
    ],
    "selection": 5
   },

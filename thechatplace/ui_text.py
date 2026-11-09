@@ -91,8 +91,8 @@ SHORTCUTS = [
                          "changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access, "
                          "approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the "
-                         "selected (or loaded) Chat Place session (File, Change Effort and Change "
-                         "Model are beside it)"),
+                         "selected (or loaded) Chat Place session (in File, Chat Settings, with "
+                         "Change Model and Change Effort)"),
         ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
                          "moves from message to message; Alt+P reads it as plain text instead"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
@@ -119,6 +119,9 @@ SHORTCUTS = [
         ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
+        ("Alt+F, I", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
+                     "Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat "
+                     "Options (O)"),
         ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
                      "claude.ai and your phone (a desktop app session can be continued here "
                      "with it on)"),
@@ -143,12 +146,13 @@ SHORTCUTS = [
                                            "answers it"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
-        ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude and Codex chats): start a new "
+        ("Ctrl+Shift+Z on one of your messages", "Retry from Here (Claude and Codex chats): start a new "
                                                  "chat just before it, with your message ready to change "
                                                  "and send. Claude can also restore files changed with "
                                                  "its edit tools in chats started here; Codex doesn't. "
                                                  "The new chat keeps the original's settings, and the "
-                                                 "original chat is kept. Branch from Here, on a message's menu, "
+                                                 "original chat is kept. Branch from Here (Alt+F, F, or on "
+                                                 "a message's menu) "
                                                  "starts a new chat from that point; in Codex it includes "
                                                  "the whole turn containing that message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
@@ -158,7 +162,7 @@ SHORTCUTS = [
                                          "previous one"),
         ("End", "Newest message"),
         ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions, "
-                         "tasks, subagents and approvals, for this message or the whole chat; it opens on the kind you used last, and "
+                         "tasks, subagents and auto approvals, for this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
@@ -182,7 +186,9 @@ SHORTCUTS = [
         ("Ctrl+Alt+Enter", "Steer: during a turn, send the message into it without stopping "
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
-        ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
+        ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box. "
+                        "View, Stop Background Task, just below it, ends one background task "
+                        "and lets the turn carry on"),
         ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
                    "the start of the reply box. Codex offers enabled skills and chat controls "
                    "such as /plan and /compact"),

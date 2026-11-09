@@ -335,8 +335,8 @@ _ASIDE_WORDS = (
     ("stopped the turn when it moved to Fable", "stopped answering when it moved to Fable"),
     ("stopped the turn as soon as it started", "stopped the question as soon as it started"),
     ("stopped the turn before anything was sent", "stopped the question before it was answered"),
-    ("Choose another model with File, Change Model, then send again.",
-     "Choose another model with Claude Code's model setting, or with File, Change Model for "
+    ("Choose another model with File, Chat Settings, Change Model, then send again.",
+     "Choose another model with Claude Code's model setting, or with File, Chat Settings, Change Model for "
      "a chat started here, then ask again."),
 )
 

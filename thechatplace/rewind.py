@@ -1,4 +1,5 @@
-"""Rewind to Here and Branch from Here (#468): going back in a Claude chat.
+"""Retry from Here and Branch from Here (#468; Retry was "Rewind to Here"
+until #596): going back in a Claude chat.
 
 Two things can go back, separately or together:
 
@@ -272,7 +273,8 @@ class RewindPlan:
 
 
 def rewound_title(title: str) -> str:
-    return f"{title} (rewound)"
+    """The new chat Retry from Here makes, named for the command (#596)."""
+    return f"{title} (retry)"
 
 
 def branch_title(title: str) -> str:
@@ -388,7 +390,7 @@ def result_from_output(returncode: Optional[int], stdout: str, stderr: str,
     elif "no conversation found" in reason.lower():
         reason = "it couldn't find this chat's conversation"
     elif "unknown option" in reason.lower():
-        reason = "this version of Claude Code can't rewind files; update it and try again"
+        reason = "this version of Claude Code can't put files back; update it and try again"
     if not reason:
         reason = (f"it stopped with exit code {returncode}" if returncode is not None
                   else "it didn't finish")

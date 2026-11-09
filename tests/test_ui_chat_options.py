@@ -318,6 +318,12 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
                                options=ChatOptions("gone-agent", "Be brief.", ""),
                                load_choices=frame._load_chat_choices, feedback=said.append)
     try:
+        # "Run as agent", not "Agent", which also means agent conversations
+        # and subagents (#596): the label and the name screen readers read.
+        assert dialog.agent.GetName() == "Run as agent"
+        labels = [child.GetLabel() for child in dialog.GetChildren()
+                  if isinstance(child, wx.StaticText)]
+        assert "Run as &agent:" in labels
         # Before Claude Code answers: the chat's own agent is still there.
         assert dialog.agent.GetStringSelection() == "gone-agent"
         assert pump(lambda: dialog.agent.GetCount() > 2)
@@ -646,7 +652,7 @@ def test_chat_options_change_a_chat_from_its_next_turn(frame, env, tmp_path, mon
     assert own.chat_options() == ChatOptions("Explore", "Only read.", "", fresh=True)
     assert own.allowed_dirs == [other]
     assert env["feedback"][-1] == ("Mine: agent Explore, new instructions, 1 more folder, "
-                                   "from its next message.")
+                                   "from its next turn.")
     frame.on_open_session()
     frame.reply_text.SetValue("next")
     frame.on_send()
@@ -668,10 +674,51 @@ def test_chat_options_only_for_chats_started_here(frame, env, monkeypatch):
     assert "Desktop one is" in env["feedback"][-1]
 
 
-def test_chat_options_are_in_the_file_menu_and_ask_aside_has_its_key(frame):
-    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(0).GetMenuItems()]
-    assert "Chat Options..." in labels
+def test_chat_options_are_in_file_chat_settings_and_ask_aside_has_its_key(frame, monkeypatch):
+    # The chat's five settings in one submenu, each with an access key, their
+    # shortcuts unchanged (#596).
+    import wx
+    file_menu = frame.GetMenuBar().GetMenu(0)
+    labels = [item.GetItemLabel() for item in file_menu.GetMenuItems()]
     assert "Ask Aside...\tCtrl+Shift+Y" in labels
+    assert "Chat Sett&ings" in labels
+    for gone in ("Change Mo&del...", "Change E&ffort...", "Chat Options...",
+                 "Change Permission Mode...\tCtrl+Shift+O", "Chat Permissions...\tCtrl+Shift+H"):
+        assert gone not in labels
+    submenu = next(item.GetSubMenu() for item in file_menu.GetMenuItems()
+                   if item.GetItemLabel() == "Chat Sett&ings")
+    items = submenu.GetMenuItems()
+    assert [item.GetItemLabel() for item in items] == [
+        "Change &Model...", "Change &Effort...", "Change &Permission Mode...\tCtrl+Shift+O",
+        "&Chat Permissions...\tCtrl+Shift+H", "Chat &Options..."]
+    keys = {item.GetItemLabelText(): item.GetAccel() for item in items}
+    assert keys["Change Permission Mode..."].ToString() == "Ctrl+Shift+O"
+    assert keys["Chat Permissions..."].ToString() == "Ctrl+Shift+H"
+    # Each reaches its handler through the frame, as the menu (or its
+    # accelerator) sends it.
+    called = []
+    for name in ("on_change_model", "on_change_effort", "on_change_permission_mode",
+                 "on_chat_permissions", "on_chat_options"):
+        monkeypatch.setattr(frame, name, lambda name=name: called.append(name))
+    for item in items:
+        event = wx.CommandEvent(wx.wxEVT_MENU, item.GetId())
+        event.SetEventObject(frame)
+        frame.GetEventHandler().ProcessEvent(event)
+    assert called == ["on_change_model", "on_change_effort", "on_change_permission_mode",
+                      "on_chat_permissions", "on_chat_options"]
+
+
+def test_branch_from_here_has_an_access_key_and_stop_background_task_is_in_view(frame):
+    # #596: Branch from Here is Alt+F, F; Stop Background Task sits just
+    # after Stop Running Turn, in View.
+    bar = frame.GetMenuBar()
+    file_labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("File")).GetMenuItems()]
+    assert "Branch &from Here" in file_labels
+    assert any(label.startswith("Retry from Here...") for label in file_labels)
+    assert "Stop Background Task..." not in file_labels
+    view_labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("View")).GetMenuItems()]
+    stop = view_labels.index("Sto&p Running Turn\tCtrl+.")
+    assert view_labels[stop + 1] == "Stop Background Task..."
 
 
 # -- Ask Aside ------------------------------------------------------------------------------

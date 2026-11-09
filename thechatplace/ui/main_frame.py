@@ -239,7 +239,7 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-#: Rewind to Here's key (#468) as a menu accelerator, except on a Mac,
+#: Retry from Here's key (#468, #596) as a menu accelerator, except on a Mac,
 #: where Cmd+Shift+Z is Redo: there the messages list takes it itself.
 REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
 
@@ -591,26 +591,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # letter is another item's access key, so its shortcut is the way in.
         self._item(session, "Ask Aside...\tCtrl+Shift+Y", lambda e: self.on_ask_aside())
         self._item(session, "Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here)
-        # Back to a message of the loaded chat (#468). Every letter of both
-        # is another item's access key, so Rewind's shortcut is its way in,
-        # and Branch from Here is reached by arrowing, or on the message's
-        # own menu.
-        self._item(session, "Rewind to Here..." + REWIND_ACCEL, lambda e: self.on_rewind_to_here())
-        self._item(session, "Branch from Here", lambda e: self.on_branch_from_here())
+        # Back to a message of the loaded chat (#468), named for what each is
+        # for (#596). Every letter of Retry's is another item's access key, so
+        # its shortcut is its way in; Branch from Here has F, freed when the
+        # chat's settings moved to their own submenu, and no shortcut.
+        self._item(session, "Retry from Here..." + REWIND_ACCEL, lambda e: self.on_rewind_to_here())
+        self._item(session, "Branch &from Here", lambda e: self.on_branch_from_here())
         self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
-        self._item(session, "Change Mo&del...", lambda e: self.on_change_model())
-        # Every letter of "Change Permission Mode" is another item's access
-        # key already, so, as with Other Machines, its shortcut is the way in.
-        self._item(session, "Change Permission Mode...\tCtrl+Shift+O",
+        # The loaded chat's own settings, together (#596). Their shortcuts are
+        # still window-wide accelerators with the submenu shut, as any menu
+        # item's are. Every letter of "Chat Settings" but I was another item's
+        # access key; Hide Session moved to D to free it.
+        chat_settings = wx.Menu()
+        self._item(chat_settings, "Change &Model...", lambda e: self.on_change_model())
+        self._item(chat_settings, "Change &Effort...", lambda e: self.on_change_effort())
+        self._item(chat_settings, "Change &Permission Mode...\tCtrl+Shift+O",
                    lambda e: self.on_change_permission_mode())
         # What the chat may do without asking, and taking it back (#307).
-        # Every letter is another item's access key, so its shortcut is the way in.
-        self._item(session, "Chat Permissions...\tCtrl+Shift+H",
+        self._item(chat_settings, "&Chat Permissions...\tCtrl+Shift+H",
                    lambda e: self.on_chat_permissions())
-        self._item(session, "Change E&ffort...", lambda e: self.on_change_effort())
-        # Agent, instructions, output style and more folders (#468). Every
-        # letter is another item's access key, so it's reached by arrowing.
-        self._item(session, "Chat Options...", lambda e: self.on_chat_options())
+        # Agent, instructions, output style and more folders (#468).
+        self._item(chat_settings, "Chat &Options...", lambda e: self.on_chat_options())
+        session.AppendSubMenu(chat_settings, "Chat Sett&ings")
         self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
         # As with Rename Session, every letter is taken, so the key is its shortcut.
         self._item(session, "Other Machines...\tCtrl+Shift+M",
@@ -636,7 +638,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Every letter of "Rename Session" is another item's access key
         # already, so F2 (as in Explorer) is its only shortcut (#93).
         self._item(session, "Rename Session...\tF2", lambda e: self.on_rename())
-        self._item(session, "H&ide Session (Delete)", lambda e: self.on_hide())
+        # D, not I, since I went to Chat Settings (#596).
+        self._item(session, "Hi&de Session (Delete)", lambda e: self.on_hide())
         self._item(session, "&Bring Back Session", lambda e: self.on_unhide())
         self._item(session, "Delete Session &Permanently (Shift+Delete)...",
                    lambda e: self.on_delete_permanently())
@@ -656,11 +659,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Steer (#238, #239): a reply-box key too, so in the label only.
         self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
                    lambda e: self.on_steer())
-        # One background task ended, the turn kept (#468). Every letter is
-        # another item's access key; enabled while there's work to stop.
-        self.stop_background_item = self._item(session, "Stop Background Task...",
-                                               lambda e: self.on_stop_background_task())
-        self.stop_background_item.Enable(False)
         session.AppendSeparator()
         self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
         self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
@@ -736,6 +734,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.mute_item.Check(self.speech.sounds_muted)
         self.Bind(wx.EVT_MENU, self.on_toggle_mute_sounds, self.mute_item)
         self._item(view, "Sto&p Running Turn\tCtrl+.", self.on_stop)
+        # One background task ended, the turn kept (#468), beside the other
+        # Stop (#596). Every letter is another item's access key, so it's
+        # one Down Arrow from Stop Running Turn; enabled while there's work
+        # to stop.
+        self.stop_background_item = self._item(view, "Stop Background Task...",
+                                               lambda e: self.on_stop_background_task())
+        self.stop_background_item.Enable(False)
         self._item(view, "T&urn Status\tCtrl+Shift+T", self.on_turn_status)
         self._item(view, "Usage and &Context...\tCtrl+Shift+U", lambda e: self.on_usage())
         self._item(view, "Change&d Files...\tCtrl+Shift+D", lambda e: self.on_changes())
@@ -2680,7 +2685,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if (message is not None and message.kind not in TAIL_KINDS
                 and self._subagents_in_turn(message.turn)):
             # On the Agent call and the reply of a turn that used subagents (#468).
-            subs = menu.Append(wx.ID_ANY, "Subagent Con&versations...")
+            subs = menu.Append(wx.ID_ANY, "Suba&gents...")
             menu.Bind(wx.EVT_MENU, lambda e: self.on_message_subagents(), subs)
         relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
@@ -2692,7 +2697,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 can_branch = self.sessions.capabilities(self._open).branch
             except ValueError:
                 can_branch = False
-            rewind_item = menu.Append(wx.ID_ANY, "Re&wind to Here..." + REWIND_ACCEL)
+            rewind_item = menu.Append(wx.ID_ANY, "Retr&y from Here..." + REWIND_ACCEL)
             anchored = message is not None and bool(message.key if self._open.provider == 'codex' else message.uuid)
             rewind_item.Enable(can_branch and anchored and message.kind == USER)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
@@ -2838,8 +2843,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         history is a small local file, so it's read here, not on a thread."""
         if info.provider != "codex" or not info.is_own:
             if info.provider == "codex":
-                return [], "Approvals are listed only for Codex chats run in The Chat Place."
-            return [], f"Approvals aren't listed for {info.provider.capitalize()} chats yet."
+                return [], "Auto approvals are listed only for Codex chats run in The Chat Place."
+            return [], f"Auto approvals aren't listed for {info.provider.capitalize()} chats yet."
         from .. import approvals
         state = self._codex_states.get(info.key)
         live = getattr(state, "permission_notices", ()) if state is not None else ()
@@ -2851,7 +2856,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             record_failure(exc)
             backend = getattr(self.sessions, "_providers", {}).get("codex")
             if backend is not None and getattr(backend, "runtime", None) is None:
-                return [], "Approvals can't be listed until Codex is available."
+                return [], "Auto approvals can't be listed until Codex is available."
             if not live:
                 return [], "The approval history couldn't be read. Its file was kept as it was."
             # Said once Lists has focus, so a short list isn't taken for all
@@ -5261,7 +5266,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # Every way a turn starts into an existing chat (Other Machines, a
             # queued message) waits for Rewind to Here's files (#468). New
             # Session and Continue Here check before making their chat.
-            return ("Rewind to Here is still putting files back in this chat's folder. Send "
+            return ("Retry from Here is still putting files back in this chat's folder. Send "
                     "again in a moment.")
         # Read fresh, not from the list's snapshot: up to 5 seconds old, it
         # still shows The Chat Place's own just-finished turn as busy.
@@ -8438,7 +8443,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Closing cancels one still queued and can cut a running one short, so
         # the folder could be left half restored with nothing said (#468).
         if self._rewinding_files and event.CanVeto() and wx.MessageBox(
-                "Rewind to Here is still putting files back. Quit anyway? It may not finish, "
+                "Retry from Here is still putting files back. Quit anyway? It may not finish, "
                 "so some files may go back and others not; check them before carrying on.",
                 f"Quit {APP_NAME}", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
             event.Veto()

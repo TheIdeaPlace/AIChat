@@ -207,7 +207,7 @@ def asks_now(state, detail: bool = False) -> str:
     if getattr(state, "rules_broken", False):
         parts.append("Commands ask until your copilot-rules.json is fixed.")
     if moved:
-        parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, "
+        parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Settings, Chat Permissions, "
                      "since a command you allowed may have moved Copilot's shell.")
     program = True
     if background and not moved:
@@ -432,7 +432,7 @@ STILL_RUNNING_ASKS = ("This file change asks, since a program allowed in this fo
                       f"says the program ended. {_STOP_DOESNT_END}")
 #: Said when something would answer a command, but these make it ask.
 MOVED_ASKS = ("This asks since a command you allowed may have moved Copilot's shell. Restart "
-              "Copilot, in File, Chat Permissions, clears that.")
+              "Copilot, in File, Chat Settings, Chat Permissions, clears that.")
 BACKGROUND_ASKS = ("This asks while a program allowed here runs in the background. It's answered "
                    "for you again once it ends.")
 RUNS_IN_BACKGROUND_ASKS = "This asks since Copilot will run it in the background."
@@ -487,7 +487,7 @@ def _ask_reason(chat, request, covered, why: str, *, running: bool, background: 
 
 #: Said once a run when your rules file for Copilot can't be used.
 RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so every command "
-                 "asks until it's fixed. File, Chat Permissions says where it is.")
+                 "asks until it's fixed. File, Chat Settings, Chat Permissions says where it is.")
 
 
 #: Said when a chat's folder is a whole drive or the home folder.
@@ -1498,7 +1498,7 @@ class CopilotChatRuntime:
             except CopilotChatError:
                 with self._lock:
                     chat.notice = ("Copilot couldn't switch this chat to the model chosen, so it "
-                                   "uses Copilot's own. File, Change Model chooses another.")
+                                   "uses Copilot's own. File, Chat Settings, Change Model chooses another.")
         if mode and mode != chat.mode:
             # Only the mode Copilot reports counts: the problem set above is
             # cleared when a reply taken in names the mode asked for. A

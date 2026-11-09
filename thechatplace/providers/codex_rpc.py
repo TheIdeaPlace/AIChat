@@ -32,7 +32,7 @@ class CodexRememberedApprovalError(CodexRpcError):
         'not_sent': 'The answer was not sent and no new approval was kept. Open Answer to try again.',
         'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
         'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
-        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Permissions before continuing.',
+        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Settings, Chat Permissions before continuing.',
     }
 
     def __init__(self, code):

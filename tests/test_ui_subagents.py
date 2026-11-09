@@ -118,12 +118,12 @@ def test_the_messages_menu_offers_the_turns_subagents(frame, env, monkeypatch):
     menu = frame._message_menu()
     labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
     menu.Destroy()
-    assert "Subagent Conversations..." in labels
+    assert "Subagents..." in labels
     frame.chat_list.SetSelection(0)  # turn 1 used none
     menu = frame._message_menu()
     labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
     menu.Destroy()
-    assert "Subagent Conversations..." not in labels
+    assert "Subagents..." not in labels
     frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
     seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_message_subagents()

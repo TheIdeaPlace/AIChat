@@ -46,8 +46,9 @@ CATEGORIES = (
     (DECISIONS, "Decisions", "decisions"),
     (TASKS, "Tasks", "tasks"),
     (SUBAGENTS, "Subagents", "subagents"),
-    # Last, so Ctrl+1 to Ctrl+7 keep the kinds they had (#564).
-    (APPROVALS, "Approvals", "approvals"),
+    # Last, so Ctrl+1 to Ctrl+7 keep the kinds they had (#564). "Auto": it
+    # lists only what was decided for you, not what you answered (#596).
+    (APPROVALS, "Auto Approvals", "auto approvals"),
 )
 #: The kinds whose "this message" is the selected message's turn.
 TURN_KINDS = frozenset({FILES, COMMANDS, DECISIONS, TASKS, SUBAGENTS})

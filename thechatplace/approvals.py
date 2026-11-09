@@ -50,7 +50,8 @@ class Approval:
         """"Allowed: git status. Automatic review." for the list."""
         what = " ".join(self.command.split())  # one line, even for a heredoc
         what = what if len(what) <= 120 else what[:119] + "…"
-        who = "Automatic review" if self.by == BY_REVIEW else "Saved rule for this chat"
+        # Said as what you did, in the button's words (#596).
+        who = "Automatic review" if self.by == BY_REVIEW else "You allowed it for this chat"
         head = self.outcome.capitalize()
         return f"{head}: {what}. {who}." if what else f"{head}, a request. {who}."
 
