@@ -178,11 +178,12 @@ def test_every_copy_question_says_make_a_new_copy(monkeypatch):
     host.set_off(CodexTool("notes", "connected", (), False), True, lambda *a: None)
     host.set_off(CodexTool("gone", "removed", (), False, True), True, lambda *a: None)
     from thechatplace.ui.codex_extras import copy_note
-    note = copy_note(tools=False)
-    # The question comes last, as Branch's does (#602), so it's the last thing
-    # a screen reader says before the buttons.
-    assert asked[0] == (note + " A tool can reach websites and services outside this chat's folder, so "
-                        "turn on only a tool you trust. Make a new copy of this chat with notes on?")
+    note = "A new copy of this chat will be made, and this chat is kept. " + copy_note(tools=False)
+    # It starts by saying a copy is made, and the question comes last, as
+    # Branch's does (#602), so it's the last thing a screen reader says
+    # before the buttons.
+    assert asked[0] == (note + " A tool can reach websites, services and files outside this chat's folder, "
+                        "so turn on only a tool you trust. Make a new copy of this chat with notes on?")
     assert asked[1] == note + " Make a new copy of this chat with notes off?"
     assert asked[2] == ("gone is no longer in Codex's configuration. " + note
                         + " Make a new copy of this chat without gone?")
@@ -214,7 +215,8 @@ def test_a_tools_copy_says_it_cant_change_files_without_asking(monkeypatch):
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: asked.append(text) or wx.YES)
     host.set_off(CodexTool("notes", "off"), False, lambda *a: None)
     key = key_name("Ctrl+Shift+O")
-    assert asked[0].startswith(f"The new chat can't change files without asking, and doesn't keep the "
+    assert asked[0].startswith(f"A new copy of this chat will be made, and this chat is kept. "
+                               f"The new chat can't change files without asking, and doesn't keep the "
                                f"original's model, effort or Chat Options. Change Permission Mode ({key}) "
                                f"lets it edit files. ")
     assert "connected tools" not in asked[0]

@@ -331,7 +331,8 @@ def test_copy_with_tool_says_the_copy_cant_change_files_without_asking(frame, en
         dialog.on_toggle()
         asked = env["boxes"][count:]
         assert len(asked) == 1
-        assert asked[0].startswith(copy_note(tools=False) + " ")
+        assert asked[0].startswith("A new copy of this chat will be made, and this chat is kept. "
+                                   + copy_note(tools=False) + " ")
         assert asked[0].endswith(" Make a new copy of this chat with notes " + ("on?" if off else "off?"))
         assert "can't change files without asking" in asked[0] and "connected tools" not in asked[0]
         key = key_name("Ctrl+Shift+O")

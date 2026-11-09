@@ -15,6 +15,9 @@ import wx
 from ..ui_text import key_name
 from .codex_extras import copy_note
 
+#: How each question before a tools copy starts, as Branch's does (#602).
+COPY_LEAD = "A new copy of this chat will be made, and this chat is kept. "
+
 #: The first sentence of the note says what changing a tool does (#596).
 NOTE = ("In a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On "
         "or Off makes a new copy of the chat with that choice, and this chat stays as it is. "
@@ -237,11 +240,13 @@ class CodexConnectedTools:
         # Rewind's and Branch's are (codex_runtime.copy_with_tools), so each
         # question says so, as theirs do. It keeps the tools you chose (#602).
         # The question comes last, as Branch's does, so it's the last thing a
-        # screen reader says before the buttons. The tool's own warning comes
-        # after the note: a tool runs outside Codex's file rules.
-        note = copy_note(tools=False)
-        consent = (note + " A tool can reach websites and services outside this chat's folder, so "
-                   'turn on only a tool you trust. Make a new copy of this chat with ' + server.name
+        # screen reader says before the buttons, and starts by saying a copy is
+        # made, so "the new chat" means something. The tool's own warning comes
+        # after the note: a tool is a program of its own, which Codex's file
+        # rules may not cover, so it names files too.
+        note = COPY_LEAD + copy_note(tools=False)
+        consent = (note + " A tool can reach websites, services and files outside this chat's folder, "
+                   'so turn on only a tool you trust. Make a new copy of this chat with ' + server.name
                    + ' on?' if not off else
                    server.name + " is no longer in Codex's configuration. " + note
                    + ' Make a new copy of this chat without ' + server.name + '?' if server.missing else

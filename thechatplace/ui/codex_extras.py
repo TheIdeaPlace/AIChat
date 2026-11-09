@@ -273,10 +273,16 @@ class CodexExtras:
             model, effort = current.get('model'), current.get('effort')
             if what == 'model':
                 # Codex's default first, as in New Session, so a chat can go
-                # back to it: no model chosen, and its effort with it (#596).
+                # back to it, and to its effort (#596). As in New Session, the
+                # chat is then saved on the model that default is now (Codex
+                # names it; CodexOwnedThread.record), and doesn't follow a later
+                # change of default, so the row names that model when Codex
+                # says which it is.
+                default = next((m for m in models if m.is_default), None)
                 values = [None, *models]
                 index = self._choose('Change Model', f'Model for {info.title}, from its next turn:',
-                    [CODEX_DEFAULT + (' (now)' if not model else '')]
+                    [CODEX_DEFAULT + (f' ({default.label})' if default else '')
+                     + (' (now)' if not model else '')]
                     + [m.label + (' (now)' if m.model == model else '') for m in models])
                 if index is None:
                     return

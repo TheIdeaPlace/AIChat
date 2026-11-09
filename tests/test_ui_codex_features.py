@@ -95,7 +95,8 @@ def test_settings_save_failure_restores_the_record_and_does_not_activate_it(fram
         return False
     monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
         CodexModel('new', 'New model', ('medium',), 'medium', True)], False))
-    monkeypatch.setattr(frame, '_choose', lambda *a, **k: 0)
+    # Row 0 is Codex's default (#596); this chooses the listed model.
+    monkeypatch.setattr(frame, '_choose', lambda *a, **k: 1)
     monkeypatch.setattr(frame, '_codex_work', work)
     monkeypatch.setattr(frame, '_store_write', failed_save)
     monkeypatch.setattr(frame.sessions, 'owned_action', action)
@@ -557,7 +558,7 @@ def test_change_model_can_go_back_to_codexs_default(frame, env, monkeypatch):
     offered, sent = _settings_sent(frame, monkeypatch, 0)
     frame._change_codex_settings(record.to_info(), 'model')
     assert offered == [('Change Model', f'Model for {record.title}, from its next turn:',
-                        ["Codex's default", 'Other model', 'Main model'])]
+                        ["Codex's default (Main model)", 'Other model', 'Main model'])]
     assert sent == [('prepare_settings', (None, None))]
 
 
@@ -566,7 +567,7 @@ def test_change_model_marks_the_model_now(frame, env, monkeypatch):
     record.provider_options['model'] = 'main'
     offered, sent = _settings_sent(frame, monkeypatch, 1)
     frame._change_codex_settings(record.to_info(), 'model')
-    assert offered[0][2] == ["Codex's default", 'Other model', 'Main model (now)']
+    assert offered[0][2] == ["Codex's default (Main model)", 'Other model', 'Main model (now)']
     assert sent == [('prepare_settings', ('other', None))]
 
 
