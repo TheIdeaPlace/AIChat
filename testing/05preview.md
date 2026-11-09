@@ -166,6 +166,19 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    gallery", then "The gallery could not be reached", with focus on **Reload**. Escape closes it
    and you're back on Browse Gallery.
 6. Choose Cancel in Sounds. Expect: the new scheme isn't kept.
+7. **Where the files go.** Each scheme keeps its own files in a folder inside
+   `%APPDATA%\TheChatPlace\sounds`, named for the scheme's id (`glass`, `softbell`, `wood`, or
+   `user-` and a long code for one of your own). In Sounds, on Wood, choose **Choose File** for
+   an event and pick a WAV. Choose OK. Expect: the file is in `sounds\wood`, and nothing new is
+   in `sounds` itself.
+8. Import a scheme that has a sound file of its own, and choose OK. Expect: a new `user-…`
+   folder in `sounds` holding its files. Open Sounds again, choose that scheme, then
+   **Delete Scheme**. Expect: "Delete the sound scheme" and its name "and its sound files? They're
+   deleted when you choose OK." Choose Yes, then OK. Expect: its folder is gone.
+9. On Wood, choose **Reset Scheme**. Expect: the question ends "Your sound files for it are deleted
+   when you choose OK." Choose Yes, then OK. Expect: `sounds\wood` is gone.
+10. Give an event a file with Choose File, then **Remove File** (Alt+M). Expect: the event is back
+    on its built-in sound, and the file is still there until you choose OK, then gone.
 
 ## 3. Read a whole chat as one page
 

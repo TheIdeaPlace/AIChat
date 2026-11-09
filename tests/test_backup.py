@@ -181,6 +181,21 @@ def test_computer_id_is_stable(homes):
     assert backup.computer_identity()["id"] == backup.computer_identity()["id"]
 
 
+def test_each_sound_schemes_folder_goes_in_the_backup(homes):
+    """Sound files are kept in a folder for each scheme (#250); the backup carries them all."""
+    mine = platform_paths.scheme_sounds_dir("user-" + "a" * 32) / "knock.wav"
+    glass = platform_paths.scheme_sounds_dir("glass") / "chime.wav"
+    for path in (mine, glass):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"RIFF")
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory])
+    assert result.complete
+    with zipfile.ZipFile(result.path) as z:
+        listed = set(z.namelist())
+    assert f"thechatplace/data/sounds/user-{'a' * 32}/knock.wav" in listed
+    assert "thechatplace/data/sounds/glass/chime.wav" in listed
+
+
 def test_two_backups_with_the_same_name_never_overwrite(homes):
     write(homes["data"] / "a.json", "{}")
     first = backup.create(homes["dest"], collectors=[backup.tcp_inventory], filename="b.zip")

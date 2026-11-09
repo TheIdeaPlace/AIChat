@@ -262,18 +262,30 @@ class SoundHost:
 
     def on_sounds(self, _event=None) -> None:
         """File, Sounds: whether there are sounds, which, and for which chats."""
+        before = self.speech
         dialog = SoundsDialog(self, self.speech, self._sound_player, say=self._say)
         try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            self.speech = dialog.get_settings()
+            ok = dialog.ShowModal() == wx.ID_OK
+            chosen = dialog.get_settings() if ok else None
+            keep_files, undo_files = dialog.tidy_files(True), dialog.tidy_files(False)
         finally:
             dialog.Destroy()  # which stops a preview still playing
+        if not ok:
+            undo_files()  # files written for schemes you didn't keep go again
+            return
         try:
-            self.speech.save()
+            chosen.save()
         except OSError as exc:
-            wx.MessageBox(f"Couldn't save the sound settings: {exc}", "Sounds",
-                          wx.OK | wx.ICON_WARNING, self)
+            # As if cancelled, so the settings in use and the sound files always agree: keeping
+            # changes that weren't saved would play files a restart forgets, or delete files the
+            # saved settings still use.
+            undo_files()
+            wx.MessageBox(f"Couldn't save the sound settings, so your changes weren't kept: {exc}",
+                          "Sounds", wx.OK | wx.ICON_WARNING, self)
+            self.speech = before
+            return
+        self.speech = chosen
+        keep_files()
         self.mute_item.Check(self.speech.sounds_muted)
         if (self.speech.sounds_muted or not self.speech.sounds_on) and self._sound_player_made:
             self._sound_player_made.stop()

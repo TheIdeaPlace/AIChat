@@ -474,8 +474,22 @@ def built_in_sounds_dir() -> Path:
 
 def custom_sounds_dir() -> Path:
     """A person's own sounds (#250), copied here so they outlive the original and go with
-    backups."""
+    backups. Nothing is kept here itself: each scheme's files are in its own folder
+    (``scheme_sounds_dir``), so a scheme and its files go together."""
     return app_data_dir() / "sounds"
+
+
+#: A folder name a scheme id can be: the built-in schemes' ("glass") and ``user-<32 hex>``. No dot
+#: or slash, so it can't name a parent folder or reach outside ``sounds``.
+_SCHEME_FOLDER = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+
+
+def scheme_sounds_dir(scheme_id: str) -> Path:
+    """The folder holding one sound scheme's own files (#250): ``sounds/<scheme id>``. Raises
+    ValueError for an id that isn't a plain folder name, so a bad id never reaches the disk."""
+    if not isinstance(scheme_id, str) or not _SCHEME_FOLDER.fullmatch(scheme_id):
+        raise ValueError(f"Not a sound scheme id: {scheme_id!r}")
+    return custom_sounds_dir() / scheme_id
 
 
 def show_silent_balloon(hwnd: int, title: str, text: str) -> bool:
