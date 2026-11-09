@@ -2172,6 +2172,10 @@ In a chat started here, the AI may need your permission before it acts, ask you 
 **Escape answers later.** Nothing is allowed or refused by waiting: the turn keeps waiting, and
 Ctrl+Shift+A brings the same request back.
 
+**Shift+Enter starts a new line** in a box you type in: your own answer to a question, what to
+change in a plan, or a reason for Deny. Enter (or Ctrl+Enter) still presses the default button:
+Send Answers, Keep Planning or Deny. A secret answer stays a one-line box.
+
 What each provider offers:
 
 - **Claude, a permission:** **Allow** (this request only), **Allow for This Chat** (keep a rule so

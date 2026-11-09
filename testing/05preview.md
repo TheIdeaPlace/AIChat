@@ -436,6 +436,11 @@ say when both are running without waiting for them.
    sent. Say Yes. Start the app again. Expect: that chat keeps its place in the list and says it was
    stopped, and the queued message wasn't sent on the way out. Try once with an agent conversation mid-turn: it comes
    back stopped, and carries on with the agent that was stopped.
+3. **Shift+Enter in an answer.** Ask a Claude chat to ask you a question with AskUserQuestion. Press
+   Ctrl+Shift+A, Tab to the question's own answer box, type a line, press Shift+Enter and type a
+   second line. Expect: the dialog stays open and the box reads as two lines. Press Enter. Expect:
+   the answers are sent, and Claude's reply shows it got both lines. Try the same in a plan's What
+   to Change box (Keep Planning) and in a permission's reason for Deny.
 
 ## 14. The user guide
 

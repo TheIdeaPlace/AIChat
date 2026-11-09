@@ -144,6 +144,12 @@ STEPS = [
     Step("answer it", ["ctrl+shift+a"], expect=["Question", "Here's the draft"]),
     Step("Tab to the choices", ["Tab"], expect=["Keep it as is"],
          refuse=["your own answer"]),
+    # The own answer is a multi-line box now (Shift+Enter starts a new
+    # line): Tab still reaches it, and leaves it for the Preview box.
+    Step("Tab to its own answer", ["Tab"], expect=["your own answer"]),
+    Step("Tab out of the answer box", ["Tab"], expect=["Preview of Keep it as is"]),
+    # Escape from inside it still answers later.
+    Step("Shift+Tab back to its own answer", ["shift+Tab"], expect=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
     # A connected tool asks for input (#468): Answer opens on its message,
     # and Tab goes to the form's first box.

@@ -525,9 +525,12 @@ Copilot chats don't have these yet.
     with their descriptions, with Other and a box to type your own answer; a Preview box when
     an option has a preview, showing the one for the option you're on (#415); Send Answers, or
     Don't Answer. A question with one answer is a single Tab stop, on its chosen option, or its
-    first while none is chosen.
+    first while none is chosen. Your own answer can have several lines: Shift+Enter starts a
+    new line, and Enter or Ctrl+Enter sends the answers. A secret answer is a one-line box.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
-    edits, auto or manual), or **Keep Planning** with what to change, which is the default.
+    edits, auto or manual), or **Keep Planning** with what to change, which is the default. In
+    the What to Change box, and in a permission's reason for Deny, Shift+Enter starts a new
+    line, and Enter or Ctrl+Enter presses the default button.
   - **A connected tool asks** (#468): an MCP server or claude.ai connector can ask for input while
     it works ("Plan trip needs you. Trip planner asks: Where would you like to go?"). Answer
     opens on its message, read-only, then a form with one labelled control per thing it asks for
