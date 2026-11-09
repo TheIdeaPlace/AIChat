@@ -146,8 +146,8 @@ SHORTCUTS = [
         ("Ctrl+Shift+Z on one of your messages", "Rewind to Here (Claude and Codex chats): start a new "
                                                  "chat just before it, with your message ready to change "
                                                  "and send. Claude can also restore files changed with "
-                                                 "its edit tools in chats started here. Codex copies "
-                                                 "start read-only and leave files unchanged. The original "
+                                                 "its edit tools in chats started here. A Codex copy "
+                                                 "can't change files without asking. The original "
                                                  "chat is kept. Branch from Here, on a message's menu, "
                                                  "starts a new chat from that point; in Codex it includes "
                                                  "the whole turn containing that message"),

@@ -13,6 +13,7 @@ import sys
 import wx
 
 from ..ui_text import key_name
+from .codex_extras import copy_note
 
 #: The first sentence of the note says what changing a tool does (#596).
 NOTE = ("In a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On "
@@ -232,12 +233,15 @@ class CodexConnectedTools:
         names = [name for name in names if name != server.name and name not in self.removed]
         if not off:
             (apps if server.app_id else names).append(server.app_id or server.name)
+        # Every tools copy is made read-only with approval on request, as
+        # Rewind's and Branch's are (codex_runtime.copy_with_tools), so each
+        # question says so, as theirs do. It keeps the tools you chose (#602).
         consent = ('Make a new copy of this chat with ' + server.name + ' on? Its tools can reach '
                    "websites and services outside this chat's folder, so turn on only a tool you "
                    'trust.' if not off else
                    'Make a new copy of this chat without ' + server.name + "? It's no longer in "
                    "Codex's configuration." if server.missing else
-                   'Make a new copy of this chat with ' + server.name + ' off?')
+                   'Make a new copy of this chat with ' + server.name + ' off?') + ' ' + copy_note(tools=False)
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                          self.dialog or self.frame) != wx.YES:
@@ -263,7 +267,8 @@ class CodexConnectedTools:
             self.record, self.info = copy, copy.to_info()
             self.frame.open_session(self.info)
             self.frame.refresh_sessions()
-            self.frame._feedback('Opened ' + copy.title + '. The original chat is kept.')
+            self.frame._feedback('Opened ' + copy.title + '. ' + copy_note(short=True)
+                                 + ' The original chat is kept.')
             self.load(done)
         self.frame._codex_work(lambda: self.frame.sessions.copy_with_tools(source,
             source.title + ' (tools copy)', names, apps), created)
