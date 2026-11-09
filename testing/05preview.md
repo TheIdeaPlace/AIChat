@@ -522,6 +522,11 @@ say when both are running without waiting for them.
    second line. Expect: the dialog stays open and the box reads as two lines. Press Enter. Expect:
    the answers are sent, and Claude's reply shows it got both lines. Try the same in a plan's What
    to Change box (Keep Planning) and in a permission's reason for Deny.
+4. **Turning off the update check at start.** Open Settings (Ctrl+Comma) and press Alt+D. Expect:
+   "Check for updates when The Chat Place starts, check box, checked", just before "Tell me when an
+   update has been installed". Clear it with Space and press Enter, then restart. Expect: nothing
+   about updates is said at start, and the status bar has no update button. Help, Check for Updates
+   still says what it found. Reopen Settings: it's still cleared. Turn it back on afterwards.
 
 ## 14. The user guide
 

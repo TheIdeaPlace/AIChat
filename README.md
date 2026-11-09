@@ -1679,6 +1679,13 @@ Help, Check for Updates. At start the check only speaks up when there is a new v
 only says so: it never asks you anything you didn't ask for. From Help it always says what it found ("up to
 date", "no release has been published yet", or an error), even with announcements set to silent.
 
+To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
+Settings (Ctrl+Comma), saved as `check_updates_at_start` in `speech.json`. It's on until you turn it
+off, and 0.4.1, which added it, keeps the same choice. With it off, nothing is checked or said at
+start and the status bar shows no update; Help, Check for Updates still checks whenever you choose
+it. To go back to 0.4 after this version, uninstall, install 0.4.1 (not 0.4.0, which drops the
+settings and chat options it doesn't know) and turn this off there.
+
 The Help menu's update item always says which version you're running, as QuickMail's does:
 **Check for Updates (running 0.1.4)...** (Alt+H, U). Once a check, at start or from Help, finds a
 newer version, the item becomes **Update to 0.1.5 Available...** (still Alt+H, U), and choosing it

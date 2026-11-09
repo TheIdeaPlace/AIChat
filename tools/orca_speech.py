@@ -131,6 +131,10 @@ STEPS = [
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),
     Step("settings, history retention", ["alt+y"],
          expect=["History retention and kept copies"]),
+    # Its access key may also toggle it (GTK clicks a check box's mnemonic);
+    # Escape below cancels Settings, so nothing is kept either way.
+    Step("settings, startup update check", ["alt+d"],
+         expect=["Check for updates when The Chat Place starts", "check box"]),
     Step("settings closed", ["Escape"], expect=["Messages in Visual probe"]),
     Step("F10, the menu bar", ["F10"], expect=["File", "menu"]),
     Step("menu closed, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),

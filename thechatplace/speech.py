@@ -242,6 +242,10 @@ class SpeechSettings:
     #: Windows notifications without Windows' own sound. Only if you choose it: what Windows does
     #: for your notifications is yours to change, and turning on these sounds doesn't change it.
     sound_silent_notifications: bool = False
+    #: Look for a newer release a few seconds after starting (Settings). Off
+    #: leaves only Help, Check for Updates. The same name and default as
+    #: 0.4.1's, which added it, so a choice made there is kept here.
+    check_updates_at_start: bool = True
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -335,6 +339,7 @@ class SpeechSettings:
         settings.sound_others = (others if isinstance(others, str) and others in sound_events.OTHERS_LABELS
                                  else sound_events.OTHERS_ALL)
         settings.sound_silent_notifications = raw.get("sound_silent_notifications") is True
+        settings.check_updates_at_start = raw.get("check_updates_at_start") is not False
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are

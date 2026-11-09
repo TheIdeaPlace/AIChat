@@ -2743,6 +2743,8 @@ setting moves straight to it.
   change to count.
 - **Let agent conversations hand replies across automatically** (Alt+G): off at first. With it
   on, each agent conversation can choose automatic hand-offs.
+- **Check for updates when The Chat Place starts** (Alt+D). On at first. Off, The Chat Place
+  checks only when you choose Help, Check for Updates (see "Updates").
 - **Tell me when an update has been installed, with a link to what's new** (Alt+T). On at first.
 - **History retention and kept copies** (Alt+Y): how long each AI keeps chats, and what The Chat
   Place has kept. **Open Claude's retention settings** opens Claude's settings file in your editor.
@@ -3128,6 +3130,17 @@ The Help menu's update item always says which version you're running, such as
 **Check for Updates (running 0.1.4)**. When a newer version has been found, it says so instead,
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
+
+To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
+Settings (Ctrl+Comma). Nothing is then checked or said at start, and the status bar shows no
+update until you choose Help, Check for Updates, which still works.
+
+**Going back to an older version.** If this version doesn't work for you, uninstall The Chat Place,
+install 0.4.1 from the [releases page](https://github.com/TheIdeaPlace/AIChat/releases), and clear
+**Check for updates when The Chat Place starts** there, so it isn't offered again each time you
+start. Uninstalling leaves your chats, groups and settings in the data folder. 0.4.1 uses them and
+keeps what it doesn't know about, such as your sounds and each chat's options, so they're all
+still there if you update again later. Use 0.4.1 rather than an earlier version, which would lose them.
 
 The first time The Chat Place starts after an update, **The Chat Place Update Installed** says
 which version you now have. **See what's new** (Alt+W) opens that version's release notes in your
