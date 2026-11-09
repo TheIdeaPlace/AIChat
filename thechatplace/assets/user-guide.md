@@ -731,13 +731,14 @@ This is a first version, and we'd like to hear which sounds help, which annoy, a
 
 Open File, **Sounds**, turn on **Play sounds**, and choose OK. In the same dialog:
 
-- **Mute all sounds** does the same as **Mute All Sounds**, below.
 - **Disable Windows sound for The Chat Place's notifications** is off to start. Windows plays its own sound with each notification, so with these sounds on you can hear two when a chat finishes while you're in another window. Turn this on if you'd rather hear only The Chat Place's. On Windows only.
 - **Volume** starts at 80%. It's separate from your system and screen reader volume.
 - **Sound scheme** is Glass, Soft bell, Wood, or a scheme of your own (below). Glass, Soft bell and Wood play the same melodies in a different tone, so a sound means the same thing in any of them.
 - The chat you have open always makes every sound, and Answer sent plays whenever you answer, for any chat. The next two settings decide what else you hear from the other chats.
-- **Tool sounds play for** is for Tick, which plays each time a chat runs a tool: **The open chat only** (to start), or **The open chat and chats running in The Chat Place**, which also hears the ones working in the background. A busy chat makes many, so several at once are hard to follow. A desktop app, Cowork or terminal session ticks only while it's open, as that's when its transcript is being read.
-- **Other sounds play for** is for every other sound but Answer sent, such as a file changing, a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats running in The Chat Place**, or **The open chat only**.
+- **Tool sounds play for** is for Tick, which plays each time a chat runs a tool: **The open chat only** (to start), or **The open chat and chats started in The Chat Place**, which also hears the ones working in the background. A busy chat makes many, so several at once are hard to follow. A desktop app, Cowork or terminal session ticks only while it's open, as that's when its transcript is being read.
+- **Other sounds play for** is for every other sound but Answer sent, such as a file changing, a chat finishing, needing you or failing: **The open chat and every chat in the list** (to start), **The open chat and chats started in The Chat Place**, or **The open chat only**.
+
+To mute every sound for a while, use **Mute All Sounds** (Ctrl+Shift+X), below.
 
 ### What you'll hear
 
@@ -775,9 +776,11 @@ When a lot happens at once, some sounds are left out so it never turns into nois
 
 Help, **Sound Tutorial** (Alt+H, T) lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound, in the scheme and at the volume you use, even when sounds are off or muted. If the event has no sound, it says "No sound"; if its sound file of your own is missing, it says so and plays the built-in sound instead, as the event would. Escape or **Close** closes it. It changes nothing: to choose sounds or another scheme, use File, **Sounds**.
 
+File, **Sounds** has a **Sound Tutorial** button too (Alt+U). From there it plays the scheme and volume showing in Sounds, with changes you haven't kept yet, so you can hear them before you choose OK. Closing it takes you back to the button.
+
 ### Changing a sound
 
-In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. Help, **Sound Tutorial** plays every sound too, even with sounds off. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the scheme's own folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
+In **Sound events**, arrow to an event: each row says the event and its sound, and the list's name says how many events have a sound. **Sound** chooses another, or None. **Preview** plays what's showing, at the volume and in the scheme showing, even when sounds are muted or off. **Space** on an event plays its sound the same way, so you can arrow through the list and hear each one. **Sound Tutorial** (Alt+U) plays every sound too, even with sounds off. **Choose File** uses your own WAV file, which has to be 16-bit, at most 30 seconds and 5 MB. It's copied into the scheme's own folder, so it goes with your backups and doesn't matter if the original moves. If it can't be played later, the event's usual sound plays instead.
 
 **Remove File** takes your sound file off the event, which goes back to its built-in sound. The file is deleted when you choose OK, unless another event in the scheme still uses it.
 
