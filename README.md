@@ -471,9 +471,10 @@ went back from is always kept as it was, in the list.
 
   Going back in the conversation makes a new chat of your own, "<title> (rewound)", in the
   same folder. Its conversation is the original's up to just before your message, and your
-  message is in its reply box to change and send. Until you send it, the messages list says
-  "No messages yet. This chat is a new copy of <title>, up to the point you chose. Send a
-  message to start it." It starts on the original's model,
+  message is in its reply box to change and send. Until you send it, the messages list has a
+  message that begins "No messages yet. This chat is a new copy of <title>, up to the point you
+  chose." Rewinding to your first message instead shows "This chat goes back to before your
+  first message in <title>, so it starts with no history." It starts on the original's model,
   effort and permission mode, Chat Options (agent, instructions, output style and more folders)
   and connected tools turned off, with no commands allowed for the chat yet. This works for any Claude
   chat on this computer, including desktop app and terminal sessions, since the original isn't
@@ -652,8 +653,9 @@ Quitting The Chat Place requests a stop for its running Codex replies.
 
 - **Chat Options** (Alt+H in New Session and Continue Here; File, Chat Options later)
   sets instructions for this chat, sent with each Codex turn, and more folders. Codex can change
-  files in those folders only when its permission mode lets it edit files. Changes wait until
-  the chat is idle and are checked with Codex and saved before they count. A folder you remove
+  files in those folders only when its permission mode lets it edit files. Change them while
+  the chat is idle; during a turn you're told to wait. Changes are checked with Codex and saved
+  before they count. A folder you remove
   is left out of the next turn. Codex uses its own agents and styles, so Claude's Agent and
   Output Style choices aren't shown.
 - **View, Subagents** lists the work Codex handed to subagents, including ones another subagent
@@ -675,9 +677,10 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   inputs. If a send fails, the recovered draft names its files; attach images again to resend
   them as image inputs.
 - File, **Change Model** and **Change Effort** change an idle chat from its next turn. Choices
-  come from Codex, the first being **Codex's default** (Change Effort's others read as words,
-  such as "Extra high"); you hear "Checking the new model with Codex.", and the change must be
-  confirmed and saved before you can send.
+  come from Codex. Change Effort's first choice is **Codex's default**, and its others read as
+  words, such as "Extra high"; it needs a model chosen from Codex's list first, and on Codex's
+  default model it says "Choose an available Codex model first." You hear "Checking the new
+  model with Codex.", and the change must be confirmed and saved before you can send.
 - **Rewind to Here** (Ctrl+Shift+Z) makes a new copy ending before the selected message of
   yours, with that message ready to change. **Branch from Here** makes a new copy with the whole
   turn containing the selected message, yours or Codex's. It works only on a turn Codex has
@@ -716,7 +719,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   stops just the selected one ("Stop COMMAND? The turn and other background tasks carry on."),
   or says it had already finished. It's available in any Codex chat started here, and says "No
   background tasks are running in this Codex chat." when there are none. `/background` opens
-  the same list. `/goal` reads the chat's Goal, set in the Codex app, and its usage; `/goal
+  the same list. `/goal` reads the chat's Goal, set in Codex, and its usage; `/goal
   pause` and `/goal clear` pause and clear it ("Goal paused for Fix the build."), but starting a
   Goal or carrying one on isn't available. The Chat Place turns off Codex's own Goal tools so a
   later turn can't get around its sign-in and permission checks. `/memories on` and `/memories
@@ -1980,8 +1983,8 @@ these about every 30 seconds while a background agent waits on
 a rate limit, so once Claude has answered, Turn Status doesn't count them as the turn retrying. A
 permission mode Claude changes by itself is said without cutting off the screen reader: "Claude
 switched to plan mode." Plan mode, or one that asks more often, is kept with the chat. One that
-lets Claude do more without asking, such as one you chose from your phone over Remote Control or
-in a terminal, applies to that turn only, and later turns start in the mode you chose: "Claude
+lets Claude do more without asking, such as one you chose from your phone over Remote Control,
+applies to that turn only, and later turns start in the mode you chose: "Claude
 switched to auto mode for this turn. Later turns start in manual mode." A move to the fallback model
 (`model_fallback`) is said: "Claude switched to Sonnet 5.5 because Opus 5.5 was overloaded." A
 fallback, or any reply, on Fable that wasn't chosen stops the turn as at its start. A saved

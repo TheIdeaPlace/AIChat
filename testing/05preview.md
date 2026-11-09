@@ -229,9 +229,9 @@ started elsewhere. It isn't offered for Cowork chats, kept copies or Copilot.
 Make a short chat with at least two of your messages and replies.
 
 1. In the messages, select a reply. Press **Shift+F10** and choose **Branch from Here**. Expect: a
-   new chat with "(branch)" in its title, and the original still listed. Before you send in it,
-   the messages list says "No messages yet. This chat is a new copy of" the original, "up to the
-   point you chose. Send a message to start it." In Codex the copy includes the whole turn that
+   new chat with "(branch)" in its title, and the original still listed. In Claude, before you
+   send in it, the messages list has a message beginning "No messages yet. This chat is a new copy
+   of" the original, "up to the point you chose." In Codex the copy includes the whole turn that
    reply is in, and first you're asked: "A new Codex chat will start with the whole turn
    containing this message, and this chat is kept. The new chat can't change files without
    asking, and doesn't keep the original's model, effort, Chat Options or connected tools. Change
@@ -381,6 +381,7 @@ These need a server that really asks. Try with Claude, then with Codex.
    each Codex turn. Codex can change files in these folders only when its permission mode lets it
    edit files." and, for a chat already started, "A folder you remove is left out of the next turn.
    Changes apply when you choose OK." On OK, you hear "Checking the new chat options with Codex."
+   Try a change during a turn. Expect: you're told to wait until the chat is idle.
 
 ## 9. Live changes, thinking and retries
 
@@ -389,7 +390,7 @@ These need a server that really asks. Try with Claude, then with Codex.
    turn. Change the mode twice quickly. Expect: the heading stays on your last choice.
 2. When Claude switches itself to plan mode, you hear "Claude switched to plan mode.", without
    it cutting off what's being read, and the next turn stays in plan mode until you approve the plan.
-   If you change the mode from your phone or a terminal to one that asks less, you hear "Claude
+   If you change the mode from your phone over Remote Control to one that asks less, you hear "Claude
    switched to … mode for this turn. Later turns start in … mode."
 3. **Thinking.** Turn on Show Tool Activity (Ctrl+T). In Claude, where Claude Code saved its thinking, it comes
    before the reply. In Codex, reasoning summaries appear, live and in history. Expect: a summary is
@@ -405,10 +406,11 @@ These need a server that really asks. Try with Claude, then with Codex.
 
 Use a Codex chat started here.
 
-1. **Model and effort.** While it's idle, use File, **Change Model**, then **Change Effort**. Expect:
-   the choices come from Codex, the first is "Codex's default", Change Effort's label is "Effort
-   for" the chat's name ", from its next turn:" and its choices read as words ("Extra high", not
-   "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
+1. **Model and effort.** While it's idle and on Codex's default model, use File, **Change
+   Effort**. Expect: "Choose an available Codex model first." Use **Change Model**. Expect: the
+   models Codex offers, with no "Codex's default" row. Choose one, then use **Change Effort**.
+   Expect: the first choice is "Codex's default", the label is "Effort for" the chat's name ",
+   from its next turn:" and the choices read as words ("Extra high", not "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
    applies from the next message. Cancel a picker once: the old choice stays. Try during a turn.
    Expect: you're told to wait or stop first. New Session's Model and Effort for Codex, and
    Properties (Alt+Enter) on a Codex chat left on the default, also say "Codex's default".
@@ -427,7 +429,7 @@ Use a Codex chat started here.
 7. **Memories.** Send `/memories off`, then `/memories on`. Expect: "Codex memories are off for"
    the chat's name, then "on for". Your saved memories aren't deleted.
 8. **Goals.** Send `/goal`. Expect: its Goal and usage, or "No goal is set for this chat". With a
-   Goal set in the Codex app, `/goal pause` says "Goal paused for" the chat's name, and `/goal
+   Goal set in Codex, `/goal pause` says "Goal paused for" the chat's name, and `/goal
    clear` "Goal cleared for" it.
 9. **Session tools.** Ask the chat to list your sessions, look up itself, and search for a word in
    a test chat. Expect: it can, and it leaves itself out of the list. Ask it to hide an idle test

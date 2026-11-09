@@ -382,8 +382,8 @@ you choose goes in as <code>$name</code> and is sent with your next message. If 
 memories, choose <code>/memories off</code> from Ctrl+/ and send it.</p>
 <p>For this chat alone, use <strong>Chat Options</strong> (Alt+H in New Session or Continue Here;
 File, Chat Options later). Instructions are sent with each Codex turn. Codex can change files in
-the more folders only when its permission mode lets it edit files. Changes are saved while the chat
-is idle, and a folder you remove is left out of the next turn.</p>
+the more folders only when its permission mode lets it edit files. Change them while the chat is
+idle; during a turn you're told to wait. A folder you remove is left out of the next turn.</p>
 <h3>Codex: follow delegated work and progress</h3>
 <p><strong>View, Subagents</strong> lists the work Codex handed to subagents, including ones another subagent
 started and ones Codex has archived. Read Conversation opens one. A subagent's request says which
@@ -420,6 +420,8 @@ running, and not in Ask Aside.</p>
   servers again. A tool's forms and web pages come up in Answer (Ctrl+Shift+A), as for Claude; a
   request The Chat Place can't show at all is declined for you.</li>
 <li><strong>A harder or lighter job:</strong> File, <strong>Change Model</strong> and <strong>Change Effort</strong> work while the chat is idle.
+  Change Effort needs a model chosen with Change Model first: on Codex's default model, it says
+  "Choose an available Codex model first."
   See <a href="https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md">Choosing a model in Codex</a>.</li>
 <li><strong>Pictures and files:</strong> <strong>Ctrl+Shift+F</strong> (File, Attach Files) adds them to your next message.</li>
 </ul>
@@ -735,7 +737,7 @@ your next message. That setting applies only to Claude.</p>
 </tr>
 <tr>
 <td>Service trouble</td>
-<td>Waver: two low notes wavering, when the AI is retrying, moved to another model or lost its connection, or the service cut its turn short without you stopping it. A turn that ends with an error is Turn failed</td>
+<td>Waver: two low notes wavering, when Claude is retrying or has moved to another model, or a Codex or Copilot chat has a connection problem or its turn was cut short without you stopping it. Codex and Copilot retries are only spoken. A turn that ends with an error is Turn failed</td>
 </tr>
 <tr>
 <td>Usage or context warning</td>
@@ -1437,7 +1439,7 @@ editable.</p>
   compacting so Codex has applied those settings to the loaded conversation.</li>
 <li><strong>Memory controls.</strong> <code>/memories on</code> and <code>/memories off</code> choose whether this chat uses and
   contributes to Codex memories.</li>
-<li><strong>Goal controls.</strong> <code>/goal</code> reads the chat's Goal, set in the Codex app, and its usage; <code>/goal pause</code>
+<li><strong>Goal controls.</strong> <code>/goal</code> reads the chat's Goal, set in Codex, and its usage; <code>/goal pause</code>
   pauses it and <code>/goal clear</code> clears it. Starting a Goal, or carrying one on, isn't available here.</li>
 <li><strong>Background work.</strong> File, <strong>Stop Background Task</strong> lists the commands running in the background
   and stops just the one you choose; you hear if it had already finished. It's available in any
@@ -1464,7 +1466,7 @@ questions". These limits apply to every Codex chat started here:</p>
   a tool on, after asking. Tools can reach websites and services outside the chat's folder, so
   turn on only tools you trust. The Chat Place checks the chat's tools before each turn and keeps
   every other server, app and plugin off. Your Codex settings aren't changed.</li>
-<li><strong>No Goals that run by themselves.</strong> You can read, pause or clear a Goal set in the Codex app,
+<li><strong>No Goals that run by themselves.</strong> You can read, pause or clear a Goal set in Codex,
   but can't start one or carry it on here. Codex's own Goal tools are turned off, so a later turn
   can't get around the chat's sign-in and permission checks.</li>
 <li><strong>Your saved command rules still apply.</strong> These are the commands you've told Codex to always
@@ -1853,9 +1855,10 @@ turn first. The chat keeps its history, and the new mode applies from its next m
 before its first. Until the new mode has been checked with Codex and saved, the old one stays in
 effect. If that fails, sending stays off: press <strong>Stop</strong> (Ctrl+Period) to have The Chat Place
 check the chat with Codex, or try Change Permission Mode again. Nothing is sent while it checks.
-<strong>Change Model</strong> and <strong>Change Effort</strong> also work when the chat is idle, with choices from Codex,
-the first being <strong>Codex's default</strong>; once checked with Codex and saved, they apply from the next
-message. Codex's Plan mode is separate: use <code>/plan</code>
+<strong>Change Model</strong> and <strong>Change Effort</strong> also work when the chat is idle, with choices from Codex;
+once checked with Codex and saved, they apply from the next message. Change Effort's first choice
+is <strong>Codex's default</strong>. It needs a model chosen from Codex's list first: on Codex's default model,
+it says "Choose an available Codex model first." Codex's Plan mode is separate: use <code>/plan</code>
 in Insert Command or Skill (Ctrl+/) to choose Plan or Default without changing permissions.</p>
 <p>Chats started elsewhere are set in the app or terminal where they run, so for them these items
 say so and change nothing.</p>
@@ -1896,8 +1899,9 @@ instructions.</p>
 <p>For Codex, the dialog has <strong>Instructions for this chat</strong> and <strong>More folders</strong> only, and its note
 says how they work: instructions are sent with each Codex turn, and Codex can change files in
 the more folders only when its permission mode lets it edit files. For a chat already started,
-a folder you remove is left out of the next turn. Changes apply when you choose OK: they're
-checked with Codex and saved once the chat is idle.</p>
+a folder you remove is left out of the next turn. Change them while the chat is idle; during a
+turn you're told to wait. Changes apply when you choose OK, once they've been checked with Codex
+and saved.</p>
 <h3>Ask Aside: a question about a chat</h3>
 <p>To ask Claude something about a chat without adding to it, such as "which file did you change
 for the login bug?", press <strong>Ctrl+Shift+Y</strong> (File, Ask Aside, or Ask Aside on a chat's menu in
@@ -1996,7 +2000,7 @@ otherwise it's on the status bar.</p>
 <p>You also hear when Claude changes a chat's permission mode by itself, such as when it starts
 planning: "Claude switched to plan mode." A change to plan mode, or to one that asks more often,
 stays with the chat. A mode that lets Claude do more without asking, such as one you chose from
-your phone over Remote Control or in a terminal, applies to that turn only:
+your phone over Remote Control, applies to that turn only:
 "Claude switched to auto mode for this turn. Later turns start in manual mode."</p>
 <p><strong>Ctrl+Shift+T</strong> (Turn Status) says how long the AI has been working on this turn and what it last
 did, or what is still running in the background, whether Claude is retrying, and how far along
@@ -2048,8 +2052,10 @@ went back from is always kept as it was, in the list.</p>
   or press Escape to change nothing.</p>
 <p>Going back in the conversation makes a new chat of your own, "&lt;title&gt; (rewound)", in the
   same folder. Its conversation is the original's up to just before your message, and your
-  message is in its reply box to change and send. Until you send it, the messages list says
-  "No messages yet. This chat is a new copy of &lt;title&gt;, up to the point you chose. Send a
+  message is in its reply box to change and send. Until you send it, the messages list has a
+  message that begins "No messages yet. This chat is a new copy of &lt;title&gt;, up to the point you chose. Send a
+  message to start it." Rewinding to your first message instead says "No messages yet. This
+  chat goes back to before your first message in &lt;title&gt;, so it starts with no history. Send a
   message to start it." It starts on the original's model,
   effort and permission mode, Chat Options (agent, instructions, output style and more folders)
   and connected tools turned off, with no commands allowed for the chat yet. This works for any Claude
@@ -2087,7 +2093,8 @@ Codex's, including any later messages in that turn. It works only on a turn Code
 branching from a turn that's running waits for it to finish. Both keep the original chat.</p>
 <p>A Codex copy can't change files without asking, and doesn't keep the original's model, effort,
 Chat Options, connected tools, automatic approval review or Plan mode. Branch from Here says so
-before it makes one, and you hear it again when the copy opens: "Opened &lt;title&gt; (rewound). It
+before it makes one, and you hear it again when the copy opens, for example after Rewind to
+Here: "Opened &lt;title&gt; (rewound). It
 can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The
 original chat is kept. Change your message and send when ready." To let the copy edit files,
 press <strong>Ctrl+Shift+O</strong> (File, Change Permission Mode) in it.</p>
