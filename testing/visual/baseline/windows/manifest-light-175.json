@@ -1266,6 +1266,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "File, Sounds on a scheme of your own"
+  },
+  "sound-tutorial-from-sounds": {
+   "kind": "dialog",
+   "png": "sound-tutorial-from-sounds-light-175.png",
+   "json": "sound-tutorial-from-sounds-light-175.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    770,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
   }
  },
  "seconds": 94.1
