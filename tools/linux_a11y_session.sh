@@ -25,14 +25,10 @@ export XDG_CONFIG_HOME="$(mktemp -d)" XDG_DATA_HOME="$(mktemp -d)"
 if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -w "$XDG_RUNTIME_DIR" ]; then
     XDG_RUNTIME_DIR="$(mktemp -d)"; chmod 700 "$XDG_RUNTIME_DIR"; export XDG_RUNTIME_DIR
 fi
-# Orca buffers its debug log, so a check reading it while Orca runs saw
-# nothing; Orca runs orca-customizations.py at start, with the log open.
+# Orca runs orca-customizations.py at start: here, a debug log written a line
+# at a time, and Orca 46's mistaken dead objects corrected (#579). See the file.
 mkdir -p "$XDG_DATA_HOME/orca"
-cat > "$XDG_DATA_HOME/orca/orca-customizations.py" <<'PY'
-from orca import debug
-if debug.debugFile is not None:
-    debug.debugFile.reconfigure(line_buffering=True)
-PY
+cp tools/orca-customizations.py "$XDG_DATA_HOME/orca/orca-customizations.py" || exit 1
 for launcher in /usr/libexec/at-spi-bus-launcher /usr/lib/at-spi2-core/at-spi-bus-launcher; do
     if [ -x "$launcher" ]; then "$launcher" --launch-immediately >/dev/null 2>&1 & break; fi
 done
