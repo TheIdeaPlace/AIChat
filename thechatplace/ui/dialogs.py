@@ -5683,6 +5683,12 @@ class ConnectedToolsDialog(wx.Dialog):
         self.host.set_off(server, not server.off_for_chat, done)
 
 
+#: After why a form can't be shown: what its two buttons then do. Neutral,
+#: as Codex's connected tools ask through this dialog too.
+FORM_PROBLEM_CHOICES = ("Decline tells the tool no. Answer Later leaves the turn waiting until "
+                        "you come back and decline, or stop the turn.")
+
+
 class ElicitationDialog(wx.Dialog):
     """A connected tool (an MCP server) asking for input mid-turn (#468),
     opened with Answer (Ctrl+Shift+A) like Claude's own requests.
@@ -5696,7 +5702,8 @@ class ElicitationDialog(wx.Dialog):
     server filled in for you, so it says where to go instead. With nothing to
     fill in it's the same, as Send is then the whole answer: "Delete the
     production table?" with no fields is confirmed by sending. A form that
-    can't be shown has only Decline.
+    can't be shown has only Decline and Answer Later, and its note says what
+    each does.
 
     A page to open has Open in Browser instead of the form, and opens on an
     Address box above the message. That box is The Chat Place's words about
@@ -5737,7 +5744,10 @@ class ElicitationDialog(wx.Dialog):
             outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-            self.note_text = _read_only_text(self, problem, "Note", min_height=60)
+            # It never can be shown, so "answer later" needs saying what it's
+            # for: leaving the request open, not a second try (#596).
+            self.note_text = _read_only_text(self, f"{problem} {FORM_PROBLEM_CHOICES}", "Note",
+                                             min_height=60)
             outer.Add(self.note_text, 0, box_flags, 8)
         outer.Add(wx.StaticText(self, label="&Message:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
         self.message_text = _read_only_text(self, request.detail(), "Message", min_height=110)

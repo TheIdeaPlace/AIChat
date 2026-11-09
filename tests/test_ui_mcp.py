@@ -822,6 +822,10 @@ def test_a_form_it_cant_show_has_only_decline_and_later(frame, env, monkeypatch)
     def drive(dialog):
         assert dialog.send_btn is None and dialog.fields == []
         assert "can't show (Trip)" in dialog.note_text.GetValue()
+        # What Answer Later does, as the form will never be shown (#596).
+        assert dialog.note_text.GetValue().endswith(
+            "Decline tells the tool no. Answer Later leaves the turn waiting until you come "
+            "back and decline, or stop the turn.")
         assert dialog.note_text.GetName() == "Note"
         assert dialog.form_panel is None
         assert "Where would you like to go" in dialog.message_text.GetValue()
