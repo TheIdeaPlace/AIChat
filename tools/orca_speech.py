@@ -210,6 +210,21 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Change Permission Mode for a Codex chat (#596, decision 17): Plan is its
+    # last choice. It starts on the chat's own mode, marked "(now)"; in Plan,
+    # on Plan, and Up reaches the file access rows. Before the Chat Options
+    # steps, not between them: Claude's Chat Options loads its folder's
+    # agents in the background, and right after these its first Tab came
+    # before that, so focus went back to Agent (#609's CI).
+    Step("Codex Change Permission Mode", [], trigger="codex-change-mode",
+         expect=["automatic approval review", "(now)"]),
+    Step("Codex Plan choice", ["Down"], expect=["Plan: discuss and produce a plan first"]),
+    Step("Close Codex Change Permission Mode", ["Escape"], expect=["Messages in Visual probe"]),
+    Step("Codex Change Permission Mode in Plan", [], trigger="codex-change-mode-plan",
+         expect=["Plan: discuss and produce a plan first", "(now)"]),
+    Step("Codex file access from Plan", ["Up"],
+         expect=["Can edit files in this folder", "(file access now)"]),
+    Step("Close Codex Change Permission Mode in Plan", ["Escape"], expect=["Messages in Visual probe"]),
     # File, Chat Options (#468), opened by the trigger: the item has no access
     # key. It opens on Agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
@@ -219,18 +234,6 @@ STEPS = [
     Step("Codex more folders", ["Tab"], expect=["More folders"]),
     Step("Codex add folder", ["Tab"], expect=["Add Folder"]),
     Step("Close Codex Chat Options", ["Escape"]),
-    # Change Permission Mode for a Codex chat (#596, decision 17): Plan is its
-    # last choice. It starts on the chat's own mode, marked "(now)"; in Plan,
-    # on Plan, and Up reaches the file access rows.
-    Step("Codex Change Permission Mode", [], trigger="codex-change-mode",
-         expect=["automatic approval review", "(now)"]),
-    Step("Codex Plan choice", ["Down"], expect=["Plan: discuss and produce a plan first"]),
-    Step("Close Codex Change Permission Mode", ["Escape"]),
-    Step("Codex Change Permission Mode in Plan", [], trigger="codex-change-mode-plan",
-         expect=["Plan: discuss and produce a plan first", "(now)"]),
-    Step("Codex file access from Plan", ["Up"],
-         expect=["Can edit files in this folder", "(file access now)"]),
-    Step("Close Codex Change Permission Mode in Plan", ["Escape"]),
     Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Agent"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
