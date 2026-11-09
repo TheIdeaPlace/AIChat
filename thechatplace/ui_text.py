@@ -19,6 +19,21 @@ def key_name(shortcut: str, platform=None) -> str:
             .replace(" Option+Return on a Mac", ""))
 
 
+#: The first choice of a Codex chat's model or effort, and how Properties
+#: names it: whatever Codex itself is set to use. One name everywhere (#596),
+#: not "Configured Codex model" here and "Configured effort" there.
+CODEX_DEFAULT = "Codex's default"
+
+
+def with_stop_key(text: str, platform=None) -> str:
+    """A provider's "Press Stop to ..." with Stop's key added, the first time
+    it's named (#596): the provider says what Stop does, and the window,
+    which owns the keys, names the key."""
+    if not text or "Press Stop (" in text:
+        return text
+    return text.replace("Press Stop ", f"Press Stop ({key_name('Ctrl+Period', platform)}) ", 1)
+
+
 SHORTCUTS_PLATFORM_NOTE = (
     "This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, "
     "Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver: VO+M), "

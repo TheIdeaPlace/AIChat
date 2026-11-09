@@ -123,14 +123,14 @@
     23
    ],
    "best": [
-    161,
+    109,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex model"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
@@ -162,14 +162,14 @@
     23
    ],
    "best": [
-    156,
+    109,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex effort"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
@@ -285,7 +285,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
+   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave them on Codex's default. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
   },
   {
    "class": "StaticText",

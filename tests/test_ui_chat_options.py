@@ -1258,6 +1258,8 @@ def test_codex_chat_options_hide_claude_choices_and_keep_instructions_and_folder
         assert not dialog.agent.IsShown() and not dialog.style.IsShown()
         assert dialog.options() == ChatOptions(instructions='Read carefully.')
         assert dialog.chosen_folders() == [folder]
-        assert 'writable only' in dialog.note.GetValue()
+        # No made-up "Folder edits mode" (#596); a new chat has no "next turn" to drop a folder from.
+        assert dialog.note.GetValue() == ('Instructions are sent with each Codex turn. Codex can change '
+                                          'files in these folders only when its permission mode lets it edit files.')
     finally:
         dialog.Destroy()

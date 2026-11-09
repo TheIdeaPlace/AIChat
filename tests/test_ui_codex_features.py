@@ -8,6 +8,7 @@ wx = pytest.importorskip('wx')
 from test_ui_hidden import env, frame  # noqa: F401,E402
 from fake_env import pump  # noqa: E402
 from thechatplace.own_store import OwnSession  # noqa: E402
+from thechatplace.ui_text import key_name  # noqa: E402
 from thechatplace.providers.codex import transcript_from_thread  # noqa: E402
 from test_codex_provider import history  # noqa: E402
 
@@ -39,6 +40,29 @@ def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, en
     assert opened[0].cli_session_id != record.cli_session_id
     assert frame._codex_drafts[opened[0].key] == 'Hi'
     assert frame.store.get(record.cli_session_id, provider='codex') is record
+    # The copy can't change files without asking, and says so, briefly, as it opens (#596).
+    assert env['feedback'][-1] == ("Opened Codex original (rewound). It can't change files without asking; "
+        f'Change Permission Mode ({key_name("Ctrl+Shift+O")}) lets it edit. The original chat is kept. '
+        'Change your message and send when ready.')
+
+
+def test_codex_branch_says_what_the_copy_can_do_before_and_after(frame, env, monkeypatch):
+    record = owned(frame, env)
+    message = transcript_from_thread(history()).messages[0]
+    asked, opened = [], []
+    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before:
+                        OwnSession('branch-copy', title, info.cwd, provider='codex'))
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame._branch_codex(record.to_info(), message)
+    assert pump(lambda: opened)
+    from thechatplace.ui.codex_extras import copy_note
+    assert asked == ['A new Codex chat will start with the whole turn containing this message, and this '
+                     'chat is kept. ' + copy_note() + ' Branch here?']
+    assert env['feedback'][-1] == ('Opened Codex original (branch). ' + copy_note(short=True)
+                                   + ' The original chat is kept.')
 
 
 def test_codex_attachments_are_separate_from_a_claude_chat_with_the_same_id(frame, env):
@@ -128,7 +152,7 @@ def test_client_command_keeps_the_draft_below_it(frame, env, monkeypatch):
 def test_connected_tools_note_names_the_app_in_full(frame, env):
     from thechatplace.ui.codex_tools_host import CodexConnectedTools
     note = CodexConnectedTools(frame, owned(frame, env).to_info()).note()
-    assert "questions that The Chat Place cannot display" in note and "TCP" not in note
+    assert "something The Chat Place can't show" in note and "TCP" not in note
 
 
 def test_tool_copy_is_serial_and_does_not_navigate_after_dialog_closes(frame, env, monkeypatch):
@@ -321,20 +345,22 @@ def test_background_list_does_not_open_after_focus_moved(frame, env, monkeypatch
     assert "you've moved on" in env['feedback'][-1]
 
 
-@pytest.mark.parametrize('answer,said', [({'terminated': False}, 'That terminal had already finished.'),
-                                         ({'terminated': True}, 'Codex terminal stopped.')])
+@pytest.mark.parametrize('answer,said', [({'terminated': False}, 'That background task had already finished.'),
+                                         ({'terminated': True}, 'Background task stopped.')])
 def test_stop_background_task_says_what_codex_found(frame, env, monkeypatch, answer, said):
     record = owned(frame, env)
     calls = _controls(frame, monkeypatch, {
         'thread/backgroundTerminals/list': {'data': [{'processId': 'one', 'command': 'npm test'}]},
         'thread/backgroundTerminals/terminate': answer})
-    offered = []
-    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k: offered.append(rows) or 0)
-    monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.YES)
+    offered, asked = [], []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k: offered.append((title, prompt, rows)) or 0)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
     frame.on_stop_background_task()
-    assert offered == [['npm test']]
+    # "Background task", as the menu says, not "terminal" (#596).
+    assert offered == [('Stop Background Task', f'Background tasks in {record.title}. Stop which?', ['npm test'])]
+    assert asked == ['Stop npm test? The turn and other background tasks carry on.']
     assert calls[-1][1] == ('thread/backgroundTerminals/terminate', {'processId': 'one'})
-    assert env['feedback'][-1] == said
+    assert env['feedback'][-2:] == ['Stopping the background task.', said]
 
 
 def test_stop_background_task_says_none_are_running_and_is_on_for_a_codex_chat(frame, env, monkeypatch):
@@ -343,7 +369,7 @@ def test_stop_background_task_says_none_are_running_and_is_on_for_a_codex_chat(f
     frame._update_send_state()
     assert frame.stop_background_item.IsEnabled()
     frame.on_stop_background_task()
-    assert env['feedback'][-1] == 'No background terminals are running in this Codex chat.'
+    assert env['feedback'][-1] == 'No background tasks are running in this Codex chat.'
     frame._open = None
     frame._update_send_state()
     assert not frame.stop_background_item.IsEnabled()
@@ -379,7 +405,7 @@ def test_a_failed_setting_change_is_said_once_and_says_what_was_changing(frame, 
     said = []
     monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
     frame._change_codex_settings(record.to_info(), 'model')
-    assert env['feedback'][-2:] == ['Verifying the Codex model.',
+    assert env['feedback'][-2:] == ['Checking the new model with Codex.',
                                     'Could not change the Codex model. The chat keeps its current one.']
     assert not frame._codex_policy_pending and not said
 
@@ -429,6 +455,69 @@ def test_models_do_not_open_after_focus_moved(frame, env, monkeypatch):
     monkeypatch.setattr(frame, '_choose', lambda *a, **k: pytest.fail('Opened by itself'))
     frame._change_codex_settings(record.to_info(), 'model')
     assert not calls and "you've moved on" in env['feedback'][-1]
+
+
+def test_a_setting_codex_did_not_confirm_says_why_to_press_stop(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))))
+    real = frame.sessions.owned_action
+
+    def action(name, rec, *args):
+        if name == 'finish_policy':
+            raise ValueError('')
+        return real(name, rec, *args)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == (f"Codex didn't confirm the new model. Press Stop ({key_name('Ctrl+Period')}) to have "
+                                   'The Chat Place check this chat with Codex before you send again.')
+
+
+def test_a_setting_change_the_runtime_latched_says_its_problem_with_stops_key(frame, env, monkeypatch):
+    """The usual failure (#596): finish_policy latches the chat's problem,
+    which the runtime words with what Stop does, and the window adds the key."""
+    from thechatplace.providers.codex_runtime import CodexChatState, STOP_TO_RECHECK
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))))
+    real = frame.sessions.owned_action
+    latched = "The new model or effort couldn't be saved, or Codex didn't confirm the change. " + STOP_TO_RECHECK
+
+    def action(name, rec, *args):
+        if name == 'finish_policy':
+            frame._codex_states[record.to_info().key] = CodexChatState(
+                record.cli_session_id, STATUS_UNAVAILABLE, problem=latched)
+            return None
+        return real(name, rec, *args)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == latched.replace('Press Stop ', f'Press Stop ({key_name("Ctrl+Period")}) ')
+    assert 'Use Stop' not in env['feedback'][-1]
+
+
+def test_the_effort_picker_names_codexs_default_and_reads_as_words(frame, env, monkeypatch):
+    from thechatplace.providers.codex_models import CodexModel
+    record = owned(frame, env)
+    record.provider_options['model'] = 'new'
+    _change(frame, monkeypatch)
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('new', 'New model', ('low', 'xhigh'), 'low', True)], False))
+    offered = []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k: offered.append((title, prompt, rows)))
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert offered == [('Change Effort', f'Effort for {record.title}, from its next turn:',
+                        ["Codex's default", 'Low', 'Extra high'])]
+
+
+@pytest.mark.parametrize('command, said', [('/memories on', 'Codex memories are on for Codex original.'),
+                                           ('/goal clear', 'Goal cleared for Codex original.')])
+def test_a_control_says_what_is_now_so(frame, env, monkeypatch, command, said):
+    from thechatplace.ui.codex_extras import CONTROLS
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {CONTROLS[command][0]: {}})
+    frame._codex_control(record.to_info(), command)
+    assert env['feedback'][-1] == said
 
 
 def test_a_setting_that_could_not_be_saved_says_so_without_stop(frame, env, monkeypatch):

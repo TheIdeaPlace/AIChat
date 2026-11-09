@@ -16,7 +16,10 @@ from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE
 from ..own_store import OwnSession
 from .. import platform_paths
 
-STOP_TO_RECHECK = 'Use Stop to recheck this chat before sending.'
+#: What a latched problem ends with: Stop is the recheck (#385), so say what
+#: pressing it does (#596). The window adds Stop's key (ui_text.with_stop_key),
+#: which is the UI's to name, not the provider's.
+STOP_TO_RECHECK = 'Press Stop to have The Chat Place check this chat with Codex before you send again.'
 #: What each kind of change is called when it can't be confirmed.
 _CHANGING = {'permissions': 'permissions', 'settings': 'model or effort', 'mode': 'mode'}
 _KEEP = object()
@@ -403,7 +406,7 @@ class CodexChatRuntime:
                     # The chat exists here, unlike New Session, so say how to
                     # clear the latch (#257): Stop rechecks the saved grant,
                     # or resumes a chat that is not loaded here.
-                    reason = safe_reason(error) or 'Could not verify changed permissions.'
+                    reason = safe_reason(error) or "Codex didn't confirm the new permissions."
                     if STOP_TO_RECHECK not in reason:
                         reason += ' ' + STOP_TO_RECHECK
                     self._problems[native_id] = reason
@@ -434,7 +437,8 @@ class CodexChatRuntime:
             elif change.subject != 'permissions' and verified:
                 pass  # Not saved: the record went back and the proof never moved.
             elif self._problems.get(native_id) == change.problem:
-                reason = f'The changed {_CHANGING[change.subject]} could not be saved or verified. ' + STOP_TO_RECHECK
+                reason = (f"The new {_CHANGING[change.subject]} couldn't be saved, or Codex didn't "
+                          'confirm the change. ' + STOP_TO_RECHECK)
                 self._problems[native_id] = reason
                 if verified and self._proofs.get(native_id) is change.previous:
                     self._policy_recoveries[native_id] = (change.previous, reason, change.saved_record)

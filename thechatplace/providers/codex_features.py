@@ -120,5 +120,5 @@ def terminal_stopped_text(result):
     """What Stop Background Task says. Codex answers ``terminated: False`` for
     a process that has already ended, which is not a stop."""
     if isinstance(result, dict) and result.get('terminated') is False:
-        return 'That terminal had already finished.'
-    return 'Codex terminal stopped.'
+        return 'That background task had already finished.'
+    return 'Background task stopped.'

@@ -46,7 +46,7 @@
    ],
    "best": [
     192,
-    38
+    158
    ],
    "depth": 0,
    "parent": -1,
@@ -96,7 +96,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Mo&del:",
+   "label": "Model:",
    "rect": [
     10,
     105,
@@ -123,19 +123,19 @@
     38
    ],
    "best": [
-    272,
+    184,
     38
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex model"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Effort:",
+   "label": "Effort:",
    "rect": [
     10,
     151,
@@ -162,14 +162,14 @@
     38
    ],
    "best": [
-    265,
+    184,
     38
    ],
    "depth": 0,
    "parent": -1,
    "enabled": false,
    "problems": [],
-   "value": "Configured Codex effort"
+   "value": "Codex's default"
   },
   {
    "class": "StaticText",
@@ -211,12 +211,50 @@
    "value": "Read-only; asks before allowing changes"
   },
   {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hat Options...",
+   "rect": [
+    183,
+    240,
+    173,
+    42
+   ],
+   "best": [
+    173,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "None chosen",
+   "rect": [
+    364,
+    245,
+    792,
+    31
+   ],
+   "best": [
+    124,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "About &continuing:",
    "rect": [
     10,
-    242,
+    292,
     168,
     31
    ],
@@ -235,19 +273,19 @@
    "label": "This starts a Chat Place session that is a copy of this session, with its whole conversation so far, so you can carry on and reply here. The original, in the desktop app or a terminal, isn't changed, and replies here don't appear in it. The copy starts with nothing allowed beyond its permission mode.\r\n\r\nThe permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
    "rect": [
     12,
-    275,
+    325,
     1146,
-    351
+    291
    ],
    "best": [
     222,
-    351
+    308
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave the configured defaults. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
+   "value": "This chat may still be working in Codex. The copy starts from the last saved point with the permissions selected here. Your saved always-allow commands still apply.\n\nCodex uses your ChatGPT sign-in. Choose a model and effort level, or leave them on Codex's default. Choose read-only or allow edits in this folder, with human or automatic approval review. Human requests appear in Answer. Permissions "
   },
   {
    "class": "StaticText",
@@ -255,7 +293,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    634,
+    624,
     131,
     31
    ],
@@ -274,9 +312,9 @@
    "label": "",
    "rect": [
     12,
-    677,
+    667,
     1146,
-    149
+    159
    ],
    "best": [
     222,

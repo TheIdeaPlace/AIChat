@@ -18,7 +18,7 @@ from ..agents import provider_name
 from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name
+from ..ui_text import key_name, with_stop_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
@@ -42,7 +42,7 @@ class CodexChats(SoundHost, CodexExtras):
         if state is None:
             return f'No {name} turn is running in this chat.'
         if state.problem:
-            return state.problem
+            return with_stop_key(state.problem)
         if state.state == STATUS_UNAVAILABLE:
             return f'{name} status is unavailable. Use Stop ({key_name("Ctrl+Period")}) to recheck this chat.'
         if state.requests:
@@ -179,7 +179,7 @@ class CodexChats(SoundHost, CodexExtras):
         if state is not None and state.notice:
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         if state is not None and state.problem and not message:
-            self._say(f'{record.title}: {state.problem}', interrupt=False)
+            self._say(f'{record.title}: {with_stop_key(state.problem)}', interrupt=False)
 
     def _change_copilot_model(self, info):
         """File, Change Model for a Copilot chat: the models Copilot offers
@@ -391,7 +391,7 @@ class CodexChats(SoundHost, CodexExtras):
         earlier = self._codex_states.get(info.key)
         earlier_problem = earlier.problem if earlier is not None else ''
         self._codex_policy_pending.add(info.key)
-        self._feedback('Verifying Codex permissions.')
+        self._feedback('Checking the new permissions with Codex.')
         def failure(fallback):
             # The runtime's update for a latched problem arrives first (both
             # come through wx.CallAfter, in order) but is not spoken while the
@@ -401,9 +401,9 @@ class CodexChats(SoundHost, CodexExtras):
             state = self._codex_states.get(info.key)
             problem = state.problem if state is not None else ''
             text = problem if problem and problem != earlier_problem else fallback
-            if problem and 'use stop' not in text.lower():
+            if problem and 'use stop' not in text.lower() and 'press stop' not in text.lower():
                 text += ' ' + STOP_TO_RECHECK
-            self._feedback(text)
+            self._feedback(with_stop_key(text))
         def prepared(change, error):
             if error:
                 failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
@@ -421,7 +421,8 @@ class CodexChats(SoundHost, CodexExtras):
                 state = self._codex_states.get(info.key)
                 # A problem that arrived meanwhile also stops the new mode.
                 if failed or not saved or (state is not None and state.problem):
-                    failure('Changed Codex permissions could not be saved or confirmed. Use Stop to recheck the saved permissions before sending.')
+                    failure("The new Codex permissions couldn't be saved, or Codex didn't confirm "
+                            'the change. ' + STOP_TO_RECHECK)
                 else:
                     self._codex_policy_pending.discard(info.key)
                     label = next(label for value, label in choices if value == selected)
@@ -820,7 +821,7 @@ class CodexChats(SoundHost, CodexExtras):
             # yet: its preparation's done() says a mode problem still left
             # (#424).
             self._sound(sound_events.TROUBLE, key)
-            self._say(f'{record.title}: {state.problem}', interrupt=False)
+            self._say(f'{record.title}: {with_stop_key(state.problem)}', interrupt=False)
         from ..providers.copilot_runtime import notice_to_say
         new_notice = notice_to_say(previous.notice if previous is not None else '', state.notice)
         if new_notice:

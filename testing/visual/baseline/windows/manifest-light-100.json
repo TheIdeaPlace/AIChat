@@ -575,7 +575,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    666
+    697
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1135,7 +1135,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    635
+    666
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1453,7 +1453,7 @@
    "kind": "dialog",
    "png": "codex-collaboration-light-100.png",
    "json": "codex-collaboration-light-100.json",
-   "title": "Codex Collaboration Mode",
+   "title": "Plan Mode",
    "class": "SingleChoiceDialog",
    "size": [
     374,
@@ -1461,7 +1461,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Choose native Codex Plan or Default mode"
+   "about": "Choose Codex Plan or Default mode"
   },
   "codex-rewind": {
    "kind": "dialog",
