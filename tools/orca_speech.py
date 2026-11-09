@@ -194,8 +194,14 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Chat Options (#468): Codex's by the trigger, Claude's by File, Chat
-    # Settings. It opens on Run as agent, and Tab goes through every control in turn. The
+    # File, Chat Settings (#596), by its access key: the submenu opens on
+    # Change Model. Escape twice closes it and the File menu.
+    Step("File, Chat Settings", ["alt+f", "i"], expect=["Chat Settings", "Change Model"]),
+    Step("Chat Settings closed, back in the messages", ["Escape", "Escape"],
+         expect=["Messages in Visual probe"], refuse=["Session list"]),
+    # Chat Options (#468), opened by the trigger: opened from the menu, the
+    # menu's closing put Orca's reading a Tab behind on GTK. It opens on Run
+    # as agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
     Step("Codex Chat Options", [], trigger="codex-chat-options",
@@ -203,10 +209,7 @@ STEPS = [
     Step("Codex more folders", ["Tab"], expect=["More folders"]),
     Step("Codex add folder", ["Tab"], expect=["Add Folder"]),
     Step("Close Codex Chat Options", ["Escape"]),
-    # File, Chat Settings (#596), by its access keys: the submenu opens on
-    # Change Model, and O is Chat Options.
-    Step("File, Chat Settings", ["alt+f", "i"], expect=["Change Model"]),
-    Step("Chat Options", ["o"], expect=["Chat Options: Visual probe", "Run as agent"],
+    Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Run as agent"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
@@ -485,6 +488,13 @@ def stop_background_task(frame) -> None:
     wx.CallAfter(frame.on_stop_background_task)
 
 
+def chat_options(frame) -> None:
+    """File, Chat Settings, Chat Options on the probe's own session, open by
+    then (#468, #596). After the timer's call, as the dialog is modal."""
+    import wx
+    wx.CallAfter(frame.on_chat_options)
+
+
 def new_session_start_from(frame, in_use: bool = False) -> None:
     """New Session on a made-up repository with a remote (#561): A new
     worktree chosen and a new branch typed, so Start from is on, and the
@@ -634,6 +644,7 @@ TRIGGERS = {
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
     "codex-chat-options": lambda frame, env: _codex_dialog("d_codex_chat_options", frame, env),
+    "chat-options": lambda frame, env: chat_options(frame),
     "sounds": lambda frame, env: frame.on_sounds(),
     "start-from": lambda frame, env: new_session_start_from(frame),
     "branch-in-use": lambda frame, env: new_session_start_from(frame, in_use=True),
