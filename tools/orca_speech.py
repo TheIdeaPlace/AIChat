@@ -195,9 +195,9 @@ STEPS = [
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # File, Chat Settings (#596), by its access key: the submenu opens on
-    # Change Model. Escape twice closes it and the File menu.
+    # Change Model. On GTK one Escape closes it and the File menu together.
     Step("File, Chat Settings", ["alt+f", "i"], expect=["Chat Settings", "Change Model"]),
-    Step("Chat Settings closed, back in the messages", ["Escape", "Escape"],
+    Step("Chat Settings closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"], refuse=["Session list"]),
     # Chat Options (#468), opened by the trigger: opened from the menu, the
     # menu's closing put Orca's reading a Tab behind on GTK. It opens on Run
