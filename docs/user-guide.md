@@ -744,6 +744,7 @@ Every event has a sound of its own, and events that belong together sound alike:
 | You stopped a turn | Stop: a quick, damped drop, low |
 | Reply finished | Rise: three notes rising |
 | Another chat finished | Low rise: the same rise, lower and softer |
+| Agent reply handed on | Pass: the rise's start, then a leap up like a send, a little softer, when an agent conversation passes one agent's reply to the next by itself. A reply that waits for you is Reply finished (or Another chat finished) |
 | Ask Aside answered | Aside: three quiet notes, down and back |
 | Needs you | Call: one note three times fast, then a leap up, for a permission, a question or a plan to approve |
 | Answer sent | Answer: the send's leap, then a step down to the call's note, when your answer to a question, a permission, a plan or a form has gone. It plays for any chat |
@@ -2113,6 +2114,10 @@ reply is set aside, and you hear so.
   why, and the last reply waits for Ctrl+Shift+E. It stops when a turn fails, and you hear
   why; your next message goes back to that agent. A message from you, or a reply you hand on,
   starts it again with a fresh count.
+
+With sounds on, a reply that goes across by itself plays **Agent reply handed on**, so you can
+follow an automatic conversation with nothing said. A reply that waits for you, in either mode,
+plays **Reply finished** (**Another chat finished** if the conversation isn't open).
 
 In either mode, the relay finishes when an agent ends its reply with DONE once the others have
 replied since your last message, when the replies start repeating each other, or when the

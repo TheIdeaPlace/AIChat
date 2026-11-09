@@ -34,6 +34,7 @@ QUEUED_DELETED = "queued_deleted"
 NOT_SENT = "not_sent"
 FINISHED = "finished"
 FINISHED_ELSEWHERE = "finished_elsewhere"
+HANDED_ON = "handed_on"
 ASIDE_ANSWERED = "aside_answered"
 ASIDE_FAILED = "aside_failed"
 NEEDS_YOU = "needs_you"
@@ -77,6 +78,9 @@ EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(STOPPED, "TurnStopped", "You stopped a turn", "stop", answers_you=True),
     SoundEvent(FINISHED, "ReplyFinished", "Reply finished", "reply"),
     SoundEvent(FINISHED_ELSEWHERE, "OtherChatFinished", "Another chat finished", "otherreply"),
+    # An agent conversation going on without you (#248): one agent's reply went to the next by
+    # itself. Reply finished is kept for when the conversation stops and waits for you.
+    SoundEvent(HANDED_ON, "ReplyHandedOn", "Agent reply handed on", "handon"),
     SoundEvent(ASIDE_ANSWERED, "AsideAnswered", "Ask Aside answered", "aside"),
     SoundEvent(NEEDS_YOU, "NeedsYou", "Needs you", "needsyou", URGENT),
     SoundEvent(ANSWER_SENT, "AnswerSent", "Answer sent", "answer", answers_you=True),
@@ -105,7 +109,7 @@ BUILT_IN: Dict[str, str] = {
     "tool": "Tick", "write": "Write", "working": "Hum", "send": "Send", "queue": "Hold",
     "steer": "Bend", "steertaken": "Taken", "queuesent": "Release",
     "queuedelete": "Withdraw", "stop": "Stop",
-    "reply": "Rise", "otherreply": "Low rise", "aside": "Aside", "needsyou": "Call",
+    "reply": "Rise", "otherreply": "Low rise", "handon": "Pass", "aside": "Aside", "needsyou": "Call",
     "answer": "Answer", "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
     "warning": "Alert", "compacted": "Settle", "peer": "Knock",
 }

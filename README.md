@@ -1155,7 +1155,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   without tool activity on: a soft tick for each tool that runs, a soft settling chord when a file
   changes, a faint hum after 20 quiet seconds of a turn still working, and sounds for a message sent,
   queued, steered into the turn, taken in, sent from the queue or deleted from it, Ask Aside's
-  answer, a reply finishing, another chat finishing, a chat needing you, your answer to it going,
+  answer, a reply finishing, another chat finishing, an agent conversation handing one agent's
+  reply to the next by itself, a chat needing you, your answer to it going,
   a failed or stopped turn,
   service trouble, compaction, a usage warning and a message from another session. Each event can
   have another sound, your own 16-bit WAV (up to 30 seconds and 5 MB, copied into the data folder's

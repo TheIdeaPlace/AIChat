@@ -61,18 +61,18 @@ Do this in a new Claude chat, then a new Codex chat, in your test folder.
 
 ## 2. Sounds
 
-Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 22
+Sounds are off until you turn them on. The set is new: The Chat Place's own sound for each of 23
 events, made by the rules in `dev-notes/sound-design.md`. None is QuickMail's any more. Nobody
 has heard the new set yet, so what's being tested is whether each sound fits its event, whether
 the families make sense, and how they sit with your screen reader.
 
-### Listen to all 22
+### Listen to all 23
 
 1. Choose File, **Sounds**. Tab through it both ways. Expect: every control is named. Turn on
    **Play sounds**.
 2. Tab to **Sound events**. Expect: the list's name says how many events have a sound, and each
    row says the event and its sound, such as "Reply finished: Rise".
-3. Arrow through all 22 and press **Space** on each. Expect: each one plays, with nothing said
+3. Arrow through all 23 and press **Space** on each. Expect: each one plays, with nothing said
    over it, on Windows and on a Mac. Try **Preview** (Alt+R) once too: the same sound.
 
 What each should sound like, top to bottom of the list:
@@ -91,6 +91,7 @@ What each should sound like, top to bottom of the list:
 | You stopped a turn | Stop | A quick, damped drop, low |
 | Reply finished | Rise | Three notes rising |
 | Another chat finished | Low rise | The same rise, lower and softer |
+| Agent reply handed on | Pass | The rise starting, then leaping up like a send instead of finishing; a little softer |
 | Ask Aside answered | Aside | Three quiet notes, down and back |
 | Needs you | Call | One note three times fast, then a leap up; the loudest |
 | Answer sent | Answer | The send's leap, then a step down to the Call's note |
@@ -143,12 +144,19 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    Let a chat finish while you're in another program, then choose its notification. Expect: only
    The Chat Place's sound, and the chat opens.
 8. Try one Codex chat as well. A Codex subagent's own tools make no sound yet (#570).
+9. **Agent conversations.** Start one with Claude and Codex (Ctrl+Shift+G), Automatic, with a
+   short task such as "Write a two-line poem, then review it". Expect: Send for your message,
+   then Pass each time one agent's reply goes to the other by itself, with no Rise and no
+   second Send for the hand-off. When it stops (DONE, or the turn limit), expect Rise, with what
+   stopped it said. Then try one with **Approve each**: expect Rise after each reply, and Send
+   when you press **Ctrl+Shift+E**. Note whether Pass is easy to tell from Rise without listening
+   for it.
 
 ### Sound schemes
 
 1. In File, Sounds, press **Alt+A** (Scheme Actions). Expect: a menu with New, Copy, Rename,
    Delete, Reset, Export and Import Scheme. On Glass, Rename and Delete are read as turned off.
-2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 22 events have a
+2. Choose **New Scheme** and give it a name. Expect: the events list says "0 of 23 events have a
    sound", and **Sound** (Alt+S) offers sounds in each tone, such as "Rise (Soft bell)".
 3. Give two events a sound. Choose **Export Scheme** and save it. Then **Import Scheme** that file.
    Expect: "Added the sound scheme" and its name, and the copy has the same two sounds.

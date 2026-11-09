@@ -40,6 +40,9 @@ class SoundHost:
     _sound_stops_asked: Optional[dict] = None
     #: How the turn counts stood when last seen: chat key -> (turn, tools, edits).
     _sound_counts: Optional[dict] = None
+    #: Chats whose next send is an agent conversation handing a reply on by itself (#248):
+    #: Agent reply handed on has said so, so that send makes no sound of its own.
+    _sound_hushed_sends: Optional[set] = None
 
     def _sound_player(self) -> SoundPlayer:
         if self._sound_player_made is None:
@@ -83,8 +86,23 @@ class SoundHost:
         except Exception:  # noqa: BLE001 - a sound never breaks a turn
             pass
 
+    def _sound_hush_send(self, key: str) -> None:
+        if self._sound_hushed_sends is None:
+            self._sound_hushed_sends = set()
+        self._sound_hushed_sends.add(key)
+
+    def _sound_unhush_send(self, key: str) -> None:
+        if self._sound_hushed_sends:
+            self._sound_hushed_sends.discard(key)
+
     def _sound_unchecked(self, event_id: str, key: Optional[str], own: bool,
                          on_its_own: bool = False) -> None:
+        if (on_its_own and event_id in (sound_events.SENT, sound_events.QUEUED)
+                and self._sound_hushed_sends and key in self._sound_hushed_sends):
+            # Taken whatever the settings, so it can't hush a later send. Only a send that
+            # didn't come from your key press (on_its_own): yours always sounds.
+            self._sound_hushed_sends.discard(key)
+            return
         settings = self.speech
         if self._sound_closed or not settings.sounds_on or settings.sounds_muted:
             return

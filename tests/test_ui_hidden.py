@@ -12477,6 +12477,81 @@ def test_agent_conversation_automatic_mode_runs_to_its_limit(frame, env, fake_ru
     assert "Stopped after 2 exchanges" in env["feedback"][-1]
 
 
+def test_agent_conversation_sounds_each_hand_off_once_and_the_limit_as_a_reply(frame, env,
+                                                                               fake_runner):
+    """Your message is Message sent. Each reply that goes on by itself is Agent reply handed
+    on, with no Reply finished and no Message sent for the hand-off's own send; the reply
+    that waits for you at the turn limit is Reply finished (#250, #248)."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    assert env["sounds"] == [se.SENT]
+    _finish(frame, "own-2", "Built v1.")
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+    _finish(frame, "own-1", "Bug in v1.")
+    _finish(frame, "own-2", "Fixed in v2.")
+    assert env["sounds"] == [se.SENT, se.HANDED_ON, se.HANDED_ON, se.FINISHED]
+    assert not frame._agent_sound_owed and not frame._sound_hushed_sends
+
+
+def test_agent_conversation_sounds_when_you_approve_each_hand_off(frame, env, fake_runner,
+                                                                  monkeypatch):
+    """Approving each hand-off: every reply waits for you, so it's Reply finished, and your
+    Ctrl+Shift+E is Message sent. Agent reply handed on never plays."""
+    from thechatplace import sound_events as se
+    from thechatplace.ui import agent_chats
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    _finish(frame, "own-2", "Built it.")
+    assert env["sounds"] == [se.SENT, se.FINISHED]
+
+    class Dialog:
+        def __init__(self, parent, source, choices, text, check, title=""):
+            self.chosen = (0, text)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, "RelayDialog", Dialog)
+    frame.on_send_reply_to()
+    assert env["sounds"] == [se.SENT, se.FINISHED, se.SENT]
+
+
+def test_agent_conversation_member_failing_sounds_failed_once(frame, env, fake_runner):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    frame._on_turn_event({"id": "own-2"}, "x",
+                         TurnEvent("failed", text="It broke", is_error=True))
+    assert env["sounds"] == [se.SENT, se.FAILED]
+
+
+def test_agent_conversation_answer_with_background_work_handed_on_once(frame, env, fake_runner):
+    """Claude answered and left work running (#161): the answer is handed on then, with its
+    own sound, and the turn's later end adds none."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    frame._answered_with_background("own-2", "x", TurnEvent("waiting", text="Built v1."), False)
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+    frame._on_turn_event({"id": "own-2"}, "x",
+                         TurnEvent("finished", text="Built v1.", data={"after_background": True}))
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+
+
 def test_agent_conversation_relayed_text_never_answers_a_waiting_question(frame, env, fake_runner):
     from thechatplace.claude_cli import PermissionRequest
     _agent_conversation(frame, env, mode="auto")
