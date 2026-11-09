@@ -76,6 +76,13 @@ jobs:
   #   any control Orca would reach without a name.
   # Not a required check, and not in the release workflow, so a problem here
   # never holds up a release; it shows on the pull request that caused it.
+  # What made it fail on a different step from run to run (#579): Orca 46
+  # remembers dead objects by their address, and took new ones that got the
+  # same address (a dialog, a list row) for dead, so it said nothing about
+  # them. tools/orca-customizations.py has Orca ask such an object again, as
+  # newer Orca does; the speech report counts how often. Neither step
+  # retries a failed check: only a probe that crashes is run again, once,
+  # on the surfaces it hadn't finished (orca_names.py --run).
   orca:
     name: Orca (Linux)
     runs-on: ubuntu-24.04
@@ -95,16 +102,14 @@ jobs:
       - name: ATK names, with an accessibility bus
         run: tools/linux_a11y_session.sh .venv/bin/python -m pytest -v tests/test_linux.py
       - name: What Orca says
-        # Inside the job's 30 minutes, so a run that sticks still shows its log.
-        run: timeout 14m tools/orca_speech.sh --json orca-speech.json
+        # About 4 minutes. Inside the job's 30, so a run that sticks still
+        # shows its log. Orca's debug log and the app's output are kept.
+        run: timeout 10m tools/orca_speech.sh --json orca-speech.json --keep orca-logs
       - name: Every control Orca reaches has a name
         if: always()
-        # 05preview's audit already took 9m56s, so each new surface pushed it
-        # past 10 minutes (#579, #587). Still inside the job's 30 with speech's 14.
-        run: |
-          TCP_PROBE_ORCA=1 timeout 12m tools/linux_a11y_session.sh \
-            .venv/bin/python tools/ui_probe.py --out probe-linux --tag linux-light
-          .venv/bin/python tools/orca_names.py probe-linux
+        # About 5 minutes for 131 surfaces (it was 10 before #579 sped up
+        # each audit, about 2.4 seconds to 0.2).
+        run: timeout 12m .venv/bin/python tools/orca_names.py --run probe-linux
       - name: Keep what Orca said and the probe's pictures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -112,5 +117,6 @@ jobs:
           name: orca-linux
           path: |
             orca-speech.json
+            orca-logs
             probe-linux
           if-no-files-found: ignore
