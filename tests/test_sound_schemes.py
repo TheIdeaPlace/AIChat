@@ -287,7 +287,7 @@ def test_sound_tutorial_says_the_scheme_once():
     # Opened from File, Sounds (#596), it says it plays what Sounds shows, not where to go.
     assert se.tutorial_intro(se.built_in_scheme("wood"), from_sounds=True) == (
         "Arrow to an event and press Space to hear it in the Wood scheme. "
-        "Your changes in Sounds play here before you choose OK.")
+        "Changes you've made in Sounds play here, even before you choose OK.")
 
 
 def test_sound_choices_say_started_in_the_chat_place():

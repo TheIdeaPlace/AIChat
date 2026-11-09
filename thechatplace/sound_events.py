@@ -568,7 +568,7 @@ def tutorial_intro(scheme: Scheme, from_sounds: bool = False) -> str:
     name = scheme.name.strip()
     if name.casefold().endswith(" scheme"):
         name = name[:-len(" scheme")].rstrip()
-    after = ("Your changes in Sounds play here before you choose OK." if from_sounds
+    after = ("Changes you've made in Sounds play here, even before you choose OK." if from_sounds
              else "Change sounds in File, Sounds.")
     return f"Arrow to an event and press Space to hear it in the {name} scheme. {after}"
 

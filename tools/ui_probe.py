@@ -1133,6 +1133,21 @@ def d_sound_tutorial(frame, env):
     return frame.on_sound_tutorial
 
 
+def d_sound_tutorial_from_sounds(frame, env):
+    """File, Sounds, Sound Tutorial (#596): its longer intro, for the scheme Sounds shows."""
+    from thechatplace.ui.sounds_dialog import SoundTutorialDialog
+    frame.speech.sound_scheme = "wood"
+
+    def show():
+        dialog = SoundTutorialDialog(frame, frame.speech, frame._sound_player, frame._say,
+                                     from_sounds=True)
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+    return show
+
+
 class _ProbeGallery:
     """A gallery answering at once with made-up schemes, one of them already added."""
 
@@ -2330,6 +2345,8 @@ SURFACES = {
     "sounds-own-scheme": ("dialog", d_sounds_own_scheme, "File, Sounds on a scheme of your own"),
     "sound-gallery": ("dialog", d_sound_gallery, "File, Sounds, Browse Gallery: two schemes, one added"),
     "sound-tutorial": ("dialog", d_sound_tutorial, "Help, Sound Tutorial"),
+    "sound-tutorial-from-sounds": ("dialog", d_sound_tutorial_from_sounds,
+                                   "File, Sounds, Sound Tutorial: the scheme Sounds shows"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
@@ -2477,6 +2494,7 @@ DIALOG_CLASSES = {
     "sounds-own-scheme": "SoundsDialog",
     "sound-gallery": "SoundGalleryDialog",
     "sound-tutorial": "SoundTutorialDialog",
+    "sound-tutorial-from-sounds": "SoundTutorialDialog",
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",

@@ -1011,6 +1011,8 @@ def test_sound_tutorial_button_plays_what_sounds_shows_and_comes_back(frame, env
         shown = {}
 
         def listen(self):
+            # Stopped before the tutorial plays anything of its own.
+            shown["stopped_first"] = env["sound_stops"].count("stop_preview") > stops_before
             shown["intro"] = self.intro.GetLabel().replace("\n", " ")
             shown["dialog"] = self
             pick(self, se.TOOL)
@@ -1024,7 +1026,7 @@ def test_sound_tutorial_button_plays_what_sounds_shows_and_comes_back(frame, env
         stops_before = env["sound_stops"].count("stop_preview")
         previews_before = len(env["previews"])
         dialog.on_tutorial()
-        assert env["sound_stops"].count("stop_preview") > stops_before
+        assert shown["stopped_first"]
         assert "in the Wood scheme" in shown["intro"] and "before you choose OK" in shown["intro"]
         played = env["previews"][previews_before:]
         assert len(played) == 1  # Tick only: Reply finished has no sound here

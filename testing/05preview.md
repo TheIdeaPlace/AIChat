@@ -118,7 +118,7 @@ Note any that are hard to tell apart, too loud or quiet, harsh, or that don't su
    Space and Return play too.
 7. **From File, Sounds (#596).** Open File, Sounds. Expect: no Mute all sounds check box (View,
    Mute All Sounds is the place for it). Choose Wood and give Reply finished None, but don't
-   choose OK. Press **Alt+U** (Sound Tutorial). Expect: the line above says the Wood scheme and
+   choose OK. Press **Alt+U** (Sound Tutorial; on a Mac, Tab to it and press Space). Expect: the line above says the Wood scheme and
    that your changes in Sounds play; Space on Reply finished says "No sound", and Tool ran plays
    Wood's Tick. Escape. Expect: focus back on the Sound Tutorial button in Sounds. Cancel Sounds,
    then open Help, Sound Tutorial. Expect: your saved scheme again, with Reply finished playing.
