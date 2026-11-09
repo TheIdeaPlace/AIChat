@@ -122,7 +122,7 @@ SHORTCUTS = [
         ("Alt+F, I", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
                      "Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat "
                      "Options (O)"),
-        ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from"
+        ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
                      "claude.ai and your phone (a desktop app session can be continued here "
                      "with it on)"),
         ("Ctrl+G", "Add the selected session to a group (or a new one); File, Remove "

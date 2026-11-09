@@ -5373,17 +5373,19 @@ class RewindDialog(wx.Dialog):
     def selected(self) -> str:
         return self._choices[max(0, self.what.GetSelection())]
 
+    def _button_label_marked(self) -> str:
+        """The button's label for the chosen option, with its "&"."""
+        from .. import rewind
+        return self.FILES_LABEL if self.selected() == rewind.FILES else self.RETRY_LABEL
+
     def button_label(self) -> str:
         """The button's name for the chosen option, without its "&"."""
-        from .. import rewind
-        label = self.FILES_LABEL if self.selected() == rewind.FILES else self.RETRY_LABEL
-        return label.replace("&", "")
+        return self._button_label_marked().replace("&", "")
 
     def _describe(self):
-        from .. import rewind
         self.happens.ChangeValue(self._plan.describe(self.selected()))
         self.happens.SetInsertionPoint(0)
-        label = self.FILES_LABEL if self.selected() == rewind.FILES else self.RETRY_LABEL
+        label = self._button_label_marked()
         if self.go.GetLabel() != label:
             self.go.SetLabel(label)
             self.Layout()

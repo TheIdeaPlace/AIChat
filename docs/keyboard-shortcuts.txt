@@ -30,7 +30,7 @@ Session list:
   F2: Rename the selected session (a desktop app or terminal session's new name shows only in The Chat Place)
   Applications key / Shift+F10: The session's menu: load, provider-specific actions, copy its link, rename, Remote Control, groups, export, hide or delete
   Alt+F, I: Chat Settings: the selected (or loaded) chat's Change Model (M), Change Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat Options (O)
-  Alt+F, O: Remote Control (Claude chats): reach the selected session fromclaude.ai and your phone (a desktop app session can be continued here with it on)
+  Alt+F, O: Remote Control (Claude chats): reach the selected session from claude.ai and your phone (a desktop app session can be continued here with it on)
   Ctrl+G: Add the selected session to a group (or a new one); File, Remove from Group and Manage Groups are on the File menu
   Delete: Hide the selected session; View, Show Sessions, Hidden lists hidden sessions, and File, Bring Back Session returns one
   Shift+Delete: Delete a Claude chat started here permanently, transcript and all, after you confirm, or The Chat Place's copy of a restored or kept chat (other chats can only be hidden); on an agent conversation, delete the conversation and keep its chats

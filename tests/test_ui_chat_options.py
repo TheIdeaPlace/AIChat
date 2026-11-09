@@ -318,6 +318,12 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
                                options=ChatOptions("gone-agent", "Be brief.", ""),
                                load_choices=frame._load_chat_choices, feedback=said.append)
     try:
+        # "Run as agent", not "Agent", which also means agent conversations
+        # and subagents (#596): the label and the name screen readers read.
+        assert dialog.agent.GetName() == "Run as agent"
+        labels = [child.GetLabel() for child in dialog.GetChildren()
+                  if isinstance(child, wx.StaticText)]
+        assert "Run as &agent:" in labels
         # Before Claude Code answers: the chat's own agent is still there.
         assert dialog.agent.GetStringSelection() == "gone-agent"
         assert pump(lambda: dialog.agent.GetCount() > 2)

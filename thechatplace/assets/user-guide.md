@@ -388,7 +388,7 @@ Much of "Getting more out of Claude" is true of Codex too: say what it can't fin
 how to check the work, and use one chat for one job. These sections are what's different in a Codex
 chat started here. See also OpenAI's [Codex documentation](https://developers.openai.com/codex).
 
-Some of the Claude part doesn't apply: Claude's Run as Agent and Output Style choices, Claude Code's own commands such
+Some of the Claude part doesn't apply: Claude's Run as agent and Output style choices, Claude Code's own commands such
 as `/init` and `/code-review`, restoring files, editing a queued message and Remote Control.
 
 ### Codex: agree on the approach first
@@ -1741,8 +1741,8 @@ still records it.
 
 For a Claude chat started here, these items in **File, Chat Settings** (Alt+F, I) change what its
 next turns use. Each opens a list that starts on the current choice, marked "(now)"; choose
-another and press Enter, or Escape to leave it as it is. Chat Settings also has **Chat
-Permissions** (C, or Ctrl+Shift+H) and **Chat Options** (O).
+another and press Enter, or Escape to leave it as it is. Chat Settings also has
+**Chat Permissions** (C, or Ctrl+Shift+H) and **Chat Options** (O).
 
 - **Change Model** (Alt+F, I, M): Default, Opus, Sonnet or Haiku.
 - **Change Effort** (Alt+F, I, E): Default, Low, Medium, High, Extra high or Max. Models that don't

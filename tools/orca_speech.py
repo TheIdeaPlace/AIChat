@@ -195,7 +195,7 @@ STEPS = [
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Chat Options (#468): Codex's by the trigger, Claude's by File, Chat
-    # Settings. It opens on Run as Agent, and Tab goes through every control in turn. The
+    # Settings. It opens on Run as agent, and Tab goes through every control in turn. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
     Step("Codex Chat Options", [], trigger="codex-chat-options",
