@@ -1225,8 +1225,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   and your answer to a chat that needed you always plays. Help, **Sound Tutorial** lists the events by name: Space or
   Enter on one plays its sound in the scheme you use, even with sounds off or muted, and says
   "No sound" for an event without one, or that its file is missing (and plays the built-in sound,
-  as the event would). **Mute All Sounds** (Ctrl+Shift+X, or View) silences everything
-  at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
+  as the event would). The **Sound Tutorial** button in File, Sounds (Alt+U) opens it too, playing
+  the scheme and volume showing in Sounds, changes not yet kept included. **Mute All Sounds**
+  (Ctrl+Shift+X, or View; File, Sounds has no mute of its own) silences everything at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not
   under Do Not Disturb, which Windows doesn't let apps detect: use Mute for that. Windows plays its
   own sound with each notification, so you can hear two; **Disable Windows sound for The Chat Place's

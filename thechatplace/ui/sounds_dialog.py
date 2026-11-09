@@ -103,10 +103,9 @@ class SoundsDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         self.play_sounds = wx.CheckBox(self, label="&Play sounds")
         self.play_sounds.SetValue(speech.sounds_on)
-        outer.Add(self.play_sounds, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
-        self.mute = wx.CheckBox(self, label="M&ute all sounds")
-        self.mute.SetValue(speech.sounds_muted)
-        outer.Add(self.mute, 0, wx.ALL, 10)
+        # Mute isn't here: View, Mute All Sounds (Ctrl+Shift+X) is the one place for it (#596),
+        # and get_settings carries its state through untouched.
+        outer.Add(self.play_sounds, 0, wx.ALL, 10)
         # Windows' notifications only. Off unless chosen: it's a change to what Windows does.
         self.silent_notifications = None
         if sys.platform == "win32":
@@ -150,7 +149,10 @@ class SoundsDialog(wx.Dialog):
         self.actions = wx.Button(self, label="Scheme &Actions...")
         schemes_row.Add(self.actions, 0, wx.RIGHT, 8)
         self.browse = wx.Button(self, label="&Browse Gallery...")
-        schemes_row.Add(self.browse, 0)
+        schemes_row.Add(self.browse, 0, wx.RIGHT, 8)
+        # Help, Sound Tutorial from here too (#596). Alt+U, as Alt+T is Tool sounds play for.
+        self.tutorial = wx.Button(self, label="Sound T&utorial...")
+        schemes_row.Add(self.tutorial, 0)
         outer.Add(schemes_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.events_label = wx.StaticText(self, label="Sound &events:")
@@ -180,6 +182,7 @@ class SoundsDialog(wx.Dialog):
         self.scheme.Bind(wx.EVT_CHOICE, lambda e: self._scheme_chosen())
         self.actions.Bind(wx.EVT_BUTTON, lambda e: self._show_actions())
         self.browse.Bind(wx.EVT_BUTTON, lambda e: self.on_browse())
+        self.tutorial.Bind(wx.EVT_BUTTON, lambda e: self.on_tutorial())
         self.events.Bind(wx.EVT_LISTBOX, lambda e: self._show_event())
         self.events.Bind(wx.EVT_KEY_DOWN, self._on_events_key)
         self.sound.Bind(wx.EVT_CHOICE, lambda e: self._sound_chosen())
@@ -449,6 +452,20 @@ class SoundsDialog(wx.Dialog):
         self._take(data, "Sound Scheme Gallery", self.browse,
                    {"gallery": entry.id, "sha256": entry.sha256}, replacing)
 
+    def on_tutorial(self) -> None:
+        """The Sound Tutorial, playing the scheme and volume showing here, changes not yet kept
+        included: what you'd hear once you choose OK. Its words come from its own window, as
+        from Help, so VoiceOver doesn't drop them (sound_host.on_sound_tutorial)."""
+        self.stop_preview()
+        dialog = SoundTutorialDialog(self, self.get_settings(), self._player, from_sounds=True,
+                                     say=lambda text: self._say(text, force=True, interrupt=False,
+                                                                window=dialog))
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.Destroy()  # which stops a sound still playing
+        self.tutorial.SetFocus()
+
     # -- events --------------------------------------------------------------------
 
     def _events_name(self) -> str:
@@ -598,7 +615,6 @@ class SoundsDialog(wx.Dialog):
         return dataclasses.replace(
             self._original,
             sounds_on=self.play_sounds.GetValue(),
-            sounds_muted=self.mute.GetValue(),
             sound_volume=self._volume(),
             sound_scheme=self._scheme_id,
             sound_tools=self._tool_ids[max(self.tools.GetSelection(), 0)],
@@ -612,10 +628,11 @@ class SoundsDialog(wx.Dialog):
 class SoundTutorialDialog(wx.Dialog):
     """Help, Sound Tutorial: every event by name, and Space (or Enter) plays its sound in the
     scheme you're using, at your volume, to learn what each means. Nothing here changes a
-    setting: sound names, files and other schemes are File, Sounds."""
+    setting: sound names, files and other schemes are File, Sounds, which opens it too
+    (``from_sounds``), with the settings it's showing."""
 
     def __init__(self, parent, speech: SpeechSettings, player: Callable,
-                 say: Optional[Callable[[str], None]] = None):
+                 say: Optional[Callable[[str], None]] = None, from_sounds: bool = False):
         super().__init__(parent, title="Sound Tutorial", size=dialog_size(parent, 440, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._player = player
@@ -628,7 +645,7 @@ class SoundTutorialDialog(wx.Dialog):
         self._events = list(sound_events.EVENTS)
 
         outer = wx.BoxSizer(wx.VERTICAL)
-        self.intro = wx.StaticText(self, label=sound_events.tutorial_intro(self._scheme))
+        self.intro = wx.StaticText(self, label=sound_events.tutorial_intro(self._scheme, from_sounds))
         self.intro.Wrap(dip_width(self, 400))
         outer.Add(self.intro, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
         outer.Add(wx.StaticText(self, label="Sound &events:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)

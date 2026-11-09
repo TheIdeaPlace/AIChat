@@ -37,29 +37,10 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "M&ute all sounds",
-   "rect": [
-    10,
-    50,
-    190,
-    30
-   ],
-   "best": [
-    190,
-    30
-   ],
-   "depth": 0,
-   "parent": -1,
-   "enabled": true,
-   "problems": []
-  },
-  {
-   "class": "CheckBox",
-   "name": "check",
    "label": "Disable &Windows sound for The Chat Place's notifications",
    "rect": [
     10,
-    90,
+    50,
     574,
     30
    ],
@@ -78,7 +59,7 @@
    "label": "&Volume:",
    "rect": [
     10,
-    133,
+    93,
     77,
     31
    ],
@@ -97,7 +78,7 @@
    "label": "",
    "rect": [
     225,
-    130,
+    90,
     91,
     38
    ],
@@ -117,7 +98,7 @@
    "label": "Sound sc&heme:",
    "rect": [
     10,
-    179,
+    139,
     142,
     31
    ],
@@ -136,7 +117,7 @@
    "label": "",
    "rect": [
     225,
-    176,
+    136,
     180,
     38
    ],
@@ -156,7 +137,7 @@
    "label": "&Tool sounds play for:",
    "rect": [
     10,
-    225,
+    185,
     194,
     31
    ],
@@ -175,12 +156,12 @@
    "label": "",
    "rect": [
     225,
-    222,
-    515,
+    182,
+    507,
     38
    ],
    "best": [
-    515,
+    507,
     38
    ],
    "depth": 0,
@@ -195,7 +176,7 @@
    "label": "&Other sounds play for:",
    "rect": [
     10,
-    271,
+    231,
     207,
     31
    ],
@@ -214,12 +195,12 @@
    "label": "",
    "rect": [
     225,
-    268,
-    515,
+    228,
+    507,
     38
    ],
    "best": [
-    515,
+    507,
     38
    ],
    "depth": 0,
@@ -234,7 +215,7 @@
    "label": "Scheme &Actions...",
    "rect": [
     10,
-    316,
+    276,
     199,
     42
    ],
@@ -253,7 +234,26 @@
    "label": "&Browse Gallery...",
    "rect": [
     217,
-    316,
+    276,
+    186,
+    42
+   ],
+   "best": [
+    186,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sound T&utorial...",
+   "rect": [
+    411,
+    276,
     186,
     42
    ],
@@ -272,7 +272,7 @@
    "label": "Sound &events (4 of 23 events have a sound):",
    "rect": [
     10,
-    368,
+    328,
     409,
     31
    ],
@@ -291,9 +291,9 @@
    "label": "",
    "rect": [
     12,
-    401,
+    361,
     936,
-    369
+    409
    ],
    "best": [
     415,
