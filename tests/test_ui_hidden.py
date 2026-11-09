@@ -5224,6 +5224,9 @@ def test_shift_enter_starts_a_new_line_in_an_own_answer_and_enter_sends(frame, m
     try:
         (_k1, first, t1), (_k2, multi, _t2), (_k3, _third, t3), (_k4, fourth, _t4) = dialog._controls
         assert t1.IsMultiLine() and not t1.HasFlag(wx.TE_PROCESS_TAB)
+        # Plain, not rich: a rich box gives UI Automation "RichEdit Control"
+        # as its name rather than this one.
+        assert not t1.HasFlag(wx.TE_RICH2) and not t1.HasFlag(wx.TE_RICH)
         assert t1.GetName() == "One: your own answer"
         assert dialog._answer_boxes == [t for _k, _c, t in dialog._controls]
         press, closed = _enter_presser(dialog, monkeypatch)

@@ -2060,6 +2060,17 @@ def _read_only_text(parent, value: str, name: str, min_height: int = 160,
     return text
 
 
+#: A box to type an answer in, of a few lines (answer_box_key). A plain
+#: multi-line edit box, not a rich one: Windows' rich edit box gives UI
+#: Automation its own name ("RichEdit Control") instead of the name
+#: set_accessible_name gives it, and these boxes have no label just before
+#: them for it to take one from. The plain box's name comes from MSAA, as the
+#: one-line box's did.
+ANSWER_BOX_STYLE = wx.TE_MULTILINE
+#: How tall it is, in design pixels: two or three lines.
+ANSWER_BOX_HEIGHT = 50
+
+
 class PermissionDialog(wx.Dialog):
     """Claude wants to use a tool: Allow, Allow for This Chat, Deny.
 
@@ -2080,7 +2091,7 @@ class PermissionDialog(wx.Dialog):
                   0, wx.LEFT, 8)
         # A few lines: Shift+Enter starts a new one, Enter still presses Deny
         # (answer_box_key).
-        self.reason = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        self.reason = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
         self.reason.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
         set_accessible_name(self.reason, "Reason to give Claude if you deny (optional)")
         sizer.Add(self.reason, 0, wx.EXPAND | wx.ALL, 8)
@@ -2599,7 +2610,7 @@ class QuestionDialog(wx.Dialog):
                 if question.get("isSecret"):
                     other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD)
                 else:
-                    other_text = wx.TextCtrl(parent_window, style=wx.TE_MULTILINE | wx.TE_RICH2)
+                    other_text = wx.TextCtrl(parent_window, style=ANSWER_BOX_STYLE)
                     other_text.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
                     self._answer_boxes.append(other_text)
                 other_text._preserve_answer = provider == "Codex"
@@ -2831,7 +2842,7 @@ class PlanDialog(wx.Dialog):
                  wx.ALIGN_TOP)
         # A few lines: Shift+Enter starts a new one, Enter still presses
         # Keep Planning (answer_box_key).
-        self.note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        self.note = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
         self.note.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
         set_accessible_name(self.note, "What to change (for Keep Planning)")
         grid.Add(self.note, 1, wx.EXPAND)
@@ -3721,10 +3732,6 @@ def plain_enter(event) -> bool:
     """Enter (or the keypad's), with no modifier held."""
     return (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
             and not event.HasAnyModifiers())
-
-
-#: How tall a multi-line answer box is, in design pixels: two or three lines.
-ANSWER_BOX_HEIGHT = 50
 
 
 def answer_box_key(event, boxes, button) -> bool:

@@ -147,7 +147,7 @@ STEPS = [
     # The own answer is a multi-line box now (Shift+Enter starts a new
     # line): Tab still reaches it, and leaves it for the Preview box.
     Step("Tab to its own answer", ["Tab"], expect=["your own answer"]),
-    Step("Tab out of the answer box", ["Tab"], expect=["Preview of Keep it as is"]),
+    Step("Tab out of the answer box", ["Tab"], expect=["Preview", "The Chat Place now runs on Linux"]),
     # Escape from inside it still answers later.
     Step("Shift+Tab back to its own answer", ["shift+Tab"], expect=["your own answer"]),
     Step("answer later, back in the messages", ["Escape"], expect=["Messages in Visual probe"]),
