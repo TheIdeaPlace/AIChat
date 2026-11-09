@@ -568,10 +568,29 @@ def test_retry_words():
                                  "error": "overloaded", "error_status": 529}) == (
         "Claude is retrying: the service is overloaded. Attempt 3 of 10, next in 8 seconds.")
     assert live_turn.retry_text({"error_status": 500}) == \
-        "Claude is retrying: the service answered 500."
+        "Claude is retrying: the service had a problem (error 500)."
     assert live_turn.retry_status_text(data) == \
         "Claude is retrying: it couldn't reach the service, attempt 2 of 10."
     assert live_turn.retry_status_text(None) == ""
+
+
+@pytest.mark.parametrize("status, reason", [
+    (500, "the service had a problem (error 500)"),
+    (502, "the service had a problem (error 502)"),
+    (503, "the service had a problem (error 503)"),
+    (504, "the service had a problem (error 504)"),
+    (529, "the service is overloaded"),
+    (429, "the service is busy"),
+    (401, "signing in failed"),
+    (403, "signing in failed"),
+    (418, "the service had a problem (error 418)"),
+])
+def test_a_status_with_no_kind_is_said_in_words(status, reason):
+    """Explain-it review (#596): "the service answered 503" was a number to decode."""
+    assert live_turn.retry_text({"error_status": status}) == f"Claude is retrying: {reason}."
+    # A kind Claude Code names is said as that, whatever the status.
+    assert live_turn.retry_reason({"error": "overloaded", "error_status": 503}) == \
+        "the service is overloaded"
 
 
 @pytest.mark.parametrize("error", sorted(live_turn._RETRY_REASONS))
@@ -623,30 +642,30 @@ def test_a_retry_is_said_once_per_turn_for_each_reason():
     assert not throttle.should_speak("b", "busy")
 
 
-AUTO_THIS_TURN = "Claude Code switched to auto mode for this turn. Later turns start in manual mode."
+AUTO_THIS_TURN = "Claude switched to auto mode for this turn. Later turns start in manual mode."
 
 
 @pytest.mark.parametrize("saved, mode, before_plan, keep, said", [
     # Claude planning by itself: kept, and said.
-    ("auto", "plan", "", "plan", "Claude Code switched to plan mode."),
-    ("manual", "plan", "", "plan", "Claude Code switched to plan mode."),
+    ("auto", "plan", "", "plan", "Claude switched to plan mode."),
+    ("manual", "plan", "", "plan", "Claude switched to plan mode."),
     # Asking more often: safe to keep.
-    ("auto", "manual", "", "manual", "Claude Code switched to manual mode."),
-    ("auto", "acceptEdits", "", "acceptEdits", "Claude Code switched to accept edits mode."),
+    ("auto", "manual", "", "manual", "Claude switched to manual mode."),
+    ("auto", "acceptEdits", "", "acceptEdits", "Claude switched to accept edits mode."),
     # More without asking, not chosen here: this turn only.
     ("manual", "auto", "", "", AUTO_THIS_TURN),
     ("manual", "acceptEdits", "", "",
-     "Claude Code switched to accept edits mode for this turn. Later turns start in manual mode."),
+     "Claude switched to accept edits mode for this turn. Later turns start in manual mode."),
     ("acceptEdits", "auto", "", "",
-     "Claude Code switched to auto mode for this turn. "
+     "Claude switched to auto mode for this turn. "
      "Later turns start in accept edits mode."),
     # Out of the plan mode Claude chose: back to yours, or no further than it.
-    ("plan", "manual", "manual", "manual", "Claude Code switched to manual mode."),
-    ("plan", "manual", "auto", "manual", "Claude Code switched to manual mode."),
+    ("plan", "manual", "manual", "manual", "Claude switched to manual mode."),
+    ("plan", "manual", "auto", "manual", "Claude switched to manual mode."),
     ("plan", "auto", "manual", "manual", AUTO_THIS_TURN),
     # Out of a plan mode you chose: your choice stands.
     ("plan", "auto", "", "",
-     "Claude Code switched to auto mode for this turn. Later turns start in plan mode."),
+     "Claude switched to auto mode for this turn. Later turns start in plan mode."),
 ])
 def test_what_is_kept_and_said_when_claude_code_changes_the_mode(saved, mode, before_plan, keep,
                                                                  said):

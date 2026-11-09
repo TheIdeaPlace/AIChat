@@ -86,7 +86,7 @@ def test_quick_mode_choices_arent_overwritten_by_their_own_statuses(frame, env, 
     # A change that isn't an echo of yours still counts, and is said.
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
     assert frame.store.get("own-1").permission_mode == "manual"
-    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+    assert env["feedback"][-1] == "Claude switched to manual mode."
 
 
 def test_choosing_the_mode_the_turn_is_in_doesnt_swallow_a_later_status(frame, env, monkeypatch):
@@ -104,7 +104,7 @@ def test_choosing_the_mode_the_turn_is_in_doesnt_swallow_a_later_status(frame, e
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
     assert frame.store.get("own-1").permission_mode == "manual"
-    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+    assert env["feedback"][-1] == "Claude switched to manual mode."
 
 
 def test_a_refused_choice_of_the_same_mode_leaves_an_earlier_one_waiting(frame, env, monkeypatch):
@@ -137,7 +137,7 @@ def test_claude_entering_plan_mode_itself_is_kept_and_approval_offers_the_old_mo
     assert frame.store.get("own-1").permission_mode == "plan"
     assert frame.session_heading.GetLabel().endswith("plan mode.")
     # Said, not just on the status bar.
-    assert env["feedback"][-1] == "Claude Code switched to plan mode."
+    assert env["feedback"][-1] == "Claude switched to plan mode."
     assert "switched to plan mode" in frame._status_latest
     assert frame._mode_to_offer_after_plan("own-1", "plan") == "auto"
     # The same mode again (our own change echoed back) changes nothing.
@@ -156,7 +156,7 @@ def test_a_wider_mode_changed_elsewhere_applies_to_this_turn_only(frame, env):
     frame.store.update("own-1", permission_mode="manual")
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="auto"))
     assert frame.store.get("own-1").permission_mode == "manual"
-    assert env["feedback"][-1] == ("Claude Code switched to auto mode for this turn. "
+    assert env["feedback"][-1] == ("Claude switched to auto mode for this turn. "
                                  "Later turns start in manual mode.")
 
 
@@ -164,14 +164,14 @@ def test_a_narrower_mode_changed_elsewhere_is_kept_and_said(frame, env):
     _running(frame)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="manual"))
     assert frame.store.get("own-1").permission_mode == "manual"
-    assert env["feedback"][-1] == "Claude Code switched to manual mode."
+    assert env["feedback"][-1] == "Claude switched to manual mode."
 
 
 def test_a_mode_change_in_a_chat_not_loaded_names_the_chat(frame, env):
     _running(frame)
     frame._open = None
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("mode", text="plan"))
-    assert env["feedback"][-1] == "Hub probe: Claude Code switched to plan mode."
+    assert env["feedback"][-1] == "Hub probe: Claude switched to plan mode."
 
 
 def test_leaving_claudes_own_plan_for_more_goes_back_to_the_mode_you_chose(frame, env):
