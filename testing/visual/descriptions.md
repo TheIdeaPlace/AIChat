@@ -893,7 +893,7 @@ and Copy with Tool Off and Refresh moved 5 pixels left. No controls overlap.
 Since 2026-11-09 (#596), the Details box's note is plainer and starts with what
 changing a tool does in Codex ("In a Codex chat, a tool can't be turned on or off
 in the chat itself..."). It wraps to five lines, ending "...it's declined for
-you.", with room to spare in the box and no scroll bar needed. Nothing else
+you.", with room to spare: the box's scroll bar has no thumb. Nothing else
 moved. Measured again: black on white 21:1 in light, white on #202020 16.29:1
 in High Contrast Aquatic.
 
