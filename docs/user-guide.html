@@ -382,14 +382,16 @@ you choose goes in as <code>$name</code> and is sent with your next message. If 
 memories, choose <code>/memories off</code> from Ctrl+/ and send it.</p>
 <p>For this chat alone, use <strong>Chat Options</strong> (Alt+H in New Session or Continue Here;
 File, Chat Options later). Instructions are sent with each Codex turn. Codex can change files in
-the more folders only when its permission mode lets it edit files. Change them while the chat is
-idle; during a turn you're told to wait. A folder you remove is left out of the next turn.</p>
+the more folders only when its permission mode lets it edit files. Codex takes the changes between
+turns: choose OK during a turn and the dialog stays open with what you typed, saying to press OK
+again once Codex has finished. A folder you remove is left out of the next turn.</p>
 <h3>Codex: follow delegated work and progress</h3>
 <p><strong>View, Subagents</strong> lists the work Codex handed to subagents, including ones another subagent
 started and ones Codex has archived. Read Conversation opens one. A subagent's request says which
 subagent is asking, and you can allow its commands only once at a time.</p>
 <p><strong>Show Tool Activity</strong> (Ctrl+T) shows the summaries of its reasoning that Codex gives, as it works
-and later. They aren't read out as replies. When Codex retries, you hear it once, and Turn Status
+and later. They aren't read out as replies. When Codex retries, you hear it once, with the Service
+trouble sound, and Turn Status
 says why until the turn moves on. Your message isn't sent again.</p>
 <p>Codex can list, search and read the chats in The Chat Place's list, and hide an idle one. It can't
 hide its own chat, an open chat or one that's working. This works only while The Chat Place is
@@ -415,13 +417,18 @@ running, and not in Ask Aside.</p>
 <li><strong>Other services:</strong> <strong>View, Connected Tools (MCP)</strong> lists the servers set up in Codex and apps from
   ChatGPT. Add a server with <code>codex mcp add</code> in a terminal. A tool can't be turned on or off in the
   chat itself: <strong>Copy with Tool On</strong> or <strong>Copy with Tool Off</strong> (Alt+O) makes a new copy of the chat
-  with that choice, and the original keeps its tools. Sign In reads you the real web address before
+  with that choice, and the original keeps its tools. Like any Codex copy, it can't change files
+  without asking until you press <strong>Ctrl+Shift+O</strong>; the question before it and the message when it
+  opens both say so. Sign In reads you the real web address before
   opening it; finish signing in in the browser, then press Refresh if needed. Reconnect tries the
   servers again. A tool's forms and web pages come up in Answer (Ctrl+Shift+A), as for Claude; a
   request The Chat Place can't show at all is declined for you.</li>
 <li><strong>A harder or lighter job:</strong> File, <strong>Change Model</strong> and <strong>Change Effort</strong> work while the chat is idle.
-  Change Effort needs a model chosen with Change Model first: on Codex's default model, it says
-  "Choose an available Codex model first."
+  Each starts with <strong>Codex's default</strong>. Change Model's names the model that is now, and the chat
+  stays on that model if Codex's default changes later. On a chat with no model chosen, Change
+  Effort offers the efforts of Codex's default model, and choosing one puts the chat on that model.
+  A model Codex no longer lists can't take an effort: Change Effort says so, and Change Model
+  chooses another.
   See <a href="https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md">Choosing a model in Codex</a>.</li>
 <li><strong>Pictures and files:</strong> <strong>Ctrl+Shift+F</strong> (File, Attach Files) adds them to your next message.</li>
 </ul>
@@ -737,7 +744,7 @@ your next message. That setting applies only to Claude.</p>
 </tr>
 <tr>
 <td>Service trouble</td>
-<td>Waver: two low notes wavering, when Claude is retrying or has moved to another model, or a Codex or Copilot chat has a connection problem or its turn was cut short without you stopping it. Codex and Copilot retries are only spoken. A turn that ends with an error is Turn failed</td>
+<td>Waver: two low notes wavering, when Claude is retrying or has moved to another model, or a Codex or Copilot chat has a connection problem or its turn was cut short without you stopping it, and with each retry a Codex or Copilot chat says. A turn that ends with an error is Turn failed</td>
 </tr>
 <tr>
 <td>Usage or context warning</td>
@@ -1857,8 +1864,12 @@ effect. If that fails, sending stays off: press <strong>Stop</strong> (Ctrl+Peri
 check the chat with Codex, or try Change Permission Mode again. Nothing is sent while it checks.
 <strong>Change Model</strong> and <strong>Change Effort</strong> also work when the chat is idle, with choices from Codex;
 once checked with Codex and saved, they apply from the next message. Change Effort's first choice
-is <strong>Codex's default</strong>. It needs a model chosen from Codex's list first: on Codex's default model,
-it says "Choose an available Codex model first." Codex's Plan mode is separate: use <code>/plan</code>
+is <strong>Codex's default</strong>, and so is Change Model's, which names the model that is now, such as
+"Codex's default (GPT-5.5)". Choosing it puts the chat on that model and its default effort; the
+chat stays on that model if Codex's default changes later. On a chat with no model chosen, Change
+Effort offers the efforts of Codex's default model, and choosing one puts the chat on that model.
+A model Codex no longer lists can't take an effort: Change Effort says so, and Change Model chooses
+another. Codex's Plan mode is separate: use <code>/plan</code>
 in Insert Command or Skill (Ctrl+/) to choose Plan or Default without changing permissions.</p>
 <p>Chats started elsewhere are set in the app or terminal where they run, so for them these items
 say so and change nothing.</p>
@@ -1899,9 +1910,11 @@ instructions.</p>
 <p>For Codex, the dialog has <strong>Instructions for this chat</strong> and <strong>More folders</strong> only, and its note
 says how they work: instructions are sent with each Codex turn, and Codex can change files in
 the more folders only when its permission mode lets it edit files. For a chat already started,
-a folder you remove is left out of the next turn. Change them while the chat is idle; during a
-turn you're told to wait. Changes apply when you choose OK, once they've been checked with Codex
-and saved.</p>
+a folder you remove is left out of the next turn. Codex takes the changes between turns: choose OK
+during a turn and the dialog stays open with what you typed, saying "Codex is still working in this
+chat, and Chat Options change only between turns. Press OK again once it has finished; what you
+typed stays here." Changes apply when you choose OK, once they've been checked with Codex and
+saved.</p>
 <h3>Ask Aside: a question about a chat</h3>
 <p>To ask Claude something about a chat without adding to it, such as "which file did you change
 for the login bug?", press <strong>Ctrl+Shift+Y</strong> (File, Ask Aside, or Ask Aside on a chat's menu in
@@ -2524,11 +2537,14 @@ on or off in the chat itself.</p>
   the chat is made. The copy's tools are saved with it and checked before every turn; every
   other server, app and plugin stays off. Like any Codex copy, it can't change files without
   asking until you press <strong>Ctrl+Shift+O</strong> (File, Change Permission Mode) in it, and it doesn't
-  keep the original's model, effort, Chat Options, automatic approval review or Plan mode.</li>
+  keep the original's model, effort, Chat Options, automatic approval review or Plan mode. The
+  question before the copy says so, and when the copy opens you hear "Opened … (tools copy). It
+  can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The
+  original chat is kept."</li>
 <li><strong>Delete</strong> in the list makes no copy. It says which button to press instead, such as "In a
   Codex chat, a tool changes only in a new copy: press Copy with Tool On (Alt+O) to make one."</li>
-<li>A tool can reach websites and services outside the chat's folder, so turn on only tools you
-  trust. The question before a copy with a tool on says so.</li>
+<li>A tool can reach websites, services and files outside the chat's folder, so turn on only tools
+  you trust. The question before a copy with a tool on says so.</li>
 <li>The list also has the apps from ChatGPT you can use, and <strong>The Chat Place's session tools</strong>,
   which stay on while The Chat Place is running. An app is turned on in a copy the same way as a
   server.</li>
