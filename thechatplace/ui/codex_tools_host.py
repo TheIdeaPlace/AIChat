@@ -13,6 +13,10 @@ import sys
 import wx
 
 from ..ui_text import key_name
+from .codex_extras import copy_note
+
+#: How each question before a tools copy starts, as Branch's does (#602).
+COPY_LEAD = "A new copy of this chat will be made, and this chat is kept. "
 
 #: The first sentence of the note says what changing a tool does (#596).
 NOTE = ("In a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On "
@@ -232,12 +236,21 @@ class CodexConnectedTools:
         names = [name for name in names if name != server.name and name not in self.removed]
         if not off:
             (apps if server.app_id else names).append(server.app_id or server.name)
-        consent = ('Make a new copy of this chat with ' + server.name + ' on? Its tools can reach '
-                   "websites and services outside this chat's folder, so turn on only a tool you "
-                   'trust.' if not off else
-                   'Make a new copy of this chat without ' + server.name + "? It's no longer in "
-                   "Codex's configuration." if server.missing else
-                   'Make a new copy of this chat with ' + server.name + ' off?')
+        # Every tools copy is made read-only with approval on request, as
+        # Rewind's and Branch's are (codex_runtime.copy_with_tools), so each
+        # question says so, as theirs do. It keeps the tools you chose (#602).
+        # The question comes last, as Branch's does, so it's the last thing a
+        # screen reader says before the buttons, and starts by saying a copy is
+        # made, so "the new chat" means something. The tool's own warning comes
+        # after the note: a tool is a program of its own, which Codex's file
+        # rules may not cover, so it names files too.
+        note = COPY_LEAD + copy_note(tools=False)
+        consent = (note + " A tool can reach websites, services and files outside this chat's folder, "
+                   'so turn on only a tool you trust. Make a new copy of this chat with ' + server.name
+                   + ' on?' if not off else
+                   server.name + " is no longer in Codex's configuration. " + note
+                   + ' Make a new copy of this chat without ' + server.name + '?' if server.missing else
+                   note + ' Make a new copy of this chat with ' + server.name + ' off?')
         if wx.MessageBox(consent, 'Copy Codex Chat with Connected Tools',
                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                          self.dialog or self.frame) != wx.YES:
@@ -258,12 +271,14 @@ class CodexConnectedTools:
                 return
             if self.closed:
                 self.frame.refresh_sessions()
-                self.frame._feedback('Saved ' + copy.title + '. No prompt was sent.')
+                self.frame._feedback('Saved ' + copy.title + '. No prompt was sent. '
+                                     + copy_note(short=True))
                 return
             self.record, self.info = copy, copy.to_info()
             self.frame.open_session(self.info)
             self.frame.refresh_sessions()
-            self.frame._feedback('Opened ' + copy.title + '. The original chat is kept.')
+            self.frame._feedback('Opened ' + copy.title + '. ' + copy_note(short=True)
+                                 + ' The original chat is kept.')
             self.load(done)
         self.frame._codex_work(lambda: self.frame.sessions.copy_with_tools(source,
             source.title + ' (tools copy)', names, apps), created)

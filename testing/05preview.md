@@ -318,11 +318,15 @@ the steps that need an account.
 1b. On a server that's off, press **Sign In** (Alt+S). Expect: "Sign In works only in a chat with
    this tool on. Press Copy with Tool On (Alt+O) to make a copy with it on, then sign in from
    Connected Tools in that copy." No browser opens.
-2. On a server, choose **Copy with Tool On** (Alt+O). Expect: "Make a new copy of this chat with"
-   the server "on? Its tools can reach websites and services outside this chat's folder, so turn
-   on only a tool you trust." Say No. Expect: no new chat, nothing changed.
-3. Do it again and say Yes, for a server you trust. Expect: "Opened … (tools copy). The original
-   chat is kept.", with that server on, and the original unchanged. Ask the copy to use the server
+2. On a server, choose **Copy with Tool On** (Alt+O). Expect: "A new copy of this chat will be
+   made, and this chat is kept. The new chat can't change files without asking, and doesn't keep
+   the original's model, effort or Chat Options. Change Permission Mode (Ctrl+Shift+O) lets it edit
+   files. A tool can reach websites, services and files outside this chat's folder, so turn on only
+   a tool you trust. Make a new copy of this chat with" the server "on?" The question is the last
+   thing you hear before the buttons. Say No. Expect: no new chat, nothing changed.
+3. Do it again and say Yes, for a server you trust. Expect: "Opened … (tools copy). It can't change
+   files without asking; Change Permission Mode (Ctrl+Shift+O) lets it edit. The original chat is
+   kept.", heard in full, with that server on, and the original unchanged. Ask the copy to use the server
    for something harmless. Expect: it works, and servers you didn't choose stay off. Ask it to
    change a test file. Expect: it asks first, as any Codex copy does.
 4. Do the same with an app. Expect: only the chosen app can be used, and the original keeps its
@@ -381,7 +385,9 @@ These need a server that really asks. Try with Claude, then with Codex.
    each Codex turn. Codex can change files in these folders only when its permission mode lets it
    edit files." and, for a chat already started, "A folder you remove is left out of the next turn.
    Changes apply when you choose OK." On OK, you hear "Checking the new chat options with Codex."
-   Try a change during a turn. Expect: you're told to wait until the chat is idle.
+   Type a change during a turn and choose OK. Expect: the dialog stays open with what you typed, and
+   you hear "Codex is still working in this chat, and Chat Options change only between turns. Press
+   OK again once it has finished; what you typed stays here." Once the turn finishes, OK saves it.
 
 ## 9. Live changes, thinking and retries
 
@@ -400,15 +406,18 @@ These need a server that really asks. Try with Claude, then with Codex.
 5. **Retries.** If Claude or Codex retries on its own, you hear it once for each change, and Turn
    Status (Ctrl+Shift+T) has the details. You don't need to disconnect to force this. A Claude
    retry is said in words, such as "Claude is retrying: the service is busy." or "the service had a
-   problem (error 503)", never a bare number.
+   problem (error 503)", never a bare number. With sounds on, each retry you hear, in Claude, Codex
+   or Copilot, plays Service trouble.
 
 ## 10. Codex controls
 
 Use a Codex chat started here.
 
 1. **Model and effort.** While it's idle and on Codex's default model, use File, **Change
-   Effort**. Expect: "Choose an available Codex model first." Use **Change Model**. Expect: the
-   models Codex offers, with no "Codex's default" row. Choose one, then use **Change Effort**.
+   Effort**. Expect: Codex's default and the efforts that model offers, not a refusal. Use
+   **Change Model**. Expect: the first row is "Codex's default" with the model that is in
+   brackets, then the models Codex offers, the chat's own marked "(now)". Choose another, then
+   choose Codex's default again: the chat goes back to that model. Use **Change Effort**.
    Expect: the first choice is "Codex's default", the label is "Effort for" the chat's name ",
    from its next turn:" and the choices read as words ("Extra high", not "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
    applies from the next message. Cancel a picker once: the old choice stays. Try during a turn.

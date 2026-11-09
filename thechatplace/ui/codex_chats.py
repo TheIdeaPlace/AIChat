@@ -789,6 +789,10 @@ class CodexChats(SoundHost, CodexExtras):
         self._sound_tools_since(provider, previous, state)
         retry = getattr(state, 'retry', '')
         if retry and (previous is None or previous.turn_id != state.turn_id or getattr(previous, 'retry', '') != retry):
+            # The Service trouble sound with each retry said, as a Claude
+            # chat's retries have (live_turns), so it's heard in the
+            # background too (#596).
+            self._sound(sound_events.TROUBLE, key)
             self._say(f'{record.title}: {retry}', interrupt=False)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)

@@ -303,6 +303,46 @@ def test_codex_consent_is_parented_on_the_dialog_not_the_disabled_window(frame, 
         dialog.Destroy()
 
 
+@pytest.mark.parametrize("off", [True, False])
+def test_copy_with_tool_says_the_copy_cant_change_files_without_asking(frame, env, off):
+    """A tools copy is made read-only with approval on request, as Rewind's
+    and Branch's are: the question and the message on open say so (#602)."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_extras import copy_note
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={"mcp_servers": [] if off else ["notes"]})
+    copy = SimpleNamespace(title="Chat (tools copy)", forked_from=None)
+    copy.to_info = lambda: SimpleNamespace(cli_session_id="c-2", is_own=True, title=copy.title)
+    said, opened = [], []
+    codex_frame = _codex_frame(record)
+    codex_frame.sessions.copy_with_tools = lambda *a: copy
+    codex_frame.store.add = lambda record: None
+    codex_frame._store_write = lambda write, record: True
+    codex_frame._feedback = said.append
+    codex_frame.open_session = opened.append
+    codex_frame.refresh_sessions = lambda: None
+    host = CodexConnectedTools(codex_frame, _codex_info(is_own=True))
+    host.load = lambda done: done([CodexTool("notes", "connected", off_for_chat=off)], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        count = len(env["boxes"])
+        dialog.on_toggle()
+        asked = env["boxes"][count:]
+        assert len(asked) == 1
+        assert asked[0].startswith("A new copy of this chat will be made, and this chat is kept. "
+                                   + copy_note(tools=False) + " ")
+        assert asked[0].endswith(" Make a new copy of this chat with notes " + ("on?" if off else "off?"))
+        assert "can't change files without asking" in asked[0] and "connected tools" not in asked[0]
+        key = key_name("Ctrl+Shift+O")
+        assert said[-1] == (f"Opened Chat (tools copy). It can't change files without asking; Change "
+                            f"Permission Mode ({key}) lets it edit. The original chat is kept.")
+        assert len(opened) == 1
+    finally:
+        dialog.Destroy()
+
+
 @pytest.mark.parametrize("off,button", [(True, "Copy with Tool On"), (False, "Copy with Tool Off")])
 def test_delete_in_a_codex_chat_makes_no_copy_and_says_what_to_press(frame, env, monkeypatch, off, button):
     """Delete turned a tool off in a Claude chat, and in a Codex chat made a

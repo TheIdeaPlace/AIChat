@@ -653,8 +653,10 @@ Quitting The Chat Place requests a stop for its running Codex replies.
 
 - **Chat Options** (Alt+H in New Session and Continue Here; File, Chat Options later)
   sets instructions for this chat, sent with each Codex turn, and more folders. Codex can change
-  files in those folders only when its permission mode lets it edit files. Change them while
-  the chat is idle; during a turn you're told to wait. Changes are checked with Codex and saved
+  files in those folders only when its permission mode lets it edit files. Codex takes the
+  changes between turns: OK during a turn keeps the dialog open with what you typed and says
+  "Codex is still working in this chat, and Chat Options change only between turns. Press OK
+  again once it has finished; what you typed stays here." Changes are checked with Codex and saved
   before they count. A folder you remove
   is left out of the next turn. Codex uses its own agents and styles, so Claude's Agent and
   Output Style choices aren't shown.
@@ -665,7 +667,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   and a file change that doesn't come with the subagent's own changes to read can't be allowed.
 - **Show Tool Activity** (Ctrl+T) includes the summaries of its reasoning that Codex gives, as
   it works and in saved history. They aren't read out as replies.
-- When Codex retries, you hear it once, and Turn Status says why until the turn moves on. The
+- When Codex retries, you hear it once, with the Service trouble sound, and Turn Status says why
+  until the turn moves on. The
   Chat Place doesn't send your message again.
 - Session tools let Codex list, search and read the chats in The Chat Place's list, and hide an
   idle one. It can't hide its own chat, an open chat or one that's working. They work only while
@@ -677,9 +680,13 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   inputs. If a send fails, the recovered draft names its files; attach images again to resend
   them as image inputs.
 - File, **Change Model** and **Change Effort** change an idle chat from its next turn. Choices
-  come from Codex. Change Effort's first choice is **Codex's default**, and its others read as
-  words, such as "Extra high"; it needs a model chosen from Codex's list first, and on Codex's
-  default model it says "Choose an available Codex model first." You hear "Checking the new
+  come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
+  such as "Codex's default (GPT-5.5)": the chat goes on that model and its default effort, and
+  stays on it if Codex's default changes later. Change Effort's first choice is **Codex's
+  default** too, and its others read as words, such as "Extra high". On a chat with no model
+  chosen, it offers the efforts of Codex's default model, and choosing one puts the chat on that
+  model. A model Codex no longer lists can't take an effort: Change Effort says so, and Change
+  Model chooses another. You hear "Checking the new
   model with Codex.", and the change must be confirmed and saved before you can send.
 - **Rewind to Here** (Ctrl+Shift+Z) makes a new copy ending before the selected message of
   yours, with that message ready to change. **Branch from Here** makes a new copy with the whole
@@ -805,12 +812,17 @@ Connected tools start off in Codex chats started here. View, **Connected Tools (
 the servers set up in Codex for the chat's folder, and apps from ChatGPT. Its note starts: "In
 a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On or Off
 makes a new copy of the chat with that choice, and this chat stays as it is." **Copy with Tool
-On** or **Copy with Tool Off** (Alt+O) asks first ("Make a new copy of this chat with notes on?
-Its tools can reach websites and services outside this chat's folder, so turn on only a tool
-you trust."), then makes the copy; the original chat keeps its tools, as Codex sets a chat's
-tools when the chat is made. Like any Codex copy, it can't change files without asking until
-you change its permission mode (Ctrl+Shift+O), and doesn't keep the original's model, effort,
-Chat Options, automatic approval review or Plan mode. **Delete** in the list makes no copy: it
+On** or **Copy with Tool Off** (Alt+O) asks first, then makes the copy; the original chat keeps
+its tools, as Codex sets a chat's tools when the chat is made. Like any Codex copy, it can't
+change files without asking until you change its permission mode (Ctrl+Shift+O), and doesn't
+keep the original's model, effort, Chat Options, automatic approval review or Plan mode. The
+question says so, and ends with the question itself: "A new copy of this chat will be made, and
+this chat is kept. The new chat can't change files without asking, and doesn't keep the
+original's model, effort or Chat Options. Change Permission Mode (Ctrl+Shift+O) lets it edit
+files. A tool can reach websites, services and files outside this chat's folder, so turn on only
+a tool you trust. Make a new copy of this chat with notes on?" When the copy opens you hear
+"Opened … (tools copy). It can't change files without asking; Change Permission Mode
+(Ctrl+Shift+O) lets it edit. The original chat is kept." **Delete** in the list makes no copy: it
 says "In a Codex chat, a tool changes only in a new copy: press Copy with Tool On (Alt+O) to
 make one." (or Copy with Tool Off; on a Mac it names only the button). The Chat Place checks
 the copy's tools before each turn, saves them with the copy, and keeps every other server and

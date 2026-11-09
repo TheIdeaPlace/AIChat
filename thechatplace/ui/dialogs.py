@@ -6044,7 +6044,7 @@ class ChatOptionsDialog(wx.Dialog):
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
                  choices=None, load_choices=None, existing: bool = False, feedback=None,
-                 model: str = "", provider: str = "claude"):
+                 model: str = "", provider: str = "claude", busy=None):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
@@ -6057,6 +6057,8 @@ class ChatOptionsDialog(wx.Dialog):
         self._choices = choices
         self._chat_model = model
         self._feedback = feedback or (lambda text: None)
+        #: What to say instead of closing on OK, "" when it may close.
+        self._busy = busy
         self._agent_values = [""]
         self._style_values = [""]
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -6272,6 +6274,12 @@ class ChatOptionsDialog(wx.Dialog):
                 control.SetFocus()
                 self._feedback(problem)
                 return
+        # A Codex chat's options change only between turns: OK during one
+        # lost what you'd typed (#596), so it stays open and says so.
+        busy = self._busy() if self._busy is not None else ""
+        if busy:
+            self._feedback(busy)
+            return
         _end_modal(self, wx.ID_OK)
 
     def options(self):
