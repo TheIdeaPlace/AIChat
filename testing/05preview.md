@@ -87,7 +87,7 @@ What each should sound like, top to bottom of the list:
 | Message steered into the turn | Bend | The send, with a step on the way up |
 | Steered message taken | Taken | A soft, quick climb of four notes |
 | Queued message sent | Release | The held note leaping up into a send |
-| Queued message deleted | Withdraw | The held note dropping down instead, quietly |
+| Queued message removed | Withdraw | The held note dropping down instead, quietly |
 | You stopped a turn | Stop | A quick, damped drop, low |
 | Reply finished | Rise | Three notes rising |
 | Another chat finished | Low rise | The same rise, lower and softer |
@@ -229,8 +229,15 @@ started elsewhere. It isn't offered for Cowork chats, kept copies or Copilot.
 Make a short chat with at least two of your messages and replies.
 
 1. In the messages, select a reply. Press **Shift+F10** and choose **Branch from Here**. Expect: a
-   new chat with "(branch)" in its title, and the original still listed. In Codex the copy
-   includes the whole turn that reply is in.
+   new chat with "(branch)" in its title, and the original still listed. In Claude, before you
+   send in it, the messages list has a message beginning "No messages yet. This chat is a new copy
+   of" the original, "up to the point you chose." In Codex the copy includes the whole turn that
+   reply is in, and first you're asked: "A new Codex chat will start with the whole turn
+   containing this message, and this chat is kept. The new chat can't change files without
+   asking, and doesn't keep the original's model, effort, Chat Options or connected tools. Change
+   Permission Mode (Ctrl+Shift+O) lets it edit files. Branch here?" Once it opens: "Opened …
+   (branch). It can't change files without asking; Change Permission Mode (Ctrl+Shift+O) lets it
+   edit. The original chat is kept."
 2. Go back to the original and select your second message. Press **Ctrl+Shift+Z** (on a Mac,
    Command+Shift+Z in the messages). Expect: **Rewind to Here** opens on **Conversation only**.
 3. Read **What happens** (Alt+H) and press Enter there. Expect: "Tab to Rewind, or to Cancel",
@@ -238,8 +245,18 @@ Make a short chat with at least two of your messages and replies.
 4. Open it again and choose Rewind. Expect: a new "(rewound)" chat ending just before that
    message, with your message in the reply box ready to change. The original and your files are
    unchanged.
-5. **Codex.** Expect: only Conversation only; the file choices say they aren't available. The copy
-   starts read-only, on Codex's own model and effort, with connected tools off.
+5. **Codex.** Expect: only Conversation only; the file choices say they aren't available, and What
+   happens says "Codex doesn't put files back, so only the conversation goes back. A rewound Codex
+   chat can't change files without asking until you change its permission mode." Choose Rewind.
+   Expect: "Opened … (rewound). It can't change files without asking; Change Permission Mode
+   (Ctrl+Shift+O) lets it edit. The original chat is kept. Change your message and send when
+   ready." Ask the copy to change a test file. Expect: it asks first. Press **Ctrl+Shift+O**,
+   choose a mode that edits files, and ask again. Expect: it can.
+5a. **Why files can't go back.** Open Rewind on a desktop app or terminal chat. Expect: the file
+   choices say "(unavailable)", and What happens says "Files can be put back only for chats started
+   in The Chat Place. Conversation only makes a new chat of your own from it." On a chat started
+   here, try a message sent before 0.5. Expect: "The Chat Place has no saved copies of your files
+   from before this message, so they can't be put back."
 6. **Claude, putting files back.** Ask Claude to change `rewind-example.txt` with its Edit tool,
    not a command or a subagent (check with Ctrl+T). Note the file before and after. Open Rewind on
    the message that asked for it and arrow to **Files only**. Expect: What happens names the file,
@@ -291,19 +308,31 @@ the steps that need an account.
 ### Codex
 
 1. In a Codex chat started here, open the list. Expect: servers for the folder, the Codex apps you
-   can use, and The Chat Place's session tools. Tools start off.
-2. On a server, choose **Copy with Tool On** (Alt+O). Expect: a question warning that its tools can
-   reach outside the folder. Say No. Expect: no new chat, nothing changed.
-3. Do it again and say Yes, for a server you trust. Expect: a new read-only "(tools copy)" chat with
-   that server on, and the original unchanged. Ask the copy to use the server for something
-   harmless. Expect: it works, and servers you didn't choose stay off.
+   can use, and The Chat Place's session tools. Tools start off. Details, with nothing chosen,
+   starts "In a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On
+   or Off makes a new copy of the chat with that choice, and this chat stays as it is." It doesn't
+   mention plugins.
+1a. On a server, press **Delete**. Expect: no new chat, and you hear "In a Codex chat, a tool
+   changes only in a new copy: press Copy with Tool On (Alt+O) to make one." On a Mac, try
+   Backspace: it names only the button.
+1b. On a server that's off, press **Sign In** (Alt+S). Expect: "Sign In works only in a chat with
+   this tool on. Press Copy with Tool On (Alt+O) to make a copy with it on, then sign in from
+   Connected Tools in that copy." No browser opens.
+2. On a server, choose **Copy with Tool On** (Alt+O). Expect: "Make a new copy of this chat with"
+   the server "on? Its tools can reach websites and services outside this chat's folder, so turn
+   on only a tool you trust." Say No. Expect: no new chat, nothing changed.
+3. Do it again and say Yes, for a server you trust. Expect: "Opened … (tools copy). The original
+   chat is kept.", with that server on, and the original unchanged. Ask the copy to use the server
+   for something harmless. Expect: it works, and servers you didn't choose stay off. Ask it to
+   change a test file. Expect: it asks first, as any Codex copy does.
 4. Do the same with an app. Expect: only the chosen app can be used, and the original keeps its
    choice.
 5. In the copy, choose **Sign In** on the server. Expect: a dialog reading you the sign-in page's
    real address first. Cancel once: no browser opens. Do it again and open it, finish signing in,
    and expect to hear the result, or press Refresh if Codex doesn't report one.
-6. Open the list on a Codex chat started elsewhere. Expect: the folder's servers, read-only, with
-   no copying.
+6. Open the list on a Codex chat started elsewhere. Expect: the folder's servers, which can't be
+   changed, with no copying. Sign In on a server says "This chat wasn't started in The Chat Place.
+   To sign in to this tool, use Codex in a terminal: codex mcp login" and the server's name.
 7. In the tools copy, remove its server from Codex's configuration, then send. Expect: the message
    is refused and says why. The list shows that server first, saying it's been removed, and
    **Copy with Tool Off** makes a copy without it. Put the server back afterwards.
@@ -316,7 +345,7 @@ These need a server that really asks. Try with Claude, then with Codex.
    on the read-only **Message** box. Press Enter there. Expect: nothing is sent, and you hear "Tab to
    the form, or to Send".
 2. Tab through the form. Expect: each question, choice and field is named, a number says its limits,
-   and each field's Alt key goes to it. A check box's Alt key moves to it without ticking it.
+   and each field's Alt key goes to it. A check box's Alt key moves to it without checking it.
 3. Leave a required answer empty and press Send. Expect: it says what's missing. Enter 0 in a number
    field and send. Expect: 0 is kept, not dropped.
 4. Press Escape on another request. Expect: it's left waiting, to answer later. Choose **Decline** on
@@ -326,7 +355,12 @@ These need a server that really asks. Try with Claude, then with Codex.
    and the host first, then the whole address. Enter there sends nothing and says "Tab to Open in
    Browser, or to Decline". **Open in Browser** opens it.
 7. A form too complex to show opens on a **Note** box saying why, with only **Decline** and **Answer
-   Later**.
+   Later**. The note ends "Decline tells the tool no. Answer Later leaves the turn waiting until you
+   come back and decline, or stop the turn."
+8. After you answer any request (Send, Allow, Deny), and nothing else is waiting, go back to the
+   messages list. Expect: its name says the chat is working, not that it needs you. Try it in a
+   Claude, a Codex and a Copilot chat, and in an agent conversation. After Answer Later, it still
+   says it needs you.
 
 ## 8. Chat Options, Claude and Codex
 
@@ -343,32 +377,45 @@ These need a server that really asks. Try with Claude, then with Codex.
 5. **Codex.** Open File, Chat Options on a Codex chat started here. Expect: it starts on
    **Instructions**, and Tab goes to More folders, Add Folder, Remove, About these options, OK and
    Cancel, then round again. Shift+Tab goes back. Escape closes without saving; Ctrl+Enter saves.
-   Try instructions and a folder as in steps 1 and 4. A folder lets Codex write there only in a
-   mode that edits files.
+   Try instructions and a folder as in steps 1 and 4. Expect the note: "Instructions are sent with
+   each Codex turn. Codex can change files in these folders only when its permission mode lets it
+   edit files." and, for a chat already started, "A folder you remove is left out of the next turn.
+   Changes apply when you choose OK." On OK, you hear "Checking the new chat options with Codex."
+   Try a change during a turn. Expect: you're told to wait until the chat is idle.
 
 ## 9. Live changes, thinking and retries
 
 1. **Claude, during a turn.** Use File, **Change Model** or **Change Permission Mode**
    (Ctrl+Shift+O). Expect: "now and for later turns", or a plain reason it applies from the next
    turn. Change the mode twice quickly. Expect: the heading stays on your last choice.
-2. When Claude switches itself to plan mode, you hear "Claude Code switched to plan mode", without
+2. When Claude switches itself to plan mode, you hear "Claude switched to plan mode.", without
    it cutting off what's being read, and the next turn stays in plan mode until you approve the plan.
-3. **Thinking.** Turn on Show Tool Activity (Ctrl+T). In Claude, where it kept its thinking, it comes
+   If you change the mode from your phone over Remote Control to one that asks less, you hear "Claude
+   switched to … mode for this turn. Later turns start in … mode."
+3. **Thinking.** Turn on Show Tool Activity (Ctrl+T). In Claude, where Claude Code saved its thinking, it comes
    before the reply. In Codex, reasoning summaries appear, live and in history. Expect: a summary is
    never read out as if it were the reply.
 4. **Context.** After a Claude turn, open Usage and Context (Ctrl+Shift+U). Expect: readable
    figures for tools, memory files, skills, messages and free space.
 5. **Retries.** If Claude or Codex retries on its own, you hear it once for each change, and Turn
-   Status (Ctrl+Shift+T) has the details. You don't need to disconnect to force this.
+   Status (Ctrl+Shift+T) has the details. You don't need to disconnect to force this. A Claude
+   retry is said in words, such as "Claude is retrying: the service is busy." or "the service had a
+   problem (error 503)", never a bare number.
 
 ## 10. Codex controls
 
 Use a Codex chat started here.
 
-1. **Model and effort.** While it's idle, use File, **Change Model**, then **Change Effort**. Expect:
-   the choices come from Codex, and the change applies from the next message. Cancel a picker once:
-   the old choice stays. Try during a turn. Expect: you're told to wait or stop first.
-2. **Plan mode.** Press Ctrl+/, choose `/plan`, and send it. Choose **Plan**. Expect: the heading
+1. **Model and effort.** While it's idle and on Codex's default model, use File, **Change
+   Effort**. Expect: "Choose an available Codex model first." Use **Change Model**. Expect: the
+   models Codex offers, with no "Codex's default" row. Choose one, then use **Change Effort**.
+   Expect: the first choice is "Codex's default", the label is "Effort for" the chat's name ",
+   from its next turn:" and the choices read as words ("Extra high", not "xhigh"). Choosing one says "Checking the new model with Codex." (or effort), and the change
+   applies from the next message. Cancel a picker once: the old choice stays. Try during a turn.
+   Expect: you're told to wait or stop first. New Session's Model and Effort for Codex, and
+   Properties (Alt+Enter) on a Codex chat left on the default, also say "Codex's default".
+2. **Plan mode.** Press Ctrl+/, choose `/plan`, and send it. Expect: a picker titled **Plan Mode**.
+   Ctrl+/ reads `/plan` as "Choose Plan mode, or go back to Default mode." Choose **Plan**. Expect: the heading
    says Plan, and asking for a change gets a plan, not the change. Choose `/plan` again and
    **Default**, then send a message to carry it out.
 3. **A control with a draft.** Put `/model` alone on the first line and some text below it. Send.
@@ -379,9 +426,11 @@ Use a Codex chat started here.
    the reply box; finish the request and send.
 6. **Compact.** In an idle chat with some history, send `/compact`. Expect: "context compacted". If
    you've just changed its settings, expect to be told to send a normal message first.
-7. **Memories.** Send `/memories off`, then `/memories on`. Expect: each is confirmed. Your saved
-   memories aren't deleted.
-8. **Goals.** Send `/goal`. Expect: its Goal and usage, or "No goal is set for this chat".
+7. **Memories.** Send `/memories off`, then `/memories on`. Expect: "Codex memories are off for"
+   the chat's name, then "on for". Your saved memories aren't deleted.
+8. **Goals.** Send `/goal`. Expect: its Goal and usage, or "No goal is set for this chat". With a
+   Goal set in Codex, `/goal pause` says "Goal paused for" the chat's name, and `/goal
+   clear` "Goal cleared for" it.
 9. **Session tools.** Ask the chat to list your sessions, look up itself, and search for a word in
    a test chat. Expect: it can, and it leaves itself out of the list. Ask it to hide an idle test
    chat. Expect: it's hidden (File, Bring Back Session returns it). Ask it to hide itself, an open
@@ -391,7 +440,9 @@ Use a Codex chat started here.
     one that isn't allowed is. Turn Show Tool Activity on: allowed ones are shown and spoken. Open
     Lists (Ctrl+Shift+I) and press **Ctrl+8** (or choose **Approvals** in Kinds). Expect: each
     request, newest first, as "Allowed:" or not, the command and who allowed it; Details has the
-    reason, and **Copy** copies the command.
+    reason, and **Copy** copies the command. Open File, **Chat Permissions** (Ctrl+Shift+H).
+    Expect: "Recent decisions made for you, by automatic review and by Allow for This Chat (newest
+    first):", in the same order as Lists.
 
 ## 11. Stop one background task
 
@@ -399,10 +450,13 @@ In a test chat, ask the AI to start two background commands that each wait about
 say when both are running without waiting for them.
 
 1. Choose File, **Stop Background Task** (in Codex you can also send `/background`). Expect: a list of
-   both. Cancel once: both keep running.
-2. Open it again and stop one. Expect: only that one ends; the turn and the other keep going.
+   both. Cancel once: both keep running. In Codex, it asks "Background tasks in" the chat's name
+   ". Stop which?", and nothing says "terminal".
+2. Open it again and stop one. Expect: only that one ends; the turn and the other keep going. In
+   Codex the question is "Stop" and the command, then "The turn and other background tasks carry
+   on.", and then "Background task stopped."
 3. Wait for the other to finish with the list open, then choose it. Expect: you hear it had already
-   finished.
+   finished. With none running, Codex says "No background tasks are running in this Codex chat."
 
 ## 12. New Session and Continue Here
 
