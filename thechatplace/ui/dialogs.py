@@ -2541,6 +2541,7 @@ class QuestionDialog(wx.Dialog):
         self._answer_key = "id" if provider == "Codex" else "question"
         self._controls = []  # per question: (kind, [controls], other text)
         self._answer_boxes = []  # the multi-line Other boxes (answer_box_key)
+        self._one_line_boxes = []  # the secret ones (shift_enter_in_one_line_box)
         self._previews = {}  # option control -> its preview
         self.preview_text = None
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -2609,6 +2610,7 @@ class QuestionDialog(wx.Dialog):
                 # secret stays one line, as a password box.
                 if question.get("isSecret"):
                     other_text = wx.TextCtrl(parent_window, style=wx.TE_PASSWORD)
+                    self._one_line_boxes.append(other_text)
                 else:
                     other_text = wx.TextCtrl(parent_window, style=ANSWER_BOX_STYLE)
                     other_text.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
@@ -2743,7 +2745,8 @@ class QuestionDialog(wx.Dialog):
         set_accessible_name(self.preview_text, f"Preview of {label}")
 
     def _on_char_hook(self, event):
-        if answer_box_key(event, self._answer_boxes, self._buttons[0]):
+        if (answer_box_key(event, self._answer_boxes, self._buttons[0])
+                or shift_enter_in_one_line_box(event, self._one_line_boxes)):
             return
         focus = wx.Window.FindFocus()
         if (event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown()
@@ -2803,11 +2806,19 @@ class QuestionDialog(wx.Dialog):
                     chosen.append(typed)
             else:
                 chosen.append(control._hub_label)
-        return ", ".join(chosen)
+        # Choices are joined with commas; an answer of several lines goes on
+        # lines of its own, rather than starting after a comma (#591).
+        joined = ""
+        for item in chosen:
+            if joined:
+                joined += "\n" if "\n" in item or "\n" in joined else ", "
+            joined += item
+        return joined
 
     def answers(self):
         """{question text: answer} as Claude Code expects it; several
-        choices are joined with commas."""
+        choices are joined with commas, and an answer of several lines
+        starts a line of its own."""
         return {question[self._answer_key]: self._answer_for(controls, other_text)
                 for (_kind, controls, other_text), question
                 in zip(self._controls, self._questions)}
@@ -3741,19 +3752,36 @@ def answer_box_key(event, boxes, button) -> bool:
     ``button``, the dialog's default, as Enter did when the box was one line.
     Shift+Enter used to send, as Windows presses the default button for it
     in a one-line box. The click goes through the button's own handler.
-    True if the key was taken."""
+    True if the key was taken.
+
+    Shift+Enter isn't taken: the box itself starts the new line, as for a
+    typed key, so a screen reader echoes it as it does in the reply box. A
+    multi-line box keeps Enter without a Ctrl for itself on Windows, and the
+    box has the key before any default button on GTK and on a Mac."""
     focus = wx.Window.FindFocus()
     if (event.GetKeyCode() not in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
             or not any(focus is box for box in boxes)):
         return False
     modifiers = event.GetModifiers()
-    if modifiers == wx.MOD_SHIFT:
-        focus.WriteText("\n")
-        return True
     if modifiers in (wx.MOD_NONE, wx.MOD_CONTROL) and button.IsEnabled():
         click = wx.CommandEvent(wx.wxEVT_BUTTON, button.GetId())
         click.SetEventObject(button)
         button.GetEventHandler().ProcessEvent(click)
+        return True
+    return False
+
+
+def shift_enter_in_one_line_box(event, boxes) -> bool:
+    """Shift+Enter in a one-line answer box (a secret answer, a connected
+    tool's text field) does nothing but a beep: there's no new line to start,
+    and Windows would otherwise press the default button for it, sending an
+    answer, where the multi-line boxes start a new line (#591). Plain Enter
+    still sends. True if the key was taken."""
+    focus = wx.Window.FindFocus()
+    if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+            and event.GetModifiers() == wx.MOD_SHIFT
+            and any(focus is box for box in boxes)):
+        wx.Bell()
         return True
     return False
 
@@ -5917,6 +5945,9 @@ class ElicitationDialog(wx.Dialog):
             self._group_keys[event.GetKeyCode()].SetFocus()
             return
         if press_focused_button_on_a_mac(event):
+            return
+        if shift_enter_in_one_line_box(event, [c for c in self._controls.values()
+                                               if isinstance(c, wx.TextCtrl)]):
             return
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             focus = self._focus()

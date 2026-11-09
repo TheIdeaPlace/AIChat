@@ -5230,11 +5230,10 @@ def test_shift_enter_starts_a_new_line_in_an_own_answer_and_enter_sends(frame, m
         assert t1.GetName() == "One: your own answer"
         assert dialog._answer_boxes == [t for _k, _c, t in dialog._controls]
         press, closed = _enter_presser(dialog, monkeypatch)
-        t1.SetValue("Green")
-        t1.SetInsertionPointEnd()
-        assert press(t1, shift=True) and not closed  # taken, and nothing sent
-        t1.WriteText("with stripes")
-        assert t1.GetValue() == "Green\nwith stripes"
+        # Shift+Enter goes on to the box, which starts the line itself (as
+        # typed, so it's echoed); nothing is sent.
+        assert not press(t1, shift=True) and not closed
+        t1.SetValue("Green\nwith stripes")
         assert first[-1].GetValue()  # typing chose Other
         multi[0].SetValue(True)
         t3.SetValue("Third")
@@ -5245,6 +5244,13 @@ def test_shift_enter_starts_a_new_line_in_an_own_answer_and_enter_sends(frame, m
         # The lines reach the answer; Claude's is tidied a line at a time.
         t1.SetValue("  Green   and\n\n with   stripes \n")
         assert dialog.answers()["First?"] == "Green and\n\nwith stripes"
+        # Several choices are joined with commas; an answer of several lines
+        # starts on a line of its own rather than after a comma.
+        _t2.SetValue("Fast\nthen slow")
+        assert multi[0].GetValue() and multi[-1].GetValue()  # M, and Other by typing
+        assert dialog.answers()["Second?"] == "M\nFast\nthen slow"
+        _t2.SetValue("Fast")
+        assert dialog.answers()["Second?"] == "M, Fast"
         # Enter anywhere else, Alt+Enter and other keys are left to the system.
         assert not press(first[0])
         assert not press(dialog.question_text)
@@ -5269,7 +5275,12 @@ def test_a_secret_answer_stays_one_line(frame, monkeypatch):
         assert pin.HasFlag(wx.TE_PASSWORD) and not pin.IsMultiLine()
         assert dialog._answer_boxes == [note] and note.IsMultiLine()
         press, closed = _enter_presser(dialog, monkeypatch)
-        assert not press(pin, shift=True) and not closed  # the system's, as before
+        beeps = []
+        monkeypatch.setattr(wx, "Bell", lambda: beeps.append(1))
+        # Shift+Enter in the one-line secret box is taken, so Windows doesn't
+        # press Send Answers for it; it beeps. Enter still goes on to send.
+        assert press(pin, shift=True) and not closed and beeps == [1]
+        assert not press(pin) and beeps == [1]
         # Codex's answer goes exactly as typed, its lines and all.
         note.SetValue("First line\nSecond line")
         pin.SetValue("1234")
@@ -5291,10 +5302,8 @@ def test_shift_enter_starts_a_new_line_in_a_plan_s_note(frame, monkeypatch):
         assert note.GetName() == "What to change (for Keep Planning)"
         assert dialog.GetDefaultItem() is dialog.keep_button
         press, closed = _enter_presser(dialog, monkeypatch)
-        note.SetValue("Fewer steps")
-        note.SetInsertionPointEnd()
-        assert press(note, shift=True) and not closed
-        note.WriteText("and tests first")
+        assert not press(note, shift=True) and not closed  # the box's own new line
+        note.SetValue("Fewer steps\nand tests first\n")
         assert dialog.note_text() == "Fewer steps\nand tests first"
         assert press(note) and closed == [wx.ID_OK] and not dialog.approved  # Keep Planning
         assert press(note, control=True) and len(closed) == 2 and not dialog.approved
@@ -5313,10 +5322,8 @@ def test_shift_enter_starts_a_new_line_in_a_reason_for_deny(frame, monkeypatch):
         assert reason.IsMultiLine() and not reason.HasFlag(wx.TE_PROCESS_TAB)
         assert reason.GetName() == "Reason to give Claude if you deny (optional)"
         press, closed = _enter_presser(dialog, monkeypatch)
-        reason.SetValue("Not that site")
-        reason.SetInsertionPointEnd()
-        assert press(reason, shift=True) and not closed
-        reason.WriteText("use the docs")
+        assert not press(reason, shift=True) and not closed  # the box's own new line
+        reason.SetValue("Not that site\nuse the docs")
         assert dialog.reason_text() == "Not that site\nuse the docs"
         assert press(reason) and closed == [wx.ID_OK] and dialog.choice == DENY
         assert not press(dialog.request_text) and len(closed) == 1

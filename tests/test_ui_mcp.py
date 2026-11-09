@@ -693,6 +693,36 @@ def test_enter_in_the_message_doesnt_send_what_the_server_filled_in(frame, env, 
         dialog.Destroy()
 
 
+def test_shift_enter_in_a_form_s_text_box_sends_nothing(frame, env, monkeypatch):
+    """Shift+Enter starts a new line in the Answer dialog's own answers (#591);
+    in a one-line box, where there's no line to start, it used to send the
+    form, as Windows presses the default button for it. Now it only beeps;
+    Enter still sends."""
+    from thechatplace.ui import dialogs
+    schema = {"type": "object", "properties": {
+        "why": {"type": "string"}, "what": {"type": "string", "enum": ["a", "b"]}}}
+    dialog = dialogs.ElicitationDialog(frame, "Tools probe",
+                                       elicitation_from("e", {**FORM, "requested_schema": schema}))
+    beeps = []
+    monkeypatch.setattr(dialogs.wx, "Bell", lambda: beeps.append(1))
+    try:
+        why = dialog.control_for("why")
+
+        def press(focus, shift):
+            monkeypatch.setattr(dialog, "_focus", lambda: focus)
+            monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+            event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+            event.SetKeyCode(wx.WXK_RETURN)
+            event.SetShiftDown(shift)
+            dialog._on_key(event)
+            return event.GetSkipped()
+        assert not press(why, True) and beeps == [1]  # taken: no default button
+        assert press(why, False) and beeps == [1]  # Enter goes on to Send
+        assert press(dialog.control_for("what"), True)  # not a text box: as before
+    finally:
+        dialog.Destroy()
+
+
 def test_enter_in_the_message_says_where_to_go(frame, env, monkeypatch):
     # A key that did nothing and said nothing (#468).
     runner = _asked(frame, elicitation_from("e1", FORM))
