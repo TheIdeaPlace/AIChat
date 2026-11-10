@@ -8891,12 +8891,18 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
     try:
         _read(dialog)
         items = list(dialog.branch.GetStrings())
-        assert items == ["work (checked out in this folder)", "main (in use in another worktree)"]
+        # older is only on origin (#622): after the local ones, before those in use.
+        assert items == ["older (on origin)", "work (checked out in this folder)",
+                         "main (in use in another worktree)"]
         assert not any(str(clone) in item for item in items)   # the path is for the message
         dialog.message.SetValue("hi")
         dialog.work_in.SetSelection(1)
         dialog._on_work_in()
-        dialog.branch.SetSelection(1)
+        fetch = dialog._fetches[str(clone)]
+        assert pump(lambda: not fetch.is_alive(), timeout=30)
+        pump(lambda: False, timeout=0.3)   # Branch listed again once fetched
+        assert list(dialog.branch.GetStrings()) == items
+        dialog.branch.SetSelection(2)
         dialog._sync_start_from()
         # Arrowing to it, Start from says why it's off, with no path.
         assert not dialog.start_from.IsEnabled()
@@ -8921,7 +8927,7 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         assert pump(lambda: len(boxes) == 2, timeout=15)
         assert boxes[-1] == refused
         # The folder's own branch says so, and names the folder.
-        dialog.branch.SetSelection(0)
+        dialog.branch.SetSelection(1)
         dialog._sync_start_from()
         assert "work is checked out in this folder" in _start_from_name(dialog)
         dialog._on_ok(None)
@@ -8934,6 +8940,158 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         dialog._sync_start_from()
         assert dialog.start_from.IsEnabled() and _start_from_name(dialog) == "Start from"
         assert dialog.start_from.GetStringSelection() == "origin/main, fetched first"
+    finally:
+        dialog.Destroy()
+
+
+def test_a_new_worktree_fetches_so_branch_lists_whats_on_the_remote_now(frame, env):
+    # #622: a branch pushed after the last fetch is listed once A new
+    # worktree is chosen, and one deleted from the remote goes.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert "older (on origin)" in dialog.branch.GetStrings()
+        assert dialog._fetches == {}             # nothing fetched for The folder as it is
+        subprocess.run(["git", "branch", "pushed-since"], cwd=origin, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "branch", "-D", "older"], cwd=origin, check=True,
+                       capture_output=True)
+        dialog.branch.ChangeValue("typed")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert pump(lambda: "pushed-since (on origin)" in dialog.branch.GetStrings(), timeout=30)
+        assert "older (on origin)" not in dialog.branch.GetStrings()
+        assert dialog.branch.GetValue() == "typed"       # what you typed stays
+        # Once per folder: choosing it again doesn't fetch again.
+        first = dict(dialog._fetches)
+        dialog.work_in.SetSelection(0)
+        dialog._on_work_in()
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert dialog._fetches == first and len(first) == 1
+        assert not any("Couldn't fetch" in said for said in env["feedback"])
+    finally:
+        dialog.Destroy()
+
+
+def test_listing_branch_again_keeps_your_place(frame, env):
+    # #622 review: the fetch can finish while you're in Branch. Nothing new
+    # leaves the list alone; something new keeps the item you're on, or
+    # the caret in what you're typing; an open list waits until it shuts.
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        items = list(dialog.branch.GetStrings())
+        dialog.branch.SetSelection(1)
+        sets = []
+        real_set = dialog.branch.Set
+        dialog.branch.Set = lambda choices: sets.append(list(choices)) or real_set(choices)
+        dialog._list_branches(items)
+        assert sets == [] and dialog.branch.GetSelection() == 1
+        newer = ["aaa (on origin)", *items]
+        dialog._list_branches(newer)
+        assert dialog.branch.GetSelection() == 2
+        assert dialog.branch.GetValue() == items[1]
+        dialog.branch.ChangeValue("fix/half")
+        dialog.branch.SetInsertionPoint(3)
+        dialog._list_branches(items)
+        assert dialog.branch.GetValue() == "fix/half"
+        assert dialog.branch.GetInsertionPoint() == 3
+        # With the list open, nothing changes until it shuts.
+        dialog._on_branch_open(wx.CommandEvent())
+        dialog._list_branches(newer)
+        assert list(dialog.branch.GetStrings()) == items
+        dialog._on_branch_shut(wx.CommandEvent())
+        assert pump(lambda: list(dialog.branch.GetStrings()) == newer)
+    finally:
+        dialog.Destroy()
+
+
+def test_a_remote_branch_gone_after_the_fetch_is_said(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.branch.SetStringSelection("older (on origin)")
+        subprocess.run(["git", "branch", "-D", "older"], cwd=origin, check=True,
+                       capture_output=True)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        said = "older is no longer on the remote, so it would be a new branch."
+        assert pump(lambda: said in env["feedback"], timeout=30)
+        assert dialog.branch.GetValue() == "older"
+        assert dialog.start_from.IsEnabled()       # a new branch: Start from is on
+    finally:
+        dialog.Destroy()
+
+
+def test_start_during_the_fetch_says_it_waits_for_it(frame, env, monkeypatch):
+    import threading
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    release = threading.Event()
+    real_fetch = workplaces.fetch_remotes
+    monkeypatch.setattr(workplaces, "fetch_remotes",
+                        lambda git, info: release.wait(20) and real_fetch(git, info))
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/waited")
+        dialog._on_ok(None)
+        waiting = "Getting the remote branches, then making the worktree."
+        assert pump(lambda: waiting in env["feedback"], timeout=10)
+        assert dialog._making and not dialog.start_btn.IsEnabled()
+        release.set()
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert dialog.worktree_said.startswith("Made worktree fix-waited on new branch")
+    finally:
+        release.set()
+        dialog.Destroy()
+
+
+def test_a_fetch_for_a_folder_left_or_a_closed_dialog_is_dropped(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.workplaces import RepoInfo
+    plain = env["tmp"] / "plain"
+    plain.mkdir()
+    dialog = NewSessionDialog(frame, str(plain), feedback=env["feedback"].append)
+    stale = RepoInfo(top="x", main="x", common="x/.git", rel="", branch="old",
+                     branches=["old"], busy=[], remotes=["origin/gone"])
+    try:
+        _read(dialog)
+        dialog._remotes_fetched("C:\\some\\other\\folder", stale, "", "Couldn't fetch")
+        assert dialog.branch.GetCount() == 0 and "Couldn't fetch" not in env["feedback"]
+    finally:
+        dialog.Destroy()
+    dialog._remotes_fetched(str(plain), stale, "", "Couldn't fetch")   # closed: nothing
+
+
+def test_a_failed_fetch_is_said_and_branch_keeps_what_it_had(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    subprocess.run(["git", "remote", "set-url", "origin", str(env["tmp"] / "gone")], cwd=clone,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        said = ("Couldn't fetch from origin, so Branch lists its branches as they were at the "
+                "last fetch.")
+        assert pump(lambda: said in env["feedback"], timeout=30)
+        assert "older (on origin)" in dialog.branch.GetStrings()
     finally:
         dialog.Destroy()
 

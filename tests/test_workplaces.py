@@ -625,6 +625,100 @@ def test_a_choice_names_its_branch():
     assert workplaces.branch_from_choice(" work (checked out in this folder) ") == "work"
     assert workplaces.branch_from_choice(" fix/new ") == "fix/new"
     assert workplaces.branch_from_choice("") == ""
+    # Remote-only items (#622) name the local branch that will track them.
+    assert workplaces.branch_from_choice("feature/x (on origin)") == "feature/x"
+    assert workplaces.branch_from_choice(" fix (on upstream) ") == "fix"
+    assert workplaces.branch_from_choice("feature/x (on two words)") == "feature/x (on two words)"
+
+
+# -- branches only a remote has (#622) ------------------------------------------------------
+
+def test_branches_only_a_remote_has_are_listed_after_the_local_ones():
+    info = _described(branch="work", branches=["older", "feature/x"], busy=["work", "main"],
+                      remotes=["origin/main", "origin/feature/x", "origin/topic",
+                               "origin/a/b", "upstream/topic", "upstream/extra", "origin/HEAD"],
+                      busy_at={})
+    assert workplaces.remote_only(info) == [("topic", "origin"), ("a/b", "origin"),
+                                            ("extra", "upstream")]
+    assert workplaces.branch_choices(info) == [
+        "older", "feature/x",
+        "topic (on origin)", "a/b (on origin)", "extra (on upstream)",
+        "work (checked out in this folder)", "main (in use in another worktree)"]
+    # Each names a branch that's tracked, never new.
+    for item in ("topic (on origin)", "a/b (on origin)", "extra (on upstream)"):
+        assert not workplaces.is_new_branch(info, item)
+        assert workplaces.in_use_reason(info, workplaces.branch_from_choice(item)) == ""
+
+
+@needs_git
+def test_a_remote_only_item_makes_a_tracking_worktree(cloned):
+    info = workplaces.repo_info(GIT, str(cloned))
+    # main has a local branch, so only feature/old is the remote's alone.
+    assert workplaces.branch_choices(info) == [
+        "main", "feature/old (on origin)", "work (checked out in this folder)"]
+    made = workplaces.create_worktree(GIT, info, "feature/old (on origin)")
+    assert (made.how, made.branch, made.base) == ("tracking", "feature/old", "origin/feature/old")
+    upstream = subprocess.run([GIT, "rev-parse", "--abbrev-ref", "@{upstream}"],
+                              cwd=made.worktree, capture_output=True, text=True).stdout.strip()
+    assert upstream == "origin/feature/old"
+    # Now it's local and checked out: listed as in use, not as on origin.
+    after = workplaces.branch_choices(workplaces.repo_info(GIT, str(cloned)))
+    assert "feature/old (in use in another worktree)" in after
+    assert "feature/old (on origin)" not in after
+
+
+@needs_git
+def test_a_branch_only_another_remote_has_tracks_that_remote(cloned, tmp_path):
+    other = tmp_path / "Other.git"
+    subprocess.run([GIT, "clone", "-q", "--bare", str(cloned), str(other)], check=True,
+                   capture_output=True)
+    git("branch", "up-only", "work", cwd=other)
+    git("remote", "add", "upstream", str(other), cwd=cloned)
+    git("fetch", "-q", "upstream", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    choices = workplaces.branch_choices(info)
+    assert "up-only (on upstream)" in choices
+    assert "feature/old (on origin)" in choices and "feature/old (on upstream)" not in choices
+    made = workplaces.create_worktree(GIT, info, "up-only (on upstream)")
+    assert (made.how, made.base) == ("tracking", "upstream/up-only")
+
+
+@needs_git
+def test_fetching_lists_branches_pushed_since_and_drops_deleted_ones(cloned, repo):
+    git("branch", "pushed-since", cwd=repo)
+    git("branch", "-D", "feature/old", cwd=repo)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert "pushed-since (on origin)" not in workplaces.branch_choices(info)
+    assert workplaces.fetch_remotes(GIT, info) == ""
+    choices = workplaces.branch_choices(workplaces.repo_info(GIT, str(cloned)))
+    assert "pushed-since (on origin)" in choices
+    assert "feature/old (on origin)" not in choices      # pruned
+
+
+@needs_git
+def test_fetching_with_no_remote_is_nothing_and_a_failed_fetch_says_so(repo, cloned, tmp_path):
+    assert workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(repo))) == ""
+    git("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=cloned)
+    said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
+    assert said == ("Couldn't fetch from origin, so Branch lists its branches as they were at "
+                    "the last fetch.")
+    # What was fetched before is still listed.
+    assert "feature/old (on origin)" in workplaces.branch_choices(
+        workplaces.repo_info(GIT, str(cloned)))
+
+
+@needs_git
+def test_one_remote_that_fails_doesnt_stop_the_others(cloned, repo, tmp_path):
+    # Each remote is fetched on its own (#622 review): a gone one is named,
+    # and the rest are still brought up to date.
+    for name in ("old-fork", "older-fork"):
+        git("remote", "add", name, str(tmp_path / name), cwd=cloned)
+    git("branch", "pushed-since", cwd=repo)
+    said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
+    assert said == ("Couldn't fetch from old-fork and older-fork, so Branch lists their "
+                    "branches as they were at the last fetch.")
+    assert "pushed-since (on origin)" in workplaces.branch_choices(
+        workplaces.repo_info(GIT, str(cloned)))
 
 
 def _described(**changes):

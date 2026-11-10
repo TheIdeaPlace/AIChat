@@ -358,8 +358,15 @@ too).
   touched. Clones go into the GitHub folder (in your home folder or in Documents), made if
   there isn't one. **Work in** (Alt+I) is The folder as it is (naming its branch) or A new
   worktree, which a folder outside a git repository can't have (choosing it says so). **Branch**
-  (Alt+R) lists the local branches no worktree has checked out; choose one, type the name of a
-  branch only a remote has (the new branch tracks it), or type a new name. For a new name,
+  (Alt+R) lists every branch: first the local branches no worktree has checked out, then those
+  only a remote has, such as "release/next (on origin)" (the new branch tracks it), then those
+  checked out somewhere, saying so. Choosing A new worktree first fetches each remote quietly
+  in the background (`git fetch --prune`, once per folder each time New Session opens), so the
+  list has branches pushed since and drops deleted ones. The list is changed only if something
+  did, keeping the item you're on (or waiting while its list is open). A remote that can't be
+  fetched is named, and its branches are as of the last fetch; a remote branch you'd chosen that
+  the fetch found deleted is said, as it would now be a new branch. Start waits for the fetch,
+  saying so (#622). Choose one, or type any branch's name, or a new name. For a new name,
   **Start from** (Alt+A) is the remote's default branch, fetched first (the default, as Claude
   Code's worktrees; a Claude chat follows Claude Code's `worktree.baseRef` when it's `head`), or
   what the folder has checked out. With no remote, or a failed fetch, it starts from the folder's

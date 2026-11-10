@@ -373,6 +373,9 @@ STEPS = [
     # A branch checked out in another worktree is listed, saying so (#587).
     Step("New Session, a branch in use in another worktree", [], trigger="branch-in-use",
          expect=["Branch", "main (in use in another worktree)"]),
+    # A branch only the remote has is listed before those in use (#622).
+    Step("Branch, a branch only on the remote", ["Up", "Up"],
+         expect=["release/next (on origin)"]),
     Step("New Session closed again", ["Escape"], expect=["Fix the flaky upload test"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
@@ -548,7 +551,8 @@ def new_session_start_from(frame, in_use: bool = False) -> None:
     worktree chosen and a new branch typed, so Start from is on, and the
     focus on Branch, one Tab before it. Opened once the folder is read.
     ``in_use``: main is checked out in a worktree of its own and chosen
-    instead (#587), so Branch shows it saying so."""
+    instead (#587), so Branch shows it saying so. The remote also has a
+    branch of its own, listed as on origin (#622)."""
     import subprocess
     import tempfile
     import wx
@@ -559,6 +563,7 @@ def new_session_start_from(frame, in_use: bool = False) -> None:
     author = ["-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
     for args, folder in ((["init", "-q", "-b", "main"], origin),
                          ([*author, "commit", "-q", "--allow-empty", "-m", "first"], origin),
+                         (["branch", "release/next"], origin),
                          (["clone", "-q", str(origin), str(clone)], base),
                          (["checkout", "-q", "-b", "work"], clone)):
         subprocess.run(["git", *args], cwd=folder, check=True, capture_output=True)
@@ -572,6 +577,9 @@ def new_session_start_from(frame, in_use: bool = False) -> None:
             wx.CallLater(100, ready, tries - 1)
             return
         dialog.work_in.SetSelection(WORK_IN_WORKTREE)
+        # The clone was just made, so no fetch (#622): one finishing later
+        # would list Branch again while Orca is reading it.
+        dialog._fetches[dialog._repo_for] = None
         dialog._on_work_in()
         if in_use:
             dialog.branch.SetStringSelection("main (in use in another worktree)")
