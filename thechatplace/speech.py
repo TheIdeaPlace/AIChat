@@ -52,7 +52,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -356,7 +356,26 @@ class SpeechSettings:
     def save(self, path: Optional[Path] = None) -> None:
         path = Path(path or DEFAULT_SETTINGS_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        # Replaced whole, never left half written: what a newer release saved
+        # here (see _unknown_settings) couldn't be kept from a damaged file.
+        from .provider_storage import atomic_write_json
+        atomic_write_json(path, {**_unknown_settings(path), **asdict(self)})
+
+
+def _unknown_settings(path: Path) -> dict:
+    """Settings in the file that this release doesn't know: ones a newer
+    release saved. Saving writes them back as they were, so going back to an
+    older release and up again loses none of them (as 0.4.1 does, #611). Read from
+    the file each time, as the Settings dialog hands back a copy rather than
+    what was loaded."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    known = {f.name for f in fields(SpeechSettings)}
+    return {name: value for name, value in raw.items() if name not in known}
 
 
 # ---------------------------------------------------------------------------
