@@ -717,9 +717,12 @@ class NewSessionDialog(wx.Dialog):
             git = workplaces.find_git()
             if not git:
                 return
-            why_not = workplaces.fetch_remotes(git, info)
-            fresh = workplaces.repo_info(git, folder)
-            remote = workplaces.default_remote_branch(git, fresh) if fresh else ""
+            try:
+                why_not = workplaces.fetch_remotes(git, info)
+                fresh = workplaces.repo_info(git, folder)
+                remote = workplaces.default_remote_branch(git, fresh) if fresh else ""
+            except Exception:  # noqa: BLE001 - Branch keeps what it listed
+                return
             wx.CallAfter(self._remotes_fetched, folder, fresh, remote, why_not)
         thread = threading.Thread(target=fetch, name="fetch-remotes", daemon=True)
         self._fetches[folder] = thread
@@ -867,16 +870,16 @@ class NewSessionDialog(wx.Dialog):
         start, remote = self.start_point(), self._start_remote
         self._making = True
         self.start_btn.Enable(False)
-        fetching = self._fetches.get(folder)
+        branch_fetch = self._fetches.get(folder)
 
         def make():
             # Branch's fetch first (#622): two fetches at once can fail on
             # git's locks, and a branch pushed since is then tracked, not new.
             # Every git call in it has a time limit, so the wait ends.
-            if fetching is not None and fetching.is_alive():
+            if branch_fetch is not None and branch_fetch.is_alive():
                 wx.CallAfter(self._say_making,
                              "Getting the remote branches, then making the worktree.")
-                fetching.join()
+                branch_fetch.join()
             # The repository is read again here, not taken from when the
             # dialog opened: a worktree removed (or made) since then changes
             # which branches are free (#587).
