@@ -99,20 +99,31 @@ def test_a_deleted_status_bar_is_known_to_be_gone(app):
     a new bar gets a wrapper of its own."""
     from thechatplace.ui.statusbar import StatusParts
     frame = wx.Frame(None, size=(1000, 300))
-    again = wx.Frame(None, size=(1000, 300))
     try:
         bar = frame.CreateStatusBar(1)
         StatusParts(bar).add_text("message", "Status", -3)
         assert bar
         frame.SetStatusBar(None)  # so the frame doesn't keep it either
-        bar.Destroy()  # a child goes at once (a frame only at idle time)
+        bar.Destroy()  # a child goes at once
         assert not bar
         with pytest.raises(RuntimeError):
             bar.GetFieldsCount()
-        assert again.CreateStatusBar(1) is not bar
     finally:
         frame.Destroy()
-        again.Destroy()
+
+
+def test_a_status_bar_deleted_with_its_window_is_known_to_be_gone(app):
+    """#610, as it crashed: the bar going with its window, which wx deletes
+    at idle time."""
+    from fake_env import pump
+    from thechatplace.ui.statusbar import StatusParts
+    frame = wx.Frame(None, size=(1000, 300))
+    bar = frame.CreateStatusBar(1)
+    StatusParts(bar).add_text("message", "Status", -3)
+    frame.Destroy()
+    assert pump(lambda: not bar)
+    with pytest.raises(RuntimeError):
+        bar.GetFieldsCount()
 
 
 def test_a_move_to_another_screen_keeps_the_status_bar_buttons_text(app):

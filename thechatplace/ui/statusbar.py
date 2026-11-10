@@ -347,11 +347,14 @@ class StatusParts:
         another size, so the bar's height is fitted again, and the parts laid
         out at the new scale."""
         event.Skip()
+        if not self.bar:
+            return  # being deleted (_on_destroy)
         buttons = [p.control for p in self._parts if isinstance(p.control, StatusButton)]
         if buttons:
             self._fit_height(buttons[0])
         self.layout()
 
     def _on_size(self, event):
-        self.layout()
         event.Skip()
+        if self.bar:  # not while it's being deleted (_on_destroy)
+            self.layout()

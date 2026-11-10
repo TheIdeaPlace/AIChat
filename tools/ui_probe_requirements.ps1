@@ -33,8 +33,12 @@ function Get-ProbeRequirementFiles([string]$Repo) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         foreach ($line in [System.IO.File]::ReadAllLines($path)) {
             if ($line -match '^\s*(-r\s*|--requirement(\s+|=))(\S+)') {
-                $waiting.Enqueue([System.IO.Path]::GetFullPath(
-                    (Join-Path (Split-Path $path) $Matches[3])))
+                $named = $Matches[3]
+                if ($named -match '://') { continue }  # a URL: not a file in the checkout
+                if (-not [System.IO.Path]::IsPathRooted($named)) {
+                    $named = Join-Path (Split-Path $path) $named
+                }
+                $waiting.Enqueue([System.IO.Path]::GetFullPath($named))
             }
         }
     }

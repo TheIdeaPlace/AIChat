@@ -120,6 +120,16 @@ def test_files_taken_in_with_r_count_too(tmp_path):
     assert names == ["requirements-dev.txt", "requirements.txt", "requirements-build.txt"]
 
 
+def test_an_include_by_full_path_is_followed_and_one_by_url_isnt(tmp_path):
+    elsewhere = tmp_path / "shared" / "extra.txt"
+    elsewhere.parent.mkdir()
+    elsewhere.write_text("pytest-timeout==2.4.0\n", encoding="utf-8")
+    folder = repo(tmp_path / "a", f"-r {elsewhere}\n-r https://example.invalid/r.txt\n")
+    paths = [Path(p) for p in run("Get-ProbeRequirementFiles $a0", folder)]
+    assert [p.name for p in paths] == ["requirements-dev.txt", "requirements.txt", "extra.txt"]
+    assert paths[2] == elsewhere
+
+
 @pytest.mark.parametrize("url", ["https://example.invalid/a.zip?x=1&y=2",
                                  "https://example.invalid/a%20b.zip"])
 def test_a_url_cmd_would_mangle_is_refused(tmp_path, url):
