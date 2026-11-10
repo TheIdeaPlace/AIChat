@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  858
+  883
  ],
  "client": [
   664,
-  819
+  844
  ],
  "dpi": [
   96,
@@ -23,7 +23,7 @@
     0,
     0,
     664,
-    780
+    805
    ],
    "best": [
     644,
@@ -535,10 +535,29 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "label": "Check for up&dates when The Chat Place starts",
    "rect": [
     10,
     576,
+    263,
+    15
+   ],
+   "best": [
+    263,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "rect": [
+    10,
+    601,
     382,
     15
    ],
@@ -557,7 +576,7 @@
    "label": "Histor&y retention and kept copies:",
    "rect": [
     10,
-    611,
+    636,
     179,
     16
    ],
@@ -576,7 +595,7 @@
    "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
    "rect": [
     12,
-    629,
+    654,
     644,
     110
    ],
@@ -596,7 +615,7 @@
    "label": "Open Claude's retention settings",
    "rect": [
     10,
-    747,
+    772,
     193,
     23
    ],
@@ -615,7 +634,7 @@
    "label": "OK",
    "rect": [
     494,
-    788,
+    813,
     75,
     23
    ],
@@ -634,7 +653,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    788,
+    813,
     75,
     23
    ],

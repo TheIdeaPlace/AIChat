@@ -275,6 +275,21 @@ def test_update_notice_settings_round_trip_and_default(tmp_path):
     assert odd.last_run_version == ""
 
 
+def test_startup_update_check_setting_round_trip_and_default(tmp_path):
+    # On unless turned off, as 0.4.1 saved it: an absent or odd value means on.
+    path = tmp_path / "speech.json"
+    assert SpeechSettings.load(path).check_updates_at_start is True
+    settings = SpeechSettings.load(path)
+    settings.check_updates_at_start = False
+    settings.save(path)
+    assert json.loads(path.read_text(encoding="utf-8"))["check_updates_at_start"] is False
+    assert SpeechSettings.load(path).check_updates_at_start is False
+    path.write_text('{"session_order": "name"}', encoding="utf-8")
+    assert SpeechSettings.load(path).check_updates_at_start is True
+    path.write_text('{"check_updates_at_start": "no"}', encoding="utf-8")
+    assert SpeechSettings.load(path).check_updates_at_start is True
+
+
 def test_what_is_still_running_in_the_background():
     from thechatplace.announce import background_text
     assert background_text(["Windows build"]) == \

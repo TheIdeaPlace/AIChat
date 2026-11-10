@@ -564,9 +564,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pool.submit(remove_whole_chat_page)
         self.session_list.SetFocus()
         if check_updates_at_start:
-            # A few seconds in, so the list is read first.
-            self._startup_update_check = wx.CallLater(UPDATE_CHECK_DELAY_MS,
-                                                      self.check_for_updates, False)
+            # A few seconds in, so the list is read first. Settings can turn
+            # it off: someone who went back to an older release isn't offered
+            # the newer one at every start. Help, Check for Updates still looks.
+            if self.speech.check_updates_at_start:
+                self._startup_update_check = wx.CallLater(UPDATE_CHECK_DELAY_MS,
+                                                          self.check_for_updates, False)
             # The first start after an update says so (#141), once the
             # window is up.
             self._startup_update_notice = wx.CallLater(UPDATE_NOTICE_DELAY_MS,
@@ -7366,6 +7369,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.speech = dialog.get_settings()
         finally:
             dialog.Destroy()
+        if not self.speech.check_updates_at_start:
+            # Turned off in the first seconds after starting: the check still
+            # waiting doesn't run either.
+            pending = getattr(self, "_startup_update_check", None)
+            if pending is not None:
+                pending.Stop()
         try:
             self.speech.save()
         except OSError as exc:
