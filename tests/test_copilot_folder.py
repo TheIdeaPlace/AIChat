@@ -1201,12 +1201,24 @@ def test_a_long_setting_name_is_shortened_when_said(repo):
 # -- Kelly's review of 5d378b4 ------------------------------------------------------------
 
 
+#: No automatic maintenance after a commit (#610). Newer git runs "git
+#: maintenance run --auto" in the background once a commit has returned, and
+#: that holds .git/objects/maintenance.lock for a moment: a test that walks
+#: the repository just then lists the lock, then finds it gone when it opens
+#: it (macOS CI, git 2.56). Given through the environment rather than the
+#: repository's config, so the config a test checks is the same as before.
+NO_AUTO_MAINTENANCE = {"GIT_CONFIG_COUNT": "2",
+                       "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+                       "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"}
+
+
 def _real_git(path, *args, check=True):
     """Real git with none of this computer's config, and an identity."""
     import subprocess
     return subprocess.run(
         ["git", "-C", str(path), *args], check=check, capture_output=True,
         env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+             **NO_AUTO_MAINTENANCE,
              "GIT_AUTHOR_NAME": "Synthetic", "GIT_AUTHOR_EMAIL": "s@example.invalid",
              "GIT_COMMITTER_NAME": "Synthetic", "GIT_COMMITTER_EMAIL": "s@example.invalid"})
 

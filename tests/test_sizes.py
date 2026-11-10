@@ -90,6 +90,42 @@ def test_status_bar_widths_are_scaled_at_every_layout(app, monkeypatch):
         frame.Destroy()
 
 
+def test_a_deleted_status_bar_is_known_to_be_gone(app):
+    """#610: the frame makes its status bar in C++, so wxPython was never
+    told when it was deleted. Its wrapper went on pointing at freed memory,
+    and the next window's status bar, made at the same address, was handed
+    that old wrapper (199 times in 200 on Linux): a crash, now and then, on
+    its first use. Marked deleted, it raises as any deleted control does, and
+    a new bar gets a wrapper of its own."""
+    from thechatplace.ui.statusbar import StatusParts
+    frame = wx.Frame(None, size=(1000, 300))
+    try:
+        bar = frame.CreateStatusBar(1)
+        StatusParts(bar).add_text("message", "Status", -3)
+        assert bar
+        frame.SetStatusBar(None)  # so the frame doesn't keep it either
+        bar.Destroy()  # a child goes at once
+        assert not bar
+        with pytest.raises(RuntimeError):
+            bar.GetFieldsCount()
+    finally:
+        frame.Destroy()
+
+
+def test_a_status_bar_deleted_with_its_window_is_known_to_be_gone(app):
+    """#610, as it crashed: the bar going with its window, which wx deletes
+    at idle time."""
+    from fake_env import pump
+    from thechatplace.ui.statusbar import StatusParts
+    frame = wx.Frame(None, size=(1000, 300))
+    bar = frame.CreateStatusBar(1)
+    StatusParts(bar).add_text("message", "Status", -3)
+    frame.Destroy()
+    assert pump(lambda: not bar)
+    with pytest.raises(RuntimeError):
+        bar.GetFieldsCount()
+
+
 def test_a_move_to_another_screen_keeps_the_status_bar_buttons_text(app):
     """#185: refitting the bar after a scaling change measured on the live
     Context button and left it blank, a nameless button to a screen reader."""

@@ -80,9 +80,22 @@ def wait(predicate, timeout=10):
 
 
 def received(tmp_path):
+    """What the fake has read so far. A line it's still writing (with no
+    newline yet) isn't counted, so this can be polled while it runs."""
     path = tmp_path / "received.jsonl"
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] \
-        if path.exists() else []
+    if not path.exists():
+        return []
+    *whole, _unfinished = path.read_text(encoding="utf-8").split("\n")
+    return [json.loads(line) for line in whole if line]
+
+
+def sent_cancel(tmp_path):
+    """Whether the fake has read a session/cancel. The fake logs a message
+    when it reads it, which can be after the turn has ended here: the
+    cancel goes out through a writer thread, and a fake that answered at
+    once may read it only after this side has seen the answer (#584). So
+    a test waits for it rather than looking once."""
+    return any(m.get("method") == "session/cancel" for m in received(tmp_path))
 
 
 def test_a_turn_streams_its_reply_and_ends_idle(make, tmp_path):
@@ -352,7 +365,7 @@ def test_a_queued_message_isnt_sent_after_copilot_stops_asking(make, tmp_path, m
     state = runtime.snapshot(chat)
     # The running turn is stopped at once, and the waiting message comes back.
     assert state.unsent == ("Second",) and "stopped asking" in state.notice
-    assert any(m.get("method") == "session/cancel" for m in received(tmp_path))
+    assert wait(lambda: sent_cancel(tmp_path))
     assert not runtime.ready(chat)
     prompts = [m for m in received(tmp_path) if m.get("method") == "session/prompt"]
     assert len(prompts) == 1
@@ -369,7 +382,7 @@ def test_stop_answers_a_waiting_permission_request_first(make, tmp_path):
                 and runtime.snapshot(chat).outcome not in ("", "inProgress"))
     answers = [m for m in received(tmp_path) if m.get("id") == request.request_id and "result" in m]
     assert answers[0]["result"] == {"outcome": {"outcome": "cancelled"}}
-    assert any(m.get("method") == "session/cancel" for m in received(tmp_path))
+    assert wait(lambda: sent_cancel(tmp_path))
 
 
 def test_billing_is_checked_on_each_turns_own_record(make, tmp_path):
