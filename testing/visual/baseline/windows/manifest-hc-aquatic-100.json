@@ -20,7 +20,6 @@
   1000,
   720
  ],
- "complete": true,
  "surfaces": {
   "main-compacted": {
    "kind": "window",
@@ -464,7 +463,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    833
+    858
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -478,7 +477,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    818
+    843
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -492,7 +491,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    858
+    883
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -506,7 +505,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    885
+    910
    ],
    "capture": "PrintWindow",
    "problems": [],
