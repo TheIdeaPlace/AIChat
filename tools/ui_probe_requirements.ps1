@@ -15,20 +15,40 @@ URL) rather than to a version number.
 Works in Windows PowerShell 5.1, which the probe runs in.
 #>
 
-# The files the VM's venv is installed from (requirements-dev.txt takes in
-# requirements.txt with -r).
-$ProbeRequirementFiles = @('requirements.txt', 'requirements-dev.txt')
+# The file the VM's venv is installed from.
+$ProbeRequirementsRoot = 'requirements-dev.txt'
+
+function Get-ProbeRequirementFiles([string]$Repo) {
+    <# The full path of the file the probe installs from and of each one it
+    takes in, with -r or --requirement (relative to the file that names it),
+    in the order met and once each. A file that isn't there is still listed,
+    so the stamp changes when it appears. #>
+    $found = New-Object System.Collections.Generic.List[string]
+    $waiting = New-Object System.Collections.Generic.Queue[string]
+    $waiting.Enqueue([System.IO.Path]::GetFullPath((Join-Path $Repo $ProbeRequirementsRoot)))
+    while ($waiting.Count) {
+        $path = $waiting.Dequeue()
+        if ($found.Contains($path)) { continue }
+        $found.Add($path)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        foreach ($line in [System.IO.File]::ReadAllLines($path)) {
+            if ($line -match '^\s*(-r\s*|--requirement(\s+|=))(\S+)') {
+                $waiting.Enqueue([System.IO.Path]::GetFullPath(
+                    (Join-Path (Split-Path $path) $Matches[3])))
+            }
+        }
+    }
+    return $found.ToArray()
+}
 
 function Get-ProbeRequirementsStamp([string]$Repo) {
     <# A hash of the requirements files, the same whatever line endings the
-    checkout has. A missing file counts as empty, so the stamp still
-    changes when one appears. #>
-    $text = foreach ($name in $ProbeRequirementFiles) {
-        $path = Join-Path $Repo $name
+    checkout has. A missing file counts as empty. #>
+    $text = foreach ($path in (Get-ProbeRequirementFiles $Repo)) {
         $body = if (Test-Path -LiteralPath $path -PathType Leaf) {
             [System.IO.File]::ReadAllText($path) -replace "`r`n", "`n"
         } else { '' }
-        "== $name`n$body"
+        "== $(Split-Path $path -Leaf)`n$body"
     }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($text -join "`n"))
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -41,15 +61,21 @@ function Get-ProbeDirectUrlRequirements([string]$Repo) {
     <# The URL of each requirement pinned to an archive ("name @ URL"), from
     the requirements files, in order and once each: the ones a version check
     can't tell apart. Comments, options (-r, --hash) and environment
-    markers are left out. #>
+    markers are left out.
+
+    Each goes to pip through vmtest run, which writes the command into a
+    .cmd file, so a URL with a character cmd treats specially (& | < > ^ %
+    ", or a space) is refused rather than split or mangled there. #>
     $urls = New-Object System.Collections.Generic.List[string]
-    foreach ($name in $ProbeRequirementFiles) {
-        $path = Join-Path $Repo $name
+    foreach ($path in (Get-ProbeRequirementFiles $Repo)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         foreach ($line in [System.IO.File]::ReadAllLines($path)) {
             $line = ($line -replace '(^|\s)#.*$', '').Trim()
             if ($line -match '^[A-Za-z0-9][A-Za-z0-9._-]*(\[[^\]]*\])?\s*@\s*(\S+)') {
                 $url = $Matches[2] -replace ';.*$', ''
+                if ($url -match '[&|<>^%"]') {
+                    throw "Can't pass $url to pip through vmtest run: it has a character cmd would act on."
+                }
                 if ($url -and -not $urls.Contains($url)) { $urls.Add($url) }
             }
         }

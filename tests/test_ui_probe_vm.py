@@ -105,10 +105,40 @@ def test_a_venv_is_current_only_with_the_same_stamp(stored, current):
     assert run("Test-ProbeVenvCurrent $a0 'abc'", stored) == [current]
 
 
+def test_files_taken_in_with_r_count_too(tmp_path):
+    folder = repo(tmp_path / "a", "-r requirements-build.txt\nwxPython>=4.2\n")
+    build = folder / "requirements-build.txt"
+    build.write_text("pyinstaller==6.22.3\n", encoding="utf-8")
+    before = stamp(folder)
+    url = APPKIT.format("0123abc")
+    build.write_text(f"--requirement=requirements.txt\nkit @ {url}\n", encoding="utf-8")
+    # Changed, and its archive pin found, though the probe installs from
+    # requirements-dev.txt; the loop back to requirements.txt is followed once.
+    assert stamp(folder) != before
+    assert run("Get-ProbeDirectUrlRequirements $a0", folder) == [url]
+    names = [Path(p).name for p in run("Get-ProbeRequirementFiles $a0", folder)]
+    assert names == ["requirements-dev.txt", "requirements.txt", "requirements-build.txt"]
+
+
+@pytest.mark.parametrize("url", ["https://example.invalid/a.zip?x=1&y=2",
+                                 "https://example.invalid/a%20b.zip"])
+def test_a_url_cmd_would_mangle_is_refused(tmp_path, url):
+    folder = repo(tmp_path / "a", f"kit @ {url}\n")
+    command = (f"& {{ param($a0) . '{HELPER}'; "
+               "try { $null = Get-ProbeDirectUrlRequirements $a0; 'none' } catch { 'refused' } } "
+               f"'{folder}'")
+    done = subprocess.run([SHELL, "-NoProfile", "-NonInteractive", "-Command", command],
+                          capture_output=True, text=True, timeout=60)
+    assert done.stdout.strip() == "refused"
+
+
 def test_the_probe_checks_the_stamp_and_keeps_it_after_installing():
     script = (TOOLS / "ui_probe_vm.ps1").read_text(encoding="utf-8")
     assert ". (Join-Path $PSScriptRoot 'ui_probe_requirements.ps1')" in script
-    check = script.index("Test-ProbeVenvCurrent")
+    install = script.index("function Install-ProbePackages")
     force = script.index("--force-reinstall --no-deps")
+    first = script.index("Install-ProbePackages", force)   # a new or half-made venv
+    check = script.index("Test-ProbeVenvCurrent")
+    again = script.index("Install-ProbePackages", check)   # requirements changed
     keep = script.index("requirements.stamp -Value")
-    assert check < force < keep
+    assert install < force < first < check < again < keep
