@@ -871,14 +871,17 @@ class NewSessionDialog(wx.Dialog):
         self._making = True
         self.start_btn.Enable(False)
         branch_fetch = self._fetches.get(folder)
+        has_remote = bool(self._repo is not None and self._repo.remotes)
 
         def make():
             # Branch's fetch first (#622): two fetches at once can fail on
             # git's locks, and a branch pushed since is then tracked, not new.
-            # Every git call in it has a time limit, so the wait ends.
+            # Every git call in it has a time limit, so the wait ends. Said
+            # only with a remote: with none, there's nothing to get.
             if branch_fetch is not None and branch_fetch.is_alive():
-                wx.CallAfter(self._say_making,
-                             "Getting the remote branches, then making the worktree.")
+                if has_remote:
+                    wx.CallAfter(self._say_making,
+                                 "Getting the remote branches, then making the worktree.")
                 branch_fetch.join()
             # The repository is read again here, not taken from when the
             # dialog opened: a worktree removed (or made) since then changes
