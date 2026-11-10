@@ -133,8 +133,11 @@ SEPARATE_PROVIDERS = ("copilot",)
 #: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
 #: provider-sessions.json over a provider option it doesn't know, and then
 #: saves nothing. It ignores a field it doesn't know. In memory they're
-#: ordinary provider options.
-CODEX_EXTRAS = ("collaboration", "mcp_servers", "instructions", "extra_roots", "apps")
+#: ordinary provider options. A later release's new per-chat setting must go
+#: in provider_extras or a field of its own, never in provider_options: this
+#: release refuses, and won't save, a file with an option it doesn't know,
+#: but keeps unknown fields and provider_extras settings as they were (#614).
+CODEX_EXTRAS =("collaboration", "mcp_servers", "instructions", "extra_roots", "apps")
 
 
 def _valid_codex_extra(name: str, value) -> bool:
@@ -164,6 +167,26 @@ def _stored_record(session: "OwnSession") -> dict:
     if extras:
         item["provider_extras"] = extras
     return item
+
+
+def _unknown_fields(item: dict) -> dict:
+    """What a record holds that this release doesn't know: fields a newer
+    release added. Kept as they were and written back with the record, so
+    going back to an older release and up again loses none of them (0.4.1,
+    #611). ``provider_extras`` is this release's own for Codex, read into
+    ``provider_options``; only the settings in it that this release doesn't
+    know are kept from it, so one cleared here isn't brought back."""
+    unknown = {name: value for name, value in item.items()
+               if name not in _FIELDS and name != "provider_extras"}
+    extras = item.get("provider_extras")
+    if "provider_extras" in item:
+        if item.get("provider", "claude") != "codex" or not isinstance(extras, dict):
+            unknown["provider_extras"] = extras
+        else:
+            later = {name: value for name, value in extras.items() if name not in CODEX_EXTRAS}
+            if later:
+                unknown["provider_extras"] = later
+    return unknown
 
 
 def _session_from_dict(item: dict) -> Optional[OwnSession]:
@@ -290,6 +313,9 @@ class OwnSessionStore:
         self._separate = {name: self.path.with_name(f"provider-{self.path.stem}-{name}{self.path.suffix}")
                           for name in SEPARATE_PROVIDERS}
         self._sessions: Dict[tuple[str, str], OwnSession] = {}
+        #: identity -> the record's fields a newer release wrote, which this
+        #: one doesn't read but saves back (see _unknown_fields).
+        self._extras: Dict[tuple[str, str], dict] = {}
         self._needs_backup = False
         self.migration_backup: Optional[Path] = None
         self.load_error = ""
@@ -300,6 +326,7 @@ class OwnSessionStore:
 
     def load(self) -> None:
         self._sessions = {}
+        self._extras = {}
         self.load_error = ""
         self._save_blocked = False
         try:
@@ -360,6 +387,7 @@ class OwnSessionStore:
             if session is not None:
                 mixed |= session.provider != "claude"
                 self._sessions[session.identity] = session
+                self._keep_extras(session, item)
         if foreign is not None:
             entries = foreign.get("sessions")
             if foreign.get("version") != 2 or not isinstance(entries, list):
@@ -380,6 +408,7 @@ class OwnSessionStore:
                     self._save_blocked = True
                     return
                 self._sessions[session.identity] = session
+                self._keep_extras(session, item)
         for name, path in self._separate.items():
             if not self._load_separate(name, path):
                 return
@@ -424,7 +453,31 @@ class OwnSessionStore:
                 self._save_blocked = True
                 return False
             self._sessions[session.identity] = session
+            self._keep_extras(session, item)
         return True
+
+    def _keep_extras(self, session: OwnSession, item: dict) -> None:
+        extras = _unknown_fields(item)
+        if extras:
+            kept = self._extras.setdefault(session.identity, {})
+            earlier, later = kept.get("provider_extras"), extras.get("provider_extras")
+            kept.update(extras)
+            if isinstance(earlier, dict) and isinstance(later, dict):
+                # The same chat in two files (a mixed sessions.json and its
+                # companion): keep the later settings from both.
+                kept["provider_extras"] = {**earlier, **later}
+
+    def _record(self, session: OwnSession) -> dict:
+        """A session as it's written: a newer release's fields first, then
+        this release's, which win if a name is in both. Codex's
+        ``provider_extras`` is merged the same way, setting by setting."""
+        kept = self._extras.get(session.identity, {})
+        item = _stored_record(session)
+        record = {**kept, **item}
+        later = kept.get("provider_extras")
+        if session.provider == "codex" and isinstance(later, dict):
+            record["provider_extras"] = {**later, **item.get("provider_extras", {})}
+        return record
 
     def _set_aside(self, why: str) -> None:
         """Move an unreadable store out of the way, so the next save can't
@@ -446,7 +499,7 @@ class OwnSessionStore:
         records = []
         for session in self._sessions.values():
             if session.provider == "claude":
-                item = asdict(session)
+                item = self._record(session)
                 item.pop("provider")
                 item.pop("provider_options")
                 records.append(item)
@@ -457,14 +510,14 @@ class OwnSessionStore:
             raise OSError(f"Changes cannot be saved: {self.load_error}")
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
-        foreign = {"version": 2, "sessions": [_stored_record(s) for s in self._sessions.values()
+        foreign = {"version": 2, "sessions": [self._record(s) for s in self._sessions.values()
                                                 if s.provider not in ("claude", *SEPARATE_PROVIDERS)]}
         # Each separate provider's file first, as the provider file goes
         # before the legacy one: put back as it was if the rest fails.
         previous = {}
         try:
             for name, path in self._separate.items():
-                records = [asdict(s) for s in self._sessions.values() if s.provider == name]
+                records = [self._record(s) for s in self._sessions.values() if s.provider == name]
                 try:
                     previous[path] = path.read_bytes()
                 except FileNotFoundError:
@@ -523,8 +576,11 @@ class OwnSessionStore:
         if new_id != old_id and (provider, new_id) in self._sessions:
             raise ValueError("Session identity already exists.")
         self._sessions.pop((provider, old_id))
+        extras = self._extras.pop((provider, old_id), None)
         session.cli_session_id = new_id
         self._sessions[session.identity] = session
+        if extras:
+            self._extras[session.identity] = extras
         self.save()
 
     def update(self, cli_session_id: str, *, provider: str = "claude", **changes) -> None:
@@ -544,11 +600,14 @@ class OwnSessionStore:
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
         """Remove a session (File, Delete Session Permanently) (its transcript is left alone)."""
         session = self._sessions.pop((provider, cli_session_id), None)
+        extras = self._extras.pop((provider, cli_session_id), None)
         if session is not None:
             try:
                 self.save()
             except Exception:
                 self._sessions[session.identity] = session
+                if extras:
+                    self._extras[session.identity] = extras
                 raise
         if provider == 'codex':
             # Repeating removal also retries cleanup after a sharing violation.

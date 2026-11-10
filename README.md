@@ -18,7 +18,7 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.4.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
+> **Status: version 0.4.1, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
 > build is a preview. How it has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
@@ -1690,7 +1690,10 @@ update. Nothing is ever downloaded or installed on its own: a download starts on
 Yes to an update, and one you said Yes to that couldn't be installed then is installed at the next
 start. Clearing it in the first seconds after a start also stops that start's check if it hasn't
 run yet. To go back to 0.4 after this version, clear it here, uninstall, and install 0.4.1 (not
-0.4.0, which drops the settings and chat options it doesn't know).
+0.4.0, which drops the settings and chat options it doesn't know). This version does the same
+for a later one: settings and chat options it doesn't know (in `speech.json`, and fields in the
+records of `sessions.json` and its `provider-sessions*.json` companions) are written back as they
+were, so a newer version finds them again on the next update.
 
 The Help menu's update item always says which version you're running, as QuickMail's does:
 **Check for Updates (running 0.1.4)...** (Alt+H, U). Once a check, at start or from Help, finds a
