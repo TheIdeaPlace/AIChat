@@ -114,10 +114,48 @@ class CodexOwnedThreads:
         verify_codex_rule_layers(result)
         return tools
 
+    def _thread_gone(self, native_id):
+        """Whether Codex's own thread list, active and archived, has no such
+        thread, so there is nothing to resume however often TCP retries.
+        Any doubt (a failed or malformed list) is not proof: return False."""
+        try:
+            for archived in (False, True):
+                cursor, cursors = None, set()
+                while True:
+                    params = {'archived': archived, 'limit': 100,
+                              'sourceKinds': ['cli', 'vscode', 'exec', 'appServer', 'unknown']}
+                    if cursor is not None:
+                        params['cursor'] = cursor
+                    result = self.connection.request('thread/list', params)
+                    data = result.get('data') if isinstance(result, dict) else None
+                    if not isinstance(data, list):
+                        return False
+                    if any(isinstance(thread, dict) and thread.get('id') == native_id
+                           for thread in data):
+                        return False
+                    cursor = result.get('nextCursor')
+                    if cursor is None:
+                        break
+                    if not isinstance(cursor, str) or not cursor or cursor in cursors:
+                        return False
+                    cursors.add(cursor)
+        except Exception:  # noqa: BLE001 - an unreadable list proves nothing
+            return False
+        return True
+
     def _verify_idle(self, native_id, *, loaded=False, empty=False):
         # Inspect native state before changing or recovering a grant. A new,
         # still-owned empty thread has no persisted rollout to list yet.
-        metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
+        try:
+            metadata = self.connection.request('thread/read', {'threadId': native_id, 'includeTurns': False})
+        except CodexRpcError:
+            # A failed read alone doesn't prove the thread is gone (the
+            # connection may just be unhealthy). Only say so when Codex's
+            # thread list confirms it; a loaded thread is Codex's own live
+            # state, never judged by the list.
+            if not loaded and self._thread_gone(native_id):
+                raise CodexTurnRejected('thread_gone') from None
+            raise
         thread = metadata.get('thread')
         if not isinstance(thread, dict) or thread.get('id') != native_id:
             raise CodexTurnRejected('status_unclear')

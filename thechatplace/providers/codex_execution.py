@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_tokens import CodexTokenUsage
 from .codex_owned import CodexLifecycleConnection
-from .codex_rpc import (check_startable, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
+from .codex_rpc import (check_startable, CodexMessageTooLong, MAX_MESSAGE_CHARS, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
                         CodexSteerRefused)
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS, ELICITATION
 from .codex_input import input_items, validate_input
@@ -392,8 +392,10 @@ class CodexTurnExecutor:
     def start(self, proof, text):
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
-        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+        if not isinstance(text, str) or not text.strip():
             raise ValueError('Enter a message of at most 32000 characters')
+        if len(text) > MAX_MESSAGE_CHARS:
+            raise CodexMessageTooLong(len(text))
         try:
             inputs = input_items(text)
         except (ValueError, OSError):
@@ -459,8 +461,10 @@ class CodexTurnExecutor:
         connection leaves it unknown, for the caller to say."""
         if not self.connection.owns_runtime(proof):
             raise CodexRpcError('Codex execution requires a verified owned chat')
-        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+        if not isinstance(text, str) or not text.strip():
             raise ValueError('Enter a message of at most 32000 characters')
+        if len(text) > MAX_MESSAGE_CHARS:
+            raise CodexMessageTooLong(len(text))
         with self._lock:
             if self._broken:
                 raise CodexSteerRefused('unavailable')

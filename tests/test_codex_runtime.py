@@ -167,6 +167,32 @@ def test_refused_first_send_leaves_the_new_chat_empty():
         service.close()
 
 
+def test_too_long_send_is_refused_in_plain_words_and_latches_nothing():
+    """Over the limit: refused before anything is sent, in words the user
+    hears (not a swallowed ValueError), and the chat stays usable."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexMessageTooLong
+    from thechatplace.sessions import IDLE
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'New chat')
+        with pytest.raises(CodexMessageTooLong) as refused:
+            service.send(record, 'x' * 32001)
+        text = str(refused.value)
+        assert '32,001' in text and '32,000' in text and 'Nothing was sent' in text
+        assert safe_reason(refused.value) == text
+        assert not any(method == 'turn/start' for method, _ in connection.calls)
+        state = service.snapshot(record.cli_session_id)
+        assert state.state == IDLE and not state.problem
+        with pytest.raises(CodexMessageTooLong):
+            service.steer(record, 'x' * 32001)
+        # At the limit the message goes.
+        assert service.send(record, 'x' * 32000) is False
+        assert connection.turns == 1
+    finally:
+        service.close()
+
+
 def test_forked_and_reopened_chats_are_not_assumed_empty():
     from thechatplace.sessions import SessionInfo, OWN
 

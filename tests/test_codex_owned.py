@@ -372,6 +372,52 @@ def test_a_chat_whose_last_turn_failed_reopens(monkeypatch):
     assert any(method == 'thread/resume' for method, _ in connection.calls)
 
 
+def test_resume_of_a_chat_codex_no_longer_has_says_so():
+    """Codex has no thread for it (deleted there, or created here without a
+    first message): that is not an uncertain turn, so say it's gone."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    class GoneConnection(Connection):
+        def request(self, method, params):
+            if method == 'thread/read':
+                self.calls.append((method, params))
+                raise CodexRpcError('Codex request failed')
+            if method == 'thread/list':
+                self.calls.append((method, params))
+                return {'data': [{'id': 'someone-else'}], 'nextCursor': None}
+            return super().request(method, params)
+    connection = GoneConnection(response('owned'))
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexTurnRejected) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert refused.value.code == 'thread_gone'
+    assert 'no longer has this chat' in str(refused.value)
+    assert not any(method == 'thread/resume' for method, _ in connection.calls)
+    # The words the user hears are the refusal's own.
+    assert safe_reason(refused.value) == str(refused.value)
+
+
+def test_resume_read_failure_for_a_listed_chat_stays_uncertain():
+    """A chat Codex still lists (here only as archived) may just have hit a
+    transient read failure: never call it gone."""
+    class ListedConnection(Connection):
+        def request(self, method, params):
+            if method == 'thread/read':
+                self.calls.append((method, params))
+                raise CodexRpcError('Codex request failed')
+            if method == 'thread/list':
+                self.calls.append((method, params))
+                return {'data': [{'id': 'owned'}] if params.get('archived') else [],
+                        'nextCursor': None}
+            return super().request(method, params)
+    connection = ListedConnection(response('owned'))
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexRpcError) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert type(refused.value) is CodexRpcError
+    assert str(refused.value) == 'Codex request failed'
+
+
 @pytest.mark.parametrize('status,code,words', [
     ({'type': 'active', 'activeFlags': ['waitingOnApproval']}, 'awaiting_approval', 'approve'),
     ({'type': 'active', 'activeFlags': ['waitingOnUserInput']}, 'awaiting_input', 'question'),

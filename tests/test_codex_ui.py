@@ -106,6 +106,66 @@ def test_updates_wait_for_send_result_and_failed_send_preserves_new_draft():
     assert not w._codex_send_pending and not w._codex_delayed_updates
 
 
+def test_new_copilot_chat_with_too_long_first_message_is_not_created():
+    """Copilot still refuses an over-long first message before creating
+    anything (its limit is its own); Codex now hands its over-long first
+    message over in a file instead, so its chat is created."""
+    w = Window()
+    w._can_edit = lambda info: False
+    w._copy_text = lambda text: True
+    w._create_codex_owned('/workspace', 'Title', 'x' * 128001, provider='copilot')
+    assert not w.work
+    assert 'No Copilot chat was started' in w.said[-1]
+    assert 'too long' in w.said[-1] and '128,001' in w.said[-1] and '128,000' in w.said[-1]
+    w._create_codex_owned('/workspace', 'Title', 'x' * 32001)
+    assert len(w.work) == 1
+    w._create_codex_owned('/workspace', 'Title', 'Hello')
+    assert len(w.work) == 2
+
+
+def test_too_long_codex_message_is_saved_and_codex_is_asked_to_read_it(tmp_path, monkeypatch):
+    """Over the limit: the whole message goes to a temp file and Codex is
+    sent a short message asking it to read that file as the message."""
+    import re
+    import tempfile
+    from pathlib import Path
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    text = 'head\n' + 'x' * 40000 + '\nTAIL-MARKER'
+    w._send_codex_owned(w.record, text)
+    action, done = w.work[0]
+    action()
+    assert sent[0][0] == 'send' and sent[0][1] is w.record
+    prompt = sent[0][2]
+    assert len(prompt) < 32000 and '40,017' in prompt and 'treat' in prompt and 'as my message' in prompt
+    path = Path(re.search(r'thechatplace-long-message-\S+\.txt', prompt).group(0))
+    path = tmp_path / path.name
+    assert path.read_text(encoding='utf-8') == text
+    done(False, False)
+    assert 'too long to send in full' in w.said[-1] and path.name in w.said[-1]
+    # On failure the original long text, not the short prompt, comes back.
+    w._send_codex_owned(w.record, text)
+    w.work[1][0]()
+    w.work[1][1](None, True)
+    assert w.reply_text.value.startswith('head\n' + 'x' * 100)
+
+
+def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it(tmp_path, monkeypatch):
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-9')
+    w._steer_codex_owned(w.record, 'y' * 40000)
+    action, done = w.work[0]
+    result = action()
+    assert result is None and sent[0][0] == 'steer'
+    assert len(sent[0][2]) < 32000 and 'as my message' in sent[0][2]
+    done(None, False)
+
+
 def test_preparing_is_reserved_once_and_cleared_after_failure():
     w = Window()
     w._codex_preparing['codex:owned'] = 4

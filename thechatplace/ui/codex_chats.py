@@ -4,6 +4,8 @@
 The names say Codex because Codex came first; the shared paths take the
 provider from the chat's record or key (#352). Change Permission Mode, saved
 rules, plans and creation stay Codex's own."""
+import os
+import tempfile
 import time
 from dataclasses import replace
 from types import SimpleNamespace
@@ -11,7 +13,7 @@ from types import SimpleNamespace
 import wx
 
 from ..providers.codex_requests import QUESTIONS, ELICITATION
-from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
+from ..providers.codex_rpc import MAX_MESSAGE_CHARS, CodexMessageTooLong, CodexRpcError, CodexSteerRefused, CodexTurnRejected
 from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
@@ -25,6 +27,26 @@ from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
 from .permission_hosts import CODEX_MODES
 from .codex_extras import CodexExtras
 from .sound_host import SoundHost
+
+
+def _save_long_message(text):
+    """The whole of an over-long message in a temp file, for Codex to read
+    back: Codex reads files outside the chat's folder (checked against real
+    Codex), and the temp folder is cleaned up by the system, not by us
+    mid-turn."""
+    fd, path = tempfile.mkstemp(prefix='thechatplace-long-message-', suffix='.txt')
+    with os.fdopen(fd, 'w', encoding='utf-8') as saved:
+        saved.write(text)
+    return path
+
+
+def _long_message_prompt(text, path):
+    """What Codex is sent instead of an over-long message: read this file
+    as the message."""
+    return (f'My message is too long to send directly ({len(text):,} characters), so '
+            f'The Chat Place saved it in full in this file: {path}\n\n'
+            'Read that file now, and treat everything in it as my message: do what '
+            'it asks, and if it shows output or errors, explain them.')
 
 
 class CodexChats(SoundHost, CodexExtras):
@@ -135,6 +157,19 @@ class CodexChats(SoundHost, CodexExtras):
             self._session_tools_config('')
             options.update(instructions=instructions, extra_roots=extra_roots)
         name = provider_name(provider)
+        if message and not joint and provider == 'copilot':
+            # Copilot is refused before anything is created: a chat whose
+            # first message can never be sent would stay empty and show as
+            # unavailable for ever. A Codex first message is handed over in
+            # a file at send time instead (_codex_sendable). Agent
+            # conversations (joint) hand their message on elsewhere, which
+            # checks its own limits.
+            from ..providers.copilot_runtime import MAX_MESSAGE_CHARS as COPILOT_LIMIT
+            if len(message) > COPILOT_LIMIT:
+                reason = (f'This message is too long ({len(message):,} characters; the limit is '
+                          f'{COPILOT_LIMIT:,}). Nothing was sent. Shorten it, or put the long part in a file.')
+                self._feedback(self._keep_first_message(message, provider) + ' ' + reason)
+                return
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
                     else self.sessions.create_owned(provider, folder, title, **options))
@@ -512,10 +547,32 @@ class CodexChats(SoundHost, CodexExtras):
         self._update_send_state()
         self._prepare_codex_owned(self._open_generation)
 
+    def _codex_sendable(self, record, text):
+        """(what to send, saved file or None). A Codex message over the
+        limit goes in a temp file, with a short prompt asking Codex to
+        read it as the message, so a long paste just works. If the file
+        can't be written, the text goes as it was and the runtime refuses
+        it in plain words. Other providers send as they were."""
+        if getattr(record, 'provider', '') != 'codex' or len(text) <= MAX_MESSAGE_CHARS:
+            return text, None
+        try:
+            saved = _save_long_message(text)
+        except OSError:
+            return text, None
+        return _long_message_prompt(text, saved), saved
+
+    def _too_long_note(self, record, text, saved):
+        if not saved:
+            return ''
+        return (f' Your message was too long to send in full ({len(text):,} characters), '
+                f'so it was saved to {saved} and {provider_name(record.provider)} '
+                'was asked to read it there.')
+
     def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
         says what was sent, and keeps the text if it fails (``on_result``)."""
         key = record.to_info().key
+        sendable, saved = self._codex_sendable(record, text)
         self._codex_send_pending[key] = self._codex_send_pending.get(key, 0) + 1
         def done(queued, error):
             remaining = self._codex_send_pending[key] - 1
@@ -536,7 +593,8 @@ class CodexChats(SoundHost, CodexExtras):
                 self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
-                                         self.speech.announce_own))
+                                         self.speech.announce_own)
+                               + self._too_long_note(record, text, saved))
             if not remaining:
                 for state in self._codex_delayed_updates.pop(key, ()):
                     self._on_owned_update(record.provider, state)
@@ -549,7 +607,7 @@ class CodexChats(SoundHost, CodexExtras):
         if going_back is not None and going_back(getattr(record, 'cwd', '')):
             done('Still putting files back in this folder. Send again in a moment.', True)
             return
-        self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
+        self._codex_work(lambda: self.sessions.owned_action('send', record, sendable), done)
 
     def _steer_codex_owned(self, record, text, index=None):
         """Steer (#239): ``text`` into the running turn, or the queued message
@@ -559,6 +617,7 @@ class CodexChats(SoundHost, CodexExtras):
         as a new turn without Kelly choosing to."""
         key = record.to_info().key
         name = provider_name(record.provider)
+        sendable, saved = (text, None) if index is not None else self._codex_sendable(record, text)
         self._steer_row(key, text, f'waiting for {name}')
 
         accepted = []  # the turn Codex took it into
@@ -566,10 +625,10 @@ class CodexChats(SoundHost, CodexExtras):
         def action():
             try:
                 if index is None:
-                    turn = self.sessions.owned_action('steer', record, text)
+                    turn = self.sessions.owned_action('steer', record, sendable)
                 else:
                     turn = self.sessions.owned_action('steer_queued', record, index, text)
-            except (CodexSteerRefused, CodexTurnRejected) as exc:
+            except (CodexSteerRefused, CodexTurnRejected, CodexMessageTooLong) as exc:
                 # ``returned``: a queued one that Stop sent back to the box.
                 return (safe_reason(exc) or f'{name} could not take it.',
                         getattr(exc, 'returned', False))
@@ -609,7 +668,8 @@ class CodexChats(SoundHost, CodexExtras):
             else:
                 self._feedback(announce.steered_text(record.title, text, self.speech.announce,
                                                      index is None and self.speech.announce_own,
-                                                     accepted=True))
+                                                     accepted=True)
+                               + self._too_long_note(record, text, saved))
             self._update_send_state()
         self._codex_work(action, done)
 

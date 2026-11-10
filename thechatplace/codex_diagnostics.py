@@ -6,7 +6,7 @@ import threading
 import time
 
 from . import platform_paths
-from .providers.codex_rpc import CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError
+from .providers.codex_rpc import CodexMessageTooLong, CodexTurnRejected, CodexSteerRefused, CodexConnectionFailure, CodexRequestTimeout, CodexRememberedApprovalError
 
 _LOCK = threading.Lock()
 _LIMIT = 65536
@@ -36,6 +36,11 @@ def safe_reason(error):
     from .providers.codex_features import CodexFeatureError
     if type(error) is CodexFeatureError:
         return CodexFeatureError.REASONS.get(error.code, '')
+    if type(error) is CodexMessageTooLong:
+        # Written to be shown (#370, like Copilot's below): a character
+        # count and the limit, nothing from the message itself.
+        text = str(error)
+        return text if len(text) <= 1000 and not any(ord(c) < 32 for c in text) else ''
     if _copilot_error(error):
         # Copilot's runtime words every reason it gives to be shown (#370).
         text = str(error)

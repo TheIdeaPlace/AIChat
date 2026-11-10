@@ -59,6 +59,22 @@ class CodexConnectionFailure(CodexRpcError):
         super().__init__(self.REASONS[self.code])
 
 
+#: One Codex message, at most; longer is refused before anything is sent.
+MAX_MESSAGE_CHARS = 32_000
+
+
+class CodexMessageTooLong(CodexRpcError, ValueError):
+    """A message over MAX_MESSAGE_CHARS, refused before anything was sent.
+    Its words are written to be shown, like CopilotChatError's (#370), so
+    safe_reason passes them through; it carries only a character count."""
+
+    def __init__(self, length):
+        self.length = length
+        super().__init__(f'This message is too long ({length:,} characters; the limit is '
+                         f'{MAX_MESSAGE_CHARS:,}). Nothing was sent. Shorten it, or put '
+                         "the long part in a file in the chat's folder and ask Codex to read it.")
+
+
 class CodexRequestTimeout(CodexRpcError):
     REASONS = {'request_timeout': 'Codex request timed out. The connection is still available.'}
     code = 'request_timeout'
@@ -96,6 +112,7 @@ class CodexTurnRejected(CodexRpcError):
         'status_unclear': "The Chat Place couldn't confirm this Codex chat is free to take a message. If it keeps happening, quit and restart The Chat Place. No new turn was sent.",
         # Not seen yet; Stop can't reload it in place (#448 follow-up).
         'not_loaded': 'Codex closed this chat in the background. Quit and restart The Chat Place to reopen it. No new turn was sent.',
+        'thread_gone': "Codex no longer has this chat, so it can't be reopened here. It was deleted in Codex, or it was created here and no message was ever sent in it. Remove it here and start a new chat. No message was sent.",
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
         'billing_route': 'Codex turns require the default ChatGPT billing route',
         'verified_thread': 'Codex turn requires a verified thread',
