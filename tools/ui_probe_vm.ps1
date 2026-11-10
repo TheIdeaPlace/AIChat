@@ -173,6 +173,9 @@ try {
     Copy-IntoVm $zip 'C:\vmtest\tcp-source.zip'
     Invoke-InVm { Expand-Archive C:\vmtest\tcp-source.zip C:\vmtest\tcp -Force }
 
+    # What the venv's packages must match: this checkout's requirements (#585).
+    . (Join-Path $PSScriptRoot 'ui_probe_requirements.ps1')
+    $stamp = Get-ProbeRequirementsStamp $repo
     # Ready means wx imports, not just that the venv is there: a half-finished install isn't.
     if ((Invoke-Vm $readyCheck) -ne 0) {
         "Installing Python and the app's packages in the VM (first run only)..."
@@ -186,7 +189,27 @@ try {
             throw "Couldn't install the app's packages in the VM."
         }
         if ((Invoke-Vm $readyCheck) -ne 0) { throw "wxPython still doesn't import in the VM." }
+    } elseif (-not (Test-ProbeVenvCurrent (Invoke-InVm {
+                if (Test-Path -LiteralPath C:\vmtest\tcp-venv\requirements.stamp) {
+                    Get-Content -LiteralPath C:\vmtest\tcp-venv\requirements.stamp -Raw
+                } }) $stamp)) {
+        # A saved checkpoint keeps the packages it had (#585): pip leaves one
+        # whose version number is the same, as app-kit's stays from commit to
+        # commit, so each package pinned to an archive is reinstalled by force.
+        "The requirements changed since the VM's packages were installed: installing them again..."
+        if ((Invoke-Vm "$venvPython -m pip install -q -r C:\vmtest\tcp\requirements-dev.txt" 2400) -ne 0) {
+            throw "Couldn't install the app's packages in the VM."
+        }
+        foreach ($url in (Get-ProbeDirectUrlRequirements $repo)) {
+            if ((Invoke-Vm "$venvPython -m pip install -q --force-reinstall --no-deps $url" 1200) -ne 0) {
+                throw "Couldn't reinstall $url in the VM."
+            }
+        }
+        if ((Invoke-Vm $readyCheck) -ne 0) { throw "The app's packages don't import in the VM after reinstalling them." }
     }
+    # Kept only once the install worked, so one that failed is tried again next time.
+    Invoke-InVm ([scriptblock]::Create(
+        "Set-Content -LiteralPath C:\vmtest\tcp-venv\requirements.stamp -Value '$stamp' -Encoding ASCII"))
 
     foreach ($v in $variants) {
         "== $($v.tag)"
