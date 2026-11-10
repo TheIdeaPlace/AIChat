@@ -219,8 +219,9 @@ class NewSessionDialog(wx.Dialog):
         self._base_ref_head = False  # Claude Code's worktree.baseRef is "head"
         self._start_chosen = False  # you chose Start from, so it isn't reset
         self._making = False        # a worktree is being made
-        self._fetched_for = None    # the folder whose remotes were fetched for Branch (#622)
-        self._fetching = None       # that fetch's thread, while it runs
+        self._fetches = {}          # folder: the thread fetching its remotes for Branch (#622)
+        self._branch_open = False   # Branch's list is open
+        self._pending_branches = None  # Branch's items, waiting for its list to shut
         self._folder_timer = None   # reads a folder chosen from the list, shortly
         outer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
@@ -431,6 +432,8 @@ class NewSessionDialog(wx.Dialog):
             self.work_in.Bind(wx.EVT_CHOICE, lambda e: self._on_work_in())
             self.branch.Bind(wx.EVT_TEXT, lambda e: self._sync_start_from())
             self.branch.Bind(wx.EVT_COMBOBOX, lambda e: self._sync_start_from())
+            self.branch.Bind(wx.EVT_COMBOBOX_DROPDOWN, self._on_branch_open)
+            self.branch.Bind(wx.EVT_COMBOBOX_CLOSEUP, self._on_branch_shut)
             self.start_from.Bind(wx.EVT_CHOICE, self._on_start_from)
             self.refresh_repo()
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -647,10 +650,8 @@ class NewSessionDialog(wx.Dialog):
             return  # closed, or the folder has changed since
         self._repo, self._repo_known = info, True
         self._start_remote, self._base_ref_head = remote, head
-        typed = self.branch.GetValue()
         # Branches checked out somewhere are listed too, last, saying so (#587).
-        self.branch.Set(workplaces.branch_choices(info))
-        self.branch.ChangeValue(typed)
+        self._list_branches(workplaces.branch_choices(info))
         if info and info.branch:
             here = f"The folder as it is, on {info.branch}"
         elif info:
@@ -669,9 +670,41 @@ class NewSessionDialog(wx.Dialog):
         worktree = self.work_in.GetSelection() == WORK_IN_WORKTREE
         self.branch.Enable(worktree)
         self.branch_label.Enable(worktree)
-        if worktree and self._repo is not None and self._fetched_for != self._repo_for:
+        if worktree and self._repo is not None and self._repo_for not in self._fetches:
             self._fetch_remotes()
         self._sync_start_from()
+
+    def _list_branches(self, choices):
+        """Branch's items, changed only when they differ, so a list read
+        again with nothing new leaves your place alone (#622 review). When
+        they differ, the item you were on stays chosen, or the text you were
+        typing keeps its caret; with the list open, it waits until it shuts."""
+        if list(self.branch.GetStrings()) == list(choices):
+            self._pending_branches = None
+            return
+        if self._branch_open:
+            self._pending_branches = list(choices)
+            return
+        self._pending_branches = None
+        typed = self.branch.GetValue()
+        point = self.branch.GetInsertionPoint()
+        self.branch.Set(choices)
+        if typed in choices:
+            self.branch.SetSelection(list(choices).index(typed))
+        else:
+            self.branch.ChangeValue(typed)
+            self.branch.SetInsertionPoint(min(point, len(typed)))
+
+    def _on_branch_open(self, event):
+        self._branch_open = True
+        event.Skip()
+
+    def _on_branch_shut(self, event):
+        self._branch_open = False
+        event.Skip()
+        if self._pending_branches is not None:
+            wx.CallAfter(lambda: self and self._pending_branches is not None
+                         and self._list_branches(self._pending_branches))
 
     def _fetch_remotes(self):
         """Fetch the remotes once per folder, in the background, when a new
@@ -679,7 +712,6 @@ class NewSessionDialog(wx.Dialog):
         branches are otherwise only as new as the last fetch, and a branch
         pushed since would be made new and empty rather than tracked."""
         folder, info = self._repo_for, self._repo
-        self._fetched_for = folder
 
         def fetch():
             git = workplaces.find_git()
@@ -689,16 +721,29 @@ class NewSessionDialog(wx.Dialog):
             fresh = workplaces.repo_info(git, folder)
             remote = workplaces.default_remote_branch(git, fresh) if fresh else ""
             wx.CallAfter(self._remotes_fetched, folder, fresh, remote, why_not)
-        self._fetching = threading.Thread(target=fetch, name="fetch-remotes", daemon=True)
-        self._fetching.start()
+        thread = threading.Thread(target=fetch, name="fetch-remotes", daemon=True)
+        self._fetches[folder] = thread
+        thread.start()
 
     def _remotes_fetched(self, folder: str, info, remote: str, why_not: str):
         if not self or folder != self._repo_for:
             return  # closed, or the folder has changed since
+        said = [why_not] if why_not else []
         if info is not None:
+            # A remote item chosen before the fetch, and pruned by it, would
+            # quietly become a new branch: say so, and show the plain name.
+            chosen = workplaces.branch_from_choice(self.branch.GetValue())
+            was = self.branch.GetValue().strip()
             self._repo_read(folder, info, remote, self._base_ref_head)
-        if why_not:
-            self._feedback(why_not)
+            if was != chosen and was not in workplaces.branch_choices(info) \
+                    and workplaces.in_use_reason(info, chosen) == "" \
+                    and workplaces.is_new_branch(info, chosen):
+                self.branch.ChangeValue(chosen)
+                self.branch.SetInsertionPointEnd()
+                self._sync_start_from()
+                said.append(f"{chosen} is no longer on the remote, so it would be a new branch.")
+        for text in said:
+            self._feedback(text)
 
     def _on_start_from(self, _event=None):
         self._start_chosen = True
@@ -822,13 +867,16 @@ class NewSessionDialog(wx.Dialog):
         start, remote = self.start_point(), self._start_remote
         self._making = True
         self.start_btn.Enable(False)
-        fetching = self._fetching
+        fetching = self._fetches.get(folder)
 
         def make():
             # Branch's fetch first (#622): two fetches at once can fail on
             # git's locks, and a branch pushed since is then tracked, not new.
-            if fetching is not None:
-                fetching.join(timeout=90)
+            # Every git call in it has a time limit, so the wait ends.
+            if fetching is not None and fetching.is_alive():
+                wx.CallAfter(self._say_making,
+                             "Getting the remote branches, then making the worktree.")
+                fetching.join()
             # The repository is read again here, not taken from when the
             # dialog opened: a worktree removed (or made) since then changes
             # which branches are free (#587).

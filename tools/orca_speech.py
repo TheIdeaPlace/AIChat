@@ -579,7 +579,7 @@ def new_session_start_from(frame, in_use: bool = False) -> None:
         dialog.work_in.SetSelection(WORK_IN_WORKTREE)
         # The clone was just made, so no fetch (#622): one finishing later
         # would list Branch again while Orca is reading it.
-        dialog._fetched_for = dialog._repo_for
+        dialog._fetches[dialog._repo_for] = None
         dialog._on_work_in()
         if in_use:
             dialog.branch.SetStringSelection("main (in use in another worktree)")

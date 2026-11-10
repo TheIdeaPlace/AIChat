@@ -700,10 +700,24 @@ def test_fetching_with_no_remote_is_nothing_and_a_failed_fetch_says_so(repo, clo
     assert workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(repo))) == ""
     git("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=cloned)
     said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
-    assert said == ("Couldn't fetch from origin, so Branch lists the remote branches as they "
-                    "were at the last fetch.")
+    assert said == ("Couldn't fetch from origin, so Branch lists its branches as they were at "
+                    "the last fetch.")
     # What was fetched before is still listed.
     assert "feature/old (on origin)" in workplaces.branch_choices(
+        workplaces.repo_info(GIT, str(cloned)))
+
+
+@needs_git
+def test_one_remote_that_fails_doesnt_stop_the_others(cloned, repo, tmp_path):
+    # Each remote is fetched on its own (#622 review): a gone one is named,
+    # and the rest are still brought up to date.
+    for name in ("old-fork", "older-fork"):
+        git("remote", "add", name, str(tmp_path / name), cwd=cloned)
+    git("branch", "pushed-since", cwd=repo)
+    said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
+    assert said == ("Couldn't fetch from old-fork and older-fork, so Branch lists their "
+                    "branches as they were at the last fetch.")
+    assert "pushed-since (on origin)" in workplaces.branch_choices(
         workplaces.repo_info(GIT, str(cloned)))
 
 

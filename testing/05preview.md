@@ -510,6 +510,9 @@ say when both are running without waiting for them.
    only on GitHub, such as "05preview (on origin)", then those in use. With JAWS, each reads
    once as you arrow. Choose one and start. Expect: "Made worktree … on branch …, tracking
    origin/…". Then try it with the network off: you hear that the list is as of the last fetch.
+   Also: choose A new worktree, Tab straight to Branch and start arrowing at once, with JAWS and
+   with NVDA. Expect: when the check of GitHub finishes a moment later, you keep your place in
+   the list and hear nothing read again.
 2. **A chat moving into a worktree.** Ask Claude to make a worktree and work in it. Expect: you hear
    where the chat went, and the chat keeps showing its messages.
 3. **Turned-off settings.** In New Session choose Copilot, then press Alt+D and Alt+E. Expect: focus

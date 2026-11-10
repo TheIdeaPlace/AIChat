@@ -626,25 +626,34 @@ def branch_from_choice(text: str) -> str:
     return name
 
 
+#: How long one remote's fetch for Branch may take (#622).
+FETCH_TIMEOUT = 60
+
+
 def fetch_remotes(git: str, info: RepoInfo) -> str:
     """Bring the remote branches up to date for Branch (#622): a quiet
-    ``git fetch --all --prune``, never asking for a password. "" once done
-    (or with no remote to fetch), else why not, in a sentence. Prune drops
-    the remote branches deleted since, so they aren't offered."""
+    ``git fetch --prune`` of each remote in turn, never asking for a
+    password, so one remote that's gone doesn't stop the others. "" once
+    done (or with no remote to fetch), else which couldn't be fetched, in a
+    sentence. Prune drops the remote branches deleted since, so they aren't
+    offered. No automatic gc or maintenance runs inside the time limit."""
     try:
         remotes = _run([git, "-C", info.top, "remote"], timeout=10).split()
     except ToolError:
         return ""
-    if not remotes:
+    failed = []
+    for remote in remotes:
+        try:
+            _run([git, "-C", info.top, "-c", "gc.auto=0", "-c", "maintenance.auto=false",
+                  "fetch", "--prune", "--quiet", "--no-recurse-submodules", "--", remote],
+                 timeout=FETCH_TIMEOUT)
+        except ToolError:
+            failed.append(remote)
+    if not failed:
         return ""
-    try:
-        _run([git, "-C", info.top, "fetch", "--all", "--prune", "--quiet",
-              "--no-recurse-submodules"], timeout=60)
-    except ToolError:
-        names = remotes[0] if len(remotes) == 1 else "the remotes"
-        return (f"Couldn't fetch from {names}, so Branch lists the remote branches as they "
-                f"were at the last fetch.")
-    return ""
+    names = failed[0] if len(failed) == 1 else ", ".join(failed[:-1]) + f" and {failed[-1]}"
+    return (f"Couldn't fetch from {names}, so Branch lists "
+            f"{'its' if len(failed) == 1 else 'their'} branches as they were at the last fetch.")
 
 
 def in_use_message(info: RepoInfo, branch: str, start_remote: str = "") -> str:
