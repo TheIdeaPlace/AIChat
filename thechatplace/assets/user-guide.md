@@ -2123,14 +2123,17 @@ The Help menu's update item always says which version you're running, such as
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
 
-To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
-Settings (Ctrl+Comma). Nothing is then checked or said at start, and the status bar shows no
-update until you choose Help, Check for Updates, which still works. This is useful if you went
-back to an older version and don't want to be offered the newer one every time.
+**Stay on the version you have.** In Settings (Ctrl+Comma), clear **Check for updates when The
+Chat Place starts** (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
+so it stays on this version until you decide. Nothing is ever downloaded or installed on its own:
+an update is downloaded only after you say Yes to it. (One you said Yes to that couldn't be
+installed right away is installed the next time The Chat Place starts.) To update later, choose
+Help, Check for Updates, which still works with the setting off. The setting is on to start.
 
-**Going back to an older version.** Remove The Chat Place (see "Uninstalling"), install the older
-version, and clear **Check for updates when The Chat Place starts**. You may hear about the newer
-version once, at the first start, before you can clear it. Removing the app leaves your chats,
+**Going back to an older version.** If the newer version has this setting too, clear it there
+first. Then remove The Chat Place (see "Uninstalling"), install the older version, and make sure
+**Check for updates when The Chat Place starts** is cleared. If you clear it only in the older
+version, you may hear about the newer one once, at its first start. Removing the app leaves your chats,
 groups and settings in the data folder, and the older version uses them. Settings and chat options
 it doesn't know about are left as they are: it doesn't use them, but they're all still there if
 you update again later.

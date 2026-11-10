@@ -1329,15 +1329,19 @@ Help, Check for Updates. At start the check only speaks up when there is a new v
 only says so: it never asks you anything you didn't ask for. From Help it always says what it found ("up to
 date", "no release has been published yet", or an error), even with announcements set to silent.
 
-To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
-Settings (Ctrl+Comma). It's on until you turn it off. With it off, nothing is checked or said at
-start and the status bar shows no update; Help, Check for Updates still checks whenever you choose
-it. This is useful if you went back to an older version and don't want to be offered the newer one
-each time you start The Chat Place. Clearing it in the first seconds after a start also stops that
-start's check if it hasn't run yet.
+**Stay on the version you have.** Clear **Check for updates when The Chat Place starts** (Alt+D)
+in Settings (Ctrl+Comma), and The Chat Place doesn't look for new versions or offer one; it stays
+on this version until you choose Help, Check for Updates, which still works. It's on until you
+turn it off. With it off, nothing is checked or said at start and the status bar shows no update.
+Nothing is ever downloaded or installed on its own: a download starts only after you say Yes to an
+update, and one you said Yes to that couldn't be installed then is installed at the next start
+(Velopack's apply-on-startup only applies such an already-downloaded package). Clearing it in the
+first seconds after a start also stops that start's check if it hasn't run yet.
 
-**Going back to an older version.** Uninstall (the user guide's Uninstalling section says how), install the older version, and
-clear the check above; the first start may still mention the newer version once. The data folder
+**Going back to an older version.** If the newer version has this setting too, clear it there
+first. Uninstall (the user guide's Uninstalling section says how), install the older version, and
+make sure the setting is cleared; cleared only in the older version, its first start may still
+mention the newer version once. The data folder
 is kept, and from 0.4.1 on, settings and chat options the older version doesn't know (in
 `speech.json`, and fields in the records of `sessions.json` and its `provider-sessions*.json`
 companions) are written back as they were, so a newer version finds them again on the next update.
