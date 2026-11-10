@@ -11,7 +11,7 @@ import pytest
 import wx
 
 import fake_env
-from markers import windows_layout
+from markers import msaa, windows_layout
 from test_ui_hidden import add_desktop, pump
 from thechatplace import platform_paths, sound_events as se
 from thechatplace.claude_cli import PermissionRequest, TurnEvent
@@ -19,6 +19,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.providers.codex_runtime import CodexChatState
 from thechatplace.speech import SpeechSettings
 from thechatplace.ui import sound_host
+from thechatplace.ui.a11y import is_label_for, set_accessible_name
 from thechatplace.ui.sounds_dialog import SoundsDialog, SoundTutorialDialog, keep_custom_sound
 from theideaplace_appkit.sounds import SoundProblem
 
@@ -1715,6 +1716,72 @@ def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
     dialog._sound_chosen()
     assert dialog._events_name() == "Sound events, 22 of 23 events have a sound"
     assert dialog.events.GetName() == "Sound events, 22 of 23 events have a sound"
+
+
+def label_name(control):
+    """What a screen reader gets as the name of the label just before ``control``."""
+    return control.GetPrevSibling().GetAccessible().GetName(0)
+
+
+@msaa
+def test_each_label_answers_with_its_controls_name_so_nvda_doesnt_read_them_on_opening(dialog):
+    # NVDA reads a dialog's labels out in a block when it opens, all but those named like the
+    # control after them (#616).
+    assert label_name(dialog.volume) == (wx.ACC_OK, "Volume")
+    assert label_name(dialog.scheme) == (wx.ACC_OK, "Sound scheme")
+    assert label_name(dialog.tools) == (wx.ACC_OK, "Tool sounds play for")
+    assert label_name(dialog.others) == (wx.ACC_OK, "Other sounds play for")
+    assert label_name(dialog.sound) == (wx.ACC_OK, "Sound")
+    # The events list's label follows the count in the list's name.
+    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 23 of 23 events have a sound")
+    select_event(dialog, se.TOOL)
+    dialog.sound.SetStringSelection("None")
+    dialog._sound_chosen()
+    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 22 of 23 events have a sound")
+    # What the labels show doesn't change.
+    assert dialog.volume.GetPrevSibling().GetLabel() == "&Volume:"
+    assert dialog.events_label.GetLabel() == "Sound &events (22 of 23 events have a sound):"
+
+
+@msaa
+def test_a_list_with_focus_says_it_has_it_so_nvda_reads_the_row_once(dialog, monkeypatch):
+    accessible = dialog.events.GetAccessible()
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.events))
+    assert accessible.GetFocus()[:2] == (wx.ACC_OK, 0)
+    # Without focus, Windows answers.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.sound))
+    assert accessible.GetFocus()[0] == wx.ACC_NOT_IMPLEMENTED
+
+
+@msaa
+def test_a_note_before_a_control_keeps_its_own_name(frame):
+    dialog = wx.Dialog(frame)
+    try:
+        note = wx.StaticText(dialog, label="Changes apply to new chats.")
+        choice = wx.Choice(dialog, choices=["One"])
+        set_accessible_name(choice, "Model")
+        assert note.GetAccessible() is None
+        label = wx.StaticText(dialog, label="&Effort:")
+        effort = wx.Choice(dialog, choices=["High"])
+        set_accessible_name(effort, "Effort")
+        assert label.GetAccessible().GetName(0) == (wx.ACC_OK, "Effort")
+        set_accessible_name(effort, "Effort, high")  # a renamed control: its label follows
+        assert label.GetAccessible().GetName(0) == (wx.ACC_OK, "Effort, high")
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("label, name, tied", [
+    ("&Volume:", "Volume", True),
+    ("&Title:", "Title (optional)", True),
+    ("Sound &events (3 of 23 events have a sound):", "Sound events, 3 of 23 events have a sound", True),
+    ("Sound &events:", "Sound events, 3 of 23 events have a sound", True),
+    ("Changes apply to new chats.", "Model", False),
+    ("", "Model", False),
+    ("Work in:", "", False),
+])
+def test_what_counts_as_a_controls_label(label, name, tied):
+    assert is_label_for(label, name) is tied
 
 
 # ---------------------------------------------------------------- Help, Sound Tutorial

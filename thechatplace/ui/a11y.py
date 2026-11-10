@@ -1,6 +1,8 @@
 """Screen reader naming helpers (from Image Description Toolkit's chat app)."""
 from __future__ import annotations
 
+import re
+
 import wx
 
 from . import gtk_a11y, mac_a11y
@@ -53,6 +55,7 @@ def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = Fa
     control.SetName(label)
     mac_a11y.set_label(control, label)
     gtk_a11y.set_label(control, label)
+    _tie_label_before(control, label)
     # A combo box too (#154): Windows names one by the text in it, so the
     # Folder box was read as its path rather than as Folder. A check box or a
     # choice list named more fully than its visible label (#468): what a form
@@ -69,6 +72,86 @@ def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = Fa
         control._hub_accessible = accessible  # keep it alive
     except (NotImplementedError, AttributeError):
         pass
+
+
+def _msaa_name(control: wx.Window):
+    """The name a screen reader gets for ``control`` through the accessible this module gave it,
+    or None if it has none (Windows then names it from the label before it)."""
+    accessible = getattr(control, "_hub_accessible", None)
+    if accessible is None:
+        return None
+    try:
+        status, name = accessible.GetName(0)
+    except Exception:  # noqa: BLE001 - never break the screen reader
+        return None
+    return name if status == wx.ACC_OK and name else None
+
+
+class _LabelAccessible(wx.Accessible):
+    """A visible label whose name is its control's (#616); see ``tie_label``."""
+
+    def __init__(self, label: wx.Window, control: wx.Window):
+        super().__init__(label)
+        self._control = control
+
+    def GetName(self, childId):
+        name = _msaa_name(self._control) if not childId and self._control else None
+        if name:
+            return (wx.ACC_OK, name)
+        return (wx.ACC_NOT_IMPLEMENTED, "")
+
+
+def tie_label(label: wx.StaticText, control: wx.Window) -> None:
+    """Keep NVDA from reading ``label`` as loose dialog text when the dialog opens (#616).
+
+    NVDA reads a dialog's static texts out when it opens, all as one block, except a text
+    whose name is the same as that of the control straight after it (its label, NVDA
+    decides). A control named here more fully than its label ("Volume" for "&Volume:", a list
+    whose name has its count) breaks that match, so the label answers with the control's
+    name, asked each time so it follows a name that changes. Create ``label`` just before
+    ``control``: the match is with the next window in tab order. What it shows doesn't change.
+
+    Windows only: VoiceOver and Orca don't read dialogs this way, and their names are left
+    alone.
+    """
+    if wx.Platform != "__WXMSW__":
+        return
+    existing = getattr(label, "_hub_accessible", None)
+    if isinstance(existing, _LabelAccessible):
+        existing._control = control
+        return
+    try:
+        accessible = _LabelAccessible(label, control)
+        label.SetAccessible(accessible)
+        label._hub_accessible = accessible  # keep it alive
+    except (NotImplementedError, AttributeError):
+        pass
+
+
+def _words(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.lower())
+
+
+def is_label_for(text: str, name: str) -> bool:
+    """Whether a visible label ``text`` ("&Volume:", "Sound events (3 of 23 ...):") says what a
+    control's accessible ``name`` ("Volume", "Sound events, 3 of 23 ...") says, or begins it, so
+    it is that control's label rather than a note before it."""
+    label, full = _words(text.replace("&", "")), _words(name)
+    return bool(label) and bool(full) and (full.startswith(label) or label.startswith(full))
+
+
+def _tie_label_before(control: wx.Window, name: str) -> None:
+    """``tie_label`` for the static text just before ``control``, when it is its label (#616).
+    Every dialog that names its controls with ``set_accessible_name`` gets this, so NVDA doesn't
+    read their labels out in a block as each dialog opens."""
+    if wx.Platform != "__WXMSW__":
+        return
+    try:
+        before = control.GetPrevSibling()
+    except (AttributeError, RuntimeError):
+        return
+    if isinstance(before, wx.StaticText) and is_label_for(before.GetLabelText(), name):
+        tie_label(before, control)
 
 
 class ListItemsAccessible(wx.Accessible):
@@ -101,6 +184,19 @@ class ListItemsAccessible(wx.Accessible):
         # (0x80010105) instead of the row, found reading it from another
         # process the way JAWS and NVDA do.
         return (wx.ACC_NOT_IMPLEMENTED, "")
+
+    def GetFocus(self):
+        """While the list has focus, say the list itself has it, not its row (#616).
+
+        Tabbing to a list box, Windows reports focus on the list, then on its row. NVDA reads
+        the row for each when they reach it apart, as they do from a wx dialog: on the first it
+        asks the list which row has focus and reads that row, then the second reads it again.
+        Answering "the list" leaves the row to the second report, so it's read once. A list
+        without focus answers as Windows would."""
+        window = self.GetWindow()
+        if window and wx.Window.FindFocus() is window:
+            return (wx.ACC_OK, 0, None)
+        return (wx.ACC_NOT_IMPLEMENTED, 0, None)
 
 
 def set_list_items_accessible(listbox: wx.ListBox, name, item_text) -> None:
