@@ -3137,15 +3137,15 @@ The Help menu's update item always says which version you're running, such as
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
 
-**Stay on the version you have.** In Settings (Ctrl+Comma), clear **Check for updates when The
-Chat Place starts** (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
+**Stay on the version you have.** In Settings (Ctrl+Comma), clear
+**Check for updates when The Chat Place starts** (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
 so it stays on this version until you decide. Nothing is ever downloaded or installed on its own:
 an update is downloaded only after you say Yes to it. (One you said Yes to that couldn't be
 installed right away is installed the next time The Chat Place starts.) To update later, choose
 Help, Check for Updates, which still works with the setting off. The setting is on to start.
 
-**Going back to an older version.** If this version doesn't work for you, clear **Check for
-updates when The Chat Place starts** here first. Then uninstall The Chat Place (see
+**Going back to an older version.** If this version doesn't work for you, clear
+**Check for updates when The Chat Place starts** here first. Then uninstall The Chat Place (see
 "Uninstalling") and install 0.4.1 from the
 [releases page](https://github.com/TheIdeaPlace/AIChat/releases). 0.4.1 reads the same setting,
 so it won't offer this version again. (If you clear it only in 0.4.1, you may hear about this
