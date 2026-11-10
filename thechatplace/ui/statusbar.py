@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 import wx
+import wx.siplib
 
 from . import gtk_a11y
 
@@ -182,9 +183,24 @@ class StatusParts:
         self.bar = bar
         self._parts: List[_Part] = []
         self._fitted = False  # the bar's height is set for its buttons (#175)
+        bar.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         bar.Bind(wx.EVT_SIZE, self._on_size)
         bar.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
         gtk_a11y.set_role(bar, "statusbar")
+
+    def _on_destroy(self, event):
+        """Tell wxPython the bar is gone (#610). The frame made it in C++
+        (CreateStatusBar), so its Python wrapper is never told when it's
+        deleted with the frame, and goes on pointing at freed memory: using
+        it then writes there instead of raising, and the next status bar wx
+        makes, often at the same address, is handed the stale wrapper. A
+        window closed and opened again within one process (the test suite
+        makes hundreds) crashed on Linux on that first use. Marked deleted,
+        any later use raises RuntimeError, as for the window's other
+        controls, and a new bar gets a wrapper of its own."""
+        if event.GetEventObject() is self.bar:
+            wx.siplib.setdeleted(self.bar)
+        event.Skip()
 
     def add_text(self, key: str, name: str, width: int, empty_text: str = "") -> StatusText:
         control = StatusText(self.bar, name, empty_text)
