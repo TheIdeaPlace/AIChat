@@ -395,6 +395,25 @@ def test_a_newer_field_never_overrides_what_this_release_knows(tmp_path):
     assert "provider" not in claude and "provider_options" not in claude
 
 
+def test_a_codex_chats_own_setting_wins_over_a_kept_copy_of_it(tmp_path):
+    # The one name both could hold: a known extra beside a later one in
+    # provider_extras. What the chat has now is what's written.
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.update("same-id", provider="codex", provider_options={"collaboration": "default"})
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["provider_extras"] == {"collaboration": "default", "later_mode": "pair"}
+
+
+def test_a_renamed_codex_chat_keeps_its_later_fields(tmp_path):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.rename_id("same-id", "new-id", provider="codex")
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["cli_session_id"] == "new-id"
+    assert codex["provider_extras"] == CODEX_NEWER["provider_extras"]
+
+
 def test_newer_fields_follow_a_renamed_id_and_go_with_a_removed_chat(tmp_path):
     path = _newer_layout(tmp_path)
     store = OwnSessionStore(path)

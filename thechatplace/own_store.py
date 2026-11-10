@@ -133,8 +133,11 @@ SEPARATE_PROVIDERS = ("copilot",)
 #: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
 #: provider-sessions.json over a provider option it doesn't know, and then
 #: saves nothing. It ignores a field it doesn't know. In memory they're
-#: ordinary provider options.
-CODEX_EXTRAS = ("collaboration", "mcp_servers", "instructions", "extra_roots", "apps")
+#: ordinary provider options. A later release's new per-chat setting must go
+#: in provider_extras or a field of its own, never in provider_options: this
+#: release refuses, and won't save, a file with an option it doesn't know,
+#: but keeps unknown fields and provider_extras settings as they were (#614).
+CODEX_EXTRAS =("collaboration", "mcp_servers", "instructions", "extra_roots", "apps")
 
 
 def _valid_codex_extra(name: str, value) -> bool:
@@ -456,7 +459,13 @@ class OwnSessionStore:
     def _keep_extras(self, session: OwnSession, item: dict) -> None:
         extras = _unknown_fields(item)
         if extras:
-            self._extras.setdefault(session.identity, {}).update(extras)
+            kept = self._extras.setdefault(session.identity, {})
+            earlier, later = kept.get("provider_extras"), extras.get("provider_extras")
+            kept.update(extras)
+            if isinstance(earlier, dict) and isinstance(later, dict):
+                # The same chat in two files (a mixed sessions.json and its
+                # companion): keep the later settings from both.
+                kept["provider_extras"] = {**earlier, **later}
 
     def _record(self, session: OwnSession) -> dict:
         """A session as it's written: a newer release's fields first, then
