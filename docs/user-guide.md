@@ -3152,6 +3152,7 @@ so it won't offer this version again. (If you clear it only in 0.4.1, you may he
 version once, at 0.4.1's first start.) Uninstalling leaves your chats, groups and settings in the data folder. 0.4.1 uses them and
 keeps what it doesn't know about, such as your sounds and each chat's options, so they're all
 still there if you update again later. Use 0.4.1 rather than an earlier version, which would lose them.
+This version does the same if you go back to it from a later one.
 
 The first time The Chat Place starts after an update, **The Chat Place Update Installed** says
 which version you now have. **See what's new** (Alt+W) opens that version's release notes in your
