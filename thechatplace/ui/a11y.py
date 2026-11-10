@@ -135,9 +135,10 @@ def _words(text: str) -> str:
 def is_label_for(text: str, name: str) -> bool:
     """Whether a visible label ``text`` ("&Volume:", "Sound events (3 of 23 ...):") says what a
     control's accessible ``name`` ("Volume", "Sound events, 3 of 23 ...") says, or begins it, so
-    it is that control's label rather than a note before it."""
+    it is that control's label rather than a note before it. Not a label that says more than the
+    name ("Role, such as Build the fix:" for "Role"): tied, its extra words would be lost."""
     label, full = _words(text.replace("&", "")), _words(name)
-    return bool(label) and bool(full) and (full.startswith(label) or label.startswith(full))
+    return bool(label) and full.startswith(label)
 
 
 def _tie_label_before(control: wx.Window, name: str) -> None:
@@ -192,10 +193,14 @@ class ListItemsAccessible(wx.Accessible):
         the row for each when they reach it apart, as they do from a wx dialog: on the first it
         asks the list which row has focus and reads that row, then the second reads it again.
         Answering "the list" leaves the row to the second report, so it's read once. A list
-        without focus answers as Windows would."""
+        without focus answers as Windows would.
+
+        wxPython calls this with no arguments and takes (status, child id, child accessible),
+        whatever its docstring says; the accessible itself is what wx gives as CHILDID_SELF.
+        Checked through oleacc's accFocus in the test VM: 0 with focus, the row's id without."""
         window = self.GetWindow()
         if window and wx.Window.FindFocus() is window:
-            return (wx.ACC_OK, 0, None)
+            return (wx.ACC_OK, 0, self)
         return (wx.ACC_NOT_IMPLEMENTED, 0, None)
 
 

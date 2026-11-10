@@ -1745,12 +1745,14 @@ def test_each_label_answers_with_its_controls_name_so_nvda_doesnt_read_them_on_o
 
 @msaa
 def test_a_list_with_focus_says_it_has_it_so_nvda_reads_the_row_once(dialog, monkeypatch):
+    # As wx calls it: GetFocus() -> (status, child id, child). The accessible itself is what wx
+    # answers as CHILDID_SELF (oleacc's accFocus gave 0 in the VM; the row's id without this).
     accessible = dialog.events.GetAccessible()
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.events))
-    assert accessible.GetFocus()[:2] == (wx.ACC_OK, 0)
+    assert accessible.GetFocus() == (wx.ACC_OK, 0, accessible)
     # Without focus, Windows answers.
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.sound))
-    assert accessible.GetFocus()[0] == wx.ACC_NOT_IMPLEMENTED
+    assert accessible.GetFocus() == (wx.ACC_NOT_IMPLEMENTED, 0, None)
 
 
 @msaa
@@ -1777,6 +1779,8 @@ def test_a_note_before_a_control_keeps_its_own_name(frame):
     ("Sound &events (3 of 23 events have a sound):", "Sound events, 3 of 23 events have a sound", True),
     ("Sound &events:", "Sound events, 3 of 23 events have a sound", True),
     ("Changes apply to new chats.", "Model", False),
+    # A label saying more than the name keeps its own, so its example isn't lost.
+    ("First agent's &role (optional), such as Build the fix:", "First agent's role (optional)", False),
     ("", "Model", False),
     ("Work in:", "", False),
 ])
