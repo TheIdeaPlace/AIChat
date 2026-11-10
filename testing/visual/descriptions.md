@@ -197,8 +197,11 @@ This is a 720 by 520 dialog titled "Message: Claude" (it was "Message from Claud
 
 ## settings: Settings
 
-The light-100 picture is 680 by 833 (#438), 179 pixels taller than the preceding
-baseline. The upper groups, dropdown grid, recent-folder row and check boxes
+The light-100 picture is 680 by 858: 25 pixels taller than in #438, for "Check for
+updates when The Chat Place starts" (#611), checked, with D underlined, between the
+agent-conversation and update-notice check boxes, lined up with them at the left and
+spaced as they are. Its label measures 18.4:1 in light and 16.3:1 in High Contrast
+Aquatic. The upper groups, dropdown grid, recent-folder row and check boxes
 keep their previous layout. Full announcements is chosen, with a dotted focus
 rectangle. Below the update-notice check box is "History retention and kept copies",
 with Y underlined. A read-only box 644 wide and 110 high fills most of the width;
@@ -217,21 +220,21 @@ was found at the two captured 100% variants. Higher scaling was not recaptured f
 
 ## settings-codex: Settings with Codex automatically included
 
-The same layout, 680 by 818. The Codex check box is ticked and fits one line, moving
+The same layout, 680 by 843 (with the update check box, #611). The Codex check box is checked and fits one line, moving
 the controls below it 15 pixels above their positions in the ordinary Settings
 picture. The new retention box and editor button remain full width and fully inside
 the dialog. High Contrast follows the same dark background and white text as Settings.
 
 ## settings-copilot: Settings once Copilot CLI has a session
 
-The same layout, 680 by 858. The unticked Copilot check box sits between the Codex
+The same layout, 680 by 883 (with the update check box, #611). The unchecked Copilot check box sits between the Codex
 and agent-conversation check boxes; the new retention area follows the update notice.
 All check boxes line up at the left. Both captured themes have intact labels and
 separate OK and Cancel buttons below the body. No new visual defect was found.
 
 ## settings-speech-problem: Settings after an announcement wasn't spoken
 
-The same layout, 680 by 885. A separate read-only Speech problem box remains below
+The same layout, 680 by 910 (with the update check box, #611). A separate read-only Speech problem box remains below
 Speaking rate, in the dropdowns' column. The retention area is below all check boxes,
 and its editor button is separate from the dialog's confirmation buttons. The High
 Contrast picture uses white text and outlines on the dark background for both boxes.

@@ -1,4 +1,5 @@
 import json
+from dataclasses import fields as dataclasses_fields
 
 import pytest
 
@@ -273,6 +274,55 @@ def test_update_notice_settings_round_trip_and_default(tmp_path):
     odd = SpeechSettings.load(path)
     assert odd.update_installed_notice is True
     assert odd.last_run_version == ""
+
+
+def test_startup_update_check_setting_round_trip_and_default(tmp_path):
+    # On unless turned off: an absent or odd value means on.
+    path = tmp_path / "speech.json"
+    assert SpeechSettings.load(path).check_updates_at_start is True
+    settings = SpeechSettings.load(path)
+    settings.check_updates_at_start = False
+    settings.save(path)
+    assert json.loads(path.read_text(encoding="utf-8"))["check_updates_at_start"] is False
+    assert SpeechSettings.load(path).check_updates_at_start is False
+    path.write_text('{"session_order": "name"}', encoding="utf-8")
+    assert SpeechSettings.load(path).check_updates_at_start is True
+    path.write_text('{"check_updates_at_start": "no"}', encoding="utf-8")
+    assert SpeechSettings.load(path).check_updates_at_start is True
+
+
+def test_saving_keeps_settings_a_newer_release_wrote(tmp_path):
+    # 0.5 -> 0.4.1 -> 0.5: what 0.5 saved (its sounds and sound schemes) must
+    # still be there when it starts again, even after 0.4.1 saved a change.
+    import dataclasses
+    path = tmp_path / "speech.json"
+    newer = {"announce": "full", "sounds_on": True, "sound_volume": 60,
+             "sound_scheme": "user-1", "sound_schemes": {"user-1": {"reply": "a.wav"}}}
+    path.write_text(json.dumps(newer), encoding="utf-8")
+    settings = SpeechSettings.load(path)
+    assert not hasattr(settings, "sounds_on")
+    # The Settings dialog hands back a copy, not what was loaded.
+    changed = dataclasses.replace(settings, check_updates_at_start=False)
+    changed.save(path)
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["check_updates_at_start"] is False
+    for name in ("sounds_on", "sound_volume", "sound_scheme", "sound_schemes"):
+        assert saved[name] == newer[name]
+    # A known setting is this release's to write, never the file's old value.
+    changed.announce = ANNOUNCE_SUMMARY
+    changed.save(path)
+    assert json.loads(path.read_text(encoding="utf-8"))["announce"] == changed.announce
+
+
+def test_saving_over_an_unreadable_settings_file_keeps_nothing_from_it(tmp_path):
+    path = tmp_path / "speech.json"
+    path.write_text("{not json", encoding="utf-8")
+    SpeechSettings().save(path)
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert set(saved) == {f.name for f in dataclasses_fields(SpeechSettings)}
+    path.write_text("[1, 2]", encoding="utf-8")
+    SpeechSettings().save(path)
+    assert isinstance(json.loads(path.read_text(encoding="utf-8")), dict)
 
 
 def test_what_is_still_running_in_the_background():

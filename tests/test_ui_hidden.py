@@ -7450,6 +7450,105 @@ def test_settings_has_the_update_installed_choice(frame, env):
         dialog.Destroy()
 
 
+def test_settings_has_the_startup_update_check_choice(frame, env):
+    from thechatplace.ui.dialogs import SettingsDialog
+    assert frame.speech.check_updates_at_start is True
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options())
+    try:
+        box = dialog.check_updates
+        assert box.GetLabel() == "Check for up&dates when The Chat Place starts"
+        assert box.GetValue() is True
+        # Just before the update-installed choice, so Tab goes from one to the other.
+        boxes = [c for c in dialog._body.GetChildren() if isinstance(c, wx.CheckBox)]
+        assert boxes.index(dialog.update_notice) == boxes.index(box) + 1
+        box.SetValue(False)
+        assert dialog.get_settings().check_updates_at_start is False
+    finally:
+        dialog.Destroy()
+    frame.speech.check_updates_at_start = False
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options())
+    try:
+        assert dialog.check_updates.GetValue() is False   # reopened, it's kept
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_access_keys_are_all_different(frame, env, monkeypatch):
+    import re
+    from thechatplace.ui.dialogs import SettingsDialog
+    # Every optional control shown, so none is missed.
+    monkeypatch.setattr(platform_paths, "copilot_has_sessions", lambda: True)
+    dialog = SettingsDialog(frame, frame.speech, speech.default_options(),
+                            clear_recent=lambda: None)
+    try:
+        keys = []
+        for control in dialog._body.GetChildren():
+            if isinstance(control, (wx.CheckBox, wx.Button, wx.StaticText, wx.RadioBox)):
+                found = re.search(r"&(\w)", control.GetLabel())
+                if found:
+                    keys.append(found.group(1).lower())
+        assert "d" in keys and len(keys) == len(set(keys)), keys
+    finally:
+        dialog.Destroy()
+
+
+def test_turning_the_check_off_stops_the_one_still_waiting(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    frame._startup_update_check = wx.CallLater(60_000, lambda: None)
+    try:
+        monkeypatch.setattr(dialogs.SettingsDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(dialogs.SettingsDialog, "get_settings",
+                            lambda self: dataclasses.replace(self._original,
+                                                             check_updates_at_start=False))
+        frame.on_settings()
+        assert not frame._startup_update_check.IsRunning()
+        assert speech.SpeechSettings.load().check_updates_at_start is False
+    finally:
+        frame._startup_update_check.Stop()
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_startup_update_check_follows_the_setting(env, on):
+    from thechatplace.ui import main_frame
+    from thechatplace.updater import AVAILABLE, CURRENT, CheckResult
+    saved = speech.SpeechSettings()
+    saved.check_updates_at_start = on
+    saved.save()
+    updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    store = OwnSessionStore(env["tmp"] / "own.json")
+    window = main_frame.MainFrame(store=store, updates=updates, check_updates_at_start=True)
+    try:
+        # The first start after an update still says so either way.
+        assert window._startup_update_notice.IsRunning()
+        window._startup_update_notice.Stop()
+        timer = getattr(window, "_startup_update_check", None)
+        if on:
+            # Scheduled as the quiet check; run now rather than waiting for
+            # the timer, which a hidden window on a CI runner may not get.
+            assert timer.IsRunning()
+            timer.Stop()
+            assert timer.callable == window.check_for_updates and timer.args == (False,)
+            timer.callable(*timer.args)
+            assert pump(lambda: not window._update_busy)
+            assert updates.calls == ["quiet check"]
+            assert window.status_parts.get("update").IsShown()
+        else:
+            assert timer is None
+            assert updates.calls == []
+            assert not window.status_parts.get("update").IsShown()
+            # Help, Check for Updates still looks.
+            updates.result = CheckResult(CURRENT, "0.1.0", "0.1.0")
+            window.check_for_updates(True)
+            assert pump(lambda: not window._update_busy)
+            assert updates.calls == ["check"]
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        if window:
+            window.Destroy()
+        wx.GetApp().ProcessPendingEvents()
+
+
 # -- links to sessions (#144) --------------------------------------------------------------
 
 

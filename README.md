@@ -18,7 +18,7 @@ Keyboard shortcuts: [a web page](https://theideaplace.github.io/AIChat/keyboard-
 [Markdown](docs/keyboard-shortcuts.md) and [plain text](docs/keyboard-shortcuts.txt): the same list
 as Help, Keyboard Shortcuts (F1) in the app.
 
-> **Status: version 0.4.0, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
+> **Status: version 0.4.1, a pre-release** (0.1.0, the first release, came out on 7 October 2026). The Linux
 > build is a preview. How it has been tested is in [DEVELOPING.md](DEVELOPING.md#how-its-been-tested).
 
 The Chat Place brings Claude and Codex chats into one accessible list. Read each conversation,
@@ -1328,6 +1328,20 @@ The installed app checks for a new version a few seconds after it starts, and wh
 Help, Check for Updates. At start the check only speaks up when there is a new version, and then
 only says so: it never asks you anything you didn't ask for. From Help it always says what it found ("up to
 date", "no release has been published yet", or an error), even with announcements set to silent.
+
+To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
+Settings (Ctrl+Comma). It's on until you turn it off. With it off, nothing is checked or said at
+start and the status bar shows no update; Help, Check for Updates still checks whenever you choose
+it. This is useful if you went back to an older version and don't want to be offered the newer one
+each time you start The Chat Place. Clearing it in the first seconds after a start also stops that
+start's check if it hasn't run yet.
+
+**Going back to an older version.** Uninstall (the user guide's Uninstalling section says how), install the older version, and
+clear the check above; the first start may still mention the newer version once. The data folder
+is kept, and from 0.4.1 on, settings and chat options the older version doesn't know (in
+`speech.json`, and fields in the records of `sessions.json` and its `provider-sessions*.json`
+companions) are written back as they were, so a newer version finds them again on the next update.
+The older version doesn't use them.
 
 The Help menu's update item always says which version you're running, as QuickMail's does:
 **Check for Updates (running 0.1.4)...** (Alt+H, U). Once a check, at start or from Help, finds a

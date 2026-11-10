@@ -105,6 +105,14 @@ PROVIDERS = ("claude", "codex", "copilot")
 SEPARATE_PROVIDERS = ("copilot",)
 
 
+def _unknown_fields(item: dict) -> dict:
+    """What a record holds that this release doesn't know: fields a newer
+    release added (0.5's chat options, Codex's ``provider_extras``). Kept
+    as they were and written back with the record, so going back to an
+    older release and up again loses none of them."""
+    return {name: value for name, value in item.items() if name not in _FIELDS}
+
+
 def _session_from_dict(item: dict) -> Optional[OwnSession]:
     """A stored session, or None. Wrong-typed optional fields fall back to
     their defaults; a wrong-typed id, title or folder drops the entry."""
@@ -202,6 +210,9 @@ class OwnSessionStore:
         self._separate = {name: self.path.with_name(f"provider-{self.path.stem}-{name}{self.path.suffix}")
                           for name in SEPARATE_PROVIDERS}
         self._sessions: Dict[tuple[str, str], OwnSession] = {}
+        #: identity -> the record's fields a newer release wrote, which this
+        #: one doesn't read but saves back (see _unknown_fields).
+        self._extras: Dict[tuple[str, str], dict] = {}
         self._needs_backup = False
         self.migration_backup: Optional[Path] = None
         self.load_error = ""
@@ -212,6 +223,7 @@ class OwnSessionStore:
 
     def load(self) -> None:
         self._sessions = {}
+        self._extras = {}
         self.load_error = ""
         self._save_blocked = False
         try:
@@ -272,6 +284,7 @@ class OwnSessionStore:
             if session is not None:
                 mixed |= session.provider != "claude"
                 self._sessions[session.identity] = session
+                self._keep_extras(session, item)
         if foreign is not None:
             entries = foreign.get("sessions")
             if foreign.get("version") != 2 or not isinstance(entries, list):
@@ -292,6 +305,7 @@ class OwnSessionStore:
                     self._save_blocked = True
                     return
                 self._sessions[session.identity] = session
+                self._keep_extras(session, item)
         for name, path in self._separate.items():
             if not self._load_separate(name, path):
                 return
@@ -336,7 +350,18 @@ class OwnSessionStore:
                 self._save_blocked = True
                 return False
             self._sessions[session.identity] = session
+            self._keep_extras(session, item)
         return True
+
+    def _keep_extras(self, session: OwnSession, item: dict) -> None:
+        extras = _unknown_fields(item)
+        if extras:
+            self._extras.setdefault(session.identity, {}).update(extras)
+
+    def _record(self, session: OwnSession) -> dict:
+        """A session as it's written: a newer release's fields first, then
+        this release's, which win if a name is in both."""
+        return {**self._extras.get(session.identity, {}), **asdict(session)}
 
     def _set_aside(self, why: str) -> None:
         """Move an unreadable store out of the way, so the next save can't
@@ -358,7 +383,7 @@ class OwnSessionStore:
         records = []
         for session in self._sessions.values():
             if session.provider == "claude":
-                item = asdict(session)
+                item = self._record(session)
                 item.pop("provider")
                 item.pop("provider_options")
                 records.append(item)
@@ -369,14 +394,14 @@ class OwnSessionStore:
             raise OSError(f"Changes cannot be saved: {self.load_error}")
         if self._needs_backup and self.path.exists():
             self.migration_backup = platform_paths.backup_session_store(self.path)
-        foreign = {"version": 2, "sessions": [asdict(s) for s in self._sessions.values()
+        foreign = {"version": 2, "sessions": [self._record(s) for s in self._sessions.values()
                                                 if s.provider not in ("claude", *SEPARATE_PROVIDERS)]}
         # Each separate provider's file first, as the provider file goes
         # before the legacy one: put back as it was if the rest fails.
         previous = {}
         try:
             for name, path in self._separate.items():
-                records = [asdict(s) for s in self._sessions.values() if s.provider == name]
+                records = [self._record(s) for s in self._sessions.values() if s.provider == name]
                 try:
                     previous[path] = path.read_bytes()
                 except FileNotFoundError:
@@ -435,8 +460,11 @@ class OwnSessionStore:
         if new_id != old_id and (provider, new_id) in self._sessions:
             raise ValueError("Session identity already exists.")
         self._sessions.pop((provider, old_id))
+        extras = self._extras.pop((provider, old_id), None)
         session.cli_session_id = new_id
         self._sessions[session.identity] = session
+        if extras:
+            self._extras[session.identity] = extras
         self.save()
 
     def update(self, cli_session_id: str, *, provider: str = "claude", **changes) -> None:
@@ -456,11 +484,14 @@ class OwnSessionStore:
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
         """Remove a session (File, Delete Session Permanently) (its transcript is left alone)."""
         session = self._sessions.pop((provider, cli_session_id), None)
+        extras = self._extras.pop((provider, cli_session_id), None)
         if session is not None:
             try:
                 self.save()
             except Exception:
                 self._sessions[session.identity] = session
+                if extras:
+                    self._extras[session.identity] = extras
                 raise
         if provider == 'codex':
             # Repeating removal also retries cleanup after a sharing violation.

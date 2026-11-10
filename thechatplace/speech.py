@@ -52,7 +52,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -224,6 +224,10 @@ class SpeechSettings:
     #: How Changed Files marks each line of a change (#174): a value from
     #: app-kit's ``difftext.STYLES``.
     change_marks: str = "words"
+    #: Look for a newer release a few seconds after starting (Settings). Off
+    #: leaves only Help, Check for Updates: someone who went back to an older
+    #: release isn't offered the newer one again at every start.
+    check_updates_at_start: bool = True
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -297,6 +301,7 @@ class SpeechSettings:
         from theideaplace_appkit.difftext import DEFAULT as MARKS_DEFAULT, STYLES as MARKS
         marks = raw.get("change_marks", MARKS_DEFAULT)
         settings.change_marks = marks if marks in MARKS else MARKS_DEFAULT
+        settings.check_updates_at_start = raw.get("check_updates_at_start") is not False
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are
@@ -313,7 +318,26 @@ class SpeechSettings:
     def save(self, path: Optional[Path] = None) -> None:
         path = Path(path or DEFAULT_SETTINGS_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        # Replaced whole, never left half written: what a newer release saved
+        # here (see _unknown_settings) couldn't be kept from a damaged file.
+        from .provider_storage import atomic_write_json
+        atomic_write_json(path, {**_unknown_settings(path), **asdict(self)})
+
+
+def _unknown_settings(path: Path) -> dict:
+    """Settings in the file that this release doesn't know: ones a newer
+    release saved (0.5's sounds and sound schemes). Saving writes them back as
+    they were, so going back to an older release and up again loses none of
+    them. Read from the file each time, as the Settings dialog hands back a
+    copy rather than what was loaded."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    known = {f.name for f in fields(SpeechSettings)}
+    return {name: value for name, value in raw.items() if name not in known}
 
 
 # ---------------------------------------------------------------------------
