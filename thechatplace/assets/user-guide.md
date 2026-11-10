@@ -3137,14 +3137,19 @@ The Help menu's update item always says which version you're running, such as
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
 
-To stop the check at start, clear **Check for updates when The Chat Place starts** (Alt+D) in
-Settings (Ctrl+Comma). Nothing is then checked or said at start, and the status bar shows no
-update until you choose Help, Check for Updates, which still works.
+**Stay on the version you have.** In Settings (Ctrl+Comma), clear **Check for updates when The
+Chat Place starts** (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
+so it stays on this version until you decide. Nothing is ever downloaded or installed on its own:
+an update is downloaded only after you say Yes to it. (One you said Yes to that couldn't be
+installed right away is installed the next time The Chat Place starts.) To update later, choose
+Help, Check for Updates, which still works with the setting off. The setting is on to start.
 
-**Going back to an older version.** If this version doesn't work for you, uninstall The Chat Place,
-install 0.4.1 from the [releases page](https://github.com/TheIdeaPlace/AIChat/releases), and clear
-**Check for updates when The Chat Place starts** there, so it isn't offered again each time you
-start. Uninstalling leaves your chats, groups and settings in the data folder. 0.4.1 uses them and
+**Going back to an older version.** If this version doesn't work for you, clear **Check for
+updates when The Chat Place starts** here first. Then uninstall The Chat Place (see
+"Uninstalling") and install 0.4.1 from the
+[releases page](https://github.com/TheIdeaPlace/AIChat/releases). 0.4.1 reads the same setting,
+so it won't offer this version again. (If you clear it only in 0.4.1, you may hear about this
+version once, at 0.4.1's first start.) Uninstalling leaves your chats, groups and settings in the data folder. 0.4.1 uses them and
 keeps what it doesn't know about, such as your sounds and each chat's options, so they're all
 still there if you update again later. Use 0.4.1 rather than an earlier version, which would lose them.
 

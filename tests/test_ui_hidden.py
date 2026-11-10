@@ -7811,7 +7811,8 @@ def test_settings_access_keys_are_all_different(frame, env, monkeypatch):
     dialog = SettingsDialog(frame, frame.speech, speech.default_options(),
                             clear_recent=lambda: None)
     try:
-        keys = []
+        # GTK's stock OK and Cancel take O and C (on Windows they have none).
+        keys = ["o", "c"] if wx.Platform == "__WXGTK__" else []
         for control in dialog._body.GetChildren():
             if isinstance(control, (wx.CheckBox, wx.Button, wx.StaticText, wx.RadioBox)):
                 found = re.search(r"&(\w)", control.GetLabel())
