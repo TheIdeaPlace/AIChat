@@ -8891,12 +8891,17 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
     try:
         _read(dialog)
         items = list(dialog.branch.GetStrings())
-        assert items == ["work (checked out in this folder)", "main (in use in another worktree)"]
+        # older is only on origin (#622): after the local ones, before those in use.
+        assert items == ["older (on origin)", "work (checked out in this folder)",
+                         "main (in use in another worktree)"]
         assert not any(str(clone) in item for item in items)   # the path is for the message
         dialog.message.SetValue("hi")
         dialog.work_in.SetSelection(1)
         dialog._on_work_in()
-        dialog.branch.SetSelection(1)
+        assert pump(lambda: dialog._fetching and not dialog._fetching.is_alive(), timeout=30)
+        pump(lambda: False, timeout=0.3)   # Branch listed again once fetched
+        assert list(dialog.branch.GetStrings()) == items
+        dialog.branch.SetSelection(2)
         dialog._sync_start_from()
         # Arrowing to it, Start from says why it's off, with no path.
         assert not dialog.start_from.IsEnabled()
@@ -8921,7 +8926,7 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         assert pump(lambda: len(boxes) == 2, timeout=15)
         assert boxes[-1] == refused
         # The folder's own branch says so, and names the folder.
-        dialog.branch.SetSelection(0)
+        dialog.branch.SetSelection(1)
         dialog._sync_start_from()
         assert "work is checked out in this folder" in _start_from_name(dialog)
         dialog._on_ok(None)
@@ -8934,6 +8939,58 @@ def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env,
         dialog._sync_start_from()
         assert dialog.start_from.IsEnabled() and _start_from_name(dialog) == "Start from"
         assert dialog.start_from.GetStringSelection() == "origin/main, fetched first"
+    finally:
+        dialog.Destroy()
+
+
+def test_a_new_worktree_fetches_so_branch_lists_whats_on_the_remote_now(frame, env):
+    # #622: a branch pushed after the last fetch is listed once A new
+    # worktree is chosen, and one deleted from the remote goes.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert "older (on origin)" in dialog.branch.GetStrings()
+        assert dialog._fetching is None          # nothing fetched for The folder as it is
+        subprocess.run(["git", "branch", "pushed-since"], cwd=origin, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "branch", "-D", "older"], cwd=origin, check=True,
+                       capture_output=True)
+        dialog.branch.ChangeValue("typed")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert pump(lambda: "pushed-since (on origin)" in dialog.branch.GetStrings(), timeout=30)
+        assert "older (on origin)" not in dialog.branch.GetStrings()
+        assert dialog.branch.GetValue() == "typed"       # what you typed stays
+        # Once per folder: choosing it again doesn't fetch again.
+        first = dialog._fetching
+        dialog.work_in.SetSelection(0)
+        dialog._on_work_in()
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert dialog._fetching is first
+        assert not any("Couldn't fetch" in said for said in env["feedback"])
+    finally:
+        dialog.Destroy()
+
+
+def test_a_failed_fetch_is_said_and_branch_keeps_what_it_had(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    subprocess.run(["git", "remote", "set-url", "origin", str(env["tmp"] / "gone")], cwd=clone,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        said = ("Couldn't fetch from origin, so Branch lists the remote branches as they were "
+                "at the last fetch.")
+        assert pump(lambda: said in env["feedback"], timeout=30)
+        assert "older (on origin)" in dialog.branch.GetStrings()
     finally:
         dialog.Destroy()
 

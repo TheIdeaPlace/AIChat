@@ -577,24 +577,74 @@ def in_use_reason(info: RepoInfo, branch: str) -> str:
     return IN_USE_GONE if branch in info.busy_gone else IN_USE_ELSEWHERE
 
 
+def remote_only(info: RepoInfo) -> List[tuple]:
+    """``(name, remote)`` for each branch only a remote has, such as
+    ``("feature/x", "origin")``, in git's order: one per name, from the
+    remote ``create_worktree`` would track (origin first). Branches with a
+    local branch of the same name are left out, as that one is used."""
+    found, seen = [], set()
+    for ref in info.remotes:
+        if "/" not in ref:
+            continue
+        name = ref.split("/", 1)[1]
+        if name in seen or name in info.branches or name in info.busy or name == "HEAD":
+            continue
+        seen.add(name)
+        tracked = _remote_for(info, name)
+        found.append((name, tracked.split("/", 1)[0]))
+    return found
+
+
+#: A remote-only item in Branch, "feature/x (on origin)" (#622).
+_ON_REMOTE = re.compile(r"^(?P<name>\S+) \(on (?P<remote>[^\s()]+)\)$")
+
+
 def branch_choices(info: Optional[RepoInfo]) -> List[str]:
-    """New Session's Branch items: the branches a new worktree can use, then
-    the ones checked out somewhere, each as "main (in use in another
+    """New Session's Branch items: the local branches a new worktree can
+    use, then those only a remote has, as "feature/x (on origin)" (#622),
+    then the ones checked out somewhere, as "main (in use in another
     worktree)"."""
     if info is None:
         return []
-    return list(info.branches) + [f"{b} ({in_use_reason(info, b)})" for b in info.busy]
+    return (list(info.branches)
+            + [f"{name} (on {remote})" for name, remote in remote_only(info)]
+            + [f"{b} ({in_use_reason(info, b)})" for b in info.busy])
 
 
 def branch_from_choice(text: str) -> str:
     """The branch an item from ``branch_choices`` names; anything else as
-    typed, trimmed."""
+    typed, trimmed. A remote-only item names its local branch, which
+    ``create_worktree`` makes to track the remote's."""
     name = (text or "").strip()
     for reason in (IN_USE_HERE, IN_USE_ELSEWHERE, IN_USE_GONE):
         suffix = f" ({reason})"
         if name.endswith(suffix):
             return name[:-len(suffix)].strip()
+    remote = _ON_REMOTE.match(name)
+    if remote:
+        return remote.group("name")
     return name
+
+
+def fetch_remotes(git: str, info: RepoInfo) -> str:
+    """Bring the remote branches up to date for Branch (#622): a quiet
+    ``git fetch --all --prune``, never asking for a password. "" once done
+    (or with no remote to fetch), else why not, in a sentence. Prune drops
+    the remote branches deleted since, so they aren't offered."""
+    try:
+        remotes = _run([git, "-C", info.top, "remote"], timeout=10).split()
+    except ToolError:
+        return ""
+    if not remotes:
+        return ""
+    try:
+        _run([git, "-C", info.top, "fetch", "--all", "--prune", "--quiet",
+              "--no-recurse-submodules"], timeout=60)
+    except ToolError:
+        names = remotes[0] if len(remotes) == 1 else "the remotes"
+        return (f"Couldn't fetch from {names}, so Branch lists the remote branches as they "
+                f"were at the last fetch.")
+    return ""
 
 
 def in_use_message(info: RepoInfo, branch: str, start_remote: str = "") -> str:

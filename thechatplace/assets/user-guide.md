@@ -1651,7 +1651,11 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
 - **Work in** (Alt+I): **The folder as it is** (it says which branch the folder is on), or
   **A new worktree**. A **worktree** is a separate copy of the repository on a branch of its
   own, so the chat's changes stay apart from the folder and from your other chats. With a
-  worktree, choose a branch in **Branch** (Alt+R), or type a new name. A branch can be checked
+  worktree, choose a branch in **Branch** (Alt+R), or type a new name. Branch lists every
+  branch, your own first, then those only on the remote, such as "release/next (on origin)",
+  which the new worktree's branch then follows. Choosing A new worktree checks the remote first,
+  so a branch pushed a moment ago is there; if it can't be reached, you hear that the list may be
+  out of date. A branch can be checked
   out in only one place, so a branch that already is comes last in the list, saying why, such
   as "main (in use in another worktree)" or "work (checked out in this folder)". Pressing Start
   with one says where it's checked out and what to do instead. For a new name,
