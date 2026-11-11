@@ -161,6 +161,33 @@ gir1.2-atspi-2.0`.
 The rule for finding a session's conversation file (its folder with every character that
 isn't a letter or digit turned into `-`) was checked against every transcript on Kelly's PC.
 
+## Test coverage
+
+The **Coverage** workflow runs every Monday (or by hand: Actions, Coverage, Run workflow). It
+measures how much of `thechatplace` the tests run on Windows, macOS and Linux, lines and
+branches, and combines the three (#628). `tools/coverage_check.py` compares the result with
+`testing/coverage/baseline.json` and flags:
+
+- the whole app falling more than 1 point;
+- a file of 50 statements or more falling more than 5 points;
+- any file, a new one included, with 25 or more statements more that no test runs.
+
+A drop files an issue labelled `coverage-regression`, or comments on the one already open. Each
+run's summary page shows the report, and its `coverage-report` download has the per-line HTML.
+
+The baseline changes only when it's accepted, so a slow slide is still caught. When a drop is
+expected (code moved, tests removed on purpose), or coverage rose and the bar should rise with it,
+download `coverage.json` from a run's `coverage-report` and accept it in a pull request:
+
+```
+gh run download RUN_ID -n coverage-report -D cov
+.venv/bin/python tools/coverage_check.py cov/coverage.json --accept --measured "main at SHA, DATE, run RUN_ID"
+```
+
+To measure locally: `pip install pytest-cov`, then `python -m pytest -q tests --cov
+--cov-report=term-missing` (`.coveragerc` has the settings). One platform alone reads lower than
+the combined figure, because each skips the others' tests.
+
 ## Files
 
 | Path | What |
@@ -188,6 +215,7 @@ isn't a letter or digit turned into `-`) was checked against every transcript on
 | `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
 | `tools/check_version.py` | Prints the version; checks a release tag against it |
 | `tools/make_version_info.py` | The Windows version resource for the built exe |
+| `tools/coverage_check.py`, `testing/coverage/baseline.json`, `.coveragerc` | The weekly coverage check, its baseline and its settings |
 | `winsetup.bat`, `macsetup.sh` (`.command`), `linuxsetup.sh` | Set up `.venv` on Windows, a Mac or Linux |
 | `BuildAndRelease/WinBuilds/build_windows.cmd` | Build on Windows (unsigned) |
 | `BuildAndRelease/MacBuilds/` | Build on a Mac (`build_macos.sh`, `.command`), and its signing, notarizing, entitlements and disk image |

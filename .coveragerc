@@ -1,0 +1,12 @@
+# Test coverage settings, for the weekly Coverage workflow (#628) and for
+# `pytest --cov` by hand. relative_files and [paths] let the Windows, macOS and
+# Linux runs be combined into one report.
+[run]
+source = thechatplace
+branch = True
+relative_files = True
+
+[paths]
+source =
+    thechatplace/
+    thechatplace\

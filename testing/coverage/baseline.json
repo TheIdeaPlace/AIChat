@@ -1,0 +1,500 @@
+{
+ "measured": "main at 126d012, 2026-11-11, run 43010618691",
+ "total": {
+  "statements": 32156,
+  "missing": 2945,
+  "percent": 89.26
+ },
+ "files": {
+  "thechatplace/__init__.py": {
+   "statements": 1,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/__main__.py": {
+   "statements": 3,
+   "missing": 3,
+   "percent": 0.0
+  },
+  "thechatplace/about_you.py": {
+   "statements": 235,
+   "missing": 9,
+   "percent": 96.72
+  },
+  "thechatplace/agents.py": {
+   "statements": 570,
+   "missing": 26,
+   "percent": 95.5
+  },
+  "thechatplace/announce.py": {
+   "statements": 203,
+   "missing": 2,
+   "percent": 98.32
+  },
+  "thechatplace/app.py": {
+   "statements": 255,
+   "missing": 105,
+   "percent": 55.59
+  },
+  "thechatplace/attachments.py": {
+   "statements": 78,
+   "missing": 7,
+   "percent": 92.16
+  },
+  "thechatplace/backup.py": {
+   "statements": 820,
+   "missing": 73,
+   "percent": 89.85
+  },
+  "thechatplace/backup_reader.py": {
+   "statements": 313,
+   "missing": 47,
+   "percent": 81.88
+  },
+  "thechatplace/bugreport.py": {
+   "statements": 197,
+   "missing": 5,
+   "percent": 96.8
+  },
+  "thechatplace/changes.py": {
+   "statements": 159,
+   "missing": 1,
+   "percent": 96.89
+  },
+  "thechatplace/chat_permissions.py": {
+   "statements": 72,
+   "missing": 3,
+   "percent": 95.92
+  },
+  "thechatplace/claude_cli.py": {
+   "statements": 969,
+   "missing": 42,
+   "percent": 94.67
+  },
+  "thechatplace/claude_settings.py": {
+   "statements": 65,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/codeblocks.py": {
+   "statements": 79,
+   "missing": 1,
+   "percent": 96.26
+  },
+  "thechatplace/codex_diagnostics.py": {
+   "statements": 109,
+   "missing": 2,
+   "percent": 96.64
+  },
+  "thechatplace/codex_saved_rules.py": {
+   "statements": 120,
+   "missing": 3,
+   "percent": 96.55
+  },
+  "thechatplace/codex_signin.py": {
+   "statements": 53,
+   "missing": 1,
+   "percent": 97.26
+  },
+  "thechatplace/copilot_signin.py": {
+   "statements": 90,
+   "missing": 1,
+   "percent": 98.28
+  },
+  "thechatplace/desktop_groups.py": {
+   "statements": 55,
+   "missing": 5,
+   "percent": 89.87
+  },
+  "thechatplace/export.py": {
+   "statements": 159,
+   "missing": 3,
+   "percent": 98.05
+  },
+  "thechatplace/groups.py": {
+   "statements": 176,
+   "missing": 8,
+   "percent": 92.98
+  },
+  "thechatplace/hidden.py": {
+   "statements": 80,
+   "missing": 2,
+   "percent": 94.9
+  },
+  "thechatplace/history_keeper.py": {
+   "statements": 242,
+   "missing": 17,
+   "percent": 91.61
+  },
+  "thechatplace/hub.py": {
+   "statements": 66,
+   "missing": 1,
+   "percent": 98.81
+  },
+  "thechatplace/imported_store.py": {
+   "statements": 346,
+   "missing": 25,
+   "percent": 91.55
+  },
+  "thechatplace/links.py": {
+   "statements": 117,
+   "missing": 2,
+   "percent": 98.74
+  },
+  "thechatplace/lists.py": {
+   "statements": 141,
+   "missing": 2,
+   "percent": 97.41
+  },
+  "thechatplace/message_links.py": {
+   "statements": 169,
+   "missing": 2,
+   "percent": 96.6
+  },
+  "thechatplace/orca.py": {
+   "statements": 163,
+   "missing": 59,
+   "percent": 63.16
+  },
+  "thechatplace/own_store.py": {
+   "statements": 360,
+   "missing": 21,
+   "percent": 93.44
+  },
+  "thechatplace/platform_paths.py": {
+   "statements": 1577,
+   "missing": 300,
+   "percent": 79.66
+  },
+  "thechatplace/prompts.py": {
+   "statements": 183,
+   "missing": 14,
+   "percent": 92.17
+  },
+  "thechatplace/properties.py": {
+   "statements": 158,
+   "missing": 2,
+   "percent": 98.25
+  },
+  "thechatplace/provider_storage.py": {
+   "statements": 102,
+   "missing": 3,
+   "percent": 94.35
+  },
+  "thechatplace/providers/__init__.py": {
+   "statements": 0,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/providers/agents.py": {
+   "statements": 76,
+   "missing": 13,
+   "percent": 81.25
+  },
+  "thechatplace/providers/base.py": {
+   "statements": 47,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/providers/claude.py": {
+   "statements": 209,
+   "missing": 10,
+   "percent": 93.45
+  },
+  "thechatplace/providers/claude_backup.py": {
+   "statements": 21,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/providers/codex.py": {
+   "statements": 463,
+   "missing": 41,
+   "percent": 89.09
+  },
+  "thechatplace/providers/codex_archive.py": {
+   "statements": 101,
+   "missing": 12,
+   "percent": 83.22
+  },
+  "thechatplace/providers/codex_backup.py": {
+   "statements": 119,
+   "missing": 7,
+   "percent": 93.94
+  },
+  "thechatplace/providers/codex_connection.py": {
+   "statements": 96,
+   "missing": 5,
+   "percent": 92.97
+  },
+  "thechatplace/providers/codex_events.py": {
+   "statements": 267,
+   "missing": 24,
+   "percent": 89.82
+  },
+  "thechatplace/providers/codex_execution.py": {
+   "statements": 335,
+   "missing": 29,
+   "percent": 88.26
+  },
+  "thechatplace/providers/codex_models.py": {
+   "statements": 46,
+   "missing": 1,
+   "percent": 97.22
+  },
+  "thechatplace/providers/codex_owned.py": {
+   "statements": 150,
+   "missing": 10,
+   "percent": 90.83
+  },
+  "thechatplace/providers/codex_permissions.py": {
+   "statements": 157,
+   "missing": 13,
+   "percent": 88.73
+  },
+  "thechatplace/providers/codex_policy.py": {
+   "statements": 54,
+   "missing": 4,
+   "percent": 94.59
+  },
+  "thechatplace/providers/codex_requests.py": {
+   "statements": 335,
+   "missing": 27,
+   "percent": 89.56
+  },
+  "thechatplace/providers/codex_rpc.py": {
+   "statements": 449,
+   "missing": 30,
+   "percent": 91.65
+  },
+  "thechatplace/providers/codex_runtime.py": {
+   "statements": 733,
+   "missing": 37,
+   "percent": 92.55
+  },
+  "thechatplace/providers/codex_tokens.py": {
+   "statements": 33,
+   "missing": 2,
+   "percent": 90.7
+  },
+  "thechatplace/providers/codex_usage.py": {
+   "statements": 85,
+   "missing": 6,
+   "percent": 92.0
+  },
+  "thechatplace/providers/copilot.py": {
+   "statements": 845,
+   "missing": 41,
+   "percent": 93.58
+  },
+  "thechatplace/providers/copilot_acp.py": {
+   "statements": 180,
+   "missing": 19,
+   "percent": 89.38
+  },
+  "thechatplace/providers/copilot_auto_store.py": {
+   "statements": 115,
+   "missing": 9,
+   "percent": 91.24
+  },
+  "thechatplace/providers/copilot_backup.py": {
+   "statements": 52,
+   "missing": 1,
+   "percent": 96.97
+  },
+  "thechatplace/providers/copilot_folder.py": {
+   "statements": 932,
+   "missing": 40,
+   "percent": 95.47
+  },
+  "thechatplace/providers/copilot_hooks.py": {
+   "statements": 105,
+   "missing": 10,
+   "percent": 92.2
+  },
+  "thechatplace/providers/copilot_runtime.py": {
+   "statements": 1548,
+   "missing": 98,
+   "percent": 92.21
+  },
+  "thechatplace/providers/copilot_usage.py": {
+   "statements": 179,
+   "missing": 19,
+   "percent": 87.16
+  },
+  "thechatplace/providers/discovery.py": {
+   "statements": 98,
+   "missing": 2,
+   "percent": 96.32
+  },
+  "thechatplace/providers/imported.py": {
+   "statements": 46,
+   "missing": 3,
+   "percent": 94.23
+  },
+  "thechatplace/relay.py": {
+   "statements": 77,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/remote.py": {
+   "statements": 56,
+   "missing": 0,
+   "percent": 98.61
+  },
+  "thechatplace/rendering.py": {
+   "statements": 54,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/retention.py": {
+   "statements": 32,
+   "missing": 2,
+   "percent": 91.3
+  },
+  "thechatplace/screen_readers.py": {
+   "statements": 138,
+   "missing": 11,
+   "percent": 93.41
+  },
+  "thechatplace/search.py": {
+   "statements": 132,
+   "missing": 0,
+   "percent": 98.85
+  },
+  "thechatplace/session_controller.py": {
+   "statements": 174,
+   "missing": 16,
+   "percent": 87.8
+  },
+  "thechatplace/session_tools.py": {
+   "statements": 313,
+   "missing": 31,
+   "percent": 89.24
+  },
+  "thechatplace/session_tools_mcp.py": {
+   "statements": 119,
+   "missing": 15,
+   "percent": 86.62
+  },
+  "thechatplace/sessions.py": {
+   "statements": 460,
+   "missing": 13,
+   "percent": 97.28
+  },
+  "thechatplace/signin.py": {
+   "statements": 88,
+   "missing": 2,
+   "percent": 96.61
+  },
+  "thechatplace/speech.py": {
+   "statements": 570,
+   "missing": 85,
+   "percent": 82.51
+  },
+  "thechatplace/tasklist.py": {
+   "statements": 60,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/titles.py": {
+   "statements": 70,
+   "missing": 2,
+   "percent": 95.65
+  },
+  "thechatplace/transcript.py": {
+   "statements": 823,
+   "missing": 24,
+   "percent": 94.93
+  },
+  "thechatplace/ui/__init__.py": {
+   "statements": 0,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/ui/a11y.py": {
+   "statements": 92,
+   "missing": 10,
+   "percent": 87.07
+  },
+  "thechatplace/ui/agent_chats.py": {
+   "statements": 952,
+   "missing": 103,
+   "percent": 86.75
+  },
+  "thechatplace/ui/codex_chats.py": {
+   "statements": 668,
+   "missing": 78,
+   "percent": 86.73
+  },
+  "thechatplace/ui/dialogs.py": {
+   "statements": 3283,
+   "missing": 289,
+   "percent": 88.53
+  },
+  "thechatplace/ui/gtk_a11y.py": {
+   "statements": 418,
+   "missing": 119,
+   "percent": 66.24
+  },
+  "thechatplace/ui/mac_a11y.py": {
+   "statements": 194,
+   "missing": 37,
+   "percent": 77.95
+  },
+  "thechatplace/ui/main_frame.py": {
+   "statements": 5363,
+   "missing": 666,
+   "percent": 85.67
+  },
+  "thechatplace/ui/notify.py": {
+   "statements": 79,
+   "missing": 5,
+   "percent": 90.53
+  },
+  "thechatplace/ui/permission_hosts.py": {
+   "statements": 204,
+   "missing": 13,
+   "percent": 90.31
+  },
+  "thechatplace/ui/relay_chats.py": {
+   "statements": 176,
+   "missing": 5,
+   "percent": 96.83
+  },
+  "thechatplace/ui/session_tools_host.py": {
+   "statements": 98,
+   "missing": 22,
+   "percent": 73.88
+  },
+  "thechatplace/ui/sizes.py": {
+   "statements": 15,
+   "missing": 0,
+   "percent": 100.0
+  },
+  "thechatplace/ui/statusbar.py": {
+   "statements": 222,
+   "missing": 16,
+   "percent": 88.7
+  },
+  "thechatplace/ui_text.py": {
+   "statements": 115,
+   "missing": 0,
+   "percent": 98.69
+  },
+  "thechatplace/updater.py": {
+   "statements": 282,
+   "missing": 34,
+   "percent": 89.66
+  },
+  "thechatplace/usage.py": {
+   "statements": 95,
+   "missing": 3,
+   "percent": 95.24
+  },
+  "thechatplace/workplaces.py": {
+   "statements": 373,
+   "missing": 34,
+   "percent": 91.4
+  }
+ }
+}

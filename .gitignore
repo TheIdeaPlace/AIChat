@@ -15,3 +15,10 @@ desktop.ini
 
 # Worktrees an agent makes inside the checkout
 .worktrees/
+
+# Test coverage (#628)
+.coverage
+.coverage.*
+coverage.json
+coverage-html/
+htmlcov/
