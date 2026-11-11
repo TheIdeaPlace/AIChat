@@ -345,6 +345,14 @@ def problems_text(servers: List[Tuple[str, str]], skip: Collection[str] = ()) ->
     return " ".join(sentences)
 
 
+def problems_short(servers: List[Tuple[str, str]], skip: Collection[str] = ()) -> str:
+    """``problems_text`` in few enough words for the status bar, which cuts
+    long text off at the end: the end is what says what you can do."""
+    count = sum(status in PROBLEM_STATUSES and name not in skip for name, status in servers)
+    tools = "a connected tool" if count == 1 else f"{count} connected tools"
+    return f"Claude can't use {tools}. To fix this, or stop hearing it, use View, Connected Tools."
+
+
 def _and(names: List[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 

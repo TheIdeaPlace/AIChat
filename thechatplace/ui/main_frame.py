@@ -120,7 +120,7 @@ from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
 from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
-                          is_web_url, problems_text)
+                          is_web_url, problems_short, problems_text)
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
@@ -4388,6 +4388,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(text)
         else:
             self._status(text)
+        if announce.status_text(text) != text:
+            # The status bar would cut off the end, which says what to do.
+            self._status(problems_short(listed, skip))
 
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this

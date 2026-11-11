@@ -620,7 +620,9 @@ def test_a_turn_says_once_which_tools_claude_cant_use(frame, env):
             "can't use github: it failed to connect. To fix this, or stop hearing it, use "
             "View, Connected Tools.")
     assert env["feedback"][-1] == said
-    assert frame._status_latest == said
+    # Too long for the status bar, which would cut off what you can do.
+    assert frame._status_latest == ("Claude can't use 2 connected tools. To fix this, or stop "
+                                    "hearing it, use View, Connected Tools.")
     count = len(env["feedback"])
     _start(frame, servers)  # not again this run
     assert len(env["feedback"]) == count
