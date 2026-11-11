@@ -54,6 +54,16 @@ def test_missing_images_and_unrecognised_parts_are_rejected(tmp_path):
         build_input('x' * 32001)
 
 
+def test_over_long_text_can_be_assembled_plain_for_the_file_handover():
+    """A reply over the limit must reach the saved-file handover, not die
+    in input validation; assembled plain, its attachment lines still name
+    their files. Without allow_long it is still refused here."""
+    with pytest.raises(ValueError):
+        build_input('x' * 32001)
+    value = build_input('x' * 32001, allow_long=True)
+    assert type(value) is str and len(value) == 32001
+
+
 def test_queued_image_is_sent_with_its_native_parts(tmp_path):
     service, connection, _ = runtime()
     try:

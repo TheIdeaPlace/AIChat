@@ -44,7 +44,13 @@ def validate_input(items):
             raise ValueError('Unsupported Codex input item.')
 
 
-def build_input(text, paths=(), *, skills=()):
+def build_input(text, paths=(), *, skills=(), allow_long=False):
+    """Assemble a message's text, attachment lines and native parts.
+
+    ``allow_long``: text over the send limit comes back as plain assembled
+    text instead of a validated input, for the caller to hand over another
+    way (a saved file); its attachment lines name their files, so nothing
+    is lost by leaving the native parts behind."""
     if not isinstance(text, str) or len(paths) + len(skills) > 20:
         raise ValueError('Choose at most 20 attachments.')
     lines, parts = [text.strip()] if text.strip() else [], []
@@ -60,7 +66,8 @@ def build_input(text, paths=(), *, skills=()):
     for name, path in skills:
         lines.append('$' + name)
         parts.append({'type': 'skill', 'name': name, 'path': str(Path(path).resolve(strict=True))})
-    return CodexInput('\n\n'.join(lines), parts)
+    joined = '\n\n'.join(lines)
+    return joined if allow_long else CodexInput(joined, parts)
 
 
 def input_items(text):

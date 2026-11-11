@@ -152,6 +152,30 @@ def test_too_long_codex_message_is_saved_and_codex_is_asked_to_read_it(tmp_path,
     assert w.reply_text.value.startswith('head\n' + 'x' * 100)
 
 
+def test_a_long_reply_is_assembled_then_saved_like_a_first_message(tmp_path, monkeypatch):
+    """The reply box builds its input before sending; over the limit that
+    used to refuse with 'at most 32000 characters' before the saved-file
+    handover could run. Now the assembled reply reaches it."""
+    import tempfile
+    from pathlib import Path
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    w = Window()
+    w._attachments = {}
+    w._attachment_key = staticmethod(lambda info: info.key)
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    message = w._codex_message(w._open, 'x' * 40000)
+    assert type(message) is str and len(message) == 40000
+    w._send_codex_owned(w.record, message)
+    action, done = w.work[0]
+    action()
+    assert len(sent[0][2]) < 32000 and 'path: ' in sent[0][2]
+    path = tmp_path / _saved_path(sent[0][2])
+    assert path.read_text(encoding='utf-8') == 'x' * 40000
+    done(False, False)
+    assert 'too long to send in full' in w.said[-1]
+
+
 def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it(tmp_path, monkeypatch):
     import tempfile
     monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
