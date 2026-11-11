@@ -19,6 +19,7 @@ from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
+from .. import codex_long_messages
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name, with_stop_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
@@ -27,26 +28,6 @@ from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
 from .permission_hosts import CODEX_MODES
 from .codex_extras import CodexExtras
 from .sound_host import SoundHost
-
-
-def _save_long_message(text):
-    """The whole of an over-long message in a temp file, for Codex to read
-    back: Codex reads files outside the chat's folder (checked against real
-    Codex), and the temp folder is cleaned up by the system, not by us
-    mid-turn."""
-    fd, path = tempfile.mkstemp(prefix='thechatplace-long-message-', suffix='.txt')
-    with os.fdopen(fd, 'w', encoding='utf-8') as saved:
-        saved.write(text)
-    return path
-
-
-def _long_message_prompt(text, path):
-    """What Codex is sent instead of an over-long message: read this file
-    as the message."""
-    return (f'My message is too long to send directly ({len(text):,} characters), so '
-            f'The Chat Place saved it in full in this file: {path}\n\n'
-            'Read that file now, and treat everything in it as my message: do what '
-            'it asks, and if it shows output or errors, explain them.')
 
 
 class CodexChats(SoundHost, CodexExtras):
@@ -556,10 +537,15 @@ class CodexChats(SoundHost, CodexExtras):
         if getattr(record, 'provider', '') != 'codex' or len(text) <= MAX_MESSAGE_CHARS:
             return text, None
         try:
-            saved = _save_long_message(text)
+            saved = codex_long_messages.save_message(text)
         except OSError:
             return text, None
-        return _long_message_prompt(text, saved), saved
+        codex_long_messages.remember(saved, text)
+        files = getattr(self, '_long_message_files', None)
+        if files is None:
+            files = self._long_message_files = {}
+        files.setdefault(record.to_info().key, set()).add(saved)
+        return codex_long_messages.prompt_for(text, saved), saved
 
     def _too_long_note(self, record, text, saved):
         if not saved:
@@ -837,13 +823,19 @@ class CodexChats(SoundHost, CodexExtras):
             # The turn is over. An accepted steer may not have been used
             # (Stop): it stays until the history is read again (#410).
             self._steers_turn_over(key)
-        unsent = state.unsent
+        # A saved long message comes back as it was written, not as its prompt.
+        unsent = tuple(codex_long_messages.expand(text) for text in state.unsent)
         if unsent:
             # An agent conversation's own message goes back to it (#248).
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
                 unsent = agent_unsent(provider, state.native_id, unsent)
         self._restore_codex_text(key, unsent)
+        if state.outcome in ('completed', 'failed', 'interrupted') and not state.queued:
+            # The turn is over, so its saved long messages have been read;
+            # remove the temp files rather than leave them for good.
+            files = getattr(self, '_long_message_files', {})
+            codex_long_messages.delete_files(files.pop(key, ()))
         record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return

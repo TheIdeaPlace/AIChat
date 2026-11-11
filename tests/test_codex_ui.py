@@ -166,6 +166,72 @@ def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it(tmp_path, m
     done(None, False)
 
 
+def _saved_path(prompt):
+    import re
+    return re.search(r'thechatplace-long-message-\S+\.txt', prompt).group(0)
+
+
+def test_saved_message_file_is_deleted_when_the_turn_ends(tmp_path, monkeypatch):
+    """The temp file lives only for its turn: once the turn is over it is
+    removed, so a long paste (a log may hold tokens) never stays on disk."""
+    import tempfile
+    from pathlib import Path
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    action, done = w.work[0]
+    action()
+    path = tmp_path / _saved_path(sent[0][2])
+    assert path.exists()
+    done(False, False)
+    assert path.exists()  # the turn is still running
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    assert not path.exists()
+
+
+def test_saved_message_reads_back_as_written_and_comes_back_as_written(tmp_path, monkeypatch):
+    """History and an unsent message show the original long text, not the
+    short read-this-file prompt, and the prompt says to say so if the file
+    can't be read."""
+    import tempfile
+    from thechatplace import codex_long_messages
+    from thechatplace.transcript import ChatMessage
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    monkeypatch.setattr(codex_long_messages, 'app_data_dir', lambda: tmp_path)
+    codex_long_messages._store = None
+    text = 'head\n' + 'x' * 40000 + '\nTAIL'
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    try:
+        assert "can't read" in prompt and 'say so plainly' in prompt
+        codex_long_messages.remember(path, text)
+        assert codex_long_messages.expand(prompt) == text
+        shown = codex_long_messages.expand_messages(
+            [ChatMessage('user', prompt), ChatMessage('assistant', 'Fine')])
+        assert shown[0].text == text and shown[1].text == 'Fine'
+        # Unsent: the original comes back to the reply box, not the prompt.
+        w = Window()
+        w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'failed',
+                                                   unsent=(prompt,)))
+        assert w.reply_text.value.startswith('head\n' + 'x' * 100)
+    finally:
+        codex_long_messages._store = None
+
+
+def test_leftover_saved_messages_are_swept(tmp_path, monkeypatch):
+    import tempfile
+    from thechatplace import codex_long_messages
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    leftover = tmp_path / 'thechatplace-long-message-old.txt'
+    leftover.write_text('secret', encoding='utf-8')
+    other = tmp_path / 'unrelated.txt'
+    other.write_text('keep', encoding='utf-8')
+    codex_long_messages.sweep_temp()
+    assert not leftover.exists() and other.exists()
+
+
 def test_preparing_is_reserved_once_and_cleared_after_failure():
     w = Window()
     w._codex_preparing['codex:owned'] = 4

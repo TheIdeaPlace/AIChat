@@ -65,7 +65,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
-from .. import sound_events
+from .. import codex_long_messages, sound_events
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
@@ -272,6 +272,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
+        self._long_message_files = {}
+        codex_long_messages.sweep_temp()  # last run's saved long messages
         self._codex_preparing = {}
         self._codex_preparation_running = set()
         self._codex_send_pending = {}
@@ -2122,6 +2124,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 changed = active_reader.refresh()
                 transcript = active_reader.transcript
                 copies = [dataclasses.replace(m) for m in transcript.messages]
+                if info.provider == 'codex':
+                    # A saved long message reads as it was written, not as
+                    # the short prompt Codex was sent.
+                    copies = codex_long_messages.expand_messages(copies)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
