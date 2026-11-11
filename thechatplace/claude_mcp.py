@@ -157,13 +157,23 @@ class McpServer:
     tools: List[str] = field(default_factory=list)
     #: The chat turns it off for its turns (``disabled_mcp``).
     off_for_chat: bool = False
-    #: Kept off for the chat and not in Claude Code's list, which is how every
-    #: turned-off tool looks once it's kept out of the idle process (#468).
+    #: New chats start with it off, and it's never warned about: a setting of
+    #: The Chat Place's alone (``SpeechSettings.mcp_off_for_new_chats``).
+    off_for_new: bool = False
+    #: Not in Claude Code's list. Kept off for the chat, that's how every
+    #: turned-off tool looks once it's kept out of the idle process (#468);
+    #: otherwise, see ``not_in_folder``.
     missing: bool = False
 
     @property
     def label(self) -> str:
         return server_label(self.name, self.source, self.scope)
+
+    @property
+    def not_in_folder(self) -> bool:
+        """Listed only so New Chats' setting can be changed from any chat:
+        this chat's folder doesn't have it, so nothing else applies to it."""
+        return self.missing and not self.off_for_chat
 
     @property
     def is_session_tools(self) -> bool:
@@ -190,13 +200,18 @@ class McpServer:
 
     def text(self) -> str:
         """One row of the Connected Tools list, read in full."""
+        new = ["off for new chats"] if self.off_for_new else []
+        if self.not_in_folder and not new:
+            # Just turned back on: it stays until the list is read again.
+            return f"{self.label}: on for new chats"
         if self.missing:
-            return f"{self.label}: off for this chat"
+            here = ["off for this chat"] if self.off_for_chat else []
+            return f"{self.label}: " + ", ".join(here + new)
         parts = [self.status_words(), source_words(self.source, self.scope, self.name)]
         if self.status == "connected" and not self.off_for_chat and self.tools:
             count = len(self.tools)
             parts.append(f"{count} tool" + ("" if count == 1 else "s"))
-        return f"{self.label}: " + ", ".join(parts)
+        return f"{self.label}: " + ", ".join(parts + new)
 
 
 def parse_servers(body) -> List[McpServer]:
@@ -221,20 +236,34 @@ def parse_servers(body) -> List[McpServer]:
     return servers
 
 
-def with_chat_settings(servers: List[McpServer], disabled: Collection[str]) -> List[McpServer]:
+def with_chat_settings(servers: List[McpServer], disabled: Collection[str],
+                       off_for_new: Collection[str] = (),
+                       turned_back_on: Collection[str] = ()) -> List[McpServer]:
     """The list as a chat sees it: those it turns off say so, and one it
     keeps off that Claude Code doesn't list is still shown, so it can be
     turned on again. That's every turned-off tool in a new idle process, which
-    doesn't start them. The session tools come last, as they're The Chat
-    Place's own."""
+    doesn't start them. ``off_for_new`` names the tools off for new chats:
+    each is shown in every chat, even one whose folder doesn't have it, so
+    there's always a way back. ``turned_back_on`` are ones turned on again
+    while the list is open: they keep their row, so the row you're on, and
+    the button, don't jump to another tool. The session tools come last, as
+    they're The Chat Place's own."""
     disabled = [n for n in disabled if is_safe_server_name(n)]
+    off_for_new = [n for n in off_for_new if is_safe_server_name(n)]
+    off_for_new += [n for n in turned_back_on
+                    if is_safe_server_name(n) and n not in off_for_new]
+    still_off = set(off_for_new) - set(turned_back_on)
     rows = []
     for server in servers:
         server.off_for_chat = server.name in disabled
+        server.off_for_new = server.name in still_off
         rows.append(server)
     known = {s.name for s in servers}
-    rows += [McpServer(name, "", off_for_chat=True, missing=True)
+    rows += [McpServer(name, "", off_for_chat=True, missing=True, off_for_new=name in still_off)
              for name in disabled if name not in known]
+    known |= set(disabled)
+    rows += [McpServer(name, "", off_for_new=name in still_off, missing=True)
+             for name in off_for_new if name not in known]
     return sorted(rows, key=lambda s: s.is_session_tools)
 
 
@@ -305,7 +334,23 @@ def problems_text(servers: List[Tuple[str, str]], skip: Collection[str] = ()) ->
     if failed:
         sentences.append(f"Claude can't use {_and(failed)}: "
                          + ("it" if len(failed) == 1 else "they") + " failed to connect.")
-    return " ".join(sentences) + " View, Connected Tools."
+    # What you can do about it, not only where to go. No key: a sentence that
+    # names Alt+V is wrong on a Mac, and every extra word is read every time.
+    if needs and failed:
+        sentences.append("To fix this, or stop hearing it, use View, Connected Tools.")
+    elif needs:
+        sentences.append("To sign in, or stop hearing this, use View, Connected Tools.")
+    else:
+        sentences.append("To reconnect, or stop hearing this, use View, Connected Tools.")
+    return " ".join(sentences)
+
+
+def problems_short(servers: List[Tuple[str, str]], skip: Collection[str] = ()) -> str:
+    """``problems_text`` in few enough words for the status bar, which cuts
+    long text off at the end: the end is what says what you can do."""
+    count = sum(status in PROBLEM_STATUSES and name not in skip for name, status in servers)
+    tools = "a connected tool" if count == 1 else f"{count} connected tools"
+    return f"Claude can't use {tools}. To fix this, or stop hearing it, use View, Connected Tools."
 
 
 def _and(names: List[str]) -> str:
@@ -315,6 +360,8 @@ def _and(names: List[str]) -> str:
 def tools_summary(rows) -> str:
     """The list in one line, for Refresh to say: "3 connected tools, 1 needs
     sign-in". Works for any provider's rows."""
+    # A row listed only for the new-chats setting isn't a tool this chat has.
+    rows = [r for r in rows if not getattr(r, "not_in_folder", False)]
     if not rows:
         return "No connected tools."
     on = [r for r in rows if not r.off_for_chat]

@@ -120,9 +120,28 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "Re&fresh",
+   "label": "Turn Off for &New Chats",
    "rect": [
     315,
+    243,
+    144,
+    23
+   ],
+   "best": [
+    144,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&fresh",
+   "rect": [
+    465,
     243,
     75,
     23

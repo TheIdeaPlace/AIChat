@@ -312,6 +312,13 @@ the steps that need an account.
 3. In a chat started here, choose **Turn Off for This Chat** (Alt+O), then send something. Expect:
    the tool isn't used in the next turn. Turn it on again, and check another chat wasn't changed.
    In a chat started elsewhere, turning one off says it's only for chats started here.
+4. **A tool you don't use.** Start a chat with a connector that needs sign-in. Expect, once each
+   time The Chat Place runs: "Claude can't use …: it needs sign-in. To sign in, or stop hearing
+   this, use View, Connected Tools." Open Connected Tools, arrow to that tool and press **Turn Off
+   for New Chats** (Alt+N). Expect: "… is off for new chats. You won't hear about it again." and
+   the row ends "off for new chats". Close The Chat Place, open it and start a new chat. Expect:
+   no message, and in Connected Tools the row says "off for this chat, off for new chats". Press
+   **Turn On for New Chats**: the next new chat has the tool again.
 
 ### Codex
 

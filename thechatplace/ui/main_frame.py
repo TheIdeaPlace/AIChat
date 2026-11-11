@@ -120,7 +120,7 @@ from ..providers.agents import AgentConversations
 from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
 from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
-                          is_web_url, problems_text)
+                          is_web_url, problems_short, problems_text)
 from ..rendering import html_page, message_page
 from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
@@ -4370,11 +4370,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """At a turn's start: the connected tools Claude can't use (they need
         sign-in or failed), said once per tool each time The Chat Place runs,
         on the status bar, and spoken at the full level without cutting
-        anything off (#468). A tool the chat turned off isn't mentioned."""
+        anything off (#468). A tool the chat turned off isn't mentioned, nor
+        one turned off for new chats: that's how you say you don't want to
+        hear about it, in the chats you already have too."""
         own = self.store.get(session_id)
         listed = init_servers(servers)
         skip = {name for name, status in listed if ("mcp", name, status) in self._warned}
         skip |= set(own.disabled_mcp if own is not None else ())
+        skip |= set(self.speech.mcp_off_for_new_chats)
         text = problems_text(listed, skip)
         if not text:
             return
@@ -4385,6 +4388,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(text)
         else:
             self._status(text)
+        if announce.status_text(text) != text:
+            # The status bar would cut off the end, which says what to do.
+            self._status(problems_short(listed, skip))
 
     def on_change_effort(self):
         """File, Change Effort (#189): how hard Claude thinks in this
@@ -4839,6 +4845,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
                          permission_mode=mode, started=False, model=model, effort=effort,
+                         disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -5103,6 +5110,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          # prompt (checked: instructions given to a fork were
                          # ignored), so its own options need it made afresh.
                          prompt_fresh=bool(chat_options),
+                         disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return

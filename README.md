@@ -625,15 +625,20 @@ Copilot chats don't have these yet.
   until you've finished; past that you're told it expired. **Refresh** (Alt+F) reads the list
   again, stays on the same row and says the result ("3 connected tools, 1 needs sign-in").
   **Reconnect** (Alt+R) tries a failed tool again.
+- **Turn Off for New Chats** (Alt+N, Claude chats) keeps a tool out of every new chat from then
+  on, and stops the message saying Claude can't use it, in every chat. It's saved by The Chat
+  Place alone (`mcp_off_for_new_chats`). Chats you already have, and Retry and Branch copies of
+  them, keep their own setting. **Turn On for New Chats** brings it back: the tool is listed in
+  every chat so that you can, and only that button works on it where the folder doesn't have it (#626).
 - **Turn Off for This Chat** (Alt+O, or Delete in the list) keeps a tool out of this chat's turns
   from the next one, and **Turn On for This Chat** brings it back. It's kept with the chat and
   given to each turn as `--settings` with `deniedMcpServers`, which Claude Code applies to that
   turn's process only: other chats, the desktop app and Claude Code's own settings are left
   alone. Only chats started here can do this; the session tools can't be turned off.
 - When a turn starts with a tool that needs sign-in or failed, it's said once each time The Chat
-  Place runs ("Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected Tools."),
-  on the status bar and spoken at the Full level without cutting anything off. A tool turned off
-  for the chat isn't mentioned.
+  Place runs ("Claude can't use claude.ai Morningstar: it needs sign-in. To sign in, or stop
+  hearing this, use View, Connected Tools."), on the status bar and spoken at the Full level
+  without cutting anything off. A tool turned off for the chat or for new chats isn't mentioned.
 - Codex chats also use Connected Tools, with different per-chat controls described below.
 
 ### Codex chats

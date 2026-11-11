@@ -2584,6 +2584,22 @@ def test_continue_here_forks_a_desktop_session(frame, env, fake_runner, monkeypa
     assert again[again.index("--session-id") + 1] == new_id
 
 
+def test_continue_here_starts_with_the_tools_off_for_new_chats(frame, env, fake_runner,
+                                                               monkeypatch):
+    folder = env["tmp"] / "repo"
+    folder.mkdir()
+    add_desktop(env, "local_c", "cli-c", "Desktop work", cwd=str(folder))
+    add_transcript(env, str(folder), "cli-c", [user_text("Earlier question")])
+    frame.refresh_sessions(force=True, resort=True)
+    settle(frame)
+    select(frame, "Desktop work")
+    frame.on_open_session()
+    frame.speech.mcp_off_for_new_chats = ["claude.ai Shop"]
+    _continue(frame, env, monkeypatch)
+    assert frame.store.get(frame._open.cli_session_id).disabled_mcp == ["claude.ai Shop"]
+    assert fake_runner.instances[-1].disabled_mcp == ["claude.ai Shop"]
+
+
 def test_continue_here_keeps_showing_tool_activity(frame, env, fake_runner, monkeypatch):
     """#162: carried on here, the tool calls you were following stay shown."""
     folder = env["tmp"] / "repo"

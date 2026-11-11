@@ -24,18 +24,26 @@ NOTE = ("Connected tools are the MCP servers and claude.ai connectors Claude can
         "chat's folder: from your Claude Code settings, the project, plugins and claude.ai. "
         "You can't add one here: add or remove them in Claude Code or on claude.ai. Turning one off for this chat keeps "
         "it out of this chat's turns from the next one; Claude Code's own settings and other "
-        "chats are left alone. Reading this list starts the tools that are on; a tool turned off "
-        "for this chat isn't started.")
+        "chats are left alone. Turning one off for new chats keeps it out of every chat you "
+        "start from now on, and The Chat Place stops telling you Claude can't use it; chats you "
+        "already have keep their own setting. Reading this list starts the tools that are on; a "
+        "tool turned off for this chat isn't started.")
 
 NOTE_READ_ONLY = ("Connected tools are the MCP servers and claude.ai connectors Claude can use "
                   "in this chat's folder. This chat isn't one The Chat Place started, so tools "
-                  "can't be turned off for it here.")
+                  "can't be turned off for it here. Turning one off for new chats keeps it out "
+                  "of every chat you start from now on, and The Chat Place stops telling you "
+                  "Claude can't use it.")
 
 
 class ClaudeConnectedTools:
     """The host ``ConnectedToolsDialog`` works through: ``load``,
     ``sign_in``, ``reconnect`` and ``set_off`` each call ``done`` on the UI
     thread once the work is finished."""
+
+    #: Shows Turn Off for New Chats, in any Claude chat: it's about the chats
+    #: to come, so it doesn't matter who started this one.
+    can_set_new_chats = True
 
     def __init__(self, frame, info):
         self.frame = frame
@@ -48,6 +56,9 @@ class ClaudeConnectedTools:
         self._lock = threading.Lock()
         self._closed = False
         self._servers = []
+        #: Turned on for new chats while this list is open, and not in this
+        #: folder: kept in the list until it's read again.
+        self._turned_back_on = []
         #: What the idle process was started without.
         self._denied = []
         # Worked out here, on the UI thread, as a turn's is. Only a chat that
@@ -117,9 +128,12 @@ class ClaudeConnectedTools:
 
     def _rows(self):
         return with_chat_settings([McpServer(**{**s.__dict__}) for s in self._servers],
-                                  self._disabled())
+                                  self._disabled(), self.frame.speech.mcp_off_for_new_chats,
+                                  self._turned_back_on)
 
     def load(self, done):
+        self._turned_back_on = []
+
         def read():
             self._servers = self._open().status()
             return self._rows()
@@ -188,6 +202,29 @@ class ClaudeConnectedTools:
             self._end_session()
             self.load(done)
             return
+        done(self._rows(), "")
+
+    def set_off_for_new(self, server: McpServer, off: bool, done):
+        """Keep ``server`` out of every chat started from now on, and stop
+        warning about it, or undo that. Saved by The Chat Place alone: Claude
+        Code's settings, the desktop app and the terminal are left as they
+        are, and so are chats that already exist."""
+        speech = self.frame.speech
+        before = list(speech.mcp_off_for_new_chats)
+        speech.mcp_off_for_new_chats = [n for n in before if n != server.name] \
+            + ([server.name] if off else [])
+        try:
+            speech.save()
+        except OSError:
+            speech.mcp_off_for_new_chats = before
+            done(None, "It couldn't be saved, so nothing changed.")
+            return
+        self._turned_back_on = [n for n in self._turned_back_on if n != server.name]
+        if not off and server.not_in_folder:
+            self._turned_back_on.append(server.name)
+        self.frame._feedback(
+            f"{server.label} is off for new chats. You won't hear about it again." if off
+            else f"{server.label} is on for new chats.")
         done(self._rows(), "")
 
     def _end_session(self):

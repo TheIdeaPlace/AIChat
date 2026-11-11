@@ -5566,9 +5566,14 @@ class ConnectedToolsDialog(wx.Dialog):
         if getattr(host, 'reconnect_label', None):
             self.reconnect_btn.SetLabel(host.reconnect_label)
         self.toggle_btn = wx.Button(self, label="Turn &Off for This Chat")
+        # Claude's only: Codex's tools are chosen for each chat and start off.
+        self.new_chats_btn = (wx.Button(self, label="Turn Off for &New Chats")
+                              if getattr(host, 'can_set_new_chats', False) else None)
         self.refresh_btn = wx.Button(self, label="Re&fresh")
-        for button in (self.sign_in_btn, self.reconnect_btn, self.toggle_btn, self.refresh_btn):
-            row.Add(button, 0, wx.RIGHT, 6)
+        for button in (self.sign_in_btn, self.reconnect_btn, self.toggle_btn, self.new_chats_btn,
+                       self.refresh_btn):
+            if button is not None:
+                row.Add(button, 0, wx.RIGHT, 6)
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "C&lose")
         row.Add(self.close_btn, 0)
@@ -5581,6 +5586,8 @@ class ConnectedToolsDialog(wx.Dialog):
         self.sign_in_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_sign_in())
         self.reconnect_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_reconnect())
         self.toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_toggle())
+        if self.new_chats_btn is not None:
+            self.new_chats_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_toggle_new_chats())
         self.refresh_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_refresh())
         self.list.Bind(wx.EVT_LISTBOX, lambda e: self._show_selected())
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
@@ -5612,6 +5619,11 @@ class ConnectedToolsDialog(wx.Dialog):
         label = getattr(self.host, 'toggle_label', None)
         self.toggle_btn.SetLabel(label(server) if label else
             ("Turn &On for This Chat" if server is not None and server.off_for_chat else "Turn &Off for This Chat"))
+        if self.new_chats_btn is not None:
+            wanted = ("Turn On for &New Chats" if server is not None and server.off_for_new
+                      else "Turn Off for &New Chats")
+            if self.new_chats_btn.GetLabel() != wanted:
+                self.new_chats_btn.SetLabel(wanted)
         if server is None:
             self.details.ChangeValue(self.load_error or self.host.note())
             self.details.SetInsertionPoint(0)
@@ -5622,6 +5634,11 @@ class ConnectedToolsDialog(wx.Dialog):
         if server.status == "needs-auth" and not server.off_for_chat:
             lines.append(getattr(self.host, 'provider_name', 'Claude') +
                          " can't use it until it's signed in. Sign In explains the next step.")
+        if getattr(server, "off_for_new", False):
+            lines.append("New chats start with this tool off, and The Chat Place doesn't tell "
+                         "you when Claude can't use it.")
+        if getattr(server, "not_in_folder", False):
+            lines.append(self._not_here_text(server))
         if server.is_session_tools:
             lines.append("The Chat Place gives its own chats these tools, so commands such as "
                          "/wrap work. They can't be turned off here.")
@@ -5734,13 +5751,25 @@ class ConnectedToolsDialog(wx.Dialog):
             self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
         return server
 
+    @staticmethod
+    def _not_here_text(server) -> str:
+        return (f"{server.label} isn't in this chat's folder. It's listed so you can change "
+                "whether new chats have it; nothing else applies to it here.")
+
+    def _not_here(self, server, back_to) -> bool:
+        """Says why, on a row listed only for the new-chats setting."""
+        if not getattr(server, "not_in_folder", False):
+            return False
+        self._tell(self._not_here_text(server), back_to=back_to)
+        return True
+
     def _off_text(self, server) -> str:
         hint = getattr(self.host, 'turn_on_hint', "Turn it on first.")
         return f"{server.label} is off for this chat. {hint}"
 
     def on_sign_in(self):
         server = self._server_for("sign in to", self.sign_in_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.sign_in_btn):
             return
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
             self._tell(server.text(), back_to=self.sign_in_btn)
@@ -5769,7 +5798,7 @@ class ConnectedToolsDialog(wx.Dialog):
 
     def on_reconnect(self):
         server = self._server_for("reconnect", self.reconnect_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.reconnect_btn):
             return
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
             self._tell(server.text(), back_to=self.reconnect_btn)
@@ -5798,7 +5827,7 @@ class ConnectedToolsDialog(wx.Dialog):
 
     def on_toggle(self):
         server = self._server_for("turn off", self.toggle_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.toggle_btn):
             return
         if not self.host.can_turn_off:
             self._tell("Tools can be turned off only for chats The Chat Place started.",
@@ -5823,6 +5852,37 @@ class ConnectedToolsDialog(wx.Dialog):
             if focus is not None and focus.GetTopLevelParent() is self:
                 focus.SetFocus()
         self.host.set_off(server, not server.off_for_chat, done)
+
+    def on_toggle_new_chats(self):
+        """Turn Off (or On) for New Chats. The host says what it did: focus
+        can be in the list, and not every screen reader reads a label change."""
+        server = self._server_for("turn off", self.new_chats_btn)
+        if server is None:
+            return
+        if not server.can_be_denied:
+            self._tell(f"{server.label} can't be turned off here.", back_to=self.new_chats_btn)
+            return
+        index = self.list.GetSelection()
+        focus = wx.Window.FindFocus()
+
+        def done(rows, error):
+            if not self._alive():
+                return
+            if error:
+                self._tell(error, wx.ICON_WARNING, back_to=self.new_chats_btn)
+                return
+            if [r.name for r in rows] == [r.name for r in self.rows]:
+                # Only the one row: rebuilding the list would read it again
+                # on top of what was just said.
+                self.rows = list(rows)
+                self.list.SetString(index, self.rows[index].text())
+                self.list.SetSelection(index)
+                self._show_selected()
+            else:
+                self._fill(rows, index)
+            if focus is not None and focus.GetTopLevelParent() is self:
+                focus.SetFocus()
+        self.host.set_off_for_new(server, not server.off_for_new, done)
 
 
 #: After why a form can't be shown: what its two buttons then do. Neutral,
