@@ -973,7 +973,20 @@ complete answer is readable below. The question has the insertion caret. The Cla
 Turn Off for This Chat in its unchanged layout. Since #468 its Details paragraph
 ends "Reading this list starts the tools that are on; a tool turned off for this
 chat isn't started.", and says "You can't add one here: add or remove them in Claude
-Code or on claude.ai." It's four lines, and still shows whole above the box's edge.
+Code or on claude.ai."
+
+Since 2026-11-11, the Claude **connected-tools** button row has Turn Off for New Chats
+(144 by 23 pixels, its N underlined) between Turn Off for This Chat and Refresh, which
+moved 150 pixels right, from x=315 to x=465. The row is Sign In, Reconnect, Turn Off for
+This Chat, Turn Off for New Chats and Refresh on the left, and Close at the right. Every
+label is whole, and 61 pixels are left between Refresh and Close in the 684-pixel-wide
+window's client area. At 175% the new button is 252 by 42 and 138 pixels are left. Its
+text measures 20.65:1 in Light (#000000 on #FDFDFD) and 16.29:1 in High Contrast Aquatic
+(#FFFFFF on #202020). The Details paragraph grew by a sentence about new chats and is now
+six lines: at 100% its last line, "on; a tool turned off for this chat isn't started.",
+is cut through by the box's bottom edge, and the box's scroll bar now has a thumb. At
+175% the paragraph runs on past the box's bottom edge, its visible last line ending
+"...that are on; a". No controls overlap.
 
 All six Codex surfaces and the two Claude regression surfaces render in the
 selected system theme. No new visual defect was found.
