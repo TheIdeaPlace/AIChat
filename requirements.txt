@@ -5,7 +5,7 @@ wxPython>=4.2
 # no builder needs git.
 theideaplace-appkit @ https://github.com/TheIdeaPlace/app-kit/archive/fcbf6cdfc01bb60ccbe44ffc02a73f2a5777126c.zip#subdirectory=python
 # Full messages as formatted pages (rendering.py, issue #190).
-markdown==3.11.2
+markdown==3.11.3
 # Automatic updates (installed copies only; a source run ignores it).
 velopack==1.2.161
 # JAWS speech from the app itself (screen_readers.py, issue #98).
