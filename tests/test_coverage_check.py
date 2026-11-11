@@ -95,7 +95,17 @@ def test_accept_then_compare_round_trip(tmp_path, capsys):
                    encoding="utf-8")
     out = tmp_path / "report.md"
     assert coverage_check.main([str(run), "--baseline", str(baseline), "--report", str(out),
-                                "--run-url", "https://example.invalid/run/1"]) == 1
+                                "--run-url", "https://example.invalid/run/1"]) == coverage_check.EXIT_DROPPED
     text = out.read_text(encoding="utf-8")
     assert "`thechatplace/big.py`" in text and "abc1234, 2026-11-11" in text
     assert "https://example.invalid/run/1" in text
+
+
+def test_report_names_files_gone_when_a_new_one_is_flagged():
+    moved = {"thechatplace/ui/moved.py": (1000, 100), "thechatplace/other.py": (2000, 0)}
+    baseline = coverage_check.summarize(_coverage_json(BIG))
+    current = coverage_check.summarize(_coverage_json(moved))
+    drops, gains = coverage_check.compare(baseline, current)
+    assert [why for *_, why in drops] == ["new file with 100 statements untested"]
+    assert "may only have moved: `thechatplace/big.py`" in coverage_check.report(
+        drops, gains, baseline, current)

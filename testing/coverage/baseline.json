@@ -1,9 +1,9 @@
 {
- "measured": "main at 126d012, 2026-11-11, run 43007835782",
+ "measured": "main at 126d012, 2026-11-11, run 43010618691",
  "total": {
   "statements": 32156,
-  "missing": 2941,
-  "percent": 89.27
+  "missing": 2945,
+  "percent": 89.26
  },
  "files": {
   "thechatplace/__init__.py": {
@@ -163,8 +163,8 @@
   },
   "thechatplace/platform_paths.py": {
    "statements": 1577,
-   "missing": 298,
-   "percent": 79.85
+   "missing": 300,
+   "percent": 79.66
   },
   "thechatplace/prompts.py": {
    "statements": 183,
@@ -233,8 +233,8 @@
   },
   "thechatplace/providers/codex_execution.py": {
    "statements": 335,
-   "missing": 30,
-   "percent": 87.84
+   "missing": 29,
+   "percent": 88.26
   },
   "thechatplace/providers/codex_models.py": {
    "statements": 46,
@@ -269,7 +269,7 @@
   "thechatplace/providers/codex_runtime.py": {
    "statements": 733,
    "missing": 37,
-   "percent": 92.44
+   "percent": 92.55
   },
   "thechatplace/providers/codex_tokens.py": {
    "statements": 33,
@@ -288,8 +288,8 @@
   },
   "thechatplace/providers/copilot_acp.py": {
    "statements": 180,
-   "missing": 16,
-   "percent": 90.71
+   "missing": 19,
+   "percent": 89.38
   },
   "thechatplace/providers/copilot_auto_store.py": {
    "statements": 115,

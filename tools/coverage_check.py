@@ -1,6 +1,6 @@
 """Compare a coverage run with the saved baseline, and flag where it dropped (#628).
 
-    python tools/coverage_check.py coverage.json                  # compare; exit 1 on a drop
+    python tools/coverage_check.py coverage.json                  # compare; exit 3 on a drop
     python tools/coverage_check.py coverage.json --report out.md  # and write what it found
     python tools/coverage_check.py coverage.json --accept         # make this run the baseline
 
@@ -30,6 +30,10 @@ TOTAL_DROP = 1.0
 FILE_DROP = 5.0
 MIN_STATEMENTS = 50
 MISSING_GROWTH = 25
+
+# Not 1, which is also what Python exits with on an uncaught exception: the
+# workflow must not take a crash for a drop.
+EXIT_DROPPED = 3
 
 
 def summarize(coverage_json: dict) -> dict:
@@ -84,6 +88,10 @@ def report(drops: list, gains: list, baseline: dict, current: dict, run_url: str
         lines.append("\n## Dropped\n\n| File | Baseline | Now | Why |\n|---|---|---|---|")
         lines += [f"| `{n}` | {_percent(b)} | {_percent(a)} | {why} |"
                   for n, b, a, why in drops]
+        gone = sorted(set(baseline["files"]) - set(current["files"]))
+        if gone and any(b is None for _, b, _, _ in drops):
+            lines.append("\nGone since the baseline, so a \"new\" file above may only have "
+                         "moved: " + ", ".join(f"`{n}`" for n in gone) + ".")
         lines.append("\nAdd tests for the new code, or, if the drop is expected (code moved, "
                      "or tests removed on purpose), accept this run as the new baseline: "
                      "see DEVELOPING.md, \"Test coverage\". Tracked in #628.")
@@ -124,7 +132,7 @@ def main(argv=None) -> int:
     if args.report:
         args.report.write_text(text, encoding="utf-8")
     print(text)
-    return 1 if drops else 0
+    return EXIT_DROPPED if drops else 0
 
 
 if __name__ == "__main__":

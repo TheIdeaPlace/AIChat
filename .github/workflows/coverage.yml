@@ -13,8 +13,6 @@ on:
   schedule:
     - cron: '0 13 * * 1'   # Mondays, 13:00 UTC
   workflow_dispatch:
-  push:   # TEMPORARY: trial run before merging; remove
-    branches: [coverage-weekly]
 
 permissions:
   contents: read
@@ -101,17 +99,21 @@ jobs:
           python tools/coverage_check.py coverage.json --report coverage-report.md \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           code=$?
-          # 1 is a drop; anything else but 0 is the check itself failing.
-          [ "$code" -le 1 ] || exit "$code"
-          echo "dropped=$([ "$code" -eq 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          # 3 is a drop (coverage_check.EXIT_DROPPED); anything else but 0 is
+          # the check itself failing.
+          [ "$code" -eq 0 ] || [ "$code" -eq 3 ] || exit "$code"
+          echo "dropped=$([ "$code" -eq 3 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+      # Kept even when the check fails, to see why.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
         with:
           name: coverage-report
           path: |
             coverage.json
             coverage-report.md
             coverage-html
+          if-no-files-found: ignore
       - name: File or update the coverage issue
         if: steps.check.outputs.dropped == 'true'
         env:
