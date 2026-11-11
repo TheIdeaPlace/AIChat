@@ -2651,9 +2651,9 @@ makes a Chat Place group of the same name, which is shown together with the desk
   own.
 - **Delete** hides a chat without changing it (on a Mac, Fn+Delete). View, Show Sessions, Hidden
   lists hidden chats, and File, Bring Back Session returns one.
-- **Shift+Delete** deletes a Claude chat started here permanently, conversation and all, after
+- **Shift+Delete** deletes a Claude or Codex chat started here permanently, conversation and all, after
   you confirm (No is the default; on a Mac, Fn+Shift+Delete). Stop or finish its turn first.
-  Codex and Copilot chats can't be deleted here yet, and chats started elsewhere can
+  Codex also deletes any spawned subagent chats. Copilot chats and chats started elsewhere can
   only be hidden; delete those where they were started. A restored or kept chat can be deleted:
   that deletes only The Chat Place's copy.
 - **Shift+Delete on an agent conversation's row** deletes the conversation, not its chats: they
@@ -3379,7 +3379,7 @@ support@theideaplace.net.
 - Otherwise it writes only when you ask it to, apart from the desktop entry a Linux AppImage adds
   at its first start: an export goes where you save it, From GitHub
   clones into your GitHub folder, A new worktree is made in the repository's `.claude\worktrees`
-  folder, and Shift+Delete deletes a Claude chat's conversation file.
+  folder, and Shift+Delete deletes a Claude or Codex chat's conversation file.
 - Copilot CLI keeps its chats in `%USERPROFILE%\.copilot\session-state` (on a Mac or Linux,
   `~/.copilot/session-state`), or under `COPILOT_HOME` if you've set it. The Chat Place only
   reads them.

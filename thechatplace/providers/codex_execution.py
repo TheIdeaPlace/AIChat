@@ -79,6 +79,12 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         with self._runtime_lock:
             self._runtime_threads[proof.native_id] = proof
 
+    def _forget_owned_thread(self, proof) -> None:
+        """A deleted thread can no longer authorize requests in this connection."""
+        with self._runtime_lock:
+            if self._runtime_threads.get(proof.native_id) is proof:
+                self._runtime_threads.pop(proof.native_id)
+
     def loaded_caller(self, native_id):
         with self._runtime_lock:
             proof = self._runtime_threads.get(native_id)

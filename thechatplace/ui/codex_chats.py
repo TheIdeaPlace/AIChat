@@ -28,6 +28,55 @@ from .sound_host import SoundHost
 
 
 class CodexChats(SoundHost, CodexExtras):
+    def _delete_codex(self, info):
+        """Let Codex delete its history before forgetting our owned record."""
+        record = self._codex_record(info)
+        if record is None:
+            return
+        deleting = getattr(self, '_codex_deleting', None)
+        if deleting is None:
+            deleting = self._codex_deleting = set()
+        if info.key in deleting:
+            self._feedback('This chat is already being deleted.')
+            return
+        state = self._codex_states.get(info.key)
+        if (info.state == WORKING or (state is not None and state.state == WORKING)
+                or self._codex_send_pending.get(info.key)
+                or info.key in self._codex_preparation_running):
+            self._feedback('A turn or another operation is running in that session. Stop it or wait for it to finish first.')
+            return
+        if wx.MessageBox(
+                f'Delete "{info.title}" permanently? Codex deletes its transcript and any '
+                'spawned subagent chats from this computer. They can\'t be brought back.',
+                'Delete Session Permanently',
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) != wx.YES:
+            return
+        deleting.add(info.key)
+        self._feedback(f'Deleting {info.title}.')
+        def done(result, error):
+            deleting.discard(info.key)
+            if error:
+                self._feedback(result or f'Codex could not confirm deletion of {info.title}. Check the chat before trying again.')
+                return
+            if not self._store_write(self.store.remove, info.cli_session_id, provider='codex'):
+                self._feedback(f'Codex deleted {info.title}, but The Chat Place could not remove its saved entry.')
+                return
+            for forget in (lambda: self.groups.forget(info.key),
+                           lambda: self.hidden.show(info.key) if info.key in self.hidden else None,
+                           lambda: self.titles.remove(info.key) if info.key in self.titles else None,
+                           lambda: self.tool_activity.discard(info.key)):
+                try:
+                    forget()
+                except OSError:
+                    pass
+            for cache in (self._codex_states, self._codex_drafts, self._codex_delayed_updates):
+                cache.pop(info.key, None)
+            self._aside_histories.pop(('codex', info.cli_session_id), None)
+            self._attachments.pop(self._attachment_key(info), None)
+            self._leave_list(info)
+            self._feedback(f'Deleted {info.title} permanently.')
+        self._codex_work(lambda: self.sessions.owned_action('delete', record), done)
+
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.
         # Match its native ID rather than attaching it to the previous turn.

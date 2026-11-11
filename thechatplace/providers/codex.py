@@ -654,6 +654,7 @@ class CodexProvider:
         # subscription/configuration/concurrency gates remain at execution.
         enabled = self.runtime is not None
         return SessionCapabilities(usage=True, changes=True, send=enabled and session.is_own, fork=enabled,
+                                   delete=enabled and session.is_own,
                                    approvals=enabled and session.is_own,
                                    steer=enabled and session.is_own, attachments=enabled and session.is_own,
                                    options=enabled and session.is_own, chat_options=enabled and session.is_own, branch=enabled, aside=enabled)
@@ -707,6 +708,9 @@ class CodexProvider:
 
     def feature_owned(self, record, method, arguments=None):
         return self.runtime.feature(record, method, arguments)
+
+    def delete_owned(self, record) -> dict:
+        return self.runtime.delete(record)
 
     def branch(self, source, title, turn_id, before=False, own=None):
         self._check(source)

@@ -1560,7 +1560,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_delete_permanently(self):
         """File, Delete Session Permanently (Shift+Delete): one of The Chat
-        Place's own sessions, gone for good, its Claude Code transcript with
+        Place's own supported sessions, gone for good, its transcript with
         it. It works from any view, hidden or not: having to hide a session
         first and then find it in the Hidden view was a hunt nobody could
         guess, and the confirmation (No by default) is the safeguard."""
@@ -1582,6 +1582,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                               APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
                 return
         if info is not None and info.provider != "claude" and not self._require_capability("delete", info):
+            return
+        if info is not None and info.provider == "codex":
+            self._delete_codex(info)
             return
         if info is None:
             self._feedback("No session selected.")
@@ -1740,9 +1743,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             refocus = True
         index = self._list_keys.index(info.key) if info.key in self._list_keys else -1
         if index >= 0:
+            selected = self.session_list.GetSelection()
             self.session_list.Delete(index)
             del self._list_keys[index]
-            if self._list_keys:
+            if self._list_keys and selected == index:
                 self.session_list.SetSelection(min(index, len(self._list_keys) - 1))
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
@@ -3166,7 +3170,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             add("&Bring Back Session", self.on_unhide)
         else:
             add("H&ide Session\tDelete", self.on_hide)
-        if info.is_own or conversation or imported:
+        if info.is_own or conversation or imported or info.source == "kept":
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
         menu.AppendSeparator()
         add("Pr&operties...\tAlt+Enter", self.on_properties)
@@ -5128,6 +5132,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_send(self, _event=None):
         info = self._open
+        if info is not None and info.key in getattr(self, '_codex_deleting', ()):
+            self._feedback('This chat is being deleted. Wait for it to finish first.')
+            return
         if info is not None and info.provider == AGENTS:
             message = self.reply_text.GetValue().strip()
             if not message:

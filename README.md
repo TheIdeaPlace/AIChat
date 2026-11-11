@@ -1372,8 +1372,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
   Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
-  default), its Claude Code transcript is deleted (permanent deletion is currently supported for Claude chats) from the computer and it leaves the list, its
-  groups and the hidden list. It waits while the session is working, here or in a terminal.
+  default), its Claude or Codex transcript is deleted from the computer and it leaves the list, its
+  groups and the hidden list. Codex also deletes any spawned subagent chats. It waits while the session is working, here or in a terminal.
   Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
   can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
@@ -1792,7 +1792,7 @@ shows it as plain text instead.
 | Messages | Alt+F, F | Branch from Here: a new chat whose history ends with the selected message |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
-| Session list | Shift+Delete | Delete a Claude chat started here permanently, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
+| Session list | Shift+Delete | Delete a Claude or Codex chat started here permanently, transcript and all, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |

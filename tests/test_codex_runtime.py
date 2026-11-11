@@ -30,6 +30,10 @@ class Connection:
     def _accept_owned_thread(self, proof):
         self.proofs[proof.native_id] = proof
 
+    def _forget_owned_thread(self, proof):
+        if self.proofs.get(proof.native_id) is proof:
+            self.proofs.pop(proof.native_id)
+
     def owns_runtime(self, proof):
         return not self.closed and self.proofs.get(proof.native_id) is proof
 

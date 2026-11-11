@@ -364,6 +364,10 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
+         expect=["Delete Session Permanently", "spawned subagent chats", "No"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Cancel Codex deletion", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote
     # has a main branch, with A new worktree chosen and a new branch typed.
     Step("New Session, a new branch in a new worktree", [], trigger="start-from",
@@ -600,6 +604,18 @@ def _codex_dialog(name, frame, env) -> None:
     getattr(ui_probe, name)(frame, env)()
 
 
+def codex_delete_confirmation(frame, env) -> None:
+    """A synthetic chat: exercise only the native confirmation's No path."""
+    from thechatplace.own_store import OwnSession
+    record = OwnSession('orca-delete-preview', 'Codex deletion preview', str(env['tmp']),
+                        provider='codex', started=True)
+    frame.store.add(record)
+    try:
+        frame._delete_codex(record.to_info())
+    finally:
+        frame.store.remove(record.cli_session_id, provider='codex')
+
+
 def codex_tools(frame, env) -> None:
     """Connected Tools for a Codex chat started here (#596), over the window
     without opening a Codex chat in it, so the steps after still have the
@@ -733,6 +749,7 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
     "refresh": lambda frame, env: refresh(frame),

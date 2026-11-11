@@ -34,7 +34,7 @@ class CodexFeatureError(CodexRpcError):
 
 READ_METHODS = frozenset({'thread/goal/get', 'thread/backgroundTerminals/list'})
 ACTION_METHODS = frozenset({'thread/compact/start', 'thread/goal/set',
-    'thread/goal/clear', 'thread/memoryMode/set', 'thread/backgroundTerminals/terminate'})
+    'thread/goal/clear', 'thread/memoryMode/set', 'thread/backgroundTerminals/terminate', 'thread/delete'})
 #: Safe beside a running turn: Stop Background Task is meant for one. These
 #: never hold the chat, so Stop, Send and Answer aren't kept waiting on them.
 ACTIVE_SAFE_METHODS = READ_METHODS | {'thread/goal/set', 'thread/goal/clear',

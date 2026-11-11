@@ -108,6 +108,7 @@ class CodexChatRuntime:
         self._binding_lock = threading.Lock()
         self._connection = self._executor = None
         self._proofs = {}
+        self._deleted = set()
         self._new_threads = set()
         self._settings_pending = set()
         self._queues = {}
@@ -293,6 +294,8 @@ class CodexChatRuntime:
 
     def _reopen(self, record):
         with self._lock:
+            if record.cli_session_id in self._deleted:
+                raise CodexRpcError('This Codex chat was deleted')
             proof = self._proofs.get(record.cli_session_id)
             recovery = self._policy_recovery(record.cli_session_id, proof)
             # A thread still loaded here keeps the settings it was resumed
@@ -568,6 +571,11 @@ class CodexChatRuntime:
             return self.create(source.cwd, title, keep_mode=True, allow_retired=True, **kept)
         return self.fork(source, title, allow_retired=True, **kept)
 
+    def delete(self, record: OwnSession) -> dict:
+        """Delete through Codex, never by changing its transcript files."""
+        self.prepare(record)
+        return self.feature(record, 'thread/delete')
+
     def feature(self, record, method, arguments=None):
         """Explicit native controls, serialized with sends and policy changes."""
         from .codex_features import ACTIVE_SAFE_METHODS, CodexFeatureError, validate_action
@@ -580,7 +588,8 @@ class CodexChatRuntime:
         with self._lock:
             if method == 'thread/compact/start' and proof.native_id in self._settings_pending:
                 raise CodexFeatureError('settings_pending')
-            if (proof.native_id in self._reopening or self._stop.is_set()
+            if (self._proofs.get(proof.native_id) is not proof
+                    or proof.native_id in self._reopening or self._stop.is_set()
                     or (idle_only and (proof.native_id in self._sending or proof.native_id in self._stopping
                         or proof.native_id in self._pending_dispatch or self._queues.get(proof.native_id)
                         or executor.snapshot(proof).status == 'inProgress'))):
@@ -612,6 +621,14 @@ class CodexChatRuntime:
                     raise CodexFeatureError('failed')
             if not proof.connection.owns_runtime(proof):
                 raise CodexFeatureError('unavailable')
+            if method == 'thread/delete':
+                proof.connection._forget_owned_thread(proof)
+                with self._lock:
+                    self._deleted.add(proof.native_id)
+                    self._proofs.pop(proof.native_id, None)
+                    self._new_threads.discard(proof.native_id)
+                    self._settings_pending.discard(proof.native_id)
+                    self._queues.pop(proof.native_id, None)
             return result
         except CodexRpcError as error:
             refused = getattr(error, 'rpc_code', None) is not None  # Codex answered: nothing was done

@@ -116,7 +116,7 @@ def test_anchor_handles_pagination_and_refuses_unfinished_turn():
     ('thread/backgroundTerminals/terminate', {'processId': '../other'}),
     ('thread/compact/start', {'config': {}}),
     ('thread/backgroundTerminals/list', {'cursor': '', 'limit': True}),
-    ('thread/delete', {}),
+    ('thread/delete', {'recursive': False}),
 ])
 def test_feature_validation_does_not_admit_autonomy_or_arbitrary_options(method, args):
     with pytest.raises(CodexFeatureError):
@@ -147,6 +147,122 @@ def test_feature_refuses_active_turn_and_never_replays_unknown_mutation():
             service.feature(record, 'thread/memoryMode/set', {'mode': 'disabled'})
         assert len(mutations) == 1 and not service.ready(record)
     finally:
+        service.close()
+
+
+def test_only_an_owned_codex_chat_has_delete_capability():
+    from thechatplace.providers.codex import CodexProvider
+    service, connection, _ = runtime()
+    try:
+        provider = CodexProvider(connection, runtime=service)
+        assert provider.capabilities(_session()).delete
+        assert not provider.capabilities(_session(is_own=False)).delete
+        assert not CodexProvider(connection).capabilities(_session()).delete
+    finally:
+        service.close()
+
+
+def test_delete_retires_only_the_selected_owned_chat():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Delete this')
+        other = service.create('/workspace', 'Keep this')
+        original = connection.request
+        deleted = []
+        def request(method, params):
+            if method == 'thread/delete':
+                deleted.append(params)
+                return {}
+            return original(method, params)
+        connection.request = request
+        assert service.delete(record) == {}
+        assert deleted == [{'threadId': record.cli_session_id}]
+        assert not service.known(record.cli_session_id)
+        assert record.cli_session_id not in connection.proofs
+        assert service.ready(other)
+        for action in (service.prepare, service.reopen, service.delete):
+            with pytest.raises(CodexRpcError):
+                action(record)
+        assert len(deleted) == 1
+    finally:
+        service.close()
+
+
+def test_delete_refuses_a_running_chat_and_unowned_record_before_rpc():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Working')
+        with pytest.raises(CodexRpcError):
+            service.delete(replace(record, provider='claude'))
+        service.send(record, 'Work')
+        with pytest.raises(CodexFeatureError, match='finish'):
+            service.delete(record)
+        assert not any(m == 'thread/delete' for m, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def test_delete_does_not_replay_an_uncertain_native_result():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Uncertain')
+        original = connection.request
+        attempts = []
+        def request(method, params):
+            if method == 'thread/delete':
+                attempts.append(params)
+                raise CodexRpcError('Synthetic lost response')
+            return original(method, params)
+        connection.request = request
+        for _ in range(2):
+            with pytest.raises(CodexRpcError):
+                service.delete(record)
+        assert len(attempts) == 1
+        assert service.known(record.cli_session_id)
+        assert record.cli_session_id in connection.proofs
+        assert not service.ready(record)
+    finally:
+        service.close()
+
+
+def test_delete_serializes_with_sends_and_other_deletions():
+    import threading
+    service, connection, _ = runtime()
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    worker = None
+    try:
+        record = service.create('/workspace', 'Deleting')
+        original = connection.request
+        attempts = []
+        def request(method, params):
+            if method == 'thread/delete':
+                attempts.append(params)
+                entered.set()
+                assert release.wait(5)
+                return {}
+            return original(method, params)
+        connection.request = request
+        def delete():
+            try:
+                service.delete(record)
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=delete)
+        worker.start()
+        assert entered.wait(5)
+        with pytest.raises(CodexRpcError):
+            service.send(record, 'Too late')
+        with pytest.raises(CodexRpcError):
+            service.delete(record)
+        release.set()
+        worker.join(5)
+        assert not worker.is_alive() and not errors
+        assert len(attempts) == 1
+    finally:
+        release.set()
+        if worker is not None:
+            worker.join(5)
         service.close()
 
 
@@ -267,7 +383,10 @@ def test_settings_change_pins_default_and_defers_compaction_until_a_normal_turn(
         service.close()
 
 
-def test_feature_connection_rechecks_account_route_and_tools_before_mutation(monkeypatch):
+@pytest.mark.parametrize('method,arguments', [
+    ('thread/memoryMode/set', {'mode': 'disabled'}), ('thread/delete', {}),
+])
+def test_feature_connection_rechecks_account_route_and_tools_before_mutation(monkeypatch, method, arguments):
     import threading
     from thechatplace.providers.codex_execution import CodexExecutionConnection
     from thechatplace.providers.codex_owned import CodexOwnedThread
@@ -291,13 +410,13 @@ def test_feature_connection_rechecks_account_route_and_tools_before_mutation(mon
             pytest.fail('Unsent chats have no rollout history')
         return fake.request(method, params)
     monkeypatch.setattr(ReadOnlyCodexConnection, 'request', rpc)
-    c.request('thread/memoryMode/set', {'threadId': 'owned', 'mode': 'disabled'})
+    c.request(method, dict(arguments, threadId='owned'))
     assert calls[0][0] == 'account/read'
-    assert [m for m, p in calls][-1] == 'thread/memoryMode/set'
+    assert [m for m, p in calls][-1] == method
     calls.clear()
     account['account']['type'] = 'apiKey'
     with pytest.raises(CodexTurnRejected, match='ChatGPT'):
-        c.request('thread/memoryMode/set', {'threadId': 'owned', 'mode': 'disabled'})
+        c.request(method, dict(arguments, threadId='owned'))
     assert [m for m, p in calls] == ['account/read']
     calls.clear()
     c._runtime_threads.clear()
