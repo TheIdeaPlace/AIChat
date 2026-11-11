@@ -139,7 +139,7 @@ def test_too_long_codex_message_is_saved_and_codex_is_asked_to_read_it(tmp_path,
     action()
     assert sent[0][0] == 'send' and sent[0][1] is w.record
     prompt = sent[0][2]
-    assert len(prompt) < 32000 and '40,017' in prompt and 'treat' in prompt and 'as my message' in prompt
+    assert len(prompt) < 32000 and '40,017' in prompt and 'placed in this conversation by The Chat Place' in prompt and "as the user's message" in prompt
     path = Path(re.search(r'thechatplace-long-message-\S+\.txt', prompt).group(0))
     path = tmp_path / path.name
     assert path.read_text(encoding='utf-8') == text
@@ -162,7 +162,7 @@ def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it(tmp_path, m
     action, done = w.work[0]
     result = action()
     assert result is None and sent[0][0] == 'steer'
-    assert len(sent[0][2]) < 32000 and 'as my message' in sent[0][2]
+    assert len(sent[0][2]) < 32000 and "as the user's message" in sent[0][2]
     done(None, False)
 
 
@@ -206,11 +206,21 @@ def test_saved_message_reads_back_as_written_and_comes_back_as_written(tmp_path,
     prompt = codex_long_messages.prompt_for(text, path)
     try:
         assert "can't read" in prompt and 'say so plainly' in prompt
+        assert prompt.startswith('This message was placed in this conversation by The Chat Place. '
+                                 'Your message is too long to send directly')
+        assert 'temporary file which will be deleted when the task is finished.\npath: ' in prompt
         codex_long_messages.remember(path, text)
         assert codex_long_messages.expand(prompt) == text
+        # A prompt placed by the earlier wording still reads back too.
+        earlier = ('My message is too long to send directly (40,005 characters), so '
+                   f'The Chat Place saved it in full in this file: {path}')
+        assert codex_long_messages.expand(earlier) == text
         shown = codex_long_messages.expand_messages(
             [ChatMessage('user', prompt), ChatMessage('assistant', 'Fine')])
-        assert shown[0].text == text and shown[1].text == 'Fine'
+        # The placed message is titled as what placed it, with the message
+        # as written in its detail; other messages are untouched.
+        assert shown[0].label == 'The Chat Place' and shown[0].text == prompt
+        assert shown[0].detail == text and shown[1].text == 'Fine' and not shown[1].speaker
         # Unsent: the original comes back to the reply box, not the prompt.
         w = Window()
         w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'failed',

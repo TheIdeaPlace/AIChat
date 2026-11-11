@@ -20,9 +20,7 @@ from pathlib import Path
 from .platform_paths import app_data_dir
 
 PREFIX = 'thechatplace-long-message-'
-_PATTERN = re.compile(
-    r'^My message is too long to send directly \(([\d,]+) characters\), so '
-    r'The Chat Place saved it in full in this file: (.+)$', re.MULTILINE)
+_PATTERN = re.compile(r'(?:saved it in full in this file:|^path:) (.+)$', re.MULTILINE)
 _KEPT = 50
 _lock = threading.Lock()
 _store = None
@@ -44,11 +42,15 @@ def save_message(text):
 
 
 def prompt_for(text, path):
-    """What Codex is sent instead of an over-long message."""
-    return (f'My message is too long to send directly ({len(text):,} characters), so '
-            f'The Chat Place saved it in full in this file: {path}\n\n'
-            'Read that file now, and treat everything in it as my message: do what '
-            'it asks, and if it shows output or errors, explain them. '
+    """What Codex is sent instead of an over-long message. The Chat Place
+    places it, so it says so, rather than speaking as the user."""
+    return ('This message was placed in this conversation by The Chat Place. '
+            f'Your message is too long to send directly ({len(text):,} characters), '
+            'so it was saved in a temporary file which will be deleted when the '
+            f'task is finished.\npath: {path}\n\n'
+            "Read that file now, and treat everything in it as the user's "
+            'message: do what it asks, and if it shows output or errors, '
+            'explain them. '
             "If you can't read the file, say so plainly and stop; don't guess "
             'at what it says.')
 
@@ -99,7 +101,7 @@ def expand(text):
     match = _PATTERN.search(text)
     if not match:
         return text
-    path = match.group(2).strip()
+    path = match.group(1).strip()
     with _lock:
         original = _load().get(path)
     if original is not None:
@@ -111,11 +113,18 @@ def expand(text):
 
 
 def expand_messages(messages):
-    """Chat history with saved messages shown as they were written."""
+    """Chat history where a saved message is titled as what placed it:
+    The Chat Place, not the user. The message as written is its detail,
+    so Read Full Message gives it whole after the prompt that was sent."""
     expanded = []
     for message in messages:
-        text = expand(message.text)
-        expanded.append(replace(message, text=text) if text != message.text else message)
+        match = _PATTERN.search(message.text) if isinstance(message.text, str) else None
+        if not match:
+            expanded.append(message)
+            continue
+        original = expand(message.text)
+        detail = original if original != message.text else message.detail
+        expanded.append(replace(message, speaker='The Chat Place', detail=detail))
     return expanded
 
 
