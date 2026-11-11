@@ -209,6 +209,9 @@ STEPS = [
     # View, Connected Tools (#468), the View menu's last item: Up from the top.
     Step("Connected Tools", ["alt+v", "Up", "Return"], expect=["Connected tools"],
          refuse=["unlabeled", "unlabelled"]),
+    # Sign In, Reconnect, Turn Off for This Chat, then this one (#626).
+    Step("Connected Tools, Turn Off for New Chats", ["Tab", "Tab", "Tab", "Tab"],
+         expect=["Turn Off for New Chats"]),
     Step("Connected Tools closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Ask Aside (#468): it opens on the question box; Escape closes it.

@@ -2510,18 +2510,18 @@ long as the dialog is open; a tool turned off for the chat isn't started.
   **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
   Only chats started here can do this; The Chat Place's session tools can't be turned off.
 - **Turn Off for New Chats** (Alt+N), in a Claude chat, is for a tool you don't plan to use. Every
-  chat you start from then on has it off, and The Chat Place stops telling you Claude can't use
-  it. Chats you already have keep their own setting. The row says "off for new chats", and the
+  new chat from then on has it off, and The Chat Place stops telling you Claude can't use it.
+  Chats you already have, and Retry and Branch copies of them, keep their own setting. The row says "off for new chats", and the
   button becomes **Turn On for New Chats**. The desktop app, Claude Code's own settings and your
   claude.ai account are left alone.
 
 ### When a Claude turn starts
 
 If a tool in the chat needs sign-in or failed to connect, The Chat Place says so when a turn
-starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. View, Connected
-Tools." It's on the status bar, and spoken at the Full announcement level without cutting
-anything off. Each tool is mentioned once each time The Chat Place runs, and a tool turned off
-for the chat isn't mentioned.
+starts, for example "Claude can't use claude.ai Morningstar: it needs sign-in. To sign in, or
+stop hearing this, use View, Connected Tools." It's on the status bar, and spoken at the Full
+announcement level without cutting anything off. Each tool is mentioned once each time The Chat
+Place runs, and a tool turned off for the chat or for new chats isn't mentioned.
 
 ### Codex's connected tools
 

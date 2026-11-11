@@ -224,6 +224,18 @@ def test_a_tool_off_for_new_chats_says_so_and_is_always_listed():
                               )[0].text() == "github: connected, your settings"
 
 
+def test_a_tool_turned_back_on_keeps_its_row_and_isnt_counted():
+    from thechatplace.claude_mcp import tools_summary
+    rows = with_chat_settings([McpServer("github", "connected", source="user")], [],
+                              ["still-off"], ["back-on"])
+    assert [r.text() for r in rows] == ["github: connected, your settings",
+                                        "still-off: off for new chats",
+                                        "back-on: on for new chats"]
+    assert [r.not_in_folder for r in rows] == [False, True, True]
+    assert tools_summary(rows) == "1 connected tool"
+    assert tools_summary(rows[1:]) == "No connected tools."
+
+
 def test_the_tools_off_for_new_chats_are_saved_and_checked(tmp_path):
     from thechatplace.speech import SpeechSettings
     path = tmp_path / "speech.json"

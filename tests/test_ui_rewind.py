@@ -312,6 +312,33 @@ def test_branch_from_a_reply_keeps_history_through_it(frame, env, fake_runner, m
             "on from there.") in env["feedback"]
 
 
+def test_a_copy_of_your_own_chat_keeps_its_tools_not_new_chats_setting(frame, env, fake_runner,
+                                                                       monkeypatch):
+    own_chat(frame, env)
+    frame.store.update("own-rw", disabled_mcp=["its-own"])
+    frame.speech.mcp_off_for_new_chats = ["for-new-chats"]
+    choose(frame, ASSISTANT, 0)
+    frame.on_branch_from_here()
+    assert frame.store.get(frame._open.cli_session_id).disabled_mcp == ["its-own"]
+
+
+def test_a_copy_of_a_desktop_chat_starts_as_a_new_chat_does(frame, env, fake_runner, monkeypatch):
+    folder = env["tmp"] / "repo"
+    folder.mkdir()
+    records, _parts = two_turns()
+    add_desktop(env, "local_c", "cli-c", "Desktop work", cwd=str(folder))
+    add_transcript(env, str(folder), "cli-c", records)
+    frame.refresh_sessions(force=True, resort=True)
+    settle(frame)
+    select(frame, "Desktop work")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame._reader is not None)
+    frame.speech.mcp_off_for_new_chats = ["for-new-chats"]
+    choose(frame, ASSISTANT, 0)
+    frame.on_branch_from_here()
+    assert frame.store.get(frame._open.cli_session_id).disabled_mcp == ["for-new-chats"]
+
+
 def test_menus_offer_both_only_for_claude_chats(frame, env, fake_runner, monkeypatch):
     own_chat(frame, env)
     choose(frame, USER, 1)

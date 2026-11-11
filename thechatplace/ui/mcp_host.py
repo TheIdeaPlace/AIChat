@@ -56,6 +56,9 @@ class ClaudeConnectedTools:
         self._lock = threading.Lock()
         self._closed = False
         self._servers = []
+        #: Turned on for new chats while this list is open, and not in this
+        #: folder: kept in the list until it's read again.
+        self._turned_back_on = []
         #: What the idle process was started without.
         self._denied = []
         # Worked out here, on the UI thread, as a turn's is. Only a chat that
@@ -125,9 +128,12 @@ class ClaudeConnectedTools:
 
     def _rows(self):
         return with_chat_settings([McpServer(**{**s.__dict__}) for s in self._servers],
-                                  self._disabled(), self.frame.speech.mcp_off_for_new_chats)
+                                  self._disabled(), self.frame.speech.mcp_off_for_new_chats,
+                                  self._turned_back_on)
 
     def load(self, done):
+        self._turned_back_on = []
+
         def read():
             self._servers = self._open().status()
             return self._rows()
@@ -213,6 +219,9 @@ class ClaudeConnectedTools:
             speech.mcp_off_for_new_chats = before
             done(None, "It couldn't be saved, so nothing changed.")
             return
+        self._turned_back_on = [n for n in self._turned_back_on if n != server.name]
+        if not off and server.not_in_folder:
+            self._turned_back_on.append(server.name)
         self.frame._feedback(
             f"{server.label} is off for new chats. You won't hear about it again." if off
             else f"{server.label} is on for new chats.")

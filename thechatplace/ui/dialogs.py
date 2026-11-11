@@ -5637,6 +5637,8 @@ class ConnectedToolsDialog(wx.Dialog):
         if getattr(server, "off_for_new", False):
             lines.append("New chats start with this tool off, and The Chat Place doesn't tell "
                          "you when Claude can't use it.")
+        if getattr(server, "not_in_folder", False):
+            lines.append(self._not_here_text(server))
         if server.is_session_tools:
             lines.append("The Chat Place gives its own chats these tools, so commands such as "
                          "/wrap work. They can't be turned off here.")
@@ -5749,13 +5751,25 @@ class ConnectedToolsDialog(wx.Dialog):
             self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
         return server
 
+    @staticmethod
+    def _not_here_text(server) -> str:
+        return (f"{server.label} isn't in this chat's folder. It's listed so you can change "
+                "whether new chats have it; nothing else applies to it here.")
+
+    def _not_here(self, server, back_to) -> bool:
+        """Says why, on a row listed only for the new-chats setting."""
+        if not getattr(server, "not_in_folder", False):
+            return False
+        self._tell(self._not_here_text(server), back_to=back_to)
+        return True
+
     def _off_text(self, server) -> str:
         hint = getattr(self.host, 'turn_on_hint', "Turn it on first.")
         return f"{server.label} is off for this chat. {hint}"
 
     def on_sign_in(self):
         server = self._server_for("sign in to", self.sign_in_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.sign_in_btn):
             return
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
             self._tell(server.text(), back_to=self.sign_in_btn)
@@ -5784,7 +5798,7 @@ class ConnectedToolsDialog(wx.Dialog):
 
     def on_reconnect(self):
         server = self._server_for("reconnect", self.reconnect_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.reconnect_btn):
             return
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
             self._tell(server.text(), back_to=self.reconnect_btn)
@@ -5813,7 +5827,7 @@ class ConnectedToolsDialog(wx.Dialog):
 
     def on_toggle(self):
         server = self._server_for("turn off", self.toggle_btn)
-        if server is None:
+        if server is None or self._not_here(server, self.toggle_btn):
             return
         if not self.host.can_turn_off:
             self._tell("Tools can be turned off only for chats The Chat Place started.",
@@ -5840,8 +5854,8 @@ class ConnectedToolsDialog(wx.Dialog):
         self.host.set_off(server, not server.off_for_chat, done)
 
     def on_toggle_new_chats(self):
-        """Turn Off (or On) for New Chats. The host says what it did, as a
-        button's label changing under the focus isn't read."""
+        """Turn Off (or On) for New Chats. The host says what it did: focus
+        can be in the list, and not every screen reader reads a label change."""
         server = self._server_for("turn off", self.new_chats_btn)
         if server is None:
             return
@@ -5857,7 +5871,15 @@ class ConnectedToolsDialog(wx.Dialog):
             if error:
                 self._tell(error, wx.ICON_WARNING, back_to=self.new_chats_btn)
                 return
-            self._fill(rows, index)
+            if [r.name for r in rows] == [r.name for r in self.rows]:
+                # Only the one row: rebuilding the list would read it again
+                # on top of what was just said.
+                self.rows = list(rows)
+                self.list.SetString(index, self.rows[index].text())
+                self.list.SetSelection(index)
+                self._show_selected()
+            else:
+                self._fill(rows, index)
             if focus is not None and focus.GetTopLevelParent() is self:
                 focus.SetFocus()
         self.host.set_off_for_new(server, not server.off_for_new, done)

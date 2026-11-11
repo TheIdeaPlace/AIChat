@@ -800,6 +800,21 @@ def test_a_failed_codex_member_leaves_no_unsaved_claude_chat(tmp_path):
                               "copied to the clipboard.")
 
 
+def test_a_claude_member_starts_with_the_tools_off_for_new_chats(tmp_path):
+    w = Window(tmp_path)
+    w.speech.mcp_off_for_new_chats = ['claude.ai Shop']
+    added = []
+    w.store.add = added.append
+    w._store_write = lambda method, *a, **k: method(*a, **k) or True
+    w.refresh_sessions = lambda **k: None
+    plan = SimpleNamespace(
+        title='Pair', folder=str(tmp_path), mode='approve', turn_limit=6, message='',
+        first=0, to_all=False,
+        members=[SimpleNamespace(info=None, provider='claude', role='', permission='plan'),
+                 SimpleNamespace(info=None, provider='claude', role='', permission='plan')])
+    w._agent_create(plan)
+    assert [r.disabled_mcp for r in added] == [['claude.ai Shop'], ['claude.ai Shop']]
+
 
 # -- found in the final review -----------------------------------------------------------------
 

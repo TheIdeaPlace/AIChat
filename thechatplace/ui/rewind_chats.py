@@ -124,6 +124,10 @@ class RewindChats:
             # Chat Options' More folders are the chat's kept folders.
             own.allowed_dirs = list(source.allowed_dirs)
             own.allowed_dirs_at = dict(source.allowed_dirs_at)
+        else:
+            # From a chat started elsewhere there's no list to keep, so it's
+            # a new chat here, as Continue Here's is.
+            own.disabled_mcp = list(self.speech.mcp_off_for_new_chats)
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:

@@ -700,6 +700,40 @@ def test_new_chats_start_with_those_tools_off(frame, env, monkeypatch):
     assert frame.store.get("own-1").disabled_mcp == []
 
 
+def test_a_tool_not_in_this_folder_is_only_for_the_new_chats_button(frame, env, monkeypatch):
+    # It's listed so it can be turned back on. Nothing else applies, each
+    # says why, and turning it on keeps its row, so you stay on that tool.
+    select(frame, "Tools probe")
+    frame.speech.mcp_off_for_new_chats = ["elsewhere"]
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+    why = ("elsewhere isn't in this chat's folder. It's listed so you can change whether new "
+           "chats have it; nothing else applies to it here.")
+
+    def drive(dialog):
+        rows = list(dialog.list.GetStrings())
+        index = rows.index("elsewhere: off for new chats")
+        dialog.list.SetSelection(index)
+        dialog._show_selected()
+        assert why in dialog.details.GetValue()
+        dialog.on_sign_in()
+        dialog.on_reconnect()
+        dialog.on_toggle()
+        _key(dialog, wx.WXK_DELETE)
+        dialog.on_toggle_new_chats()
+        assert dialog.list.GetString(index) == "elsewhere: on for new chats"
+        assert dialog.list.GetSelection() == index
+        assert dialog.new_chats_btn.GetLabel() == "Turn Off for &New Chats"
+        assert frame.speech.mcp_off_for_new_chats == []
+        dialog.on_toggle_new_chats()     # pressed again: the same tool, undone
+        assert dialog.list.GetString(index) == "elsewhere: off for new chats"
+        assert frame.speech.mcp_off_for_new_chats == ["elsewhere"]
+    _connected_tools(frame, monkeypatch, drive)
+    assert boxes == [why] * 4
+    assert frame.store.get("own-1").disabled_mcp == []
+    assert env["mcp"]["calls"].count(("sign_in", "elsewhere")) == 0
+
+
 def test_a_save_that_fails_changes_nothing_for_new_chats(frame, env, monkeypatch):
     select(frame, "Tools probe")
     boxes = []
