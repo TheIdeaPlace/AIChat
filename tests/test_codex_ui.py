@@ -42,6 +42,9 @@ class Window(CodexChats):
         self.notified = []
         self.work = []
         self.sessions = SimpleNamespace(owned_action=lambda *a: None)
+    def _session_tools_config(self, caller):
+        return None
+
     def _apply_tasks(self, tasks, first_load):
         from thechatplace.ui.main_frame import MainFrame
         MainFrame._apply_tasks(self, tasks, first_load)
@@ -354,6 +357,7 @@ def live(tmp_path, monkeypatch):
 @pytest.mark.parametrize('failure', ['auto_review_unavailable', 'private', 'save'])
 def test_failed_permission_change_is_said_once_ending_with_stop(live, monkeypatch, failure):
     from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+    from thechatplace.ui_text import with_stop_key
     live.finish_turn()
     request = live.connection.request
     def refuse(method, params):
@@ -370,13 +374,15 @@ def test_failed_permission_change_is_said_once_ending_with_stop(live, monkeypatc
     start = len(live.said)
     live._change_codex_permissions(live._open)
     spoken = live.spoken_after(start)
-    assert spoken[0] == 'Verifying Codex permissions.'
+    assert spoken[0] == 'Checking the new permissions with Codex.'
     assert len(spoken) == 2, spoken
-    assert spoken[1].endswith(STOP_TO_RECHECK) and spoken[1].count('Use Stop') == 1
+    # The provider says what Stop does; the window names its key (#596).
+    assert spoken[1].endswith(with_stop_key(STOP_TO_RECHECK)) and spoken[1].count('Press Stop') == 1
+    assert 'Use Stop' not in spoken[1]
     assert 'private' not in spoken[1]
     if failure == 'auto_review_unavailable':
         assert 'automatic approval review' in spoken[1]
-    assert live._codex_status_text(live._codex_states[live.key]).endswith(STOP_TO_RECHECK)
+    assert live._codex_status_text(live._codex_states[live.key]).endswith(with_stop_key(STOP_TO_RECHECK))
     assert not live._codex_policy_pending
     assert not live.runtime.ready(live.record)
 
@@ -393,7 +399,7 @@ def test_refused_permission_change_does_not_replay_an_earlier_problem(live):
     start = len(live.said)
     live._change_codex_permissions(live._open)  # Refused before anything is checked
     spoken = live.spoken_after(start)
-    assert spoken[0] == 'Verifying Codex permissions.'
+    assert spoken[0] == 'Checking the new permissions with Codex.'
     assert len(spoken) == 2, spoken
     assert spoken[1].startswith('Could not change Codex permissions.')
     assert earlier not in spoken[1] and spoken[1].lower().count('use stop') == 1
@@ -406,7 +412,7 @@ def test_successful_permission_change_says_only_the_new_mode(live):
     start = len(live.said)
     live._change_codex_permissions(live._open)
     spoken = live.spoken_after(start)
-    assert spoken[0] == 'Verifying Codex permissions.'
+    assert spoken[0] == 'Checking the new permissions with Codex.'
     assert len(spoken) == 2 and spoken[1].startswith('Codex permissions for Synthetic chat: ')
     assert live.runtime.ready(live.record) and not live._codex_policy_pending
 

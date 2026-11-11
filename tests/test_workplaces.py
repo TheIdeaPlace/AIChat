@@ -334,7 +334,7 @@ def test_an_existing_branch_gets_a_worktree(repo):
     # Now it's checked out, so it's no longer offered, and asking says why.
     info = workplaces.repo_info(GIT, str(repo))
     assert "feature/old" not in info.branches
-    with pytest.raises(workplaces.ToolError, match="already checked out"):
+    with pytest.raises(workplaces.ToolError, match="in use in another worktree"):
         workplaces.add_worktree(GIT, info, "feature/old")
     (repo / ".claude" / "worktrees" / "again").mkdir()
     assert workplaces.worktree_folder(str(repo), "again").name == "again-2"
@@ -473,3 +473,336 @@ def test_tool_folders_go_first_only_when_missing(monkeypatch):
     assert workplaces._tool_path(path) == os.pathsep.join([os.path.join("X", "git"), "A", "B"])
     already = os.pathsep.join(["A", os.path.join("X", "git")])
     assert workplaces._tool_path(already) == already
+
+
+# -- where a new worktree's branch starts (#561) --------------------------------------------
+
+def _commit(folder, name):
+    (folder / f"{name}.txt").write_text(name)
+    git("add", ".", cwd=folder)
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", name,
+        cwd=folder)
+
+
+def _head(folder):
+    return subprocess.run([GIT, "rev-parse", "HEAD"], cwd=folder, capture_output=True,
+                          text=True).stdout.strip()
+
+
+@pytest.fixture
+def cloned(repo, tmp_path):
+    """A clone of ``repo``, on a feature branch with a commit of its own,
+    while the remote's main has moved on since it was cloned."""
+    clone = tmp_path / "Clone"
+    subprocess.run([GIT, "clone", "-q", str(repo), str(clone)], check=True, capture_output=True)
+    git("checkout", "-q", "-b", "work", cwd=clone)
+    _commit(clone, "on-feature")
+    _commit(repo, "newer-on-main")
+    return clone
+
+
+@needs_git
+def test_a_new_branch_starts_from_the_remotes_main_fetched_first(cloned, repo):
+    info = workplaces.repo_info(GIT, str(cloned))
+    made = workplaces.create_worktree(GIT, info, "fix/fresh")
+    assert (made.how, made.base, made.note) == ("new", "origin/main", "")
+    assert _head(made.folder) == _head(repo)  # the newer main, not the clone's old copy
+    assert not (made.folder / "on-feature.txt").exists()
+    assert made.said() == "Made worktree fix-fresh on new branch fix/fresh, from origin/main."
+    # It doesn't track main, so pushing it can never go to main.
+    upstream = subprocess.run([GIT, "rev-parse", "--abbrev-ref", "@{upstream}"],
+                              cwd=made.folder, capture_output=True, text=True)
+    assert upstream.returncode != 0
+    assert workplaces.branch_start(GIT, workplaces.repo_info(GIT, str(made.folder))) \
+        == "origin/main"
+
+
+@needs_git
+def test_a_new_branch_can_start_from_the_current_branch(cloned):
+    info = workplaces.repo_info(GIT, str(cloned))
+    made = workplaces.create_worktree(GIT, info, "fix/here", workplaces.START_HERE)
+    assert (made.how, made.base) == ("new", "work")
+    assert (made.folder / "on-feature.txt").exists()
+    assert made.said().endswith("on new branch fix/here, from work.")
+    # Its reflog names where it started, so Properties can say.
+    assert workplaces.branch_start(GIT, workplaces.repo_info(GIT, str(made.folder))) == "work"
+
+
+@needs_git
+def test_no_remote_starts_from_the_current_branch_and_says_so(repo):
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(repo)), "solo")
+    assert made.base == "main" and "has no origin remote" in made.note
+    assert made.note in made.said()
+
+
+@needs_git
+def test_a_failed_fetch_starts_from_the_current_branch_and_says_so(cloned, repo, tmp_path):
+    git("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=cloned)
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "offline")
+    assert made.base == "work"
+    assert "origin/main couldn't be fetched" in made.note
+    assert (made.folder / "on-feature.txt").exists()
+
+
+@needs_git
+def test_existing_and_remote_branches_ignore_start_from(cloned):
+    git("branch", "kept", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert not workplaces.is_new_branch(info, "kept")
+    assert not workplaces.is_new_branch(info, "feature/old")      # only the remote has it
+    assert not workplaces.is_new_branch(info, "origin/feature/old")
+    assert not workplaces.is_new_branch(info, "")
+    assert workplaces.is_new_branch(info, "brand-new")
+    made = workplaces.create_worktree(GIT, info, "kept")
+    assert made.how == "existing" and made.said().endswith("on existing branch kept.")
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "feature/old")
+    assert made.how == "tracking" and made.base == "origin/feature/old"
+    assert made.said().endswith("tracking origin/feature/old.")
+
+
+@needs_git
+@pytest.mark.parametrize("name", ["-x", "@{-1}", "refs/heads/x", "two words"])
+def test_names_are_checked_before_any_fetch(cloned, monkeypatch, name):
+    called = []
+    monkeypatch.setattr(workplaces, "_fetched_default", lambda *a: called.append(a))
+    with pytest.raises(workplaces.ToolError):
+        workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), name)
+    assert not called
+
+
+@needs_git
+def test_the_fetch_updates_origin_main_even_when_the_clone_doesnt_fetch_it(cloned, repo):
+    # A clone that fetches only some branches: a plain "fetch origin main"
+    # would leave origin/main old while saying it started from it.
+    git("config", "remote.origin.fetch", "+refs/heads/feature/old:refs/remotes/origin/feature/old",
+        cwd=cloned)
+    made = workplaces.create_worktree(GIT, workplaces.repo_info(GIT, str(cloned)), "fix/narrow")
+    assert made.base == "origin/main" and _head(made.folder) == _head(repo)
+
+
+@needs_git
+def test_a_commit_claude_code_started_from_is_named(cloned):
+    # Claude Code's worktrees record "Created from <commit>^{commit}".
+    main_commit = subprocess.run([GIT, "rev-parse", "origin/main"], cwd=cloned,
+                                 capture_output=True, text=True).stdout.strip()
+    git("branch", "worktree-x", f"{main_commit}^{{commit}}", cwd=cloned)
+    git("checkout", "-q", "worktree-x", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert workplaces.branch_start(GIT, info) == "origin/main"
+    facts = dict(workplaces.branch_facts(GIT, str(cloned)))
+    assert facts["Branch"] == "worktree-x" and facts["Branch started from"] == "origin/main"
+
+
+def test_branch_facts_outside_a_repository_is_nothing(tmp_path):
+    if GIT:
+        assert workplaces.branch_facts(GIT, str(tmp_path)) == []
+
+
+# -- branches checked out somewhere (#587) -----------------------------------------------------
+
+def test_busy_branches_say_where_they_are(repo):
+    elsewhere = workplaces.add_worktree(GIT, workplaces.repo_info(GIT, str(repo)), "feature/old")
+    elsewhere = elsewhere.parent if elsewhere.name == "sub" else elsewhere
+    git("branch", "spare", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo / "sub"))
+    assert sorted(info.busy) == ["feature/old", "main"]
+    assert os.path.samefile(info.busy_at["main"], repo)
+    assert os.path.samefile(info.busy_at["feature/old"], elsewhere)
+    assert workplaces.in_use_reason(info, "main") == "checked out in this folder"
+    assert workplaces.in_use_reason(info, "feature/old") == "in use in another worktree"
+    assert workplaces.in_use_reason(info, "spare") == ""
+    # The usable ones first, then the busy ones with the reason, never a path.
+    choices = workplaces.branch_choices(info)
+    assert choices[0] == "spare"
+    assert set(choices[1:]) == {"main (checked out in this folder)",
+                                "feature/old (in use in another worktree)"}
+    assert not any(str(repo) in choice for choice in choices)
+    assert workplaces.branch_choices(None) == []
+
+
+def test_a_choice_names_its_branch():
+    assert workplaces.branch_from_choice("main (in use in another worktree)") == "main"
+    assert workplaces.branch_from_choice(" work (checked out in this folder) ") == "work"
+    assert workplaces.branch_from_choice(" fix/new ") == "fix/new"
+    assert workplaces.branch_from_choice("") == ""
+    # Remote-only items (#622) name the local branch that will track them.
+    assert workplaces.branch_from_choice("feature/x (on origin)") == "feature/x"
+    assert workplaces.branch_from_choice(" fix (on upstream) ") == "fix"
+    assert workplaces.branch_from_choice("feature/x (on two words)") == "feature/x (on two words)"
+
+
+# -- branches only a remote has (#622) ------------------------------------------------------
+
+def test_branches_only_a_remote_has_are_listed_after_the_local_ones():
+    info = _described(branch="work", branches=["older", "feature/x"], busy=["work", "main"],
+                      remotes=["origin/main", "origin/feature/x", "origin/topic",
+                               "origin/a/b", "upstream/topic", "upstream/extra", "origin/HEAD"],
+                      busy_at={})
+    assert workplaces.remote_only(info) == [("topic", "origin"), ("a/b", "origin"),
+                                            ("extra", "upstream")]
+    assert workplaces.branch_choices(info) == [
+        "older", "feature/x",
+        "topic (on origin)", "a/b (on origin)", "extra (on upstream)",
+        "work (checked out in this folder)", "main (in use in another worktree)"]
+    # Each names a branch that's tracked, never new.
+    for item in ("topic (on origin)", "a/b (on origin)", "extra (on upstream)"):
+        assert not workplaces.is_new_branch(info, item)
+        assert workplaces.in_use_reason(info, workplaces.branch_from_choice(item)) == ""
+
+
+@needs_git
+def test_a_remote_only_item_makes_a_tracking_worktree(cloned):
+    info = workplaces.repo_info(GIT, str(cloned))
+    # main has a local branch, so only feature/old is the remote's alone.
+    assert workplaces.branch_choices(info) == [
+        "main", "feature/old (on origin)", "work (checked out in this folder)"]
+    made = workplaces.create_worktree(GIT, info, "feature/old (on origin)")
+    assert (made.how, made.branch, made.base) == ("tracking", "feature/old", "origin/feature/old")
+    upstream = subprocess.run([GIT, "rev-parse", "--abbrev-ref", "@{upstream}"],
+                              cwd=made.worktree, capture_output=True, text=True).stdout.strip()
+    assert upstream == "origin/feature/old"
+    # Now it's local and checked out: listed as in use, not as on origin.
+    after = workplaces.branch_choices(workplaces.repo_info(GIT, str(cloned)))
+    assert "feature/old (in use in another worktree)" in after
+    assert "feature/old (on origin)" not in after
+
+
+@needs_git
+def test_a_branch_only_another_remote_has_tracks_that_remote(cloned, tmp_path):
+    other = tmp_path / "Other.git"
+    subprocess.run([GIT, "clone", "-q", "--bare", str(cloned), str(other)], check=True,
+                   capture_output=True)
+    git("branch", "up-only", "work", cwd=other)
+    git("remote", "add", "upstream", str(other), cwd=cloned)
+    git("fetch", "-q", "upstream", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    choices = workplaces.branch_choices(info)
+    assert "up-only (on upstream)" in choices
+    assert "feature/old (on origin)" in choices and "feature/old (on upstream)" not in choices
+    made = workplaces.create_worktree(GIT, info, "up-only (on upstream)")
+    assert (made.how, made.base) == ("tracking", "upstream/up-only")
+
+
+@needs_git
+def test_fetching_lists_branches_pushed_since_and_drops_deleted_ones(cloned, repo):
+    git("branch", "pushed-since", cwd=repo)
+    git("branch", "-D", "feature/old", cwd=repo)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert "pushed-since (on origin)" not in workplaces.branch_choices(info)
+    assert workplaces.fetch_remotes(GIT, info) == ""
+    choices = workplaces.branch_choices(workplaces.repo_info(GIT, str(cloned)))
+    assert "pushed-since (on origin)" in choices
+    assert "feature/old (on origin)" not in choices      # pruned
+
+
+@needs_git
+def test_fetching_with_no_remote_is_nothing_and_a_failed_fetch_says_so(repo, cloned, tmp_path):
+    assert workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(repo))) == ""
+    git("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=cloned)
+    said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
+    assert said == ("Couldn't fetch from origin, so Branch lists its branches as they were at "
+                    "the last fetch.")
+    # What was fetched before is still listed.
+    assert "feature/old (on origin)" in workplaces.branch_choices(
+        workplaces.repo_info(GIT, str(cloned)))
+
+
+@needs_git
+def test_one_remote_that_fails_doesnt_stop_the_others(cloned, repo, tmp_path):
+    # Each remote is fetched on its own (#622 review): a gone one is named,
+    # and the rest are still brought up to date.
+    for name in ("old-fork", "older-fork"):
+        git("remote", "add", name, str(tmp_path / name), cwd=cloned)
+    git("branch", "pushed-since", cwd=repo)
+    said = workplaces.fetch_remotes(GIT, workplaces.repo_info(GIT, str(cloned)))
+    assert said == ("Couldn't fetch from old-fork and older-fork, so Branch lists their "
+                    "branches as they were at the last fetch.")
+    assert "pushed-since (on origin)" in workplaces.branch_choices(
+        workplaces.repo_info(GIT, str(cloned)))
+
+
+def _described(**changes):
+    values = dict(top=r"C:\R", main=r"C:\R", common=r"C:\R\.git", rel="", branch="work",
+                  branches=["older"], busy=["work", "main"], remotes=["origin/main"],
+                  busy_at={"work": r"C:\R", "main": r"C:\R\.claude\worktrees\main"})
+    values.update(changes)
+    return workplaces.RepoInfo(**values)
+
+
+def test_the_in_use_message_says_where_and_what_to_do():
+    info = _described()
+    assert workplaces.in_use_message(info, "main", "origin/main") == (
+        r"main is in use in another worktree, at C:\R\.claude\worktrees\main, so a new "
+        "worktree can't use it. Type a new branch name, and Start from origin/main, to work "
+        "from main.")
+    # The folder's own branch names the folder.
+    assert workplaces.in_use_message(info, "work", "origin/main") == (
+        r"work is checked out in this folder, C:\R, so a new worktree can't use it. To work "
+        "on work here, choose The folder as it is. Or type a new branch name, and Start "
+        "from work, to work from it.")
+    # A branch that's neither the remote's main nor here: that worktree's folder.
+    info = _described(busy=["work", "topic"], busy_at={"topic": r"C:\T"})
+    said = workplaces.in_use_message(info, "topic", "origin/main")
+    assert said.startswith(r"topic is in use in another worktree, at C:\T, so a new worktree")
+    assert "choose that worktree's folder" in said
+    # No path known (a described repository): still a sentence.
+    info = _described(busy_at={})
+    assert workplaces.in_use_message(info, "main").startswith(
+        "main is in use in another worktree, so a new worktree can't use it.")
+
+
+def test_a_busy_branch_is_never_new_and_never_made(repo):
+    info = workplaces.repo_info(GIT, str(repo))
+    for text in ("main", "main (checked out in this folder)"):
+        assert not workplaces.is_new_branch(info, text)
+        with pytest.raises(workplaces.ToolError, match="checked out in this folder"):
+            workplaces.create_worktree(GIT, info, text, workplaces.START_HERE)
+    assert not (repo / ".claude").exists()
+
+
+def test_a_branch_in_two_worktrees_is_listed_once(repo, tmp_path):
+    # git worktree add -f can check one branch out twice.
+    git("worktree", "add", "-q", str(tmp_path / "One"), "feature/old", cwd=repo)
+    git("worktree", "add", "-q", "-f", str(tmp_path / "Two"), "feature/old", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert info.busy.count("feature/old") == 1
+    assert workplaces.branch_choices(info).count("feature/old (in use in another worktree)") == 1
+    assert os.path.samefile(info.busy_at["feature/old"], tmp_path / "One")
+
+
+def test_a_worktree_whose_folder_is_gone_still_holds_its_branch(repo, tmp_path):
+    gone = tmp_path / "Gone"
+    git("worktree", "add", "-q", str(gone), "feature/old", cwd=repo)
+    shutil.rmtree(gone)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert info.busy_gone == ["feature/old"]
+    assert workplaces.in_use_reason(info, "feature/old") == "held by a removed worktree"
+    assert "feature/old (held by a removed worktree)" in workplaces.branch_choices(info)
+    assert workplaces.branch_from_choice("feature/old (held by a removed worktree)") \
+        == "feature/old"
+    said = workplaces.in_use_message(info, "feature/old", "origin/main")
+    assert said.startswith("feature/old was checked out in a worktree whose folder, ")
+    assert said.endswith("is gone, so git still holds it. Run git worktree prune in the "
+                         "repository to free it, then choose feature/old again.")
+    assert "choose that worktree's folder" not in said
+    with pytest.raises(workplaces.BranchInUse, match="git worktree prune"):
+        workplaces.create_worktree(GIT, info, "feature/old")
+    # Once pruned, it's free again.
+    git("worktree", "prune", cwd=repo)
+    info = workplaces.repo_info(GIT, str(repo))
+    assert "feature/old" in info.branches and not info.busy_gone
+
+
+def test_a_remote_name_means_its_local_branch(cloned):
+    # Typing origin/main while main is in a worktree of its own (#587).
+    git("worktree", "add", "-q", str(cloned.parent / "MainTree"), "main", cwd=cloned)
+    info = workplaces.repo_info(GIT, str(cloned))
+    assert workplaces.local_branch(info, "origin/main") == "main"
+    assert workplaces.local_branch(info, "brand-new") == "brand-new"
+    assert workplaces.in_use_reason(info, "origin/main") == "in use in another worktree"
+    assert not workplaces.is_new_branch(info, "origin/main")
+    with pytest.raises(workplaces.BranchInUse) as refused:
+        workplaces.create_worktree(GIT, info, "origin/main", start_remote="origin/main")
+    assert str(refused.value).startswith("main is in use in another worktree, at ")
+    assert str(refused.value).endswith("Type a new branch name, and Start from origin/main, "
+                                       "to work from main.")

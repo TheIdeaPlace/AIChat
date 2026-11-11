@@ -14,8 +14,15 @@ from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE
 from ..own_store import OwnSession
+from .. import platform_paths
 
-STOP_TO_RECHECK = 'Use Stop to recheck this chat before sending.'
+#: What a latched problem ends with: Stop is the recheck (#385), so say what
+#: pressing it does (#596). The window adds Stop's key (ui_text.with_stop_key),
+#: which is the UI's to name, not the provider's.
+STOP_TO_RECHECK = 'Press Stop to have The Chat Place check this chat with Codex before you send again.'
+#: What each kind of change is called when it can't be confirmed.
+_CHANGING = {'permissions': 'permissions', 'settings': 'model or effort', 'mode': 'mode'}
+_KEEP = object()
 
 
 class _Problems(dict):
@@ -60,6 +67,18 @@ class CodexChatState:
     changed_paths: tuple = field(default=(), repr=False)
     #: A steered message Codex hasn't accepted yet (#239): at most one.
     steering: tuple = field(default=(), repr=False)
+    #: The running turn is /compact's (#467), so there's no reply to announce.
+    compaction: bool = False
+    #: Plan is saved, but this Codex can't offer it, so turns run in Default.
+    plan_unavailable: bool = False
+    retry: str = ''
+    reasoning: tuple = field(default=(), repr=False)
+    #: This turn's tools started and file changes made, for sounds (#250).
+    tools_started: int = 0
+    edits_made: int = 0
+    #: The model Codex reports this chat on now, for Properties to name when
+    #: the chat follows Codex's default (#596, decision 19).
+    model: str = ''
 
 
 @dataclass(frozen=True)
@@ -68,6 +87,8 @@ class PreparedCodexPolicy:
     previous: object = field(repr=False)
     saved_record: OwnSession = field(repr=False)
     problem: str | None = None
+    #: A key of _CHANGING.
+    subject: str = 'permissions'
 
     def record(self):
         return self.proof.record()
@@ -79,15 +100,16 @@ class CodexChatRuntime:
     Only explicit lifecycle actions acquire/reconnect a server. Stream failure
     suspends queues; it cannot resume or replay any prompt automatically.
     """
-    def __init__(self, on_update=lambda state: None, *, factory=None, executable=None):
+    def __init__(self, on_update=lambda state: None, *, factory=None, executable=None, session_tools=False):
         self._managed = ManagedCodexConnection(executable, factory=factory or (
-            lambda exe: CodexExecutionConnection(exe, initialize=False)))
+            lambda exe: CodexExecutionConnection(exe, initialize=False, session_tools=session_tools)))
         self._on_update = on_update
         self._lock = threading.Lock()
         self._binding_lock = threading.Lock()
         self._connection = self._executor = None
         self._proofs = {}
         self._new_threads = set()
+        self._settings_pending = set()
         self._queues = {}
         self._sending = set()
         self._stopping = set()
@@ -138,19 +160,26 @@ class CodexChatRuntime:
             if self._stop.is_set():
                 raise CodexRpcError('Codex chats are closing')
             self._proofs[proof.native_id] = proof
+            self._settings_pending.discard(proof.native_id)
             if new:
                 self._new_threads.add(proof.native_id)
             else:
                 self._new_threads.discard(proof.native_id)
             self._problems.pop(proof.native_id, None)
             self._policy_recoveries.pop(proof.native_id, None)
+            executor = self._executor
+        if proof.unavailable_mode == 'plan' and executor is not None:
+            executor.note(proof.native_id, "This version of Codex doesn't offer Plan mode, so this "
+                          'chat is in Default mode for now. Update Codex to use Plan.')
         self._notify(proof.native_id)
         return proof.record()
 
-    def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
+    def create(self, cwd, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user', mcp_servers=(), instructions=None, extra_roots=(), apps=(),
+               collaboration=None, keep_mode=False, allow_retired=False):
         connection, _ = self._binding()
         proof = CodexOwnedThreads(connection).start(cwd, title, model=model, effort=effort,
-            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer)
+            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer, mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps,
+            collaboration=collaboration, keep_mode=keep_mode, allow_retired=allow_retired)
         return self._remember(proof, new=True)
 
     def history_route(self, native_id):
@@ -181,10 +210,75 @@ class CodexChatRuntime:
             return proof.connection
         return None
 
-    def fork(self, source, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user'):
+    def fork(self, source, title, *, model=None, effort=None, sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
+             last_turn_id=None, before_turn_id=None, mcp_servers=(), instructions=None, extra_roots=(), apps=(),
+             collaboration=None, allow_retired=False):
         connection, _ = self._binding()
         return self._remember(CodexOwnedThreads(connection).fork(source, title, model=model, effort=effort,
-            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer))
+            sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,
+            last_turn_id=last_turn_id, before_turn_id=before_turn_id, mcp_servers=mcp_servers, instructions=instructions, extra_roots=extra_roots, apps=apps,
+            collaboration=collaboration, allow_retired=allow_retired))
+
+    def _kept_settings(self, source, own=None):
+        """What a copy of ``source`` (Rewind, Branch, a tools copy) keeps: the
+        original's permission mode, model, effort, Plan mode, Chat Options and
+        connected tools, as Claude's copies keep theirs (#596, decision 3).
+
+        Nothing carries over that the copy isn't given in its own right: the
+        grant goes through CodexPolicy and _create's checks like any new
+        chat's, Allow for This Chat's remembered approvals are kept by chat so
+        the copy's start empty, and a grant to edit a folder is kept only while
+        the folder is still the one it was given for, as resuming the original
+        requires (codex_owned._saved_options), extra folders included.
+
+        Only settings that are both saved and confirmed are kept. A chat with
+        a latched problem, a permission change in progress or one awaiting
+        Stop's recheck may hold a grant on its loaded thread that was never
+        saved (#184), so no copy is made from it; nor from a loaded chat whose
+        settings differ from ``own``, its saved record. A chat not loaded here
+        is copied from ``own``; with neither (a chat started elsewhere) the
+        copy starts as any new chat does, read-only on Codex's defaults."""
+        from .codex_features import CodexFeatureError
+        native_id = source.cli_session_id
+        with self._lock:
+            proof = self._proofs.get(native_id)
+            unsettled = (bool(self._problems.get(native_id)) or native_id in self._policy_changes
+                         or native_id in self._policy_recoveries)
+        own = own if (isinstance(own, OwnSession) and own.provider == 'codex'
+                      and own.cli_session_id == native_id and own.started is True) else None
+        if unsettled:
+            raise CodexFeatureError('copy_unconfirmed')
+        if proof is not None and proof.connection.owns_runtime(proof):
+            options = proof.record().provider_options
+            if own is not None and own.provider_options != options:
+                raise CodexFeatureError('copy_unconfirmed')
+        elif own is not None:
+            options = dict(own.provider_options)
+        else:
+            return {}
+        sandbox = options.get('sandbox', 'read-only')
+        approval = options.get('approval_policy', 'on-request')
+        roots = tuple(options.get('extra_roots', ()))
+        try:
+            # Every folder the grant names must still be itself: a replaced
+            # path must not silently grant a new scope.
+            if any(platform_paths.codex_workspace_root(p) != p for p in roots):
+                raise CodexFeatureError('copy_folder_moved')
+            if sandbox == 'workspace-write':
+                CodexPolicy(sandbox, approval, options.get('workspace_root', ''),
+                            extra_roots=roots).verify_workspace(source.cwd)
+        except (CodexRpcError, ValueError, OSError):
+            raise CodexFeatureError('copy_folder_moved') from None
+        try:
+            CodexOwnedThreads._saved_options(OwnSession(native_id, source.title, source.cwd, provider='codex',
+                                                        started=True, provider_options=dict(options)))
+        except (CodexRpcError, ValueError, OSError):
+            raise CodexFeatureError('copy_unconfirmed') from None
+        return dict(model=options.get('model'), effort=options.get('effort'), sandbox=sandbox,
+                    approval_policy=approval, approvals_reviewer=options.get('approvals_reviewer', 'user'),
+                    instructions=options.get('instructions'), extra_roots=tuple(options.get('extra_roots', ())),
+                    mcp_servers=tuple(options.get('mcp_servers', ())), apps=tuple(options.get('apps', ())),
+                    collaboration=options.get('collaboration'))
 
     def reopen(self, record):
         # Explicit user action only, after the caller has reconciled history.
@@ -261,7 +355,7 @@ class CodexChatRuntime:
                 or record.cwd != saved.cwd or record.provider_options != saved.provider_options):
             raise CodexRpcError('Saved Codex permissions no longer match this loaded chat')
 
-    def prepare_policy(self, record, sandbox, approval_policy, approvals_reviewer='user'):
+    def prepare_policy(self, record, sandbox, approval_policy, approvals_reviewer='user', *, model=_KEEP, effort=_KEEP, collaboration=_KEEP, instructions=_KEEP, extra_roots=_KEEP):
         """Verify an idle chat's new grant, keeping sends blocked until saved.
 
         The UI persists the returned record on its own thread and then confirms
@@ -269,10 +363,24 @@ class CodexChatRuntime:
         """
         if not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True:
             raise CodexRpcError('Only owned Codex chats can change permissions')
-        if record.provider_options.get('sandbox') == 'workspace-write':
-            CodexPolicy('workspace-write', workspace_root=record.provider_options.get('workspace_root', '')).verify_workspace(record.cwd)
-        policy = CodexPolicy.choose(record.cwd, sandbox, approval_policy, approvals_reviewer)
+        roots = record.provider_options.get('extra_roots', ()) if extra_roots is _KEEP else extra_roots
+        for root in roots:
+            if root in record.provider_options.get('extra_roots', ()) and platform_paths.codex_workspace_root(root) != root:
+                raise CodexRpcError('A saved additional folder moved; remove it before choosing a new grant')
+        policy = CodexPolicy.choose(record.cwd, sandbox, approval_policy, approvals_reviewer, roots)
+        saved_options = dict(record.provider_options)
+        if extra_roots is not _KEEP:
+            saved_options['extra_roots'] = [r for r in saved_options.get('extra_roots', ()) if r in policy.extra_roots]
+        CodexOwnedThreads._saved_options(replace(record, provider_options=saved_options))
         native_id = record.cli_session_id
+        # Change Permission Mode can leave Plan and change the grant at once
+        # (#596, decision 17): that's a permission change, with all of one's
+        # care (the remembered approvals cleared first, a failure latched).
+        grant_changes = (policy.sandbox, policy.approval, policy.reviewer) != (
+            saved_options.get('sandbox', 'read-only'), saved_options.get('approval_policy', 'on-request'),
+            saved_options.get('approvals_reviewer', 'user'))
+        subject = ('mode' if collaboration is not _KEEP and not grant_changes else
+                   'settings' if model is not _KEEP or effort is not _KEEP else 'permissions')
         with self._lock:
             proof = self._proofs.get(native_id)
             problem = self._problems.get(native_id)
@@ -291,18 +399,27 @@ class CodexChatRuntime:
             empty = native_id in self._new_threads and state is not None and not state.turn_id
             self._reopening.add(native_id)
         try:
-            with self._permission_lock:
-                self.permission_store.clear(native_id)
+            if subject == 'permissions':
+                # First, on purpose (#184): a resume below can put the new grant
+                # on the real thread and then fail, so waiting for the checks
+                # could leave old approvals answering under a grant they were
+                # never given for. A failed change costs you a question asked
+                # again, never a command run without one.
+                with self._permission_lock:
+                    self.permission_store.clear(native_id)
             connection, _ = self._binding()
             lifecycle = CodexOwnedThreads(connection)
             if proof is not None and connection.owns_runtime(proof):
                 self._require_saved_policy(record, expected)
-                lifecycle.verify_loaded(proof, empty=empty)
+                lifecycle.verify_loaded(proof, empty=empty, retained_roots=tuple(
+                    r for r in proof.policy.extra_roots if r in policy.extra_roots))
             else:
                 # A saved mode may no longer be available. An unloaded chat
                 # can resume directly with the newly selected mode.
                 options = dict(record.provider_options, sandbox=policy.sandbox,
-                               approval_policy=policy.approval)
+                               approval_policy=policy.approval, extra_roots=list(policy.extra_roots))
+                if instructions is not _KEEP:
+                    options['instructions'] = instructions
                 options.pop('workspace_root', None)
                 options.pop('approvals_reviewer', None)
                 if policy.workspace_root:
@@ -323,12 +440,30 @@ class CodexChatRuntime:
             # ephemeral thread instead; every real turn explicitly pins it.
             # This also works before the owned chat has any saved history.
             checked = lifecycle.start(policy.workspace_root or record.cwd, record.title, ephemeral=True,
-                model=proof.model, effort=proof.effort, sandbox=policy.sandbox,
-                approval_policy=policy.approval, approvals_reviewer=policy.reviewer)
+                # A chat on Codex's default stays on it (#596, decision 19).
+                model=proof.saved_model if model is _KEEP else model,
+                effort=proof.saved_effort if effort is _KEEP else effort, sandbox=policy.sandbox,
+                approval_policy=policy.approval, approvals_reviewer=policy.reviewer,
+                mcp_servers=proof.mcp_servers, apps=proof.apps, extra_roots=policy.extra_roots,
+                instructions=proof.instructions if instructions is _KEEP else instructions,
+                collaboration=proof.collaboration if collaboration is _KEEP else collaboration,
+                allow_retired=model is _KEEP and effort is _KEEP)
             if checked.policy != policy:
                 raise CodexRpcError('Changed Codex workspace scope could not be verified')
-            updated = replace(proof, cwd=checked.cwd, policy=checked.policy)
-            change = PreparedCodexPolicy(updated, proof, saved_record, problem)
+            if (model is not _KEEP or effort is not _KEEP) and checked.effort is None:
+                # A null effective effort means the model default, not the
+                # old loaded thread's explicit override. Pin the catalog value.
+                from .codex_models import read_models
+                choice = next((m for m in read_models(connection) if m.model == checked.model), None)
+                if choice is None:
+                    raise CodexRpcError('Codex model effort could not be verified')
+                checked = replace(checked, effort=choice.default_effort)
+            updated = replace(proof, cwd=checked.cwd, policy=checked.policy,
+                              model=checked.model, effort=checked.effort, saved_effort=checked.saved_effort,
+                              saved_model=checked.saved_model,
+                              collaboration=checked.collaboration, instructions=checked.instructions,
+                              unavailable_mode=proof.unavailable_mode if collaboration is _KEEP else None)
+            change = PreparedCodexPolicy(updated, proof, saved_record, problem, subject)
             with self._lock:
                 if self._stop.is_set():
                     raise CodexRpcError('Codex chats are closing')
@@ -339,11 +474,15 @@ class CodexChatRuntime:
         except Exception as error:
             with self._lock:
                 self._reopening.discard(native_id)
-                if self._problems.get(native_id) == problem:
+                # A model, effort or mode is only tried in an empty temporary
+                # thread, and any resume above used the saved settings, so a
+                # failure changed nothing and the chat can go on sending. Only
+                # a resume can have put a changed grant on the real thread.
+                if subject == 'permissions' and self._problems.get(native_id) == problem:
                     # The chat exists here, unlike New Session, so say how to
                     # clear the latch (#257): Stop rechecks the saved grant,
                     # or resumes a chat that is not loaded here.
-                    reason = safe_reason(error) or 'Could not verify changed permissions.'
+                    reason = safe_reason(error) or "Codex didn't confirm the new permissions."
                     if STOP_TO_RECHECK not in reason:
                         reason += ' ' + STOP_TO_RECHECK
                     self._problems[native_id] = reason
@@ -364,18 +503,139 @@ class CodexChatRuntime:
             verified = (not self._stop.is_set() and change.previous.connection.owns_runtime(change.previous)
                         and self._problems.get(native_id) == change.problem)
             if saved and verified:
+                if (change.proof.model, change.proof.effort, change.proof.saved_effort, change.proof.policy, change.proof.collaboration, change.proof.instructions) != (
+                        change.previous.model, change.previous.effort, change.previous.saved_effort, change.previous.policy, change.previous.collaboration, change.previous.instructions):
+                    self._settings_pending.add(native_id)
                 change.proof.connection._accept_owned_thread(change.proof)
                 self._proofs[native_id] = change.proof
                 self._problems.pop(native_id, None)
                 self._policy_recoveries.pop(native_id, None)
+            elif change.subject != 'permissions' and verified:
+                pass  # Not saved: the record went back and the proof never moved.
             elif self._problems.get(native_id) == change.problem:
-                reason = 'Changed permissions were not saved or verified. ' + STOP_TO_RECHECK
+                reason = (f"The new {_CHANGING[change.subject]} couldn't be saved, or Codex didn't "
+                          'confirm the change. ' + STOP_TO_RECHECK)
                 self._problems[native_id] = reason
                 if verified and self._proofs.get(native_id) is change.previous:
                     self._policy_recoveries[native_id] = (change.previous, reason, change.saved_record)
         self._notify(native_id)
 
-    def _context(self, record, *, allow_problem=False):
+    def prepare_chat_options(self, record, instructions, folders):
+        options = record.provider_options
+        return self.prepare_policy(record, options.get('sandbox', 'read-only'),
+            options.get('approval_policy', 'on-request'), options.get('approvals_reviewer', 'user'),
+            instructions=instructions, extra_roots=folders)
+
+    def prepare_settings(self, record, model, effort):
+        """The same persistence barrier as a permission change (#467)."""
+        options = record.provider_options
+        return self.prepare_policy(record, options.get('sandbox', 'read-only'),
+            options.get('approval_policy', 'on-request'), options.get('approvals_reviewer', 'user'),
+            model=model, effort=effort)
+
+    def fork_at(self, source, title, turn_id, before=False, own=None):
+        from .codex_features import verify_anchor
+        if source.provider != 'codex' or type(before) is not bool:
+            raise ValueError('A Codex source chat is required')
+        connection, _ = self._binding()
+        verify_anchor(connection, source.cli_session_id, turn_id, before=before)
+        kept = self._kept_settings(source, own)
+        # The original's own model counts even if Codex has retired it since:
+        # the copy is that chat going on, as Stop's recheck is (#467).
+        return self.fork(source, title, allow_retired=True, **kept,
+                         **{'before_turn_id' if before else 'last_turn_id': turn_id})
+
+    def prepare_mode(self, record, mode):
+        if mode not in ('default', 'plan'):
+            raise ValueError('Invalid Codex collaboration mode')
+        options = record.provider_options
+        return self.prepare_policy(record, options.get('sandbox', 'read-only'),
+            options.get('approval_policy', 'on-request'), options.get('approvals_reviewer', 'user'),
+            collaboration=mode)
+
+    def copy_with_tools(self, source, title, names, apps=(), own=None):
+        """A copy that differs from the original only in its connected tools
+        (#596, decision 3): ``names`` and ``apps`` are the copy's whole set."""
+        with self._lock:
+            proof = self._proofs.get(source.cli_session_id)
+            empty = (source.cli_session_id in self._new_threads and proof is not None
+                     and not self._executor.snapshot(proof).turn_id and source.cli_session_id not in self._sending)
+        kept = dict(self._kept_settings(source, own), mcp_servers=names, apps=apps)
+        if empty:
+            # A new thread, but the copy keeps the original's mode as a fork
+            # would: saved, even if this Codex can't offer it (#596), and its
+            # model even if retired since.
+            return self.create(source.cwd, title, keep_mode=True, allow_retired=True, **kept)
+        return self.fork(source, title, allow_retired=True, **kept)
+
+    def feature(self, record, method, arguments=None):
+        """Explicit native controls, serialized with sends and policy changes."""
+        from .codex_features import ACTIVE_SAFE_METHODS, CodexFeatureError, validate_action
+        proof, executor = self._context(record, allow_reopening=True)
+        params = dict(arguments or {}, threadId=proof.native_id)
+        validate_action(method, params)
+        # Reserving the chat refuses Stop, Send and Answer, and an RPC can take
+        # 20 seconds, so only what really needs an idle chat reserves it.
+        idle_only = method not in ACTIVE_SAFE_METHODS
+        with self._lock:
+            if method == 'thread/compact/start' and proof.native_id in self._settings_pending:
+                raise CodexFeatureError('settings_pending')
+            if (proof.native_id in self._reopening or self._stop.is_set()
+                    or (idle_only and (proof.native_id in self._sending or proof.native_id in self._stopping
+                        or proof.native_id in self._pending_dispatch or self._queues.get(proof.native_id)
+                        or executor.snapshot(proof).status == 'inProgress'))):
+                raise CodexFeatureError('busy')
+            if idle_only:
+                self._reopening.add(proof.native_id)
+        starts_turn = method == 'thread/compact/start'
+        try:
+            if starts_turn:
+                executor.expect_native_turns(proof)
+            result = proof.connection.request(method, params)
+            if not isinstance(result, dict):
+                raise CodexFeatureError('failed')
+            if method == 'thread/backgroundTerminals/list':
+                rows, cursors = [], set()
+                for _ in range(100):
+                    if not isinstance(result.get('data'), list) or len(result['data']) > 100:
+                        raise CodexFeatureError('failed')
+                    rows.extend(result['data'])
+                    cursor = result.get('nextCursor')
+                    if cursor is None:
+                        result = {'data': rows}
+                        break
+                    if not isinstance(cursor, str) or not cursor or cursor in cursors:
+                        raise CodexFeatureError('failed')
+                    cursors.add(cursor)
+                    result = proof.connection.request(method, dict(params, cursor=cursor, limit=100))
+                else:
+                    raise CodexFeatureError('failed')
+            if not proof.connection.owns_runtime(proof):
+                raise CodexFeatureError('unavailable')
+            return result
+        except CodexRpcError as error:
+            refused = getattr(error, 'rpc_code', None) is not None  # Codex answered: nothing was done
+            if starts_turn and (refused or isinstance(error, CodexTurnRejected)):
+                executor.cancel_native_turns(proof)
+            if refused:
+                unknown = error.rpc_code == -32601 or getattr(error, 'unknown_method', False)
+                raise CodexFeatureError('unsupported' if unknown else 'refused') from None
+            uncertain = (isinstance(error, CodexFeatureError) and error.code in ('failed', 'unavailable')
+                         or not isinstance(error, (CodexFeatureError, CodexTurnRejected)))
+            # Not for what's safe beside a turn: a lost answer about a goal or
+            # a terminal says nothing about the turn, and latching a problem
+            # would throw away its queue and stop its approvals.
+            if idle_only and uncertain:
+                with self._lock:
+                    self._problems[proof.native_id] = 'Codex could not confirm the operation. ' + STOP_TO_RECHECK
+            raise
+        finally:
+            if idle_only:
+                with self._lock:
+                    self._reopening.discard(proof.native_id)
+                self._notify(proof.native_id)
+
+    def _context(self, record, *, allow_problem=False, allow_reopening=False):
         if not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True:
             raise CodexRpcError('Only owned Codex chats can send')
         with self._lock:
@@ -385,9 +645,27 @@ class CodexChatRuntime:
         if problem and not allow_problem:
             raise CodexRpcError(problem)
         if (record.provider != 'codex' or proof is None or executor is None
-                or reopening or not proof.connection.owns_runtime(proof)):
+                or (reopening and not allow_reopening) or not proof.connection.owns_runtime(proof)):
             raise CodexRpcError('Reopen this Codex chat before sending')
         return proof, executor
+
+    def selected_apps(self, native_id):
+        with self._lock:
+            proof = self._proofs.get(native_id)
+            return proof.apps if proof is not None else ()
+
+    def session_tool_owner(self, caller):
+        with self._lock:
+            return next((p.native_id for p in self._proofs.values()
+                if p.session_tool_caller == caller and p.connection.owns_runtime(p)), None)
+
+    def tools_context(self, native_id):
+        with self._lock:
+            proof = self._proofs.get(native_id)
+        if proof is None or not proof.connection.owns_runtime(proof):
+            from .codex_features import CodexFeatureError
+            raise CodexFeatureError('unavailable')
+        return proof.connection, proof.allowed_tools
 
     def known(self, native_id):
         with self._lock:
@@ -417,6 +695,11 @@ class CodexChatRuntime:
     def send(self, record, text):
         if not isinstance(text, str) or not text.strip() or len(text) > 32000:
             raise ValueError('Enter a message of at most 32000 characters')
+        from .codex_input import input_items
+        try:
+            input_items(text)
+        except (ValueError, OSError):
+            raise CodexTurnRejected('input_unavailable') from None
         proof, executor = self._context(record)
         native_id = proof.native_id
         with self._lock:
@@ -445,13 +728,63 @@ class CodexChatRuntime:
             self._start(proof, executor, text)
         return queued
 
+    @staticmethod
+    def _codex_default(connection, cwd):
+        """The model and effort a new chat in ``cwd`` would get with none
+        chosen: the model in the user's Codex settings, else the one Codex's
+        catalog marks as its default; the effort set in their settings if
+        that model takes it, else the model's own default."""
+        from .codex_models import read_models
+        config = connection.request('config/read', {'cwd': cwd}).get('config')
+        config = config if isinstance(config, dict) else {}
+        models = read_models(connection)
+        named = config.get('model')
+        model = named if isinstance(named, str) and named.strip() else next(
+            (m.model for m in models if m.is_default), None)
+        if model is None:
+            return None, None
+        choice = next((m for m in models if m.model == model), None)
+        effort = config.get('model_reasoning_effort')
+        if choice is not None and effort not in choice.efforts:
+            effort = choice.default_effort
+        return model, effort if isinstance(effort, str) and effort.strip() else None
+
+    def _follow_default(self, proof):
+        """A chat on Codex's default goes to whatever that is now before each
+        turn, not the model it had when it started (#596, decision 19). Each
+        turn pins its model, so the change needs no new thread. If the default
+        can't be read, the turn goes on the model it has: never a refusal."""
+        if proof.saved_model is not None:
+            return proof
+        try:
+            model, effort = self._codex_default(proof.connection, proof.cwd)
+        except Exception as error:  # noqa: BLE001 - a lookup, never a reason not to send
+            record_failure(error)
+            return proof
+        # The same model keeps the effort Codex gave it; a new one takes the
+        # effort Codex would give it in a new chat.
+        if model is None or model == proof.model:
+            return proof
+        followed = replace(proof, model=model, effort=effort)
+        with self._lock:
+            # Not once Stop has come in: it holds this proof, and the turn
+            # it stops goes on the model it had.
+            if (self._proofs.get(proof.native_id) is not proof or not proof.connection.owns_runtime(proof)
+                    or proof.native_id in self._stopping):
+                return proof
+            proof.connection._accept_owned_thread(followed)
+            self._proofs[proof.native_id] = followed
+        return followed
+
     def _start(self, proof, executor, text, *, automatic=False):
         native_id = proof.native_id
         self._notify(native_id)
         rejected = False
+        proof = self._follow_default(proof)
         try:
             executor.start(proof, text)
             with self._lock:
+                self._settings_pending.discard(native_id)
                 stopping = native_id in self._stopping
             if stopping:
                 executor.interrupt(proof)
@@ -588,8 +921,15 @@ class CodexChatRuntime:
         # prevent interrupting a turn whose identity is already verified.
         proof, executor = self._context(record, allow_problem=True)
         with self._lock:
-            if proof.native_id in self._reopening or self._proofs.get(proof.native_id) is not proof:
+            # A turn about to start may have just moved this chat to Codex's
+            # current default (_follow_default): the same chat on the same
+            # connection, so Stop goes on with that proof. Anything else
+            # (another connection, a reopen) still has to be reopened.
+            current = self._proofs.get(proof.native_id)
+            if (proof.native_id in self._reopening or current is None
+                    or current.connection is not proof.connection):
                 raise CodexRpcError('Reopen this Codex chat before stopping')
+            proof = current
             repeated = proof.native_id in self._stopping and proof.native_id not in self._sending
             self._stops[proof.native_id] = self._stops.get(proof.native_id, 0) + 1
             pending = self._pending_dispatch.pop(proof.native_id, None)
@@ -842,7 +1182,9 @@ class CodexChatRuntime:
         return CodexChatState(native_id, status, state.turn_id, state.status,
                               state.replies, requests, queued, tuple(unsent), problem, state.file_changes,
                               state.started_at, state.activity, state.notice, state.token_usage, state.context_epoch, state.tasks, state.plan_received,
-                              permission_notices, getattr(state, 'changed_paths', ()), steering)
+                              permission_notices, getattr(state, 'changed_paths', ()), steering,
+                              getattr(state, 'compaction', False), proof.unavailable_mode == 'plan', getattr(state, 'retry', ''), getattr(state, 'reasoning', ()),
+                              tools_started=state.tools_started, edits_made=state.edits_made, model=proof.model)
 
     def _notify(self, native_id, *, unsent=()):
         if not self._stop.is_set():
@@ -880,12 +1222,27 @@ class CodexChatRuntime:
     def _save_for_later(self, native_id, state):
         # A kept approval's notice is named by Codex's request id, a number,
         # not a review's text. Raising here ended the listener and hung the turn.
-        reviews = tuple(row for row in state.permission_notices
-                        if str(row[1]).startswith('auto-review:'))
-        if reviews and self._saved_reviews.get(native_id) != reviews:
+        # Saved-rule approvals are kept too, under a "saved-rule:" name, so
+        # Lists, Approvals has them after a restart (#564). Each row keeps
+        # its own turn: saved-rule notices span the chat's turns.
+        from ..approvals import history_identity
+        # The history file refuses an empty field, and one bad row would
+        # make the whole file unreadable, so only whole rows are kept.
+        reviews = tuple((str(row[0]), history_identity(row[1]), row[2])
+                        for row in state.permission_notices
+                        if row[0] and isinstance(row[2], str) and row[2] and len(row[2]) <= 10000)
+        # Only rows this run hasn't written yet: passing them all again
+        # would add back rows the file had trimmed, out of order, and
+        # rewrite it on every change. Written as they arrive, the file
+        # stays in the order things happened (#564 review).
+        written = self._saved_reviews.setdefault(native_id, set())
+        fresh = [row for row in reviews if row[:2] not in written]
+        if fresh:
             try:
-                self.review_store.remember(native_id, state.turn_id, [(row[1], row[2]) for row in reviews])
-                self._saved_reviews[native_id] = reviews
+                for turn in dict.fromkeys(row[0] for row in fresh):
+                    self.review_store.remember(native_id, turn,
+                                               [(row[1], row[2]) for row in fresh if row[0] == turn])
+                written.update(row[:2] for row in fresh)
             except (OSError, ValueError):
                 pass  # Never interrupt execution to save display history.
         if state.plan_received:

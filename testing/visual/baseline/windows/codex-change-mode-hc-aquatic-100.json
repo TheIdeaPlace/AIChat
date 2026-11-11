@@ -3,11 +3,11 @@
  "class": "SingleChoiceDialog",
  "size": [
   596,
-  394
+  409
  ],
  "client": [
   580,
-  355
+  370
  ],
  "dpi": [
   96,
@@ -232,11 +232,11 @@
     17,
     238,
     550,
-    64
+    79
    ],
    "best": [
-    325,
-    64
+    359,
+    79
    ],
    "depth": 0,
    "parent": -1,
@@ -246,7 +246,8 @@
     "Read-only; asks before allowing changes",
     "Can edit files in this folder; asks before anything else",
     "Read-only; automatic approval review",
-    "Can edit files in this folder; automatic approval review"
+    "Can edit files in this folder; automatic approval review (now)",
+    "Plan: discuss and produce a plan first, keeping its file access"
    ],
    "selection": 3
   },
@@ -256,7 +257,7 @@
    "label": "OK",
    "rect": [
     408,
-    322,
+    337,
     75,
     23
    ],
@@ -275,7 +276,7 @@
    "label": "Cancel",
    "rect": [
     491,
-    322,
+    337,
     75,
     23
    ],
@@ -294,7 +295,7 @@
    "label": "",
    "rect": [
     11,
-    311,
+    326,
     560,
     2
    ],

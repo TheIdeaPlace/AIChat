@@ -21,20 +21,6 @@
   720
  ],
  "surfaces": {
-  "main-compacted": {
-   "kind": "window",
-   "png": "main-compacted-hc-aquatic-100.png",
-   "json": "main-compacted-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Compaction and command output remain visible with tool activity off."
-  },
   "main-start": {
    "kind": "window",
    "png": "main-start-hc-aquatic-100.png",
@@ -63,20 +49,6 @@
    "problems": [],
    "about": "An own session loaded: messages and the reply box"
   },
-  "main-agents": {
-   "kind": "window",
-   "png": "main-agents-hc-aquatic-100.png",
-   "json": "main-agents-hc-aquatic-100.json",
-   "title": "Uploader fix — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "An agent conversation loaded: both agents' messages, and a reply waiting to be handed on"
-  },
   "main-own-working": {
    "kind": "window",
    "png": "main-own-working-hc-aquatic-100.png",
@@ -90,20 +62,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An own session mid-turn, one more message queued and a draft typed"
-  },
-  "main-own-steering": {
-   "kind": "window",
-   "png": "main-own-steering-hc-aquatic-100.png",
-   "json": "main-own-steering-hc-aquatic-100.json",
-   "title": "Visual probe — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "An own session mid-turn with a steered message not yet taken in"
   },
   "main-attachments": {
    "kind": "window",
@@ -132,202 +90,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "A desktop app session loaded: the read-only panel instead of a reply box"
-  },
-  "main-kept": {
-   "kind": "window",
-   "png": "main-kept-hc-aquatic-100.png",
-   "json": "main-kept-hc-aquatic-100.json",
-   "title": "Fix the flaky upload test — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Kept Claude history after its original transcript is removed: read-only"
-  },
-  "main-codex": {
-   "kind": "window",
-   "png": "main-codex-hc-aquatic-100.png",
-   "json": "main-codex-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Synthetic Codex history in the shared window: read-only controls and Codex labels"
-  },
-  "main-codex-owned": {
-   "kind": "window",
-   "png": "main-codex-owned-hc-aquatic-100.png",
-   "json": "main-codex-owned-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Owned Codex chat with send/stop controls, queued text and a draft"
-  },
-  "main-codex-interrupted": {
-   "kind": "window",
-   "png": "main-codex-interrupted-hc-aquatic-100.png",
-   "json": "main-codex-interrupted-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Interrupted Codex chat with a safe reason and explicit Stop recovery"
-  },
-  "main-codex-request-declined": {
-   "kind": "window",
-   "png": "main-codex-request-declined-hc-aquatic-100.png",
-   "json": "main-codex-request-declined-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Working Codex chat after an unsupported request was safely declined"
-  },
-  "main-codex-context": {
-   "kind": "window",
-   "png": "main-codex-context-hc-aquatic-100.png",
-   "json": "main-codex-context-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Owned Codex chat with reported live context and a queued warning"
-  },
-  "main-codex-filter": {
-   "kind": "window",
-   "png": "main-codex-filter-hc-aquatic-100.png",
-   "json": "main-codex-filter-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Synthetic Codex-only list with explicit Provider column"
-  },
-  "main-codex-last-message": {
-   "kind": "window",
-   "png": "main-codex-last-message-hc-aquatic-100.png",
-   "json": "main-codex-last-message-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Synthetic Codex last-message column populated through the adapter"
-  },
-  "main-codex-unavailable": {
-   "kind": "window",
-   "png": "main-codex-unavailable-hc-aquatic-100.png",
-   "json": "main-codex-unavailable-hc-aquatic-100.json",
-   "title": "Codex history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Cached synthetic Codex history with a redacted discovery outage notice"
-  },
-  "main-copilot": {
-   "kind": "window",
-   "png": "main-copilot-hc-aquatic-100.png",
-   "json": "main-copilot-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Synthetic Copilot CLI history in the shared window: read-only controls"
-  },
-  "main-copilot-owned": {
-   "kind": "window",
-   "png": "main-copilot-owned-hc-aquatic-100.png",
-   "json": "main-copilot-owned-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "A Copilot chat started here: reply box, queued message and context"
-  },
-  "main-copilot-auto": {
-   "kind": "window",
-   "png": "main-copilot-auto-hc-aquatic-100.png",
-   "json": "main-copilot-auto-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "A Copilot chat in Auto, with a program still running"
-  },
-  "main-copilot-copy": {
-   "kind": "window",
-   "png": "main-copilot-copy-hc-aquatic-100.png",
-   "json": "main-copilot-copy-hc-aquatic-100.json",
-   "title": "Copilot history preview (continued) — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "A Copilot Continue Here copy: the carried history as one row"
-  },
-  "main-copilot-filter": {
-   "kind": "window",
-   "png": "main-copilot-filter-hc-aquatic-100.png",
-   "json": "main-copilot-filter-hc-aquatic-100.json",
-   "title": "Copilot history preview — The Chat Place",
-   "class": "MainFrame",
-   "size": [
-    1000,
-    720
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Synthetic Copilot-only list with explicit Provider column"
   },
   "main-activity": {
    "kind": "window",
@@ -469,48 +231,6 @@
    "problems": [],
    "about": "Settings with no Codex installation"
   },
-  "settings-codex": {
-   "kind": "dialog",
-   "png": "settings-codex-hc-aquatic-100.png",
-   "json": "settings-codex-hc-aquatic-100.json",
-   "title": "Settings",
-   "class": "SettingsDialog",
-   "size": [
-    680,
-    843
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Settings with Codex automatically included"
-  },
-  "settings-copilot": {
-   "kind": "dialog",
-   "png": "settings-copilot-hc-aquatic-100.png",
-   "json": "settings-copilot-hc-aquatic-100.json",
-   "title": "Settings",
-   "class": "SettingsDialog",
-   "size": [
-    680,
-    883
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Settings once Copilot CLI has a session: its check box shows"
-  },
-  "settings-speech-problem": {
-   "kind": "dialog",
-   "png": "settings-speech-problem-hc-aquatic-100.png",
-   "json": "settings-speech-problem-hc-aquatic-100.json",
-   "title": "Settings",
-   "class": "SettingsDialog",
-   "size": [
-    680,
-    910
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Settings after an announcement wasn't spoken: the reason box"
-  },
   "new-session": {
    "kind": "dialog",
    "png": "new-session-hc-aquatic-100.png",
@@ -524,202 +244,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "File, New Session"
-  },
-  "codex-new": {
-   "kind": "dialog",
-   "png": "codex-new-hc-aquatic-100.png",
-   "json": "codex-new-hc-aquatic-100.json",
-   "title": "New Chat Place Session",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    635
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "New Session with Codex selected as Provider"
-  },
-  "codex-auto-review": {
-   "kind": "dialog",
-   "png": "codex-auto-review-hc-aquatic-100.png",
-   "json": "codex-auto-review-hc-aquatic-100.json",
-   "title": "New Chat Place Session",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    620
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "New Codex chat with automatic approval review selected"
-  },
-  "codex-review-history": {
-   "kind": "dialog",
-   "png": "codex-review-history-hc-aquatic-100.png",
-   "json": "codex-review-history-hc-aquatic-100.json",
-   "title": "Chat Permissions: Automatic review preview",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Automatic reviewer, boundaries and recent decisions"
-  },
-  "copilot-new": {
-   "kind": "dialog",
-   "png": "copilot-new-hc-aquatic-100.png",
-   "json": "copilot-new-hc-aquatic-100.json",
-   "title": "New Chat Place Session",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    620
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "New Session with Copilot selected as Provider"
-  },
-  "copilot-continue": {
-   "kind": "dialog",
-   "png": "copilot-continue-hc-aquatic-100.png",
-   "json": "copilot-continue-hc-aquatic-100.json",
-   "title": "Continue Here: Copilot still working",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    620
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Continue Here from a Copilot CLI chat that may still be working"
-  },
-  "new-session-copilot": {
-   "kind": "dialog",
-   "png": "new-session-copilot-hc-aquatic-100.png",
-   "json": "new-session-copilot-hc-aquatic-100.json",
-   "title": "New Chat Place Session",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    620
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "New Session for Copilot, choosing from the models it offered"
-  },
-  "copilot-permission": {
-   "kind": "dialog",
-   "png": "copilot-permission-hc-aquatic-100.png",
-   "json": "copilot-permission-hc-aquatic-100.json",
-   "title": "Copilot needs permission: Copilot preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Copilot asks to run a command, once"
-  },
-  "copilot-permission-keep": {
-   "kind": "dialog",
-   "png": "copilot-permission-keep-hc-aquatic-100.png",
-   "json": "copilot-permission-keep-hc-aquatic-100.json",
-   "title": "Copilot needs permission: Copilot preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Copilot asks to run a command it can keep for the chat"
-  },
-  "copilot-files": {
-   "kind": "dialog",
-   "png": "copilot-files-hc-aquatic-100.png",
-   "json": "copilot-files-hc-aquatic-100.json",
-   "title": "Copilot needs permission: Copilot preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Copilot asks to create a file, with its diff"
-  },
-  "codex-change-mode": {
-   "kind": "dialog",
-   "png": "codex-change-mode-hc-aquatic-100.png",
-   "json": "codex-change-mode-hc-aquatic-100.json",
-   "title": "Change Permission Mode",
-   "class": "SingleChoiceDialog",
-   "size": [
-    596,
-    394
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Change permissions for an owned Codex chat"
-  },
-  "copilot-change-mode": {
-   "kind": "dialog",
-   "png": "copilot-change-mode-hc-aquatic-100.png",
-   "json": "copilot-change-mode-hc-aquatic-100.json",
-   "title": "Change Permission Mode",
-   "class": "SingleChoiceDialog",
-   "size": [
-    647,
-    189
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Change Permission Mode for an owned Copilot chat in plan mode"
-  },
-  "properties-codex-owned": {
-   "kind": "dialog",
-   "png": "properties-codex-owned-hc-aquatic-100.png",
-   "json": "properties-codex-owned-hc-aquatic-100.json",
-   "title": "Properties of Codex policy preview",
-   "class": "PropertiesDialog",
-   "size": [
-    640,
-    360
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Verified owned Codex model and filesystem scope"
-  },
-  "codex-models": {
-   "kind": "dialog",
-   "png": "codex-models-hc-aquatic-100.png",
-   "json": "codex-models-hc-aquatic-100.json",
-   "title": "New Chat Place Session",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    635
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "New Codex chat with advertised model and effort choices"
-  },
-  "codex-continue": {
-   "kind": "dialog",
-   "png": "codex-continue-hc-aquatic-100.png",
-   "json": "codex-continue-hc-aquatic-100.json",
-   "title": "Continue Here: Codex still working",
-   "class": "NewSessionDialog",
-   "size": [
-    680,
-    620
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Continue a possibly active Codex chat with explicit runtime policy"
   },
   "github-repos": {
    "kind": "dialog",
@@ -777,146 +301,6 @@
    "problems": [],
    "about": "Claude asks permission to run a command"
   },
-  "codex-permission": {
-   "kind": "dialog",
-   "png": "codex-permission-hc-aquatic-100.png",
-   "json": "codex-permission-hc-aquatic-100.json",
-   "title": "Codex needs permission: Codex preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex asks for one-time command permission"
-  },
-  "codex-permission-kept": {
-   "kind": "dialog",
-   "png": "codex-permission-kept-hc-aquatic-100.png",
-   "json": "codex-permission-kept-hc-aquatic-100.json",
-   "title": "Codex needs permission: Codex preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Remember a Codex command for this TCP chat"
-  },
-  "chat-permissions-codex-kept": {
-   "kind": "dialog",
-   "png": "chat-permissions-codex-kept-hc-aquatic-100.png",
-   "json": "chat-permissions-codex-kept-hc-aquatic-100.json",
-   "title": "Chat Permissions: Codex preview",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Review and remove TCP-kept Codex approvals"
-  },
-  "chat-permissions-copilot-moved": {
-   "kind": "dialog",
-   "png": "chat-permissions-copilot-moved-hc-aquatic-100.png",
-   "json": "chat-permissions-copilot-moved-hc-aquatic-100.json",
-   "title": "Chat Permissions: Copilot preview",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Chat Permissions: commands ask until Restart Copilot"
-  },
-  "chat-permissions-copilot": {
-   "kind": "dialog",
-   "png": "chat-permissions-copilot-hc-aquatic-100.png",
-   "json": "chat-permissions-copilot-hc-aquatic-100.json",
-   "title": "Chat Permissions: Copilot preview",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Chat Permissions: a Copilot chat in Auto, with commands kept"
-  },
-  "chat-permissions": {
-   "kind": "dialog",
-   "png": "chat-permissions-hc-aquatic-100.png",
-   "json": "chat-permissions-hc-aquatic-100.json",
-   "title": "Chat Permissions: Visual probe",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "File, Chat Permissions: a Claude chat's kept rules"
-  },
-  "chat-permissions-empty": {
-   "kind": "dialog",
-   "png": "chat-permissions-empty-hc-aquatic-100.png",
-   "json": "chat-permissions-empty-hc-aquatic-100.json",
-   "title": "Chat Permissions: Visual probe",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "File, Chat Permissions with nothing kept"
-  },
-  "chat-permissions-codex": {
-   "kind": "dialog",
-   "png": "chat-permissions-codex-hc-aquatic-100.png",
-   "json": "chat-permissions-codex-hc-aquatic-100.json",
-   "title": "Chat Permissions: Codex preview",
-   "class": "ChatPermissionsDialog",
-   "size": [
-    680,
-    520
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
-  },
-  "codex-files": {
-   "kind": "dialog",
-   "png": "codex-files-hc-aquatic-100.png",
-   "json": "codex-files-hc-aquatic-100.json",
-   "title": "Codex needs permission: Codex preview",
-   "class": "CodexPermissionDialog",
-   "size": [
-    700,
-    540
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex file changes to review before allowing"
-  },
-  "codex-question": {
-   "kind": "dialog",
-   "png": "codex-question-hc-aquatic-100.png",
-   "json": "codex-question-hc-aquatic-100.json",
-   "title": "Codex asks: Codex preview",
-   "class": "QuestionDialog",
-   "size": [
-    700,
-    414
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex choices and a masked secret answer"
-  },
   "question": {
    "kind": "dialog",
    "png": "question-hc-aquatic-100.png",
@@ -925,25 +309,11 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    537
+    591
    ],
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks questions (one choice and several choices)"
-  },
-  "question-preview": {
-   "kind": "dialog",
-   "png": "question-preview-hc-aquatic-100.png",
-   "json": "question-preview-hc-aquatic-100.json",
-   "title": "Claude asks: Visual probe",
-   "class": "QuestionDialog",
-   "size": [
-    700,
-    555
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Claude asks about text it wrote just before, with an option's preview"
   },
   "plan": {
    "kind": "dialog",
@@ -1057,132 +427,6 @@
    "problems": [],
    "about": "View, Lists: Changed Files"
   },
-  "lists-codex-files": {
-   "kind": "dialog",
-   "png": "lists-codex-files-hc-aquatic-100.png",
-   "json": "lists-codex-files-hc-aquatic-100.json",
-   "title": "Lists: Codex history preview",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex Changed Files: updates, additions, deletions and renames"
-  },
-  "lists-codex-deleted-file": {
-   "kind": "dialog",
-   "png": "lists-codex-deleted-file-hc-aquatic-100.png",
-   "json": "lists-codex-deleted-file-hc-aquatic-100.json",
-   "title": "Lists: Codex history preview",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex Changed Files: a deleted file's old line range"
-  },
-  "lists-commands": {
-   "kind": "dialog",
-   "png": "lists-commands-hc-aquatic-100.png",
-   "json": "lists-commands-hc-aquatic-100.json",
-   "title": "Lists: Fix the flaky upload test",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Lists: Commands"
-  },
-  "lists-decisions": {
-   "kind": "dialog",
-   "png": "lists-decisions-hc-aquatic-100.png",
-   "json": "lists-decisions-hc-aquatic-100.json",
-   "title": "Lists: Fix the flaky upload test",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Lists: Decisions"
-  },
-  "lists-tasks": {
-   "kind": "dialog",
-   "png": "lists-tasks-hc-aquatic-100.png",
-   "json": "lists-tasks-hc-aquatic-100.json",
-   "title": "Lists: Fix the flaky upload test",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Tasks: Claude's task list"
-  },
-  "lists-codex-tasks": {
-   "kind": "dialog",
-   "png": "lists-codex-tasks-hc-aquatic-100.png",
-   "json": "lists-codex-tasks-hc-aquatic-100.json",
-   "title": "Lists: Codex history preview",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Tasks: Codex's live plan"
-  },
-  "lists-codex-no-tasks": {
-   "kind": "dialog",
-   "png": "lists-codex-no-tasks-hc-aquatic-100.png",
-   "json": "lists-codex-no-tasks-hc-aquatic-100.json",
-   "title": "Lists: Codex history preview",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Tasks: no task list from an external Codex chat"
-  },
-  "lists-codex-owned-no-tasks": {
-   "kind": "dialog",
-   "png": "lists-codex-owned-no-tasks-hc-aquatic-100.png",
-   "json": "lists-codex-owned-no-tasks-hc-aquatic-100.json",
-   "title": "Lists: Codex history preview",
-   "class": "ListsDialog",
-   "size": [
-    820,
-    660
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Tasks: owned Codex chat with no tasks"
-  },
-  "properties-codex-tasks": {
-   "kind": "dialog",
-   "png": "properties-codex-tasks-hc-aquatic-100.png",
-   "json": "properties-codex-tasks-hc-aquatic-100.json",
-   "title": "Properties of Codex history preview",
-   "class": "PropertiesDialog",
-   "size": [
-    640,
-    360
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex Properties with live task progress"
-  },
   "usage": {
    "kind": "dialog",
    "png": "usage-hc-aquatic-100.png",
@@ -1196,34 +440,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Usage and Context"
-  },
-  "usage-codex": {
-   "kind": "dialog",
-   "png": "usage-codex-hc-aquatic-100.png",
-   "json": "usage-codex-hc-aquatic-100.json",
-   "title": "Usage and Context",
-   "class": "UsageDialog",
-   "size": [
-    640,
-    360
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Codex account usage and reset reports"
-  },
-  "usage-copilot": {
-   "kind": "dialog",
-   "png": "usage-copilot-hc-aquatic-100.png",
-   "json": "usage-copilot-hc-aquatic-100.json",
-   "title": "Usage and Context",
-   "class": "UsageDialog",
-   "size": [
-    640,
-    360
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Copilot account allowances and reset reports"
   },
   "properties": {
    "kind": "dialog",
@@ -1239,20 +455,6 @@
    "problems": [],
    "about": "View, Properties of a session"
   },
-  "properties-codex": {
-   "kind": "dialog",
-   "png": "properties-codex-hc-aquatic-100.png",
-   "json": "properties-codex-hc-aquatic-100.json",
-   "title": "Properties of Codex history preview",
-   "class": "PropertiesDialog",
-   "size": [
-    640,
-    360
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "Properties of a synthetic Codex chat with provider-specific history labels"
-  },
   "about-you": {
    "kind": "dialog",
    "png": "about-you-hc-aquatic-100.png",
@@ -1266,20 +468,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, What AI Knows About You: Claude"
-  },
-  "about-you-codex": {
-   "kind": "dialog",
-   "png": "about-you-codex-hc-aquatic-100.png",
-   "json": "about-you-codex-hc-aquatic-100.json",
-   "title": "What AI Knows About You",
-   "class": "AboutYouDialog",
-   "size": [
-    860,
-    700
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "What AI Knows About You: Codex"
   },
   "session-columns": {
    "kind": "dialog",
@@ -1323,6 +511,1042 @@
    "problems": [],
    "about": "Editing a saved prompt"
   },
+  "rename": {
+   "kind": "dialog",
+   "png": "rename-hc-aquatic-100.png",
+   "json": "rename-hc-aquatic-100.json",
+   "title": "Rename Session",
+   "class": "TextEntryDialog",
+   "size": [
+    346,
+    153
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Rename Session (wx's own text entry dialog)"
+  },
+  "main-empty": {
+   "kind": "window",
+   "png": "main-empty-hc-aquatic-100.png",
+   "json": "main-empty-hc-aquatic-100.json",
+   "title": "The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Main window with no sessions at all (a first run)"
+  },
+  "main-compacted": {
+   "kind": "window",
+   "png": "main-compacted-hc-aquatic-100.png",
+   "json": "main-compacted-hc-aquatic-100.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Compaction and command output remain visible with tool activity off."
+  },
+  "settings-codex": {
+   "kind": "dialog",
+   "png": "settings-codex-hc-aquatic-100.png",
+   "json": "settings-codex-hc-aquatic-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    843
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings with Codex automatically included"
+  },
+  "codex-new": {
+   "kind": "dialog",
+   "png": "codex-new-hc-aquatic-100.png",
+   "json": "codex-new-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    697
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session with Codex selected as Provider"
+  },
+  "codex-models": {
+   "kind": "dialog",
+   "png": "codex-models-hc-aquatic-100.png",
+   "json": "codex-models-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    697
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Codex chat with advertised model and effort choices"
+  },
+  "codex-change-mode": {
+   "kind": "dialog",
+   "png": "codex-change-mode-hc-aquatic-100.png",
+   "json": "codex-change-mode-hc-aquatic-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    596,
+    409
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change permissions for an owned Codex chat"
+  },
+  "codex-continue": {
+   "kind": "dialog",
+   "png": "codex-continue-hc-aquatic-100.png",
+   "json": "codex-continue-hc-aquatic-100.json",
+   "title": "Continue Here: Codex still working",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Continue a possibly active Codex chat with explicit runtime policy"
+  },
+  "codex-permission": {
+   "kind": "dialog",
+   "png": "codex-permission-hc-aquatic-100.png",
+   "json": "codex-permission-hc-aquatic-100.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex asks for one-time command permission"
+  },
+  "codex-files": {
+   "kind": "dialog",
+   "png": "codex-files-hc-aquatic-100.png",
+   "json": "codex-files-hc-aquatic-100.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex file changes to review before allowing"
+  },
+  "codex-question": {
+   "kind": "dialog",
+   "png": "codex-question-hc-aquatic-100.png",
+   "json": "codex-question-hc-aquatic-100.json",
+   "title": "Codex asks: Codex preview",
+   "class": "QuestionDialog",
+   "size": [
+    700,
+    414
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex choices and a masked secret answer"
+  },
+  "usage-codex": {
+   "kind": "dialog",
+   "png": "usage-codex-hc-aquatic-100.png",
+   "json": "usage-codex-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex account usage and reset reports"
+  },
+  "properties-codex-owned": {
+   "kind": "dialog",
+   "png": "properties-codex-owned-hc-aquatic-100.png",
+   "json": "properties-codex-owned-hc-aquatic-100.json",
+   "title": "Properties of Codex policy preview",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Verified owned Codex model and filesystem scope"
+  },
+  "lists-commands": {
+   "kind": "dialog",
+   "png": "lists-commands-hc-aquatic-100.png",
+   "json": "lists-commands-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Commands"
+  },
+  "lists-decisions": {
+   "kind": "dialog",
+   "png": "lists-decisions-hc-aquatic-100.png",
+   "json": "lists-decisions-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Decisions"
+  },
+  "main-codex": {
+   "kind": "window",
+   "png": "main-codex-hc-aquatic-100.png",
+   "json": "main-codex-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex history in the shared window: read-only controls and Codex labels"
+  },
+  "main-codex-owned": {
+   "kind": "window",
+   "png": "main-codex-owned-hc-aquatic-100.png",
+   "json": "main-codex-owned-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Owned Codex chat with send/stop controls, queued text and a draft"
+  },
+  "main-codex-interrupted": {
+   "kind": "window",
+   "png": "main-codex-interrupted-hc-aquatic-100.png",
+   "json": "main-codex-interrupted-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Interrupted Codex chat with a safe reason and explicit Stop recovery"
+  },
+  "main-codex-request-declined": {
+   "kind": "window",
+   "png": "main-codex-request-declined-hc-aquatic-100.png",
+   "json": "main-codex-request-declined-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Working Codex chat after an unsupported request was safely declined"
+  },
+  "main-codex-context": {
+   "kind": "window",
+   "png": "main-codex-context-hc-aquatic-100.png",
+   "json": "main-codex-context-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Owned Codex chat with reported live context and a queued warning"
+  },
+  "main-codex-filter": {
+   "kind": "window",
+   "png": "main-codex-filter-hc-aquatic-100.png",
+   "json": "main-codex-filter-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex-only list with explicit Provider column"
+  },
+  "main-codex-last-message": {
+   "kind": "window",
+   "png": "main-codex-last-message-hc-aquatic-100.png",
+   "json": "main-codex-last-message-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Codex last-message column populated through the adapter"
+  },
+  "main-codex-unavailable": {
+   "kind": "window",
+   "png": "main-codex-unavailable-hc-aquatic-100.png",
+   "json": "main-codex-unavailable-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Cached synthetic Codex history with a redacted discovery outage notice"
+  },
+  "properties-codex": {
+   "kind": "dialog",
+   "png": "properties-codex-hc-aquatic-100.png",
+   "json": "properties-codex-hc-aquatic-100.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Properties of a synthetic Codex chat with provider-specific history labels"
+  },
+  "lists-tasks": {
+   "kind": "dialog",
+   "png": "lists-tasks-hc-aquatic-100.png",
+   "json": "lists-tasks-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Claude's task list"
+  },
+  "lists-codex-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-tasks-hc-aquatic-100.png",
+   "json": "lists-codex-tasks-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: Codex's live plan"
+  },
+  "lists-codex-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-no-tasks-hc-aquatic-100.png",
+   "json": "lists-codex-no-tasks-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: no task list from an external Codex chat"
+  },
+  "properties-codex-tasks": {
+   "kind": "dialog",
+   "png": "properties-codex-tasks-hc-aquatic-100.png",
+   "json": "properties-codex-tasks-hc-aquatic-100.json",
+   "title": "Properties of Codex history preview",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Properties with live task progress"
+  },
+  "lists-codex-owned-no-tasks": {
+   "kind": "dialog",
+   "png": "lists-codex-owned-no-tasks-hc-aquatic-100.png",
+   "json": "lists-codex-owned-no-tasks-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Tasks: owned Codex chat with no tasks"
+  },
+  "chat-permissions": {
+   "kind": "dialog",
+   "png": "chat-permissions-hc-aquatic-100.png",
+   "json": "chat-permissions-hc-aquatic-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Claude chat's kept rules"
+  },
+  "chat-permissions-empty": {
+   "kind": "dialog",
+   "png": "chat-permissions-empty-hc-aquatic-100.png",
+   "json": "chat-permissions-empty-hc-aquatic-100.json",
+   "title": "Chat Permissions: Visual probe",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions with nothing kept"
+  },
+  "chat-permissions-codex": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-hc-aquatic-100.png",
+   "json": "chat-permissions-codex-hc-aquatic-100.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
+  },
+  "codex-permission-kept": {
+   "kind": "dialog",
+   "png": "codex-permission-kept-hc-aquatic-100.png",
+   "json": "codex-permission-kept-hc-aquatic-100.json",
+   "title": "Codex needs permission: Codex preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Remember a Codex command for this TCP chat"
+  },
+  "chat-permissions-codex-kept": {
+   "kind": "dialog",
+   "png": "chat-permissions-codex-kept-hc-aquatic-100.png",
+   "json": "chat-permissions-codex-kept-hc-aquatic-100.json",
+   "title": "Chat Permissions: Codex preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Review and remove TCP-kept Codex approvals"
+  },
+  "relay": {
+   "kind": "dialog",
+   "png": "relay-hc-aquatic-100.png",
+   "json": "relay-hc-aquatic-100.json",
+   "title": "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)",
+   "class": "RelayDialog",
+   "size": [
+    700,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Send Reply to Another Chat: a Codex reply going to a Claude chat"
+  },
+  "main-agents": {
+   "kind": "window",
+   "png": "main-agents-hc-aquatic-100.png",
+   "json": "main-agents-hc-aquatic-100.json",
+   "title": "Uploader fix — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An agent conversation loaded: both agents' messages, and a reply waiting to be handed on"
+  },
+  "agent-new": {
+   "kind": "dialog",
+   "png": "agent-new-hc-aquatic-100.png",
+   "json": "agent-new-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, New Agent Conversation: a new Claude chat and a new Codex chat"
+  },
+  "agent-hand-off": {
+   "kind": "dialog",
+   "png": "agent-hand-off-hc-aquatic-100.png",
+   "json": "agent-hand-off-hc-aquatic-100.json",
+   "title": "Hand Off: Uploader fix",
+   "class": "RelayDialog",
+   "size": [
+    700,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An agent conversation's hand-off (Ctrl+Shift+E): a reply going to the other agent"
+  },
+  "agent-new-three": {
+   "kind": "dialog",
+   "png": "agent-new-three-hc-aquatic-100.png",
+   "json": "agent-new-three-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with the Builder and reviewer template and a third agent"
+  },
+  "settings-copilot": {
+   "kind": "dialog",
+   "png": "settings-copilot-hc-aquatic-100.png",
+   "json": "settings-copilot-hc-aquatic-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    883
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings once Copilot CLI has a session: its check box shows"
+  },
+  "main-copilot": {
+   "kind": "window",
+   "png": "main-copilot-hc-aquatic-100.png",
+   "json": "main-copilot-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot CLI history in the shared window: read-only controls"
+  },
+  "main-copilot-filter": {
+   "kind": "window",
+   "png": "main-copilot-filter-hc-aquatic-100.png",
+   "json": "main-copilot-filter-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Synthetic Copilot-only list with explicit Provider column"
+  },
+  "about-you-codex": {
+   "kind": "dialog",
+   "png": "about-you-codex-hc-aquatic-100.png",
+   "json": "about-you-codex-hc-aquatic-100.json",
+   "title": "What AI Knows About You",
+   "class": "AboutYouDialog",
+   "size": [
+    860,
+    700
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "What AI Knows About You: Codex"
+  },
+  "codex-review-history": {
+   "kind": "dialog",
+   "png": "codex-review-history-hc-aquatic-100.png",
+   "json": "codex-review-history-hc-aquatic-100.json",
+   "title": "Chat Permissions: Automatic review preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Automatic reviewer, boundaries and recent decisions"
+  },
+  "codex-auto-review": {
+   "kind": "dialog",
+   "png": "codex-auto-review-hc-aquatic-100.png",
+   "json": "codex-auto-review-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    666
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Codex chat with automatic approval review selected"
+  },
+  "copilot-new": {
+   "kind": "dialog",
+   "png": "copilot-new-hc-aquatic-100.png",
+   "json": "copilot-new-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    651
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session with Copilot selected as Provider"
+  },
+  "copilot-permission": {
+   "kind": "dialog",
+   "png": "copilot-permission-hc-aquatic-100.png",
+   "json": "copilot-permission-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command, once"
+  },
+  "copilot-files": {
+   "kind": "dialog",
+   "png": "copilot-files-hc-aquatic-100.png",
+   "json": "copilot-files-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to create a file, with its diff"
+  },
+  "main-copilot-owned": {
+   "kind": "window",
+   "png": "main-copilot-owned-hc-aquatic-100.png",
+   "json": "main-copilot-owned-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat started here: reply box, queued message and context"
+  },
+  "main-own-steering": {
+   "kind": "window",
+   "png": "main-own-steering-hc-aquatic-100.png",
+   "json": "main-own-steering-hc-aquatic-100.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An own session mid-turn with a steered message not yet taken in"
+  },
+  "agent-new-auto-review": {
+   "kind": "dialog",
+   "png": "agent-new-auto-review-hc-aquatic-100.png",
+   "json": "agent-new-auto-review-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Three new Codex agents with automatic approval review selected"
+  },
+  "settings-speech-problem": {
+   "kind": "dialog",
+   "png": "settings-speech-problem-hc-aquatic-100.png",
+   "json": "settings-speech-problem-hc-aquatic-100.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    680,
+    910
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings after an announcement wasn't spoken: the reason box"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-hc-aquatic-100.png",
+   "json": "lists-codex-files-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-hc-aquatic-100.png",
+   "json": "lists-codex-deleted-file-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
+  },
+  "agent-new-copilot": {
+   "kind": "dialog",
+   "png": "agent-new-copilot-hc-aquatic-100.png",
+   "json": "agent-new-copilot-hc-aquatic-100.json",
+   "title": "New Agent Conversation",
+   "class": "AgentConversationDialog",
+   "size": [
+    720,
+    760
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Agent Conversation with a new Claude chat and a new Copilot chat"
+  },
+  "question-preview": {
+   "kind": "dialog",
+   "png": "question-preview-hc-aquatic-100.png",
+   "json": "question-preview-hc-aquatic-100.json",
+   "title": "Claude asks: Visual probe",
+   "class": "QuestionDialog",
+   "size": [
+    700,
+    582
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "new-session-copilot": {
+   "kind": "dialog",
+   "png": "new-session-copilot-hc-aquatic-100.png",
+   "json": "new-session-copilot-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    651
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session for Copilot, choosing from the models it offered"
+  },
+  "copilot-continue": {
+   "kind": "dialog",
+   "png": "copilot-continue-hc-aquatic-100.png",
+   "json": "copilot-continue-hc-aquatic-100.json",
+   "title": "Continue Here: Copilot still working",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Continue Here from a Copilot CLI chat that may still be working"
+  },
+  "main-copilot-copy": {
+   "kind": "window",
+   "png": "main-copilot-copy-hc-aquatic-100.png",
+   "json": "main-copilot-copy-hc-aquatic-100.json",
+   "title": "Copilot history preview (continued) — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot Continue Here copy: the carried history as one row"
+  },
+  "copilot-change-mode": {
+   "kind": "dialog",
+   "png": "copilot-change-mode-hc-aquatic-100.png",
+   "json": "copilot-change-mode-hc-aquatic-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    647,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Copilot chat in plan mode"
+  },
+  "main-kept": {
+   "kind": "window",
+   "png": "main-kept-hc-aquatic-100.png",
+   "json": "main-kept-hc-aquatic-100.json",
+   "title": "Fix the flaky upload test — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Kept Claude history after its original transcript is removed: read-only"
+  },
+  "codex-aside": {
+   "kind": "dialog",
+   "png": "codex-aside-hc-aquatic-100.png",
+   "json": "codex-aside-hc-aquatic-100.json",
+   "title": "Ask Aside about Visual probe",
+   "class": "AskAsideDialog",
+   "size": [
+    680,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Ask Aside using the shared question history"
+  },
+  "codex-tools": {
+   "kind": "dialog",
+   "png": "codex-tools-hc-aquatic-100.png",
+   "json": "codex-tools-hc-aquatic-100.json",
+   "title": "Connected Tools: Codex review",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex MCP selection through explicitly authorised copies"
+  },
+  "codex-commands": {
+   "kind": "dialog",
+   "png": "codex-commands-hc-aquatic-100.png",
+   "json": "codex-commands-hc-aquatic-100.json",
+   "title": "Insert Command or Skill",
+   "class": "CommandPickerDialog",
+   "size": [
+    720,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex commands and explicit skills"
+  },
+  "codex-collaboration": {
+   "kind": "dialog",
+   "png": "codex-collaboration-hc-aquatic-100.png",
+   "json": "codex-collaboration-hc-aquatic-100.json",
+   "title": "Plan Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    374,
+    189
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Choose Codex Plan or Default mode"
+  },
+  "codex-rewind": {
+   "kind": "dialog",
+   "png": "codex-rewind-hc-aquatic-100.png",
+   "json": "codex-rewind-hc-aquatic-100.json",
+   "title": "Retry Codex review from before your message: Review the parser before editing it.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Retry from Here with files left unchanged"
+  },
+  "codex-attachments": {
+   "kind": "window",
+   "png": "codex-attachments-hc-aquatic-100.png",
+   "json": "codex-attachments-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex reply with image and document attachments"
+  },
+  "connected-tools": {
+   "kind": "dialog",
+   "png": "connected-tools-hc-aquatic-100.png",
+   "json": "connected-tools-hc-aquatic-100.json",
+   "title": "Connected Tools: Visual probe",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Connected Tools: a Claude chat's MCP servers and connectors"
+  },
+  "ask-aside": {
+   "kind": "dialog",
+   "png": "ask-aside-hc-aquatic-100.png",
+   "json": "ask-aside-hc-aquatic-100.json",
+   "title": "Ask Aside about Visual probe",
+   "class": "AskAsideDialog",
+   "size": [
+    680,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Ask Aside: questions about a chat, one answered"
+  },
+  "main-copilot-auto": {
+   "kind": "window",
+   "png": "main-copilot-auto-hc-aquatic-100.png",
+   "json": "main-copilot-auto-hc-aquatic-100.json",
+   "title": "Copilot history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A Copilot chat in Auto, with a program still running"
+  },
+  "copilot-permission-keep": {
+   "kind": "dialog",
+   "png": "copilot-permission-keep-hc-aquatic-100.png",
+   "json": "copilot-permission-keep-hc-aquatic-100.json",
+   "title": "Copilot needs permission: Copilot preview",
+   "class": "CodexPermissionDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot asks to run a command it can keep for the chat"
+  },
+  "chat-permissions-copilot-moved": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-moved-hc-aquatic-100.png",
+   "json": "chat-permissions-copilot-moved-hc-aquatic-100.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: commands ask until Restart Copilot"
+  },
+  "chat-permissions-copilot": {
+   "kind": "dialog",
+   "png": "chat-permissions-copilot-hc-aquatic-100.png",
+   "json": "chat-permissions-copilot-hc-aquatic-100.json",
+   "title": "Chat Permissions: Copilot preview",
+   "class": "ChatPermissionsDialog",
+   "size": [
+    680,
+    520
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Chat Permissions: a Copilot chat in Auto, with commands kept"
+  },
+  "usage-copilot": {
+   "kind": "dialog",
+   "png": "usage-copilot-hc-aquatic-100.png",
+   "json": "usage-copilot-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Copilot account allowances and reset reports"
+  },
   "restore-chooser": {
    "kind": "dialog",
    "png": "restore-chooser-hc-aquatic-100.png",
@@ -1365,117 +1589,313 @@
    "problems": [],
    "about": "Backup Schedule, daily, after a failure"
   },
-  "relay": {
+  "chat-options": {
    "kind": "dialog",
-   "png": "relay-hc-aquatic-100.png",
-   "json": "relay-hc-aquatic-100.json",
-   "title": "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)",
-   "class": "RelayDialog",
+   "png": "chat-options-hc-aquatic-100.png",
+   "json": "chat-options-hc-aquatic-100.json",
+   "title": "Chat Options: Visual probe",
+   "class": "ChatOptionsDialog",
    "size": [
-    700,
+    620,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Chat Options: a Claude chat's agent, instructions, style and folders"
+  },
+  "elicitation-form": {
+   "kind": "dialog",
+   "png": "elicitation-form-hc-aquatic-100.png",
+   "json": "elicitation-form-hc-aquatic-100.json",
+   "title": "trip-planner asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    522
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool asks for input: a form"
+  },
+  "elicitation-url": {
+   "kind": "dialog",
+   "png": "elicitation-url-hc-aquatic-100.png",
+   "json": "elicitation-url-hc-aquatic-100.json",
+   "title": "notes (from the probe-tools plugin) asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    380
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool asks you to open a web page"
+  },
+  "elicitation-cant-show": {
+   "kind": "dialog",
+   "png": "elicitation-cant-show-hc-aquatic-100.png",
+   "json": "elicitation-cant-show-hc-aquatic-100.json",
+   "title": "trip-planner asks: Visual probe",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    380
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A connected tool's form that can only be declined"
+  },
+  "lists-subagents": {
+   "kind": "dialog",
+   "png": "lists-subagents-hc-aquatic-100.png",
+   "json": "lists-subagents-hc-aquatic-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Subagents: one finished subagent and one at work"
+  },
+  "subagent-chat": {
+   "kind": "dialog",
+   "png": "subagent-chat-hc-aquatic-100.png",
+   "json": "subagent-chat-hc-aquatic-100.json",
+   "title": "Subagent code-reviewer, in Fix the flaky upload test",
+   "class": "SubagentChatDialog",
+   "size": [
+    760,
     560
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Send Reply to Another Chat: a Codex reply going to a Claude chat"
+   "about": "A subagent's conversation, read like a chat"
   },
-  "agent-new": {
+  "usage-breakdown": {
    "kind": "dialog",
-   "png": "agent-new-hc-aquatic-100.png",
-   "json": "agent-new-hc-aquatic-100.json",
-   "title": "New Agent Conversation",
-   "class": "AgentConversationDialog",
+   "png": "usage-breakdown-hc-aquatic-100.png",
+   "json": "usage-breakdown-hc-aquatic-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
    "size": [
-    720,
-    760
+    751,
+    360
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, New Agent Conversation: a new Claude chat and a new Codex chat"
+   "about": "Usage and Context with what fills a Claude chat's context"
   },
-  "agent-new-three": {
+  "stop-background-task": {
    "kind": "dialog",
-   "png": "agent-new-three-hc-aquatic-100.png",
-   "json": "agent-new-three-hc-aquatic-100.json",
-   "title": "New Agent Conversation",
-   "class": "AgentConversationDialog",
+   "png": "stop-background-task-hc-aquatic-100.png",
+   "json": "stop-background-task-hc-aquatic-100.json",
+   "title": "Stop Background Task",
+   "class": "SingleChoiceDialog",
    "size": [
-    720,
-    760
+    578,
+    189
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "New Agent Conversation with the Builder and reviewer template and a third agent"
+   "about": "View, Stop Background Task: two tasks running"
   },
-  "agent-new-auto-review": {
+  "rewind": {
    "kind": "dialog",
-   "png": "agent-new-auto-review-hc-aquatic-100.png",
-   "json": "agent-new-auto-review-hc-aquatic-100.json",
-   "title": "New Agent Conversation",
-   "class": "AgentConversationDialog",
+   "png": "rewind-hc-aquatic-100.png",
+   "json": "rewind-hc-aquatic-100.json",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
    "size": [
-    720,
-    760
+    640,
+    460
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Three new Codex agents with automatic approval review selected"
+   "about": "Retry from Here on your first message: Conversation only chosen"
   },
-  "agent-new-copilot": {
+  "rewind-files": {
    "kind": "dialog",
-   "png": "agent-new-copilot-hc-aquatic-100.png",
-   "json": "agent-new-copilot-hc-aquatic-100.json",
-   "title": "New Agent Conversation",
-   "class": "AgentConversationDialog",
+   "png": "rewind-files-hc-aquatic-100.png",
+   "json": "rewind-files-hc-aquatic-100.json",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
    "size": [
-    720,
-    760
+    640,
+    460
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "New Agent Conversation with a new Claude chat and a new Copilot chat"
+   "about": "Retry from Here with Conversation and files chosen: the warning in What Happens"
   },
-  "agent-hand-off": {
+  "whole-chat": {
    "kind": "dialog",
-   "png": "agent-hand-off-hc-aquatic-100.png",
-   "json": "agent-hand-off-hc-aquatic-100.json",
-   "title": "Hand Off: Uploader fix",
-   "class": "RelayDialog",
+   "png": "whole-chat-hc-aquatic-100.png",
+   "json": "whole-chat-hc-aquatic-100.json",
+   "title": "Full chat: Fix the flaky upload test",
+   "class": "FormattedMessageDialog",
    "size": [
-    700,
+    820,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A whole chat as one page, on the selected message"
+  },
+  "sounds": {
+   "kind": "dialog",
+   "png": "sounds-hc-aquatic-100.png",
+   "json": "sounds-hc-aquatic-100.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    560,
+    640
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds"
+  },
+  "new-session-worktree": {
+   "kind": "dialog",
+   "png": "new-session-worktree-hc-aquatic-100.png",
+   "json": "new-session-worktree-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    620
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session making a new worktree, with Start from on"
+  },
+  "codex-chat-options": {
+   "kind": "dialog",
+   "png": "codex-chat-options-hc-aquatic-100.png",
+   "json": "codex-chat-options-hc-aquatic-100.json",
+   "title": "Chat Options: Codex review",
+   "class": "ChatOptionsDialog",
+   "size": [
+    620,
+    600
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex chat instructions and additional folders"
+  },
+  "lists-codex-approvals": {
+   "kind": "dialog",
+   "png": "lists-codex-approvals-hc-aquatic-100.png",
+   "json": "lists-codex-approvals-hc-aquatic-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Auto Approvals in a Codex chat"
+  },
+  "sounds-own-scheme": {
+   "kind": "dialog",
+   "png": "sounds-own-scheme-hc-aquatic-100.png",
+   "json": "sounds-own-scheme-hc-aquatic-100.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    560,
+    640
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds on a scheme of your own"
+  },
+  "sound-gallery": {
+   "kind": "dialog",
+   "png": "sound-gallery-hc-aquatic-100.png",
+   "json": "sound-gallery-hc-aquatic-100.json",
+   "title": "Sound Scheme Gallery",
+   "class": "SoundGalleryDialog",
+   "size": [
+    560,
+    440
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Browse Gallery: two schemes, one added"
+  },
+  "sound-tutorial": {
+   "kind": "dialog",
+   "png": "sound-tutorial-hc-aquatic-100.png",
+   "json": "sound-tutorial-hc-aquatic-100.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    440,
     560
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "An agent conversation's hand-off (Ctrl+Shift+E): a reply going to the other agent"
+   "about": "Help, Sound Tutorial"
   },
-  "rename": {
+  "new-session-branch-in-use": {
    "kind": "dialog",
-   "png": "rename-hc-aquatic-100.png",
-   "json": "rename-hc-aquatic-100.json",
-   "title": "Rename Session",
-   "class": "TextEntryDialog",
+   "png": "new-session-branch-in-use-hc-aquatic-100.png",
+   "json": "new-session-branch-in-use-hc-aquatic-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
    "size": [
-    346,
-    153
+    680,
+    620
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Rename Session (wx's own text entry dialog)"
+   "about": "New Session with a branch that's in use in another worktree"
   },
-  "main-empty": {
-   "kind": "window",
-   "png": "main-empty-hc-aquatic-100.png",
-   "json": "main-empty-hc-aquatic-100.json",
-   "title": "The Chat Place",
-   "class": "MainFrame",
+  "sound-tutorial-from-sounds": {
+   "kind": "dialog",
+   "png": "sound-tutorial-from-sounds-hc-aquatic-100.png",
+   "json": "sound-tutorial-from-sounds-hc-aquatic-100.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
    "size": [
-    1000,
-    720
+    440,
+    560
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "Main window with no sessions at all (a first run)"
+   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
+  },
+  "codex-change-mode-plan": {
+   "kind": "dialog",
+   "png": "codex-change-mode-plan-hc-aquatic-100.png",
+   "json": "codex-change-mode-plan-hc-aquatic-100.json",
+   "title": "Change Permission Mode",
+   "class": "SingleChoiceDialog",
+   "size": [
+    600,
+    441
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Permission Mode for an owned Codex chat in Plan mode"
+  },
+  "rewind-files-only": {
+   "kind": "dialog",
+   "png": "rewind-files-only-hc-aquatic-100.png",
+   "json": "rewind-files-only-hc-aquatic-100.json",
+   "title": "Retry Visual probe from before your message: Make the uploader flush before it signals.",
+   "class": "RewindDialog",
+   "size": [
+    640,
+    460
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Retry from Here with Files only chosen: the Put Files Back button"
   }
  },
  "seconds": 280.2

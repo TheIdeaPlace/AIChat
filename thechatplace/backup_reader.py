@@ -305,31 +305,52 @@ class BackupReader:
         large backup's histories aren't all in memory at once."""
         self._readers.pop(getattr(session, "identity", None), None)
 
+    @staticmethod
+    def _claude_transcript_id(parts):
+        """The chat a backed-up file is the transcript of, or None. Top-level
+        transcripts only: subagent logs are not separate chats."""
+        if (parts[:3] == ('claude','home','projects') and len(parts) == 5
+                and parts[-1].endswith('.jsonl')):
+            return Path(parts[-1]).stem
+        if (len(parts) >= 6 and parts[0] == 'claude'
+                and parts[1].startswith('desktop-cowork-')
+                and parts[-3] == 'projects' and parts[-1].endswith('.jsonl')):
+            return Path(parts[-1]).stem
+        return None
+
     def _claude_sessions(self):
         facts_cache = SessionFactsCache()
         from .sessions import load_desktop_sessions
-        desktop = {}
-        for folder in (self.root/'claude').glob('desktop-*'):
+        desktop, area_of = {}, {}
+        for folder in sorted((self.root/'claude').glob('desktop-*')):
             if not folder.is_dir():
                 continue
             snapshot = load_desktop_sessions(
                 directory=(self.root/'unused-code') if folder.name.startswith('desktop-cowork-') else folder,
                 cowork_directory=folder if folder.name.startswith('desktop-cowork-') else None,
                 include_archived=True, alive=lambda pid: False)
-            desktop.update({info.cli_session_id: info for info in snapshot.sessions})
+            for info in snapshot.sessions:
+                # Two desktop app folders can hold one chat (#542). As in the
+                # live list, the newer copy is the chat.
+                known = desktop.get(info.cli_session_id)
+                if known is None or info.last_activity_ms > known.last_activity_ms:
+                    desktop[info.cli_session_id] = info
+                    area_of[info.cli_session_id] = folder.name
+        # An older copy of a chat is passed over, so its title and its text
+        # always come from the same copy. That isn't choosing between
+        # differing histories: without metadata to say which is newer, both
+        # still reach the duplicate check in sessions().
+        in_chosen_area = {native_id for native_id, parts in
+                          ((self._claude_transcript_id(PurePosixPath(name).parts),
+                            PurePosixPath(name).parts) for name in self._files)
+                          if native_id in area_of and parts[1] == area_of[native_id]}
         results = []
         for name in sorted(self._files):
             parts = PurePosixPath(name).parts
-            native_id = None
-            # Top-level transcripts only: subagent logs are not separate chats.
-            if (parts[:3] == ('claude','home','projects') and len(parts) == 5
-                    and parts[-1].endswith('.jsonl')):
-                native_id = Path(parts[-1]).stem
-            elif (len(parts) >= 6 and parts[0] == 'claude'
-                  and parts[1].startswith('desktop-cowork-')
-                  and parts[-3] == 'projects' and parts[-1].endswith('.jsonl')):
-                native_id = Path(parts[-1]).stem
+            native_id = self._claude_transcript_id(parts)
             if native_id is None or not platform_paths.is_safe_id(native_id):
+                continue
+            if native_id in in_chosen_area and parts[1] != area_of[native_id]:
                 continue
             path = self.root.joinpath(*parts)
             facts = facts_cache.get(path)

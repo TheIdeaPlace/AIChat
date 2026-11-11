@@ -296,7 +296,10 @@ def test_policy_recovery_rechecks_native_state_and_saved_grant(tmp_path, monkeyp
     connection = SavedHistoryConnection()
     runtime = CodexChatRuntime(factory=lambda exe: connection)
     try:
-        record = runtime.create(str(tmp_path), 'Synthetic chat', approvals_reviewer='auto_review')
+        # The catalog vouches only for a model the chat chose; one on Codex's
+        # default names none to check (#596, decision 19).
+        record = runtime.create(str(tmp_path), 'Synthetic chat', approvals_reviewer='auto_review',
+                                model='gpt-default' if failure == 'model' else None)
         native = record.cli_session_id
         runtime.send(record, 'Initial synthetic turn')
         connection.events.append(decode_event('turn/completed', {
@@ -449,8 +452,9 @@ def test_failed_permission_check_says_to_use_stop_once(tmp_path, monkeypatch, fa
         with pytest.raises((CodexRpcError, ValueError)):
             runtime.prepare_policy(record, 'workspace-write', 'on-request', 'auto_review')
         problem = runtime.snapshot(record.cli_session_id).problem
-        assert problem.endswith('Use Stop to recheck this chat before sending.')
-        assert problem.count('Use Stop') == 1 and 'reload' not in problem.lower()
+        from thechatplace.providers.codex_runtime import STOP_TO_RECHECK
+        assert problem.endswith(STOP_TO_RECHECK)
+        assert problem.count('Press Stop') == 1 and 'reload' not in problem.lower()
         monkeypatch.setattr(connection, 'request', request)
         assert runtime.recover(record) == 'permissions'
         assert runtime.ready(record)
@@ -572,7 +576,7 @@ def test_failed_save_does_not_activate_automatic_review():
         change = runtime.prepare_policy(record, 'read-only', 'on-request', 'auto_review')
         runtime.finish_policy(change, False)
         assert not runtime.ready(record)
-        assert 'Use Stop' in runtime.snapshot(record.cli_session_id).problem
+        assert 'Press Stop' in runtime.snapshot(record.cli_session_id).problem
         with pytest.raises(CodexRpcError):
             runtime.send(record, 'Must not send')
         assert not any(m == 'turn/start' for m, p in connection.calls)

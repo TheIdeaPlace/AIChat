@@ -1,0 +1,129 @@
+{
+ "title": "Usage and Context",
+ "class": "UsageDialog",
+ "size": [
+  751,
+  360
+ ],
+ "client": [
+  735,
+  321
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Usage and context:",
+   "rect": [
+    8,
+    8,
+    101,
+    16
+   ],
+   "best": [
+    101,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Usage and context",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    719,
+    258
+   ],
+   "best": [
+    736,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Visual probe: Context: 2 tokens used; the window's size isn't known until this session or another on the same model runs a turn here.",
+    "What fills the context, when the latest turn ended:",
+    "System prompt: 3,183 tokens",
+    "System tools: 8,019 tokens",
+    "MCP tools: 30,577 tokens (loaded when needed)",
+    "Memory files: 1,279 tokens",
+    "Skills: 9,056 tokens",
+    "Messages: 14,431 tokens",
+    "Autocompact buffer: 33,000 tokens (kept free for compacting)",
+    "Free space: 927,833 tokens",
+    "Usage limits: not known until a Chat Place session runs a turn."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    490,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    571,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    652,
+    290,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

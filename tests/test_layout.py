@@ -83,6 +83,34 @@ def test_each_surface_lays_out_cleanly(name, app, tmp_path, monkeypatch):
     _check(name, measured[0])
 
 
+def test_the_form_surface_shows_wrapping_without_a_scroll_bar(app, tmp_path, monkeypatch):
+    """Its picture is the only one of a form's long words wrapping (#468), and
+    a scroll bar would leave some of them out of it."""
+    seen = {}
+
+    def measure(dialog):
+        dialog.Layout()
+        panel = dialog.form_panel
+        seen["room"] = panel.GetClientSize().height
+        seen["needs"] = panel.GetSizer().GetMinSize().height
+        words = [child.GetLabel() for child in panel.GetChildren()
+                 if child.GetClassName() in ("wxStaticText", "wxCheckBox")]
+        seen["wrapped"] = [text for text in words if "\n" in text]
+        return wx.ID_CANCEL
+    monkeypatch.setattr(wx.Dialog, "ShowModal", measure)
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    frame.SetSize(ui_probe.DEFAULT_SIZE)
+    try:
+        ui_probe.SURFACES["elicitation-form"][1](frame, env)()
+        assert fake_env.pump(lambda: seen, timeout=10)
+    finally:
+        ui_probe.close_frame(frame)
+    assert seen["needs"] <= seen["room"]
+    # The description, the check box's title and the long option.
+    assert len(seen["wrapped"]) == 3, seen["wrapped"]
+
+
 def test_a_long_session_title_fits_the_heading(app, tmp_path, monkeypatch):
     """Not one of the probe's pictures: the long-titled session loaded. Its
     heading and messages label used to be single lines that ran off the

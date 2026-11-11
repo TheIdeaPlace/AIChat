@@ -1,8 +1,9 @@
 import json
+import os
 
 import pytest
 
-from thechatplace import platform_paths
+from thechatplace import desktop_groups, platform_paths
 from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.sessions import NEEDS_YOU, load_desktop_sessions
 
@@ -84,6 +85,77 @@ def test_store_app_sessions_found(monkeypatch, tmp_path):
     _write_desktop(store, "local_s", "From the Store app")
     titles = [s.title for s in load_desktop_sessions().sessions]
     assert titles == ["From the Store app"]
+
+
+def _moved_store_layout(tmp_path, monkeypatch, name="claude-code-sessions"):
+    """The Store app after it moved its data to Claude-Data (#542): the
+    package folder keeps only the marker file. Returns the new folder."""
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setattr(platform_paths, "long_path", lambda path: path)
+    old = tmp_path / "Local" / "Packages" / "Claude_pzs8sxrjxfjjc" / "LocalCache" / "Roaming" / "Claude"
+    old.mkdir(parents=True)
+    (old / ".user-data-left.claude_pzs8sxrjxfjjc").write_text("", encoding="utf-8")
+    data = tmp_path / "Local" / "Claude-Data"
+    data.mkdir(parents=True)
+    (data / "README.txt").write_text("Do not delete.", encoding="utf-8")
+    moved = data / "claude_pzs8sxrjxfjjc" / name
+    moved.mkdir(parents=True)
+    return moved
+
+
+def test_store_app_sessions_found_after_the_move_to_claude_data(monkeypatch, tmp_path):
+    moved = _moved_store_layout(tmp_path, monkeypatch)
+    assert platform_paths.desktop_sessions_dirs() == [moved]
+    assert platform_paths.cowork_sessions_dirs() == []
+    _write_desktop(moved, "local_m", "After the move")
+    result = load_desktop_sessions()
+    assert [s.title for s in result.sessions] == ["After the move"]
+    # The guard against sending into a desktop app session needs these ids.
+    assert result.desktop_cli_ids == {"cli-local_m"}
+
+
+def test_cowork_found_after_the_move_to_claude_data(monkeypatch, tmp_path):
+    moved = _moved_store_layout(tmp_path, monkeypatch, platform_paths.COWORK_DIR_NAME)
+    assert platform_paths.cowork_sessions_dirs() == [moved]
+    assert platform_paths.desktop_sessions_dirs() == []
+
+
+def test_groups_found_after_the_move_to_claude_data(monkeypatch, tmp_path):
+    moved = _moved_store_layout(tmp_path, monkeypatch)
+    (moved / "account").mkdir()
+    scope = {"groups": [{"id": "g1", "name": "Work"}], "assignments": {}}
+    (moved.parent / desktop_groups.CONFIG_NAME).write_text(json.dumps(
+        {"preferences": {"epitaxyPrefs": {"dframe-group-scopes": {"account": scope}}}}),
+        encoding="utf-8")
+    groups = desktop_groups.load_desktop_groups(platform_paths.desktop_sessions_dirs())
+    assert groups.names == ["Work"]
+
+
+def test_a_session_left_behind_by_the_move_is_read_once(monkeypatch, tmp_path):
+    moved = _moved_store_layout(tmp_path, monkeypatch)
+    old = (tmp_path / "Local" / "Packages" / "Claude_pzs8sxrjxfjjc" / "LocalCache"
+           / "Roaming" / "Claude" / "claude-code-sessions")
+    old.mkdir()
+    stale = _write_desktop(old, "local_both", "Old copy")
+    fresh = _write_desktop(moved, "local_both", "New copy")
+    os.utime(stale, (1, 1))
+    os.utime(fresh, (2, 2))
+    assert platform_paths.desktop_sessions_dirs() == [moved, old]
+    assert [s.title for s in load_desktop_sessions().sessions] == ["New copy"]
+
+
+def test_a_claude_data_folder_of_another_shape_is_ignored(monkeypatch, tmp_path):
+    moved = _moved_store_layout(tmp_path, monkeypatch)
+    other = tmp_path / "Local" / "Claude-Data" / "something_else" / "claude-code-sessions"
+    other.mkdir(parents=True)
+    assert platform_paths.desktop_sessions_dirs() == [moved]
+
+
+def test_no_claude_data_folder_is_fine(monkeypatch, tmp_path):
+    _classic, store = _store_layout(tmp_path, monkeypatch)
+    assert platform_paths.desktop_sessions_dirs() == [store]
 
 
 def test_both_installs_read_once_each_newest_copy_wins(monkeypatch, tmp_path):
@@ -271,3 +343,36 @@ def test_git_names_diff_program_reads_what_git_config_lists(monkeypatch, tmp_pat
         assert platform_paths.git_names_diff_program(folder) is expected, reply
     monkeypatch.setattr(platform_paths, "find_tool", lambda name: None)
     assert platform_paths.git_names_diff_program(str(tmp_path / "none")) is None
+
+
+def test_an_unreadable_claude_data_folder_doesnt_hide_the_package_folder(monkeypatch, tmp_path):
+    _classic, store = _store_layout(tmp_path, monkeypatch)
+    real_glob = platform_paths.Path.glob
+
+    def glob(self, pattern, **kwargs):
+        if self.name == "Claude-Data":
+            raise OSError("no access")
+        return real_glob(self, pattern, **kwargs)
+
+    monkeypatch.setattr(platform_paths.Path, "glob", glob)
+    assert platform_paths.desktop_sessions_dirs() == [store]
+
+
+def test_claude_data_is_found_without_localappdata(monkeypatch, tmp_path):
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(platform_paths.Path, "home", lambda: tmp_path)
+    moved = (tmp_path / "AppData" / "Local" / "Claude-Data" / "claude_pkg"
+             / "claude-code-sessions")
+    moved.mkdir(parents=True)
+    assert platform_paths.desktop_sessions_dirs() == [moved]
+
+
+def test_plain_path_takes_off_only_the_long_form():
+    plain = platform_paths.plain_path
+    assert str(plain("\\\\?\\C:\\a")).endswith("a")
+    assert "?" not in str(plain("\\\\?\\C:\\a"))
+    assert "?" not in str(plain("\\\\?\\UNC\\server\\share"))
+    ordinary = platform_paths.Path("ordinary")
+    assert plain(ordinary) == ordinary

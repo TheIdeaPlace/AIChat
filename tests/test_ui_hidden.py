@@ -6,6 +6,7 @@ and NVDA is checked by hand (see DEVELOPING.md).
 """
 import dataclasses
 import json
+import os
 import threading
 import time
 
@@ -18,7 +19,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
-from thechatplace.sessions import NEEDS_YOU  # noqa: E402
+from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
                      user_text)
@@ -799,6 +800,92 @@ def test_close_during_turn_asks_and_stops(frame, env, fake_runner):
     assert "Quit anyway" in env["boxes"][-1]
     assert fake_runner.instances[0].cancelled
     assert frame._closing  # no context menu opens from here on
+
+
+def _quit_during_a_turn(frame, fake_runner):
+    """Quit with a turn running and a message queued behind it. Returns the
+    chat's id."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    session_id = frame._open.cli_session_id
+    frame._queued[session_id] = ["queued behind it"]
+    frame.store.update(session_id, last_activity_ms=1)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert fake_runner.instances[0].cancelled
+    assert fake_runner.instances[0].joined is not None  # its last event gets queued
+    return session_id
+
+
+def test_a_turn_ending_as_the_app_quits_is_saved_and_starts_nothing(frame, env, fake_runner):
+    # #545: this raised "Session controller closed", which lost the save. It
+    # also must not reach the queued message: the quit question says it won't
+    # be sent.
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("finished", text="Done.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    assert session_id not in frame._runners
+    saved = frame.store.get(session_id)
+    assert saved.last_activity_ms > 1
+    assert (saved.state, saved.detail) == (IDLE, "")
+
+
+def test_a_turn_stopped_by_quitting_says_so_next_time(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", session_id=session_id))
+    assert len(fake_runner.instances) == 1
+    saved = frame.store.get(session_id)
+    assert saved.state == NEEDS_YOU and "Stopped" in saved.detail
+
+
+def test_other_turn_events_while_quitting_do_nothing(frame, env, fake_runner):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    for kind in ("text", "tool", "steer_taken", "waiting"):
+        frame._on_turn_event({"id": session_id}, "Hub probe",
+                             TurnEvent(kind, text="More.", session_id=session_id))
+    assert session_id in frame._runners
+    assert frame.store.get(session_id).last_activity_ms == 1
+    assert frame._queued[session_id] == ["queued behind it"]
+    assert len(fake_runner.instances) == 1
+
+
+def test_a_turn_starting_as_the_app_quits_saves_that_and_says_nothing(frame, env, fake_runner,
+                                                                      monkeypatch):
+    session_id = _quit_during_a_turn(frame, fake_runner)
+    frame.store.update(session_id, started=False)
+    said = []
+    monkeypatch.setattr(frame, "_say_mcp_problems", lambda *a: said.append(a))
+    monkeypatch.setattr(frame, "_check_model", lambda *a: said.append(a))
+    frame._on_turn_event({"id": session_id}, "Hub probe",
+                         TurnEvent("started", session_id=session_id))
+    assert frame.store.get(session_id).started
+    assert not said
+
+
+def test_late_callbacks_after_quitting_reach_nothing_closed(frame, env, fake_runner, monkeypatch):
+    _quit_during_a_turn(frame, fake_runner)
+    frame.sessions.close()
+    monkeypatch.setattr(frame._pool, "submit",
+                        lambda *a, **k: pytest.fail("the pool is shut"))
+    frame._update_send_state()
+    frame.refresh_sessions(force=True)
+
+
+def test_a_steered_message_not_taken_in_is_in_the_quit_question(frame, env, fake_runner):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    frame.reply_text.SetValue("long job")
+    frame.on_send()
+    fake_runner.instances[0].steer("not that file")
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 def test_a_cancelled_quit_leaves_the_window_working(frame, env, fake_runner, monkeypatch):
@@ -1683,7 +1770,7 @@ def test_quit_prompt_mentions_queued_messages(frame, env, fake_runner):
     event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
     event.SetCanVeto(True)
     frame._on_close(event)
-    assert "queued messages will not be sent" in env["boxes"][-1]
+    assert "messages still waiting will not be sent" in env["boxes"][-1]
 
 
 # -- reading your own messages back (issue #178) ------------------------------------------
@@ -1855,6 +1942,43 @@ def test_answer_later_leaves_it_waiting(frame, env, monkeypatch):
     assert not hasattr(runner, "responses")
     assert len(frame._pending["own-1"]) == 1
     assert "still waiting" in env["feedback"][-1]
+
+
+def test_after_an_answer_the_messages_list_says_working_not_needs_you(frame, env, monkeypatch):
+    """Orca, coming back to the messages from the Answer dialog, read
+    "Messages in … (needs you …)": the state came with the next snapshot,
+    with you in the list, where a change waits until you leave (#596).
+    With another request still waiting, it still needs you."""
+    from thechatplace.claude_cli import allow_response
+    # Away from the list while the request comes, so its name says so (on
+    # Linux the hidden list can really have focus).
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    _waiting_turn(frame, _request("r1"), _request("r2", tool_input={"command": "git tag v1"}))
+    settle(frame)
+    assert frame._open.state == "needs you"
+    assert "needs you" in frame.messages_label.GetLabel()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    monkeypatch.setattr(frame, "_ask", lambda title, request, own: (
+        allow_response(request), "Allowed.", {}))
+    frame.on_answer()
+    assert "needs you" in frame.messages_label.GetLabel()  # r2 is still waiting
+    frame.on_answer()
+    label = frame.messages_label.GetLabel()
+    assert "needs you" not in label and "(working" in label, label
+    assert frame._open.state == "working"
+    settle(frame)  # the snapshot agrees, so nothing is held back to say on leaving
+    assert "(working" in frame.messages_label.GetLabel()
+    assert frame._pending_messages_label is None
+
+
+def test_answer_later_leaves_the_messages_list_saying_needs_you(frame, env, monkeypatch):
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    _waiting_turn(frame, _request())
+    settle(frame)
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)
+    monkeypatch.setattr(frame, "_ask", lambda *a: None)
+    frame.on_answer()
+    assert "needs you" in frame.messages_label.GetLabel()
 
 
 def test_allow_for_session_keeps_the_rule_for_later_turns(frame, env, fake_runner, monkeypatch):
@@ -2458,6 +2582,22 @@ def test_continue_here_forks_a_desktop_session(frame, env, fake_runner, monkeypa
     again = fake_runner.instances[-1].command
     assert again[again.index("--resume") + 1] == "cli-c" and "--fork-session" in again
     assert again[again.index("--session-id") + 1] == new_id
+
+
+def test_continue_here_starts_with_the_tools_off_for_new_chats(frame, env, fake_runner,
+                                                               monkeypatch):
+    folder = env["tmp"] / "repo"
+    folder.mkdir()
+    add_desktop(env, "local_c", "cli-c", "Desktop work", cwd=str(folder))
+    add_transcript(env, str(folder), "cli-c", [user_text("Earlier question")])
+    frame.refresh_sessions(force=True, resort=True)
+    settle(frame)
+    select(frame, "Desktop work")
+    frame.on_open_session()
+    frame.speech.mcp_off_for_new_chats = ["claude.ai Shop"]
+    _continue(frame, env, monkeypatch)
+    assert frame.store.get(frame._open.cli_session_id).disabled_mcp == ["claude.ai Shop"]
+    assert fake_runner.instances[-1].disabled_mcp == ["claude.ai Shop"]
 
 
 def test_continue_here_keeps_showing_tool_activity(frame, env, fake_runner, monkeypatch):
@@ -3779,6 +3919,50 @@ def test_pasting_a_picture_attaches_it(frame, env, monkeypatch):
     assert Paste.skipped  # text pastes as usual
 
 
+class _Paste:
+    def __init__(self):
+        self.skipped = False
+
+    def Skip(self):
+        self.skipped = True
+
+
+def test_pasting_copied_files_attaches_them(frame, env, monkeypatch):
+    # Kelly copied a .jpg in File Explorer: a file on the clipboard, not a
+    # picture, and Ctrl+V did nothing.
+    image, note = _files(env)
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image), str(note)], []))
+    monkeypatch.setattr(frame, "_clipboard_image", lambda: pytest.fail("files come first"))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert frame._attachments["own-1"] == [str(image), str(note)]
+    assert not paste.skipped
+
+
+def test_pasting_only_a_folder_says_it_cant_be_attached(frame, env, monkeypatch):
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([], [str(env["tmp"])]))
+    said = []
+    monkeypatch.setattr(frame, "_feedback", lambda text, *a, **k: said.append(text))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert not frame._attachments.get("own-1")
+    assert said and "folder can't be attached" in said[-1]
+
+
+def test_pasting_files_into_a_chat_not_started_here_pastes_as_usual(frame, env, monkeypatch):
+    image, _note = _files(env)
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_files", lambda: ([str(image)], []))
+    paste = _Paste()
+    frame._on_reply_paste(paste)
+    assert paste.skipped
+
+
 def test_attachments_are_for_own_sessions_and_follow_the_session(frame, env):
     image, _note = _files(env)
     select(frame, "Quiet one")
@@ -4501,7 +4685,9 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
         frame.on_send()
     rows = list(frame.chat_list.GetStrings())
     assert rows[-2:] == ["Queued: second", "Queued: third"]
-    # Delete on a queued row removes it.
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
+    # Delete on a queued row removes it, with its own sound (Withdraw, dev-notes/sound-design.md).
     frame.chat_list.SetSelection(len(rows) - 2)
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
     event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
@@ -4510,6 +4696,7 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
     assert frame._queued == {"own-1": ["third"]}
     assert list(frame.chat_list.GetStrings())[-1] == "Queued: third"
     assert env["feedback"][-1] == "Queued message removed. 1 still queued."
+    assert sounds == ["queued_deleted"]
     # The context menu offers Edit and Remove for a queued row.
     frame.chat_list.SetSelection(frame.chat_list.GetCount() - 1)
     menu = frame._message_menu()
@@ -4522,6 +4709,7 @@ def test_queued_messages_are_in_the_list_to_edit_or_remove(frame, env, fake_runn
     assert frame._queued == {}
     assert frame.reply_text.GetValue() == "third\n\ndraft"
     assert not any(r.startswith("Queued:") for r in frame.chat_list.GetStrings())
+    assert sounds == ["queued_deleted"]  # editing takes it back to change, not to delete
     # Delete on an ordinary message does nothing to it.
     frame.chat_list.SetSelection(0)
     count = frame.chat_list.GetCount()
@@ -5062,6 +5250,157 @@ def test_a_codex_question_s_tab_stops_include_its_preview(frame):
         dialog.Destroy()
 
 
+def _enter_presser(dialog, monkeypatch):
+    """press(focus, ...) -> True when the dialog's key hook took the key.
+    Closing is recorded in ``closed`` rather than done."""
+    closed = []
+
+    def press(focus, shift=False, control=False, alt=False, key=wx.WXK_RETURN):
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: focus))
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(key)
+        event.SetShiftDown(shift)
+        event.SetControlDown(control)
+        event.SetAltDown(alt)
+        dialog._on_char_hook(event)
+        return not event.GetSkipped()
+    monkeypatch.setattr(dialog, "EndModal", lambda code: closed.append(code))
+    return press, closed
+
+
+def test_shift_enter_starts_a_new_line_in_an_own_answer_and_enter_sends(frame, monkeypatch):
+    """Shift+Enter in a question's own answer starts a new line, as in the
+    reply box; it used to send the answers, as Windows presses the default
+    button for it in a one-line box. Enter and Ctrl+Enter still send."""
+    from thechatplace.ui.dialogs import QuestionDialog
+    dialog = QuestionDialog(frame, "Probe", _Questions())
+    try:
+        (_k1, first, t1), (_k2, multi, _t2), (_k3, _third, t3), (_k4, fourth, _t4) = dialog._controls
+        assert t1.IsMultiLine() and not t1.HasFlag(wx.TE_PROCESS_TAB)
+        # Plain, not rich: a rich box gives UI Automation "RichEdit Control"
+        # as its name rather than this one.
+        assert not t1.HasFlag(wx.TE_RICH2) and not t1.HasFlag(wx.TE_RICH)
+        assert t1.GetName() == "One: your own answer"
+        assert dialog._answer_boxes == [t for _k, _c, t in dialog._controls]
+        press, closed = _enter_presser(dialog, monkeypatch)
+        # Shift+Enter goes on to the box, which starts the line itself (as
+        # typed, so it's echoed); nothing is sent.
+        assert not press(t1, shift=True) and not closed
+        t1.SetValue("Green\nwith stripes")
+        assert first[-1].GetValue()  # typing chose Other
+        multi[0].SetValue(True)
+        t3.SetValue("Third")
+        fourth[0].SetValue(True)
+        assert press(t1) and closed == [wx.ID_OK]  # Enter sends, through Send Answers
+        assert press(t3, control=True) and len(closed) == 2  # and Ctrl+Enter
+        assert press(t1, key=wx.WXK_NUMPAD_ENTER) and len(closed) == 3
+        # The lines reach the answer; Claude's is tidied a line at a time.
+        t1.SetValue("  Green   and\n\n with   stripes \n")
+        assert dialog.answers()["First?"] == "Green and\n\nwith stripes"
+        # Several choices are joined with commas; an answer of several lines
+        # starts on a line of its own rather than after a comma.
+        _t2.SetValue("Fast\nthen slow")
+        assert multi[0].GetValue() and multi[-1].GetValue()  # M, and Other by typing
+        assert dialog.answers()["Second?"] == "M\nFast\nthen slow"
+        _t2.SetValue("Fast")
+        assert dialog.answers()["Second?"] == "M, Fast"
+        # Enter anywhere else, Alt+Enter and other keys are left to the system.
+        assert not press(first[0])
+        assert not press(dialog.question_text)
+        assert not press(t1, alt=True)
+        assert not press(t1, key=ord("A"))
+        assert len(closed) == 3
+    finally:
+        dialog.Destroy()
+
+
+def test_a_secret_answer_stays_one_line(frame, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.ui.dialogs import QuestionDialog
+    request = SimpleNamespace(questions=lambda: [
+        {"id": "pin", "header": "PIN", "question": "Your PIN?", "isOther": True,
+         "isSecret": True, "options": []},
+        {"id": "note", "header": "Note", "question": "Anything else?", "isOther": True,
+         "options": []}])
+    dialog = QuestionDialog(frame, "Probe", request, provider="Codex")
+    try:
+        ((_k1, _c1, pin), (_k2, _c2, note)) = dialog._controls
+        assert pin.HasFlag(wx.TE_PASSWORD) and not pin.IsMultiLine()
+        assert dialog._answer_boxes == [note] and note.IsMultiLine()
+        press, closed = _enter_presser(dialog, monkeypatch)
+        beeps = []
+        monkeypatch.setattr(wx, "Bell", lambda: beeps.append(1))
+        # Shift+Enter in the one-line secret box is taken, so Windows doesn't
+        # press Send Answers for it; it beeps. Enter still goes on to send.
+        assert press(pin, shift=True) and not closed and beeps == [1]
+        assert not press(pin) and beeps == [1]
+        # Codex's answer goes exactly as typed, its lines and all.
+        note.SetValue("First line\nSecond line")
+        pin.SetValue("1234")
+        assert dialog.answers() == {"pin": "1234", "note": "First line\nSecond line"}
+    finally:
+        dialog.Destroy()
+
+
+def test_shift_enter_starts_a_new_line_in_a_plan_s_note(frame, monkeypatch):
+    from thechatplace.ui.dialogs import PlanDialog
+
+    class Plan:
+        def plan(self):
+            return "# Plan\n1. Go"
+    dialog = PlanDialog(frame, "Probe", Plan(), [("acceptEdits", "Accept edits")], "acceptEdits")
+    try:
+        note = dialog.note
+        assert note.IsMultiLine() and not note.HasFlag(wx.TE_PROCESS_TAB)
+        assert note.GetName() == "What to change (for Keep Planning)"
+        assert dialog.GetDefaultItem() is dialog.keep_button
+        press, closed = _enter_presser(dialog, monkeypatch)
+        assert not press(note, shift=True) and not closed  # the box's own new line
+        note.SetValue("Fewer steps\nand tests first\n")
+        assert dialog.note_text() == "Fewer steps\nand tests first"
+        assert press(note) and closed == [wx.ID_OK] and not dialog.approved  # Keep Planning
+        assert press(note, control=True) and len(closed) == 2 and not dialog.approved
+        assert not press(dialog.plan_text) and not press(dialog.mode)
+        assert len(closed) == 2
+    finally:
+        dialog.Destroy()
+
+
+def test_shift_enter_starts_a_new_line_in_a_reason_for_deny(frame, monkeypatch):
+    from thechatplace.ui.dialogs import DENY, PermissionDialog
+    dialog = PermissionDialog(frame, "Hub probe", _request(tool="WebFetch",
+                                                           tool_input={"url": "https://x"}))
+    try:
+        reason = dialog.reason
+        assert reason.IsMultiLine() and not reason.HasFlag(wx.TE_PROCESS_TAB)
+        assert reason.GetName() == "Reason to give Claude if you deny (optional)"
+        press, closed = _enter_presser(dialog, monkeypatch)
+        assert not press(reason, shift=True) and not closed  # the box's own new line
+        reason.SetValue("Not that site\nuse the docs")
+        assert dialog.reason_text() == "Not that site\nuse the docs"
+        assert press(reason) and closed == [wx.ID_OK] and dialog.choice == DENY
+        assert not press(dialog.request_text) and len(closed) == 1
+    finally:
+        dialog.Destroy()
+
+
+def test_a_multi_line_answer_reaches_claude(frame, env, monkeypatch):
+    from thechatplace.ui import dialogs
+    request = _request("q1", "AskUserQuestion", {"questions": [
+        {"question": "Which color?", "header": "Color", "options": [{"label": "Red"}]}]})
+    runner = _waiting_turn(frame, request)
+
+    class Answers(dialogs.QuestionDialog):
+        def ShowModal(self):
+            ((_kind, _controls, other_text),) = self._controls
+            other_text.SetValue("Green\nwith stripes")
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.QuestionDialog", Answers)
+    frame.on_answer()
+    assert runner.responses[0][1]["updatedInput"]["answers"] == {
+        "Which color?": "Green\nwith stripes"}
+
+
 def test_settings_reading_messages_options_follow_their_group_box(frame):
     from thechatplace.ui.dialogs import SettingsDialog
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
@@ -5180,8 +5519,11 @@ def _steer_key(frame, monkeypatch, focus):
 def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_runner,
                                                                monkeypatch):
     runner = _start_steering(frame, fake_runner)
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
     frame.reply_text.SetValue("Also update the README")
     _steer_key(frame, monkeypatch, frame.reply_text)
+    assert sounds == ["steered"]  # its own sound, not the send's (dev-notes/sound-design.md)
     assert runner.steered == ["Also update the README"]
     assert not getattr(runner, "sent_now", None)  # nothing stopped
     assert frame._queued == {}
@@ -5194,6 +5536,7 @@ def test_steer_sends_into_the_running_turn_without_stopping_it(frame, env, fake_
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="Also update the README", data={"late": False}))
     assert env["feedback"][-1] == "Hub probe has your message."
+    assert sounds[-1] == "steer_taken"
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "steer_taken", text="And the docs", data={"late": True}))
     assert env["feedback"][-1] == "Hub probe had finished, and is answering your message now."
@@ -5230,7 +5573,10 @@ def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runne
     labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
     assert "Send Now" in labels and "Steer" in labels
     menu.Destroy()
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
     _steer_key(frame, monkeypatch, frame.chat_list)
+    assert sounds == ["steered"]
     assert runner.steered == ["third"]
     assert not getattr(runner, "sent_now", None)
     assert frame._queued == {"own-1": ["second"]}
@@ -7481,7 +7827,8 @@ def test_settings_access_keys_are_all_different(frame, env, monkeypatch):
     dialog = SettingsDialog(frame, frame.speech, speech.default_options(),
                             clear_recent=lambda: None)
     try:
-        keys = []
+        # GTK's stock OK and Cancel take O and C (on Windows they have none).
+        keys = ["o", "c"] if wx.Platform == "__WXGTK__" else []
         for control in dialog._body.GetChildren():
             if isinstance(control, (wx.CheckBox, wx.Button, wx.StaticText, wx.RadioBox)):
                 found = re.search(r"&(\w)", control.GetLabel())
@@ -8063,11 +8410,12 @@ def test_new_session_without_recent_folders_starts_at_the_root(frame):
         assert dialog.work_in.GetString(WORK_IN_FOLDER) == \
             "The folder as it is (not a git repository, so no worktree)"
         assert not dialog.branch.IsEnabled()
-        # Tab order: folder, Browse, From GitHub, Work in, Branch, Title.
+        # Tab order: folder, Browse, From GitHub, Work in, Branch, Start from, Title.
         order = list(dialog.GetChildren())
         assert order.index(dialog.folder) < order.index(dialog.github_btn) < \
             order.index(dialog.work_in) < order.index(dialog.branch) < \
-            order.index(dialog.title_text)
+            order.index(dialog.start_from) < order.index(dialog.title_text)
+        assert not dialog.start_from.IsEnabled()
     finally:
         dialog.Destroy()
 
@@ -8389,16 +8737,115 @@ def test_new_session_in_a_new_worktree(frame, env, fake_runner, monkeypatch):
             return self.GetReturnCode()
     monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
     frame.on_new_session()
-    # main is checked out in the folder itself, so only "older" is offered.
-    assert seen == {"here": "The folder as it is, on main", "branches": ["older"],
+    # main is checked out in the folder itself, so it comes last, saying so (#587).
+    assert seen == {"here": "The folder as it is, on main",
+                    "branches": ["older", "main (checked out in this folder)"],
                     "branch_enabled": True, "start_while_making": False}
     assert env["feedback"][0] == "Making the worktree."
     worktree = repo / ".claude" / "worktrees" / "fix-the-thing"
     assert worktree.is_dir()
+    # What was made is said (#561). With no remote, Start from is already on
+    # the current branch, so there's nothing more to explain.
+    assert pump(lambda: any(f.startswith("Made worktree fix-the-thing on new branch "
+                                         "fix/the-thing, from main.") for f in env["feedback"]))
     runner = fake_runner.instances[-1]
     assert runner.cwd == str(worktree) and runner.prompt == "Fix it"
     session_id = runner.command[runner.command.index("--session-id") + 1]
     assert frame.store.get(session_id).cwd == str(worktree)
+
+
+def _cloned_repo(env):
+    """A repository with a remote whose main is ahead, on a branch of its own."""
+    import subprocess
+    origin = _git_repo(env["tmp"] / "Origin")
+    clone = env["tmp"] / "Clone"
+    subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True,
+                   capture_output=True)
+    subprocess.run(["git", "checkout", "-q", "-b", "work"], cwd=clone, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit",
+                    "-q", "--allow-empty", "-m", "newer on main"], cwd=origin, check=True,
+                   capture_output=True)
+    return origin, clone
+
+
+def _start_from_name(dialog):
+    return dialog.start_from.GetName()
+
+
+def test_start_from_is_only_for_a_new_branch_and_says_why_not(frame, env, monkeypatch):
+    # #561: an existing branch is used as it is, so Start from is off then.
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert not dialog.start_from.IsEnabled()
+        assert "for a new branch in a new worktree" in _start_from_name(dialog)
+        assert dialog.start_label.GetLabel() == "Start from:"   # no Alt key while it's off
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.IsEnabled() and dialog.start_label.GetLabel() == "St&art from:"
+        assert _start_from_name(dialog) == "Start from"
+        assert dialog.start_from.GetString(START_FROM_REMOTE) == "origin/main, fetched first"
+        assert dialog.start_from.GetString(START_FROM_HERE) == "work, what the folder has checked out"
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+        dialog.branch.SetValue("main")         # only the remote has it: tracked as it is
+        dialog._sync_start_from()
+        assert not dialog.start_from.IsEnabled()
+        assert "that branch exists" in _start_from_name(dialog)
+    finally:
+        dialog.Destroy()
+
+
+def test_start_from_follows_claude_codes_base_ref(frame, env, monkeypatch):
+    from thechatplace import claude_settings
+    from thechatplace.ui.dialogs import NewSessionDialog, START_FROM_REMOTE, START_FROM_HERE
+    _origin, clone = _cloned_repo(env)
+    monkeypatch.setattr(claude_settings, "worktree_base_ref", lambda folder: "head")
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/new")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_HERE
+        # Your own choice stays.
+        dialog.start_from.SetSelection(START_FROM_REMOTE)
+        dialog._on_start_from()
+        dialog.branch.SetValue("fix/newer")
+        dialog._sync_start_from()
+        assert dialog.start_from.GetSelection() == START_FROM_REMOTE
+    finally:
+        dialog.Destroy()
+
+
+def test_a_worktree_started_from_the_remote_says_so(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/fresh")
+        dialog._sync_start_from()
+        dialog._on_ok(None)
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert dialog.worktree_said == ("Made worktree fix-fresh on new branch fix/fresh, "
+                                        "from origin/main.")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=dialog.values()[0],
+                              capture_output=True, text=True).stdout.strip()
+        main = subprocess.run(["git", "rev-parse", "main"], cwd=origin,
+                              capture_output=True, text=True).stdout.strip()
+        assert head == main
+    finally:
+        dialog.Destroy()
 
 
 def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, env, monkeypatch):
@@ -8417,10 +8864,14 @@ def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, e
         assert pump(lambda: boxes, timeout=15)
         assert "can't be a branch name" in boxes[-1] and dialog.start_btn.IsEnabled()
         assert dialog.GetReturnCode() != wx.ID_OK
-        dialog.branch.SetValue("main")
+        dialog.branch.SetValue("main")   # typed: refused, naming the folder (#587)
         dialog._on_ok(None)
         assert pump(lambda: len(boxes) == 2, timeout=15)
-        assert "already checked out in another folder" in boxes[-1]
+        here = dialog._repo.busy_at["main"]
+        assert os.path.samefile(here, repo)
+        assert len(boxes) == 2 and boxes[-1].startswith(
+            f"main is checked out in this folder, {here}, so a new worktree can't use it.")
+        assert "choose The folder as it is" in boxes[-1] and dialog.start_btn.IsEnabled()
         assert not (repo / ".claude").exists()
         # While one is being made, Cancel says so and stays.
         dialog._making = True
@@ -8439,12 +8890,276 @@ def test_worktree_problems_are_said_and_cancel_waits_for_one_being_made(frame, e
         dialog.Destroy()
 
 
+def test_a_branch_in_use_in_another_worktree_is_listed_and_explained(frame, env, monkeypatch):
+    # #587: main checked out in a worktree of its own isn't missing from
+    # Branch; it's listed last, saying why, and Start says where it is.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+    origin, clone = _cloned_repo(env)        # the clone is on work, with a local main
+    elsewhere = clone / ".claude" / "worktrees" / "main"
+    subprocess.run(["git", "worktree", "add", "-q", str(elsewhere), "main"], cwd=clone,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    focused = []
+    monkeypatch.setattr(dialog.branch, "SetFocus", lambda: focused.append("branch"))
+    try:
+        _read(dialog)
+        items = list(dialog.branch.GetStrings())
+        # older is only on origin (#622): after the local ones, before those in use.
+        assert items == ["older (on origin)", "work (checked out in this folder)",
+                         "main (in use in another worktree)"]
+        assert not any(str(clone) in item for item in items)   # the path is for the message
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        fetch = dialog._fetches[str(clone)]
+        assert pump(lambda: not fetch.is_alive(), timeout=30)
+        pump(lambda: False, timeout=0.3)   # Branch listed again once fetched
+        assert list(dialog.branch.GetStrings()) == items
+        dialog.branch.SetSelection(2)
+        dialog._sync_start_from()
+        # Arrowing to it, Start from says why it's off, with no path.
+        assert not dialog.start_from.IsEnabled()
+        assert _start_from_name(dialog) == ("Start from (not used: main is in use in another "
+                                            "worktree, so a new worktree can't use it)")
+        dialog._on_ok(None)
+        assert pump(lambda: boxes, timeout=15)
+        at = dialog._repo.busy_at["main"]
+        assert os.path.samefile(at, elsewhere)
+        refused = (f"main is in use in another worktree, at {at}, so a new worktree "
+                   "can't use it. Type a new branch name, and Start from origin/main, "
+                   "to work from main.")
+        assert boxes == [refused]
+        assert focused == ["branch"] and dialog.start_btn.IsEnabled()
+        assert dialog.GetReturnCode() != wx.ID_OK and not dialog._making
+        assert "Making the worktree." not in env["feedback"]   # nothing was made
+        # Typed as the remote's name, it means the same branch.
+        dialog.branch.SetValue("origin/main")
+        dialog._sync_start_from()
+        assert _start_from_name(dialog).startswith("Start from (not used: main is in use")
+        dialog._on_ok(None)
+        assert pump(lambda: len(boxes) == 2, timeout=15)
+        assert boxes[-1] == refused
+        # The folder's own branch says so, and names the folder.
+        dialog.branch.SetSelection(1)
+        dialog._sync_start_from()
+        assert "work is checked out in this folder" in _start_from_name(dialog)
+        dialog._on_ok(None)
+        assert pump(lambda: len(boxes) == 3, timeout=15)
+        assert os.path.samefile(dialog._repo.busy_at["work"], clone)
+        assert boxes[-1].startswith(
+            f"work is checked out in this folder, {dialog._repo.busy_at['work']}, so")
+        # A new name: Start from is on, offering the remote's main.
+        dialog.branch.SetValue("from-main")
+        dialog._sync_start_from()
+        assert dialog.start_from.IsEnabled() and _start_from_name(dialog) == "Start from"
+        assert dialog.start_from.GetStringSelection() == "origin/main, fetched first"
+    finally:
+        dialog.Destroy()
+
+
+def test_a_new_worktree_fetches_so_branch_lists_whats_on_the_remote_now(frame, env):
+    # #622: a branch pushed after the last fetch is listed once A new
+    # worktree is chosen, and one deleted from the remote goes.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert "older (on origin)" in dialog.branch.GetStrings()
+        assert dialog._fetches == {}             # nothing fetched for The folder as it is
+        subprocess.run(["git", "branch", "pushed-since"], cwd=origin, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "branch", "-D", "older"], cwd=origin, check=True,
+                       capture_output=True)
+        dialog.branch.ChangeValue("typed")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert pump(lambda: "pushed-since (on origin)" in dialog.branch.GetStrings(), timeout=30)
+        assert "older (on origin)" not in dialog.branch.GetStrings()
+        assert dialog.branch.GetValue() == "typed"       # what you typed stays
+        # Once per folder: choosing it again doesn't fetch again.
+        first = dict(dialog._fetches)
+        dialog.work_in.SetSelection(0)
+        dialog._on_work_in()
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        assert dialog._fetches == first and len(first) == 1
+        assert not any("Couldn't fetch" in said for said in env["feedback"])
+    finally:
+        dialog.Destroy()
+
+
+def test_listing_branch_again_keeps_your_place(frame, env):
+    # #622 review: the fetch can finish while you're in Branch. Nothing new
+    # leaves the list alone; something new keeps the item you're on, or
+    # the caret in what you're typing; an open list waits until it shuts.
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        items = list(dialog.branch.GetStrings())
+        dialog.branch.SetSelection(1)
+        sets = []
+        real_set = dialog.branch.Set
+        dialog.branch.Set = lambda choices: sets.append(list(choices)) or real_set(choices)
+        dialog._list_branches(items)
+        assert sets == [] and dialog.branch.GetSelection() == 1
+        newer = ["aaa (on origin)", *items]
+        dialog._list_branches(newer)
+        assert dialog.branch.GetSelection() == 2
+        assert dialog.branch.GetValue() == items[1]
+        dialog.branch.ChangeValue("fix/half")
+        dialog.branch.SetInsertionPoint(3)
+        dialog._list_branches(items)
+        assert dialog.branch.GetValue() == "fix/half"
+        assert dialog.branch.GetInsertionPoint() == 3
+        # With the list open, nothing changes until it shuts.
+        dialog._on_branch_open(wx.CommandEvent())
+        dialog._list_branches(newer)
+        assert list(dialog.branch.GetStrings()) == items
+        dialog._on_branch_shut(wx.CommandEvent())
+        assert pump(lambda: list(dialog.branch.GetStrings()) == newer)
+    finally:
+        dialog.Destroy()
+
+
+def test_a_remote_branch_gone_after_the_fetch_is_said(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    origin, clone = _cloned_repo(env)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.branch.SetStringSelection("older (on origin)")
+        subprocess.run(["git", "branch", "-D", "older"], cwd=origin, check=True,
+                       capture_output=True)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        said = "older is no longer on the remote, so it would be a new branch."
+        assert pump(lambda: said in env["feedback"], timeout=30)
+        assert dialog.branch.GetValue() == "older"
+        assert dialog.start_from.IsEnabled()       # a new branch: Start from is on
+    finally:
+        dialog.Destroy()
+
+
+def test_start_during_the_fetch_says_it_waits_for_it(frame, env, monkeypatch):
+    import threading
+    from thechatplace import workplaces
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    release = threading.Event()
+    real_fetch = workplaces.fetch_remotes
+    monkeypatch.setattr(workplaces, "fetch_remotes",
+                        lambda git, info: release.wait(20) and real_fetch(git, info))
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        dialog.branch.SetValue("fix/waited")
+        dialog._on_ok(None)
+        waiting = "Getting the remote branches, then making the worktree."
+        assert pump(lambda: waiting in env["feedback"], timeout=10)
+        assert dialog._making and not dialog.start_btn.IsEnabled()
+        release.set()
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert dialog.worktree_said.startswith("Made worktree fix-waited on new branch")
+    finally:
+        release.set()
+        dialog.Destroy()
+
+
+def test_a_fetch_for_a_folder_left_or_a_closed_dialog_is_dropped(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.workplaces import RepoInfo
+    plain = env["tmp"] / "plain"
+    plain.mkdir()
+    dialog = NewSessionDialog(frame, str(plain), feedback=env["feedback"].append)
+    stale = RepoInfo(top="x", main="x", common="x/.git", rel="", branch="old",
+                     branches=["old"], busy=[], remotes=["origin/gone"])
+    try:
+        _read(dialog)
+        dialog._remotes_fetched("C:\\some\\other\\folder", stale, "", "Couldn't fetch")
+        assert dialog.branch.GetCount() == 0 and "Couldn't fetch" not in env["feedback"]
+    finally:
+        dialog.Destroy()
+    dialog._remotes_fetched(str(plain), stale, "", "Couldn't fetch")   # closed: nothing
+
+
+def test_a_failed_fetch_is_said_and_branch_keeps_what_it_had(frame, env):
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    _origin, clone = _cloned_repo(env)
+    subprocess.run(["git", "remote", "set-url", "origin", str(env["tmp"] / "gone")], cwd=clone,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(clone), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        said = ("Couldn't fetch from origin, so Branch lists its branches as they were at the "
+                "last fetch.")
+        assert pump(lambda: said in env["feedback"], timeout=30)
+        assert "older (on origin)" in dialog.branch.GetStrings()
+    finally:
+        dialog.Destroy()
+
+
+def test_start_goes_by_what_git_says_now_not_when_the_dialog_opened(frame, env, monkeypatch):
+    # #587 review: worktrees made or removed in a terminal after the dialog
+    # read the folder. Start reads git again, and Branch is brought up to date.
+    import subprocess
+    from thechatplace.ui.dialogs import NewSessionDialog
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+    repo = _git_repo(env["tmp"] / "Repo")             # on main, with older
+    subprocess.run(["git", "checkout", "-q", "-b", "work"], cwd=repo, check=True,
+                   capture_output=True)
+    elsewhere = env["tmp"] / "MainTree"
+    subprocess.run(["git", "worktree", "add", "-q", str(elsewhere), "main"], cwd=repo,
+                   check=True, capture_output=True)
+    dialog = NewSessionDialog(frame, str(repo), feedback=env["feedback"].append)
+    try:
+        _read(dialog)
+        assert list(dialog.branch.GetStrings()) == [
+            "older", "work (checked out in this folder)", "main (in use in another worktree)"]
+        dialog.message.SetValue("hi")
+        dialog.work_in.SetSelection(1)
+        dialog._on_work_in()
+        # older is taken after the read: refused, and Branch now says so.
+        subprocess.run(["git", "worktree", "add", "-q", str(env["tmp"] / "OlderTree"), "older"],
+                       cwd=repo, check=True, capture_output=True)
+        dialog.branch.SetValue("older")
+        dialog._on_ok(None)
+        assert pump(lambda: boxes, timeout=15)
+        assert boxes[0].startswith("older is in use in another worktree, at ")
+        assert "older (in use in another worktree)" in dialog.branch.GetStrings()
+        assert dialog.branch.GetValue() == "older"       # what you chose stays
+        # main is freed after the read: Start uses it rather than refusing.
+        subprocess.run(["git", "worktree", "remove", str(elsewhere)], cwd=repo, check=True,
+                       capture_output=True)
+        dialog.branch.SetValue("main (in use in another worktree)")
+        dialog._on_ok(None)
+        assert pump(lambda: dialog.GetReturnCode() == wx.ID_OK, timeout=30)
+        assert len(boxes) == 1
+        assert dialog.worktree_said == "Made worktree main on existing branch main."
+    finally:
+        dialog.Destroy()
+
+
 def test_continue_here_has_no_folder_choices(frame):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, "C:\\G\\Repo", continue_from="Work")
     try:
         assert not dialog.folder.IsEditable()
-        for control in (dialog.github_btn, dialog.work_in, dialog.branch):
+        for control in (dialog.github_btn, dialog.work_in, dialog.branch, dialog.start_from):
             assert not control.IsShown()
     finally:
         dialog.Destroy()
@@ -9634,6 +10349,7 @@ def test_alt_enter_in_the_session_list_shows_the_session_properties(frame, env, 
     assert rows[0] == "Title: Quiet one"
     assert "Kind: Desktop app session" in rows
     assert "Messages: 2" in rows and "Tool calls: 1" in rows and "Links: 1" in rows
+    assert "Subagents: 0" in rows  # #468
     assert "Session ID: cli-a" in rows
     assert any(r.startswith("Transcript: ") and r.endswith("cli-a.jsonl") for r in rows)
     assert focused  # back on the list it came from
@@ -10237,7 +10953,91 @@ def test_codex_turn_status_remembered_approval_count(frame, count, noun):
     state = CodexChatState('owned', 'working', 'turn', 'inProgress', permission_notices=notices)
     text = frame._codex_status_text(state)
     assert f'{count} {noun} allowed automatically.' in text
-    assert text.count('as you said for this chat') == 1
+    # Counts only: the commands are in Lists, Approvals (#564).
+    assert 'as you said for this chat' not in text and 'git commit' not in text
+
+
+def _heavy_turn(count=40):
+    """A turn whose automatic review allowed ``count`` commands, one saved
+    rule allowed another, and one request was denied (#564)."""
+    from thechatplace.providers.codex_events import decode_event
+    notices = []
+    for number in range(count):
+        status = 'denied' if number == count // 2 else 'approved'
+        event = decode_event('item/autoApprovalReview/completed', {
+            'threadId': 'owned', 'turnId': 'turn', 'reviewId': str(number),
+            'action': {'type': 'command', 'command': f'synthetic-command {number}'},
+            'review': {'status': status, 'rationale': 'Synthetic reason.'}})
+        notices.append(('turn', event.item_id, event.text))
+    notices.append(('turn', 7, 'Allowed git status, as you said for this chat.'))
+    return tuple(notices)
+
+
+@pytest.mark.parametrize('activity', [False, True])
+def test_a_heavy_turn_says_and_shows_only_what_wasnt_allowed(frame, monkeypatch, activity):
+    """Kelly's #564: dozens of automatic approvals buried the chat. Allowed
+    requests are said and shown only with the chat's tool activity on; the
+    denial is said once and always shown."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.transcript import PERMISSION_NOTICE
+    settle(frame)
+    spoken = []
+    monkeypatch.setattr(frame, "_say", lambda text, **kw: spoken.append(text))
+    monkeypatch.setattr(frame, "_notify", lambda *a, **kw: None)
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **kw: None)
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    if activity:
+        frame.tool_activity.add(info.key)
+    notices = _heavy_turn()
+    state = CodexChatState("owned", "working", "turn", "inProgress", permission_notices=notices)
+    for _ in range(3):  # the same state arrives again and again while the turn runs
+        frame._on_owned_update("codex", state)
+    said = [text for text in spoken if 'synthetic-command' in text or 'as you said' in text]
+    # With tool activity on, each is said once, as tool calls are.
+    assert len(said) == (len(notices) if activity else 1)
+    assert sum('denied the request' in text for text in said) == 1
+    frame.tool_activity.discard(info.key)
+    monkeypatch.setattr(frame, "_open", info)
+    monkeypatch.setattr(frame, "_can_edit", lambda i: True)
+    frame._show_activity = activity
+    frame._codex_states[info.key] = state
+    rows = [m for m in frame._queued_rows() if m.kind == PERMISSION_NOTICE]
+    assert len(rows) == (len(notices) if activity else 1)
+    assert any('denied the request' in m.text for m in rows)
+    frame._codex_states.clear()
+
+
+def test_lists_approvals_has_the_history_and_this_runs_saved_rule(frame, monkeypatch):
+    """Lists, Approvals (#564): the review history from disk, then what this
+    run allowed by saved rule, newest first, each once."""
+    from thechatplace import lists
+    from thechatplace.providers.codex_runtime import CodexChatState
+    frame.store.add(OwnSession("owned", "Heavy chat", "C:/w", provider="codex", started=True))
+    info = frame.store.get("owned", provider="codex").to_info()
+    notices = _heavy_turn(4)
+    # The history has an earlier turn's decision this run no longer holds.
+    earlier = ('turn-0', 'auto-review:old', 'Codex automatic review allowed the request.' + chr(10) + 'Command: git fetch')
+    saved = (earlier,) + tuple((t, i, x) for t, i, x in notices if str(i).startswith('auto-review:'))
+    asked = []
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda action, record: asked.append((action, record.provider)) or saved)
+    frame._codex_states[info.key] = CodexChatState("owned", "idle", "turn", "completed",
+                                                   permission_notices=notices)
+    rows, problem = frame._approvals_for(info)
+    assert asked == [("review_history", "codex")]
+    assert problem == "" and len(rows) == 6 and rows[0] == earlier and rows[-1][1] == 'saved-rule:7'
+    items = lists.approval_items(rows)
+    assert items[0].row == 'Allowed: git status. You allowed it for this chat.'
+    frame._codex_states.clear()
+
+
+@pytest.mark.parametrize("provider,is_own,expected", [
+    ("claude", True, "Auto approvals aren't listed for Claude chats yet."),
+    ("codex", False, "Auto approvals are listed only for Codex chats run in The Chat Place.")])
+def test_lists_approvals_says_why_when_it_cant_list(frame, provider, is_own, expected):
+    from types import SimpleNamespace
+    assert frame._approvals_for(SimpleNamespace(provider=provider, is_own=is_own)) == ([], expected)
 
 
 def test_owned_codex_ui_creates_sends_queues_and_recovers_stopped_text(frame):
@@ -10586,7 +11386,7 @@ def test_message_dialogs_use_equal_provider_labels(frame, monkeypatch, provider)
     finally:
         dialog.Destroy()
     shown = []
-    monkeypatch.setattr(frame, '_show_page', lambda title, page: shown.append((title, page)) or True)
+    monkeypatch.setattr(frame, '_show_page', lambda title, page, parent=None: shown.append((title, page)) or True)
     frame._show_formatted(ChatMessage(ASSISTANT, 'Synthetic text', assistant_name=provider))
     assert [title for title, _page in shown] == [f'Message: {provider}']
     # The page starts with who wrote it as heading 1 (#341).
@@ -10656,7 +11456,7 @@ def test_codex_model_picker_keeps_defaults_and_restores_provider_choices(frame):
         assert dialog.values()[-1] == 'synthetic-one' and dialog.effort() == 'future-effort'
         dialog.model.SetSelection(2)
         dialog._on_codex_model()
-        assert dialog.effort() == '' and list(dialog.effort_choice.GetStrings()) == ['Configured Codex effort', 'High']
+        assert dialog.effort() == '' and list(dialog.effort_choice.GetStrings()) == ["Codex's default", 'High']
         dialog.provider_choice.SetSelection(0)
         dialog._on_provider()
         assert dialog.model.GetSelection() == 2
@@ -10696,10 +11496,11 @@ def test_codex_create_and_fork_forward_selected_options_through_controller(frame
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: action())
     source = SessionInfo('external', 'codex:source', 'Source', '/', 'source', provider='codex')
     policy = {'sandbox': sandbox, 'approval_policy': 'on-request', 'approvals_reviewer': reviewer}
+    chat_options = {'instructions': None, 'extra_roots': ()}
     frame._create_codex_owned('/', 'Synthetic', '', model='synthetic-one', effort='future-effort', **policy)
     frame._create_codex_owned('/', 'Synthetic', '', source=source, model='synthetic-two', effort='high', **policy)
-    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **policy}),
-                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **policy})]
+    assert calls == [('create', {'model': 'synthetic-one', 'effort': 'future-effort', **chat_options, **policy}),
+                     ('fork', {'model': 'synthetic-two', 'effort': 'high', **chat_options, **policy})]
 
 
 @pytest.mark.parametrize('continuing', [False, True])
@@ -11297,10 +12098,11 @@ def test_lists_kinds_are_a_list_with_counts_and_every_kind_is_built(frame):
     try:
         assert dialog.category == "links"
         assert sorted(b[0] for b in built) == sorted(["code", "links", "files", "commands",
-                                                      "decisions", "tasks"])
+                                                      "decisions", "tasks", "subagents", "approvals"])
         assert list(dialog.kinds.GetStrings()) == ["Code Blocks (1)", "Links (1)",
                                                    "Changed Files (1)", "Commands (1)",
-                                                   "Decisions (1)", "Tasks (1)"]
+                                                   "Decisions (1)", "Tasks (1)",
+                                                   "Subagents (1)", "Auto Approvals (1)"]
         assert dialog.kinds.GetSelection() == 1
         # Arrowing the Kinds list shows that kind below it.
         dialog.kinds.SetSelection(3)
@@ -11320,7 +12122,7 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)
         assert dialog.category == "code"
         _tab_key(dialog, wx.WXK_TAB, command=True, shift=True)  # wraps to the last
-        assert dialog.category == "tasks"
+        assert dialog.category == "approvals"
         _tab_key(dialog, wx.WXK_PAGEDOWN, control=False, command=True)  # Ctrl+Page Down
         assert dialog.category == "code"
         # A Mac's Cmd+Shift+] and Cmd+Shift+[ (the key may come shifted).
@@ -11328,12 +12130,16 @@ def test_lists_keys_change_kind_and_stay_on_the_list(frame):
         assert dialog.category == "links"
         _tab_key(dialog, ord("["), control=False, command=True, shift=True)
         assert dialog.category == "code"
-        # Ctrl+1 to Ctrl+6 go straight to a kind on Windows.
+        # Ctrl+1 to Ctrl+8 go straight to a kind on Windows.
         _tab_key(dialog, ord("4"), control=False, command=True)
         assert dialog.category == "commands" and focused[-1] == "commands"
         assert dialog.kinds.GetSelection() == 3
         _tab_key(dialog, ord("6"), control=False, command=True)
         assert dialog.category == "tasks" and focused[-1] == "tasks"
+        _tab_key(dialog, ord("7"), control=False, command=True)
+        assert dialog.category == "subagents" and focused[-1] == "subagents"
+        _tab_key(dialog, ord("8"), control=False, command=True)  # last, #564
+        assert dialog.category == "approvals" and focused[-1] == "approvals"
         _tab_key(dialog, ord("4"), control=False, command=True)
         # A plain digit is just typing.
         _tab_key(dialog, ord("2"), control=False)
@@ -11374,7 +12180,7 @@ def test_lists_altgr_and_other_digits_are_typing(frame):
             event.SetControlDown(True)
             event.SetAltDown(True)
             dialog._on_char_hook(event)
-        _tab_key(dialog, ord("7"), control=False, command=True)  # no seventh kind
+        _tab_key(dialog, ord("9"), control=False, command=True)  # no ninth kind
         assert dialog.category == "links"
     finally:
         dialog.Destroy()
@@ -11432,7 +12238,7 @@ def test_lists_scope_rebuilds_every_kind(frame):
         dialog.set_scope("message")
         assert sorted(built) == sorted((c, "message") for c in
                                        ("code", "links", "files", "commands", "decisions",
-                                        "tasks"))
+                                        "tasks", "subagents", "approvals"))
     finally:
         dialog.Destroy()
 
@@ -12133,6 +12939,133 @@ def test_agent_conversation_automatic_mode_runs_to_its_limit(frame, env, fake_ru
     assert "Stopped after 2 exchanges" in env["feedback"][-1]
 
 
+def test_agent_conversation_sounds_each_hand_off_once_and_the_limit_as_a_reply(frame, env,
+                                                                               fake_runner):
+    """Your message is Message sent. Each reply that goes on by itself is Agent reply handed
+    on, with no Reply finished and no Message sent for the hand-off's own send; the reply
+    that waits for you at the turn limit is Reply finished (#250, #248)."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    assert env["sounds"] == [se.SENT]
+    _finish(frame, "own-2", "Built v1.")
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+    _finish(frame, "own-1", "Bug in v1.")
+    _finish(frame, "own-2", "Fixed in v2.")
+    assert env["sounds"] == [se.SENT, se.HANDED_ON, se.HANDED_ON, se.FINISHED]
+    assert not frame._agent_sound_owed and not frame._sound_hushed_sends
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_agent_conversation_hand_offs_sound_as_before_without_pass_in_the_scheme(
+        frame, env, fake_runner, explicit_none):
+    """A scheme of your own from before Agent reply handed on (no entry), or with None for
+    it: a hand-off is never quieter than it was, so it's the reply and then the send."""
+    from thechatplace import sound_events as se
+    sid = "user-" + "d" * 32
+    events = {e.key: se.built_in_ref(e.sound, "wood") for e in se.EVENTS if e.id != se.HANDED_ON}
+    if explicit_none:
+        events["ReplyHandedOn"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine", "events": events}}
+    frame.speech.sound_scheme = sid
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    _finish(frame, "own-2", "Built v1.")
+    assert env["sounds"] == [se.SENT, se.FINISHED, se.SENT]
+    assert not frame._agent_sound_owed and not frame._sound_hushed_sends
+
+
+def test_agent_conversation_sounds_when_you_approve_each_hand_off(frame, env, fake_runner,
+                                                                  monkeypatch):
+    """Approving each hand-off: every reply waits for you, so it's Reply finished, and your
+    Ctrl+Shift+E is Message sent. Agent reply handed on never plays."""
+    from thechatplace import sound_events as se
+    from thechatplace.ui import agent_chats
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    _finish(frame, "own-2", "Built it.")
+    assert env["sounds"] == [se.SENT, se.FINISHED]
+
+    class Dialog:
+        def __init__(self, parent, source, choices, text, check, title=""):
+            self.chosen = (0, text)
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(agent_chats, "RelayDialog", Dialog)
+    frame.on_send_reply_to()
+    assert env["sounds"] == [se.SENT, se.FINISHED, se.SENT]
+
+
+def test_agent_conversation_member_failing_sounds_failed_once(frame, env, fake_runner):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    frame._on_turn_event({"id": "own-2"}, "x",
+                         TurnEvent("failed", text="It broke", is_error=True))
+    assert env["sounds"] == [se.SENT, se.FAILED]
+
+
+def test_agent_conversation_answer_with_background_work_handed_on_once(frame, env, fake_runner):
+    """Claude answered and left work running (#161): the answer is handed on then, with its
+    own sound, and the turn's later end adds none."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    _agent_conversation(frame, env, mode="auto")
+    frame.speech.agent_auto_mode = True
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    frame._answered_with_background("own-2", "x", TurnEvent("waiting", text="Built v1."), False)
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+    frame._on_turn_event({"id": "own-2"}, "x",
+                         TurnEvent("finished", text="Built v1.", data={"after_background": True}))
+    assert env["sounds"] == [se.SENT, se.HANDED_ON]
+
+
+def test_answering_a_member_says_the_agent_conversation_is_working(frame, env, fake_runner,
+                                                                   monkeypatch):
+    """The answer is the member's, the open chat the conversation's: the
+    conversation's messages say working too, unless another member still
+    waits on you (#596)."""
+    from thechatplace.claude_cli import allow_response
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    _agent_conversation(frame, env)
+    frame.reply_text.SetValue("Build it.")
+    frame.on_send()
+    assert "own-2" in frame._runners
+    frame._runners["own-1"] = FakeRunner([], "", "", None)
+    for session_id, request_id in (("own-2", "r1"), ("own-1", "r2")):
+        request = _request(request_id)
+        frame._on_turn_event({"id": session_id}, "x",
+                             TurnEvent("permission", text=request.summary(), request=request))
+    settle(frame)
+    assert frame._open.provider == "agents" and frame._open.state == "needs you"
+    assert "needs you" in frame.messages_label.GetLabel()
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    monkeypatch.setattr(frame, "_ask", lambda title, request, own: (
+        allow_response(request), "Allowed.", {}))
+    frame.on_answer()  # the first member's: the second still waits
+    assert len(frame._pending["own-2"]) + len(frame._pending["own-1"]) == 1
+    assert "needs you" in frame.messages_label.GetLabel()
+    frame.on_answer()
+    label = frame.messages_label.GetLabel()
+    assert "needs you" not in label and "(working" in label, label
+
+
 def test_agent_conversation_relayed_text_never_answers_a_waiting_question(frame, env, fake_runner):
     from thechatplace.claude_cli import PermissionRequest
     _agent_conversation(frame, env, mode="auto")
@@ -12610,6 +13543,16 @@ def _other_runtime_chat(frame, monkeypatch, calls):
     return info, record
 
 
+def test_a_runtime_chats_queue_is_not_deleted_while_it_runs_and_makes_no_sound(
+        frame, env, monkeypatch):
+    _other_runtime_chat(frame, monkeypatch, [])
+    sounds = []
+    monkeypatch.setattr(frame, "_sound", lambda event, *a, **k: sounds.append(event))
+    frame.remove_queued()
+    assert env["feedback"][-1].startswith("Stop this ")
+    assert sounds == []  # Withdraw is for a message really deleted
+
+
 def test_send_and_stop_route_any_runtime_providers_chat(frame, env, monkeypatch):
     settle(frame)
     calls = []
@@ -13079,6 +14022,122 @@ def test_answering_a_copilot_request_asks_in_copilots_name_and_denies(frame, env
         assert shown[0][2].command == "echo synthetic"
         assert _copilot_state(frame).replies[-1][1] == "Denied"
         assert "Answer sent to Copilot." in env["feedback"]
+    finally:
+        runtime.close()
+
+
+def test_after_answering_a_runtime_chat_the_messages_list_says_working(frame, env, monkeypatch):
+    """As for Claude (#596): the answer goes in the background and the state
+    that says it was taken comes later, with you back in the list, where a
+    change waits until you leave. The list says working as the dialog closes."""
+    from thechatplace.ui import codex_chats
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "ask")
+    shown, seen = [], []
+
+    class Dialog:
+        def __init__(self, parent, title, request, detail="", *, chat_rule=None, provider="Codex"):
+            shown.append(request)
+            self.choice = "allow_once"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Dialog)
+    original = frame._codex_work
+
+    def work(action, done):
+        # The label as the answer is handed to the background.
+        seen.append((len(shown), frame.messages_label.GetLabel()))
+        return original(action, done)
+    monkeypatch.setattr(frame, "_codex_work", work)
+    # Away from the list while the request comes (on Linux the hidden list
+    # can really have focus).
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    try:
+        frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
+        assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
+                    timeout=COPILOT_WAIT)
+        assert pump(lambda: frame._open.state == "needs you"), frame._open.state
+        assert pump(lambda: "needs you" in frame.messages_label.GetLabel()), \
+            frame.messages_label.GetLabel()
+        monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+        frame.on_answer()
+        assert pump(lambda: any(count == 1 for count, _label in seen), timeout=COPILOT_WAIT)
+        label = next(label for count, label in seen if count == 1)
+        assert "needs you" not in label and "(working" in label, label
+        assert pump(lambda: _copilot_state(frame).outcome == "completed", timeout=COPILOT_WAIT)
+    finally:
+        runtime.close()
+
+
+def _answer_copilot_in_the_list(frame, env, monkeypatch, fail=False, second=False):
+    """A Copilot chat asks; Answer allows it with you back in the messages.
+    ``fail``: the answer never reaches Copilot (the background work reports
+    an error). ``second``: another request is waiting too. Returns the
+    runtime (to close) and the list's label once the answer was handled."""
+    import dataclasses
+    from thechatplace.ui import codex_chats
+    runtime, folder = _copilot_window(frame, env, monkeypatch, "ask")
+    shown = []
+
+    class Dialog:
+        def __init__(self, parent, title, request, detail="", *, chat_rule=None, provider="Codex"):
+            shown.append(request)
+            self.choice = "allow_once"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_chats, "CodexPermissionDialog", Dialog)
+    original = frame._codex_work
+    handled = []
+
+    def work(action, done):
+        if shown and fail:
+            done(None, RuntimeError("Copilot has gone"))
+            handled.append(True)
+            return None
+        if shown:
+            handled.append(True)
+        return original(action, done)
+    monkeypatch.setattr(frame, "_codex_work", work)
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: False)
+    frame._create_codex_owned(folder, "Asking Copilot", "Run it", provider="copilot")
+    assert pump(lambda: _copilot_state(frame) is not None and _copilot_state(frame).requests,
+                timeout=COPILOT_WAIT)
+    assert pump(lambda: "needs you" in frame.messages_label.GetLabel()), \
+        frame.messages_label.GetLabel()
+    if second:
+        state = _copilot_state(frame)
+        other = dataclasses.replace(state.requests[0], request_id="other-request")
+        frame._codex_states[frame._open.key] = dataclasses.replace(
+            state, requests=(*state.requests, other))
+    monkeypatch.setattr(frame.chat_list, "HasFocus", lambda: True)  # back in the list
+    frame.on_answer()
+    assert pump(lambda: handled, timeout=COPILOT_WAIT)
+    return runtime, frame.messages_label.GetLabel()
+
+
+def test_a_runtime_answer_that_fails_puts_needs_you_back(frame, env, monkeypatch):
+    """The list said working as the dialog closed; the answer never went, so
+    it says needs you again, at once (#596)."""
+    runtime, label = _answer_copilot_in_the_list(frame, env, monkeypatch, fail=True)
+    try:
+        assert "needs you" in label, label
+        assert frame._open.state == "needs you"
+        assert any("could not be answered" in text for text in env["feedback"])
+    finally:
+        runtime.close()
+
+
+def test_a_runtime_chat_with_another_request_waiting_still_needs_you(frame, env, monkeypatch):
+    runtime, label = _answer_copilot_in_the_list(frame, env, monkeypatch, second=True)
+    try:
+        assert "needs you" in label and "(working" not in label, label
     finally:
         runtime.close()
 
@@ -13752,7 +14811,8 @@ def test_a_model_copilot_wont_switch_a_new_chat_to_is_said_once(frame, env, monk
         pump(lambda: False, timeout=1)  # let any later updates arrive
         notices = [text for text in said if "couldn't switch this chat" in text]
         assert notices == ["Refused Model: Copilot couldn't switch this chat to the model "
-                           "chosen, so it uses Copilot's own. File, Change Model chooses another."]
+                           "chosen, so it uses Copilot's own. File, Chat Settings, Change Model "
+                           "chooses another."]
         assert _copilot_state(frame).model == "auto"
     finally:
         runtime.close()
@@ -15986,3 +17046,46 @@ def test_reading_usage_leaves_the_status_bar_when_its_done(frame, monkeypatch):
     frame._status('Something newer.')
     callbacks[1](['Line'], False)
     assert frame._status_latest == 'Something newer.'
+
+
+def test_a_chat_claude_moves_into_a_worktree_follows_it_and_says_so(frame, env):
+    # #561: Claude Code carries on in the worktree in later turns, so the
+    # chat's folder follows it, and you hear where it went.
+    import json as _json
+    from records import user_text
+    start = env["tmp"] / "Start"
+    start.mkdir()
+    moved = start / ".claude" / "worktrees" / "wt1"
+    moved.mkdir(parents=True)
+    frame.store.add(OwnSession("moving-1", "Mover", str(start), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(start), "moving-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The record Claude Code writes, then ordinary records in the worktree.
+    records = [user_text("Make a worktree", cwd=str(start), entrypoint="sdk-cli"),
+               {"type": "relocated", "sessionId": "moving-1", "relocatedCwd": str(moved)},
+               user_text("next", cwd=str(moved), entrypoint="sdk-cli")]
+    path.write_text("".join(_json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    frame._note_worktree_move("moving-1", "Mover")
+    assert pump(lambda: frame.store.get("moving-1").cwd == str(moved), timeout=15)
+    assert frame._last_announcement.startswith("Mover moved to worktree wt1")
+    # Once it's there, nothing more is said.
+    frame._last_announcement = ""
+    frame._note_worktree_move("moving-1", "Mover")
+    pump(lambda: False, timeout=1)
+    assert frame._last_announcement == ""
+
+
+def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
+    # #561 review: a subfolder's cwd isn't a move to the worktree's top.
+    import json as _json
+    from records import user_text
+    folder = env["tmp"] / "Repo" / ".claude" / "worktrees" / "wt1" / "src"
+    folder.mkdir(parents=True)
+    frame.store.add(OwnSession("sub-1", "In a subfolder", str(folder), last_activity_ms=1))
+    path = platform_paths.direct_transcript_path(str(folder), "sub-1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(user_text("hi", cwd=str(folder), entrypoint="sdk-cli")) + "\n",
+                    encoding="utf-8")
+    frame._note_worktree_move("sub-1", "In a subfolder")
+    pump(lambda: False, timeout=1)
+    assert frame.store.get("sub-1").cwd == str(folder)

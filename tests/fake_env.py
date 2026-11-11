@@ -26,6 +26,57 @@ FAKE_COMMANDS = [
 ]
 
 
+#: A folder's connected tools as mcp_status answers (#468), made up.
+FAKE_MCP_SERVERS = [
+    {"name": "claude.ai Microsoft Learn", "status": "connected", "scope": "claudeai",
+     "source": "claudeai", "tools": [{"name": "microsoft_docs_search"},
+                                     {"name": "microsoft_docs_fetch"},
+                                     {"name": "microsoft_code_sample_search"}]},
+    {"name": "claude.ai Morningstar", "status": "needs-auth", "scope": "claudeai",
+     "source": "claudeai"},
+    {"name": "github", "status": "failed", "scope": "user", "source": "user",
+     "error": "Connection closed"},
+    {"name": "plugin:probe-tools:notes", "status": "connected", "scope": "dynamic",
+     "source": "plugin", "tools": [{"name": "add_note"}]},
+]
+
+
+def fake_chat_choices():
+    """A folder's agents and output styles, as Claude Code lists them (#468)."""
+    from thechatplace.chat_options import choices_from_init
+    return choices_from_init({
+        "agents": [{"name": "code-reviewer", "description": "Independent review of a change.",
+                    "model": "opus"},
+                   {"name": "Explore", "description": "Read-only search agent."}],
+        "available_output_styles": ["default", "Concise", "Explanatory"],
+        "output_style": "default"})
+
+
+class RecordingPlayer:
+    """Stands in for app-kit's SoundPlayer, so no test or probe ever makes a sound."""
+
+    def __init__(self, played, previews, stops):
+        self.played, self.previews, self.stops = played, previews, stops
+
+    def play(self, path, *, key=None, priority="normal", volume=1.0, fallback=None):
+        self.played.append(key)
+        self.last = dict(path=path, key=key, priority=priority, volume=volume, fallback=fallback)
+        return True
+
+    def preview(self, path, *, volume=1.0, fallback=None):
+        self.previews.append((path, volume))
+        self.preview_fallback = fallback
+
+    def stop(self):
+        self.stops.append("stop")
+
+    def stop_preview(self):
+        self.stops.append("stop_preview")
+
+    def close(self):
+        pass
+
+
 def now_ms():
     return int(time.time() * 1000)
 
@@ -77,6 +128,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         True, signed_in=True, login="synthetic-user", host="https://github.com"))
     # Nor the real claude for a folder's slash commands (#23).
     patch(main_frame, "fetch_commands", lambda exe, cwd: list(FAKE_COMMANDS))
+    # Nor for its agents and output styles (#468).
+    patch(main_frame, "fetch_chat_choices", lambda exe, cwd: fake_chat_choices())
     spoken = []
     feedback = []
 
@@ -96,6 +149,14 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         # formatted view put a fake in.
         patch(main_frame, "formatted_view_available", lambda: False)
         patch(dialogs, "formatted_view_available", lambda: False)
+    from thechatplace.ui import sound_host
+    sounds, previews, sound_stops, players = [], [], [], []
+
+    def make_player():
+        players.append(RecordingPlayer(sounds, previews, sound_stops))
+        return players[-1]
+    patch(sound_host, "SoundPlayer", make_player)
+    patch(sound_host, "quiet_now", lambda: False)
     opened = []
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
@@ -121,7 +182,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         def __init__(self, on_click, tooltip):
             self.on_click = on_click
 
-        def show(self, title, message, key):
+        def show(self, title, message, key, silent=False):
             notified.append((title, message, key))
             return True
 
@@ -143,13 +204,51 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         def close(self):
             self.closed = True
     patch(session_tools, "Host", FakeSessionToolsHost)
+    # Nor the real claude for a folder's connected tools (#468).
+    from thechatplace import claude_mcp
+    mcp = {"servers": [dict(s) for s in FAKE_MCP_SERVERS], "calls": [], "closed": 0,
+           "error": "", "sign_in": claude_mcp.SignIn(
+               "https://claude.ai/api/organizations/org/mcp/start-auth/srv")}
+
+    class FakeMcpSession:
+        closed = False
+
+        def __init__(self, exe, cwd, disabled=(), mcp_config=None):
+            mcp["calls"].append(("open", cwd))
+            mcp["opened_with"] = {"disabled": list(disabled), "mcp_config": mcp_config}
+
+        def _check(self):
+            if mcp["error"]:
+                raise claude_mcp.McpError(mcp["error"])
+
+        def status(self):
+            mcp["calls"].append(("status",))
+            self._check()
+            return claude_mcp.parse_servers({"mcpServers": mcp["servers"]})
+
+        def sign_in(self, name):
+            mcp["calls"].append(("sign_in", name))
+            self._check()
+            return mcp["sign_in"]
+
+        def reconnect(self, name):
+            mcp["calls"].append(("reconnect", name))
+            self._check()
+            for server in mcp["servers"]:
+                if server["name"] == name:
+                    server.update(status="connected", error=None)
+
+        def close(self):
+            mcp["closed"] += 1
+    patch(claude_mcp, "open_session", FakeMcpSession)
     # Nor take the Mac's menu bar from the app you're using.
     activated = []
     from thechatplace.ui import mac_a11y
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
-            "live": live, "notified": notified, "activated": activated}
+            "live": live, "notified": notified, "activated": activated, "mcp": mcp,
+            "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
 
 
 def add_desktop(env, local, cli, title, cwd="C:\\G\\Repo", ago=60_000, **extra):
@@ -185,9 +284,20 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False, mcp_config=None):
+                 task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
         self.mcp_config = mcp_config
+        self.disabled_mcp = list(disabled_mcp or ())
+        self.context_usage = context_usage
+        # Live control (#468). ``live``: whether a control request can go in
+        # at all (off: as a Claude Code that can't, so a change waits for
+        # the next turn, said at once); ``live_ok``/``live_error``: its answer.
+        self.live, self.live_ok, self.live_error = False, True, ""
+        self.controls = []
+        self.permission_mode = ""
+        self.background_entries = []
+        self.retry = None
+        self.started_at = 0.0
         self.images = images or []
         self.remote_control = remote_control
         self.task_list = task_list
@@ -206,6 +316,9 @@ class FakeRunner:
 
     def cancel(self):
         self.cancelled = True
+
+    def join(self, timeout=None):
+        self.joined = timeout
 
     def respond(self, request_id, response):
         self.responses = getattr(self, "responses", []) + [(request_id, response)]
@@ -231,6 +344,27 @@ class FakeRunner:
         self.follow_ups = getattr(self, "follow_ups", []) + [(prompt, images)]
         self.waiting_on_background = False
         return True
+
+    def _control(self, subtype, value, on_done):
+        if not self.live or getattr(self, "ended", False):
+            return False
+        self.controls.append((subtype, value))
+        on_done(self.live_ok, {}, self.live_error)  # from "the worker"; the UI defers
+        return True
+
+    def set_model(self, model, on_done):
+        return self._control("set_model", model, on_done)
+
+    def set_permission_mode(self, mode, on_done):
+        return self._control("set_permission_mode", mode, on_done)
+
+    def stop_task(self, task_id, on_done):
+        if self.live and self.live_ok:
+            # As Claude Code does: the list drops it before the answer.
+            self.background_entries = [e for e in self.background_entries
+                                       if e.get("task_id") != task_id]
+            self.background_tasks = [e["description"] for e in self.background_entries]
+        return self._control("stop_task", task_id, on_done)
 
 
 def status_field(bar, index: int = 0) -> str:

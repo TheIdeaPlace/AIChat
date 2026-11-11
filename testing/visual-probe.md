@@ -54,7 +54,10 @@ screen and show as a change. Check the diff picture before accepting a changed s
 For a run, the VM is switched to its largest screen mode, 1920 by 1080. Windows allows up to
 175% on that screen, so 200% would need ClaudeTesting's Hyper-V display set larger. The first
 run installs Python 3.12, the Visual C++ runtime and the app's packages in the VM, which
-takes a few minutes. The pictures come back to a new folder under `%TEMP%\tcp-ui-probe`.
+takes a few minutes. After that, a run whose `requirements.txt` or `requirements-dev.txt`
+differs from the last install's installs the packages again, reinstalling app-kit (and any
+other package pinned to an archive) by force, since its version number can stay the same when
+the pin moves (#585). The pictures come back to a new folder under `%TEMP%\tcp-ui-probe`.
 
 At 150% and 175% the pictures are screen copies in real pixels, because the app isn't DPI
 aware (#185): Windows draws it at 100% and stretches it, and the pictures show that, as a

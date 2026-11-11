@@ -145,3 +145,71 @@ def test_chat_row_names_the_ai_folder_and_day():
     row = export.chat_row("Fix it", "Codex", r"C:\work\proj" + "\\", 1_790_000_000_000)
     assert row.startswith("Fix it, Codex, proj, last active ")
     assert export.chat_row("New", "Claude", "", 0) == "New, Claude, no folder"
+
+
+# -- a whole chat to read in the app (#538) ---------------------------------------------------
+
+
+def test_the_reading_page_has_a_heading_per_message_and_theirs_under_it():
+    page = export.reading_page("Full chat: Build fix", MESSAGES)
+    assert "<h1>Full chat: Build fix</h1>" in page
+    assert '<h2 id="m1">You</h2>' in page and '<h2 id="m2">Claude</h2>' in page
+    assert "<h3>Plan</h3>" in page  # the reply's own "# Plan"
+    assert "<h1>Plan" not in page and "<main>" not in page and "aria-labelledby" not in page
+
+
+def test_the_reading_page_keeps_the_safety_of_a_messages_page():
+    page = export.reading_page("<script>x</script>", [
+        ChatMessage(USER, "<script>alert(1)</script> [bad](javascript:alert(1))", "", "a")])
+    assert "<script>" not in page
+    assert 'href="javascript' not in page
+    assert "default-src 'none'" in page
+
+
+def test_what_was_sent_reads_line_for_line():
+    message = ChatMessage(USER, "One\nTwo", "", "a")
+    message.detail = "yes"
+    assert "One<br" in export.reading_page("T", [message])
+
+
+def test_a_message_anchor_is_its_place_in_the_list():
+    assert export.message_anchor(0) == "m1" and export.message_anchor(11) == "m12"
+
+
+def test_the_go_to_script_takes_only_a_message_anchor():
+    from thechatplace.rendering import go_to_script
+    assert "h2#m12" in go_to_script("m12") and "focus()" in go_to_script("m12")
+    for bad in ("", "x", "m1'); alert(1); //", "m", None):
+        assert go_to_script(bad) == ""
+
+
+def test_headings_a_message_writes_any_way_stay_under_it():
+    page = export.reading_page("T", [ChatMessage(ASSISTANT, "Big\n===\n\nSub\n---\n\n> # quoted", "", "a")])
+    assert "<h3>Big</h3>" in page and "<h4>Sub</h4>" in page and "<h3>quoted</h3>" in page
+    assert page.count("<h2") == 1 and page.count("<h1") == 1
+
+
+def test_a_tool_row_is_below_the_messages_and_says_what_it_did():
+    class Tool:
+        label, whole, detail, timestamp, is_activity = "Tool", "Bash: git diff main", "", "", True
+    page = export.reading_page("T", [ChatMessage(USER, "Hi", "", "a"), Tool()])
+    assert '<h2 id="m1">You</h2>' in page
+    assert '<h3 id="m2">Tool: Bash: git diff main</h3>' in page
+
+
+def test_plain_reading_has_no_export_line_and_finds_the_message():
+    text, tail = export.reading_text(MESSAGES, 1)
+    assert "Exported" not in text and text.startswith("You\nFix the build")
+    assert text.endswith(tail) and tail.startswith("Claude\n")
+
+
+def test_half_an_emoji_doesnt_stop_a_page():
+    from thechatplace.rendering import needs_page_file, page_file_bytes
+    assert not needs_page_file("cut \ud83d off")
+    assert page_file_bytes("cut \ud83d off") == b"cut ? off"
+    assert needs_page_file("x" * 1_500_001) and not needs_page_file("x" * 1_500_000)
+
+
+def test_the_go_to_script_goes_to_a_heading_not_anything_with_that_id():
+    from thechatplace.rendering import go_to_script
+    assert "h2#m7,h3#m7" in go_to_script("m7")

@@ -21,9 +21,11 @@ WX_DIALOGS = {"TextEntryDialog", "SingleChoiceDialog"}
 
 
 def test_every_dialog_is_photographed_or_says_why_not():
-    from thechatplace.ui import dialogs
-    classes = {name for name, cls in inspect.getmembers(dialogs, inspect.isclass)
-               if issubclass(cls, wx.Dialog) and cls.__module__ == dialogs.__name__}
+    from thechatplace.ui import dialogs, sound_gallery_dialog, sounds_dialog, subagent_chat
+    # Dialogs live in dialogs.py, and a few in modules of their own (#468).
+    classes = {name for module in (dialogs, sound_gallery_dialog, sounds_dialog, subagent_chat)
+               for name, cls in inspect.getmembers(module, inspect.isclass)
+               if issubclass(cls, wx.Dialog) and cls.__module__ == module.__name__}
     covered = set(ui_probe.DIALOG_CLASSES.values()) | set(ui_probe.NOT_PHOTOGRAPHED)
     assert classes - covered == set(), "add a surface to tools/ui_probe.py for these dialogs"
     assert covered - classes == WX_DIALOGS, "the probe names dialogs that no longer exist"
@@ -68,6 +70,28 @@ def test_each_surface_opens_what_it_says_on_made_up_data(name, opened, tmp_path,
         assert opened == [ui_probe.expected_class(name)]
     finally:
         ui_probe.close_frame(frame)
+
+
+def test_the_rewind_files_surface_shows_the_warning(tmp_path, monkeypatch, app):
+    # Conversation and files chosen, which the plain rewind surface doesn't
+    # show, and the dialog's real words about it (#468).
+    from thechatplace import rewind
+    seen = {}
+
+    def record(self):
+        seen.update(happens=self.happens.GetValue(), chosen=self.selected())
+        return wx.ID_CANCEL
+    monkeypatch.setattr(wx.Dialog, "ShowModal", record)
+    env = ui_probe.build_world(tmp_path, monkeypatch.setattr, formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    try:
+        ui_probe.SURFACES["rewind-files"][1](frame, env)()
+        assert seen["chosen"] == rewind.BOTH
+        assert rewind.FILES_WARNING in seen["happens"]
+    finally:
+        ui_probe.close_frame(frame)
+    from thechatplace.ui import dialogs, rewind_chats
+    assert rewind_chats.RewindDialog is dialogs.RewindDialog  # no other surface is changed
 
 
 def test_surfaces_start_from_fresh_data(opened, tmp_path, monkeypatch):

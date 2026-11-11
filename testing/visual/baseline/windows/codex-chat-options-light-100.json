@@ -1,0 +1,216 @@
+{
+ "title": "Chat Options: Codex review",
+ "class": "ChatOptionsDialog",
+ "size": [
+  620,
+  600
+ ],
+ "client": [
+  604,
+  561
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Instructions for this chat:",
+   "rect": [
+    10,
+    0,
+    132,
+    16
+   ],
+   "best": [
+    132,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Instructions for this chat",
+   "label": "Use concise explanations.\r\nRun the affected tests.",
+   "rect": [
+    12,
+    18,
+    584,
+    261
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Use concise explanations.\nRun the affected tests."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "More &folders:",
+   "rect": [
+    10,
+    287,
+    71,
+    16
+   ],
+   "best": [
+    71,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "More folders, Delete removes one",
+   "label": "",
+   "rect": [
+    12,
+    305,
+    584,
+    70
+   ],
+   "best": [
+    511,
+    70
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\codex-chat-options\\Projects\\Website"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "A&dd Folder...",
+   "rect": [
+    10,
+    383,
+    88,
+    23
+   ],
+   "best": [
+    88,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove",
+   "rect": [
+    104,
+    383,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "A&bout these options:",
+   "rect": [
+    10,
+    416,
+    111,
+    16
+   ],
+   "best": [
+    111,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these options",
+   "label": "Instructions are sent with each Codex turn. Codex can change files in these folders only when its permission mode lets it edit files. A folder you remove is left out of the next turn. Changes apply when you choose OK.",
+   "rect": [
+    12,
+    434,
+    584,
+    90
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Instructions are sent with each Codex turn. Codex can change files in these folders only when its permission mode lets it edit files. A folder you remove is left out of the next turn. Changes apply when you choose OK."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    434,
+    530,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    517,
+    530,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

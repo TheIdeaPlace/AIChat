@@ -432,6 +432,31 @@ def test_retargeted_workspace_blocks_turn_before_any_rpc(tmp_path, monkeypatch):
 
 
 
+def test_sound_counts_reach_the_turn_snapshot():
+    # Sounds (#250) read these counts from the snapshot; both default to 0, so
+    # a merge that dropped them would pass silently. Thinking (reasoning) and
+    # parity's reasoning summaries (#558) aren't tools.
+    from thechatplace.providers.codex_events import decode_event
+    c = Connection()
+    one = c.proof('one')
+    executor = CodexTurnExecutor(c)
+    turn = executor.start(one, 'A').turn_id
+
+    def item(method, **fields):
+        return decode_event(method, {'threadId': 'one', 'turnId': turn, 'item': fields})
+    c.events.extend([
+        item('item/started', type='commandExecution', id='c1', command='git status'),
+        item('item/started', type='reasoning', id='r1'),
+        item('item/completed', type='reasoning', id='r1', summary=['Looked at the tree.']),
+        item('item/completed', type='fileChange', id='f1', status='completed',
+             changes=[{'path': 'a.py', 'kind': {'type': 'update'}, 'diff': '+x'}]),
+        item('item/started', type='mcpToolCall', id='m1')])
+    executor.drain()
+    state = executor.snapshot(one)
+    assert (state.tools_started, state.edits_made) == (2, 1)
+    assert state.reasoning  # parity's field kept its place beside the counts
+
+
 @pytest.mark.parametrize('outcome', ['completed', 'failed', 'interrupted'])
 def test_plan_snapshots_route_to_verified_turn_and_replace_in_provider_order(outcome):
     from thechatplace.providers.codex_events import decode_event

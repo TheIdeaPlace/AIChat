@@ -22,10 +22,42 @@ CODEX_REVIEW_MODES = [(value + ('user',), label) for value, label in CODEX_MODES
     (('read-only', 'on-request', 'auto_review'), 'Read-only; automatic approval review'),
     (('workspace-write', 'on-request', 'auto_review'), 'Can edit files in this folder; automatic approval review')]
 
+#: Change Permission Mode's last row for a Codex chat (#596, decision 17):
+#: Codex's Plan mode, offered where Claude's is. Plan is a mode of its own
+#: (what /plan chooses) on top of the chat's file access, which it keeps;
+#: choosing a file access row takes the chat out of Plan.
+CODEX_PLAN = 'plan'
+CODEX_PLAN_LABEL = 'Plan: discuss and produce a plan first, keeping its file access'
+
+
+def codex_mode_label(options) -> str:
+    """A Codex chat's saved permission mode in words, ending ", in Plan
+    mode" when /plan or Change Permission Mode put it there."""
+    current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
+    label = dict(CODEX_REVIEW_MODES).get(current + (options.get('approvals_reviewer', 'user'),),
+                                         dict(CODEX_MODES).get(current, 'not recorded'))
+    return label + (', in Plan mode' if options.get('collaboration') == CODEX_PLAN else '')
+
+
 CODEX_REVIEW_NOTE = ('Automatic approval review lets Codex review eligible requests instead of asking you. '
                      'It can deny requests, and does not grant unrestricted access. Human review remains available. '
                      'Network access and access to temporary folders outside this folder require approval. '
                      'The Chat Place overrides these boundaries for this chat only; saved Codex rules still apply.')
+
+
+#: Chat Permissions' heading for a Codex chat's decision history. Not "your
+#: saved rules", which sat just below Codex's own "saved command rules" in the
+#: same text (#596).
+REVIEW_HISTORY_HEADING = ('Recent decisions made for you, by automatic review and by Allow for '
+                          'This Chat (newest first):')
+
+
+def review_history_text(reviews) -> str:
+    """The decisions ``review_history`` gives, ``(turn, identity, text)``
+    oldest first, as Chat Permissions shows them: newest first, the order
+    Lists' Approvals has (lists.approval_items), so the same history doesn't
+    read in two orders (#596)."""
+    return REVIEW_HISTORY_HEADING + '\n\n' + '\n\n'.join(row[2] for row in reversed(list(reviews)))
 
 
 class ClaudePermissions:
@@ -126,10 +158,7 @@ class CodexPermissions:
         self.removal_effect = 'Codex will ask again on the next matching request. Work already approved may finish.'
 
     def mode_text(self) -> str:
-        options = self.record.provider_options
-        current = (options.get('sandbox', 'read-only'), options.get('approval_policy', 'on-request'))
-        return dict(CODEX_REVIEW_MODES).get(current + (options.get('approvals_reviewer', 'user'),),
-                                          dict(CODEX_MODES).get(current, 'not recorded'))
+        return codex_mode_label(self.record.provider_options)
 
     def can_change_mode(self):
         state = self.frame._codex_states.get(self.info.key)
@@ -149,6 +178,9 @@ class CodexPermissions:
         reviewer = 'automatic approval review' if options.get('approvals_reviewer') == 'auto_review' else 'human review'
         files = ('Can read files and edit the chat folder: ' + self.record.cwd
                  if options.get('sandbox') == 'workspace-write' else 'Can read files; changes require approval.')
+        if options.get('extra_roots'):
+            files += (' Additional writable folders: ' if options.get('sandbox') == 'workspace-write'
+                      else ' Additional folders saved for folder editing: ') + '; '.join(options['extra_roots'])
         return (f'Selected reviewer: {reviewer}. {files}\n' + CODEX_REVIEW_NOTE + '\n\n'
                 'Removal applies before the next approval is sent; work already approved may finish. '
                 'Changing mode clears remembered approvals. ' + NOTICE)
@@ -186,8 +218,7 @@ class CodexPermissions:
                 if failed:
                     done(text + '\n\nAutomatic review history could not be read. Original records were preserved.')
                 elif reviews:
-                    done(text + '\n\nRecent automatic review decisions (oldest first):\n\n'
-                         + '\n\n'.join(row[2] for row in reviews))
+                    done(text + '\n\n' + review_history_text(reviews))
                 else:
                     done(text)
             self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)

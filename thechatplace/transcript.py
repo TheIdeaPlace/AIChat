@@ -23,7 +23,10 @@ What the chat shows, and why:
 * Tool calls, tool results, thinking, meta/context records, compaction
   summaries and harness events (``<task-notification>`` and friends) are
   "activity": hidden unless the reader turns on Show Tool Activity.
-* Sidechain (subagent) records are left out; they live in their own files.
+* Sidechain (subagent) records are left out; they live in their own files,
+  which ``subagents.py`` reads with ``TranscriptParser(sidechain=True)``
+  (#468). The parent's Agent calls, their results and the notifications
+  that say a background one ended are kept as ``Transcript.agents``.
 * Messages from other Claude sessions (``SendMessage``), on this computer or
   another one through Remote Control, are shown as from that session (#123),
   not as something you typed. One that arrives while Claude is working is an
@@ -43,7 +46,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .tasklist import TaskStep, TASK_PENDING, TASK_IN_PROGRESS, TASK_COMPLETED, TASK_STATUSES
 
@@ -83,6 +86,10 @@ RELAY = "relay"
 #: short row ahead of your first message, the history itself as its
 #: ``detail`` (Enter reads it). Copilot records it in your message's text.
 CARRIED = "carried"
+#: Claude's thinking before it answers (#468): only the blocks that carry
+#: text (most are signed and empty). Activity: hidden unless Show Tool
+#: Activity is on, never spoken live, never a reply.
+THINKING = "thinking"
 MAX_COMMAND_OUTPUT = 16_384
 
 LABELS = {
@@ -107,10 +114,11 @@ LABELS = {
     COMMAND_ERROR: "Claude Code error",
     RELAY: "Relay",
     CARRIED: "Earlier conversation",
+    THINKING: "Claude, thinking",
 }
 
 #: Kinds hidden unless "show tool activity" is on.
-ACTIVITY_KINDS = frozenset({TOOL, TOOL_RESULT, CONTEXT, EVENT})
+ACTIVITY_KINDS = frozenset({TOOL, TOOL_RESULT, CONTEXT, EVENT, THINKING})
 
 
 @dataclass
@@ -133,6 +141,17 @@ class ChatMessage:
     #: the messages list's row: an agent conversation's exact setup, or the
     #: exact text a reply was passed on with (#248).
     detail: str = ""
+    #: Where it is in Claude Code's record chain (#468): the uuid of the
+    #: last transcript record it came from (a reply merged from several
+    #: records has the latest), and the ``parentUuid`` of the first, which
+    #: for your message is the last record before it. Branch from Here cuts
+    #: the history at ``uuid``; Rewind to Here at ``parent_uuid``, and puts
+    #: files back to the checkpoint taken at ``uuid``. "" when not known.
+    uuid: str = ""
+    parent_uuid: str = ""
+    #: Who it's from, said in place of the kind's label. In a subagent's
+    #: conversation (#468) the words that start it come from Claude, not you.
+    speaker: str = ""
 
     @property
     def whole(self) -> str:
@@ -141,6 +160,8 @@ class ChatMessage:
 
     @property
     def label(self) -> str:
+        if self.speaker:
+            return self.speaker
         if self.kind == PEER and self.sender:
             return f"From {self.sender}"
         if self.kind == STEERING and self.sender:
@@ -150,6 +171,8 @@ class ChatMessage:
             return f"You, to {self.sender}"
         if self.kind == ASSISTANT:
             return self.assistant_name
+        if self.kind == THINKING:
+            return f"{self.assistant_name}, thinking"
         return LABELS.get(self.kind, self.kind.capitalize())
 
     @property
@@ -195,6 +218,51 @@ class ToolCommand:
 TASK_CREATE, TASK_UPDATE, TODO_WRITE = "TaskCreate", "TaskUpdate", "TodoWrite"
 _TASK_CREATED = re.compile(r"\bTask #(\w+) created", re.IGNORECASE)
 
+#: The tools that hand work to a subagent (#468): Agent, and Task before it.
+AGENT_TOOLS = frozenset({"Agent", "Task"})
+#: A background subagent's last call: its final report, as ``message``.
+HANDBACK_TOOL = "SubagentHandback"
+#: How a subagent call stands, as far as the parent's transcript says.
+AGENT_LAUNCHED = "launched"    # running in the background; its result comes later
+AGENT_COMPLETED = "completed"
+AGENT_FAILED = "failed"
+AGENT_STOPPED = "stopped"
+#: A ``<task-notification>``'s status, in those words. "killed" is how
+#: TaskStop's ending is reported; "stopped" is one that never finished.
+_NOTE_STATUSES = {"completed": AGENT_COMPLETED, "failed": AGENT_FAILED,
+                  "killed": AGENT_STOPPED, "stopped": AGENT_STOPPED}
+_NOTE_FIELD = re.compile(r"<(task-id|tool-use-id|status|result|summary)>(.*?)</\1>", re.DOTALL)
+_AGENT_ID = re.compile(r"\bagentId:\s*([A-Za-z0-9_-]+)")
+_USAGE_BLOCK = re.compile(r"<usage>.*?</usage>", re.DOTALL)
+
+
+@dataclass
+class AgentCall:
+    """Claude handing work to a subagent (#468), as the parent's transcript
+    records it: the Agent call's input, then its result, and for one run in
+    the background, the ``<task-notification>`` that says it ended."""
+    tool_id: str
+    agent_type: str = ""
+    description: str = ""
+    prompt: str = ""
+    background: bool = False
+    turn: int = 0
+    timestamp: str = ""
+    #: The subagent's id ("a96659c3fe66a6130"): its file is agent-<id>.jsonl.
+    agent_id: str = ""
+    status: str = ""
+    report: str = ""
+    finished_at: str = ""
+
+
+@dataclass
+class AgentNote:
+    """What a ``<task-notification>`` or a hand-back said about a subagent
+    that ran in the background (#468)."""
+    status: str
+    report: str = ""
+    timestamp: str = ""
+
 
 @dataclass
 class Transcript:
@@ -216,6 +284,21 @@ class Transcript:
     commands: List[ToolCommand] = field(default_factory=list)
     #: The task list, in provider order (#231, #318).
     tasks: List[TaskStep] = field(default_factory=list)
+    #: Your messages Claude Code kept a file checkpoint for (#468), by
+    #: uuid: the ``messageId`` of each ``file-history-snapshot`` record.
+    #: Only those can have their files put back (Rewind to Here).
+    checkpoints: Set[str] = field(default_factory=set)
+    #: Work Claude handed to subagents, in order (#468).
+    agents: List[AgentCall] = field(default_factory=list)
+    #: What notifications said of background subagents, by their id.
+    agent_notes: Dict[str, AgentNote] = field(default_factory=dict)
+    #: The first and latest records' times, as written (ISO 8601).
+    first_time: str = ""
+    last_time: str = ""
+    #: A subagent's own transcript (#468): the report it handed back, and
+    #: whether its latest reply ended its turn (no tool call after it).
+    handback: str = ""
+    ended: bool = False
 
     def latest_turn_edits(self) -> List[FileEdit]:
         """The changes made since your latest message."""
@@ -291,8 +374,17 @@ class TranscriptParser:
     assistant message id the last reply belonged to.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, sidechain: bool = False, assistant_name: str = "Claude",
+                 user_name: str = "") -> None:
+        """``sidechain`` reads a subagent's own transcript (#468), whose
+        records are all sidechain ones: they're kept rather than skipped.
+        There ``assistant_name`` is the subagent ("code-reviewer") and
+        ``user_name`` who gave it its work ("Claude")."""
         self.transcript = Transcript()
+        self.sidechain = sidechain
+        self.assistant_name = assistant_name
+        self.user_name = user_name
+        self._agent_calls: Dict[str, AgentCall] = {}  # tool_use_id -> its call
         self._tool_names: Dict[str, str] = {}  # tool_use_id -> tool name
         self._edit_inputs: Dict[str, Tuple[str, dict]] = {}  # file-changing calls
         self._commands: Dict[str, ToolCommand] = {}  # shell calls awaiting a result
@@ -330,8 +422,13 @@ class TranscriptParser:
 
     def _record(self, record: dict) -> List[ChatMessage]:
         kind = record.get("type")
-        if record.get("isSidechain"):
+        if record.get("isSidechain") and not self.sidechain:
             return []
+        stamp = record.get("timestamp")
+        if isinstance(stamp, str) and stamp:
+            if not self.transcript.first_time:
+                self.transcript.first_time = stamp
+            self.transcript.last_time = stamp
         if kind == "system" and record.get("subtype") == "compact_boundary":
             # Claude Code summarised the conversation to free the context.
             self.transcript.compactions += 1
@@ -341,6 +438,13 @@ class TranscriptParser:
             return [self._add(COMPACTION, compaction_text(meta), record)]
         if kind == "attachment":
             return self._attachment(record)
+        if kind == "file-history-snapshot":
+            # Checked with Claude Code 2.1.296: one per message of yours
+            # while checkpoints are on, ``messageId`` being its uuid.
+            message_id = record.get("messageId")
+            if isinstance(message_id, str) and message_id:
+                self.transcript.checkpoints.add(message_id)
+            return []
         if kind not in ("user", "assistant"):
             return []  # custom-title, pr-link, ...: not conversation
         message = record.get("message")
@@ -349,8 +453,10 @@ class TranscriptParser:
         content = message.get("content")
         if kind == "user":
             self._last_assistant_id = None
+            self.transcript.ended = False
             return self._user(record, content)
         self._note_usage(message)
+        self.transcript.ended = message.get("stop_reason") == "end_turn"
         return self._assistant(record, message, content)
 
     def _note_usage(self, message: dict) -> None:
@@ -369,7 +475,13 @@ class TranscriptParser:
         item = ChatMessage(kind=kind, text=text.strip(),
                            timestamp=str(record.get("timestamp") or ""),
                            key=key or str(record.get("uuid") or ""),
-                           turn=self.transcript.turns)
+                           turn=self.transcript.turns,
+                           uuid=_chain_id(record.get("uuid")),
+                           parent_uuid=_chain_id(record.get("parentUuid")))
+        if kind in (ASSISTANT, THINKING):
+            item.assistant_name = self.assistant_name
+        elif kind == USER and self.user_name:
+            item.speaker = self.user_name
         self.transcript.messages.append(item)
         return item
 
@@ -418,6 +530,15 @@ class TranscriptParser:
         if not isinstance(attachment, dict) or attachment.get("type") != "queued_command":
             return []
         origin = attachment.get("origin")
+        queued = attachment.get("prompt")
+        if isinstance(queued, str) and queued.lstrip().startswith("<task-notification"):
+            # A background subagent ending (#468): not shown, but its status.
+            self._agent_notification(queued, record)
+        if isinstance(origin, dict) and origin.get("handback"):
+            # A subagent's report coming back (#468): it finished.
+            self._note_agent(str(origin.get("senderTaskId") or attachment.get("senderTaskId")
+                                 or origin.get("from") or ""),
+                             "", AGENT_COMPLETED, "", record)
         if origin is None:
             prompt = attachment.get("prompt")
             if (attachment.get("commandMode") != "prompt" or not isinstance(prompt, str)
@@ -429,7 +550,12 @@ class TranscriptParser:
             # Part of the turn it joined, not a turn of its own: Changes and
             # the task list for that turn still cover all its work. First in
             # what's readable (after compaction, say), it starts turn 1.
-            return self._user_text(prompt, record, new_turn=self.transcript.turns == 0)
+            added = self._user_text(prompt, record, new_turn=self.transcript.turns == 0)
+            for item in added:
+                # Mid-turn, with no file checkpoint of its own: not a place
+                # Rewind to Here or Branch from Here goes back to (#468).
+                item.uuid = item.parent_uuid = ""
+            return added
         if not isinstance(origin, dict) or origin.get("kind") != "peer":
             return []
         # A subagent's report coming back to its session has the same shape
@@ -480,6 +606,8 @@ class TranscriptParser:
         if tag:
             # <task-notification>, <ci-monitor-event>, <command-name>, ...:
             # written by the harness, not typed by the person.
+            if tag.group(1) == "task-notification":
+                self._agent_notification(text, record)
             body = _ANY_TAG.sub(" ", _SYSTEM_REMINDER.sub("", text))
             body = re.sub(r"[ \t]+", " ", body).strip()
             name = tag.group(1).replace("-", " ")
@@ -512,6 +640,9 @@ class TranscriptParser:
         task_call = self._task_calls.pop(tool_id, None)
         if task_call is not None and not block.get("is_error"):
             self._apply_task_call(task_call[0], task_call[1], record.get("toolUseResult"), body)
+        agent_call = self._agent_calls.get(tool_id)
+        if agent_call is not None:
+            self._agent_result(agent_call, block, record, body)
         if name == "AskUserQuestion":
             return self._add(ANSWER, _format_answers(record.get("toolUseResult"), body),
                              record, key=f"{record.get('uuid')}:{tool_id}")
@@ -550,10 +681,17 @@ class TranscriptParser:
                 text = str(block.get("text") or "")
                 if not text.strip():
                     continue
-                last = self.transcript.messages[-1] if self.transcript.messages else None
+                # Past any thinking of the same reply (#468): with it hidden,
+                # the reply reads as one message, as it did before.
+                messages = self.transcript.messages
+                back = len(messages) - 1
+                while back >= 0 and messages[back].kind == THINKING:
+                    back -= 1
+                last = messages[back] if back >= 0 else None
                 if (last is not None and last.kind == ASSISTANT
                         and self._last_assistant_id == msg_id and msg_id):
                     last.text = f"{last.text}\n\n{text.strip()}"
+                    last.uuid = _chain_id(record.get("uuid")) or last.uuid
                     touched.append(last)
                 else:
                     touched.append(self._add(ASSISTANT, text, record, key=msg_id))
@@ -562,7 +700,14 @@ class TranscriptParser:
                 touched.append(self._tool_use(block, record))
                 # A tool call ends the text run: text after it is a new message.
                 self._last_assistant_id = None
-            # thinking, redacted_thinking and unknown blocks: not shown
+            elif btype == "thinking":
+                # Shown as activity when it has text (#468). Most blocks
+                # are only a signature: nothing to read, so nothing shown.
+                thought = str(block.get("thinking") or "")
+                if thought.strip():
+                    touched.append(self._add(THINKING, thought, record,
+                                             key=f"{record.get('uuid') or msg_id}:thinking"))
+            # redacted_thinking and unknown blocks: not shown
         return touched
 
     def _tool_use(self, block: dict, record: dict) -> ChatMessage:
@@ -586,6 +731,23 @@ class TranscriptParser:
             if tool_id:
                 self._commands[tool_id] = command
         key = f"{record.get('uuid')}:{tool_id}"
+        if name in AGENT_TOOLS and tool_id:
+            call = AgentCall(tool_id=tool_id,
+                             agent_type=_text_field(tool_input.get("subagent_type")),
+                             description=_text_field(tool_input.get("description")),
+                             prompt=_text_field(tool_input.get("prompt")),
+                             background=tool_input.get("run_in_background") is True,
+                             turn=self.transcript.turns,
+                             timestamp=str(record.get("timestamp") or ""))
+            self.transcript.agents.append(call)
+            self._agent_calls[tool_id] = call
+        if name == HANDBACK_TOOL and self.sidechain:
+            # A background subagent's final report (#468): what it said last,
+            # so it's a reply, not tool activity.
+            report = _text_field(tool_input.get("message"))
+            if report:
+                self.transcript.handback = report
+                return self._add(ASSISTANT, report, record, key=key)
         if name == "AskUserQuestion":
             return self._add(QUESTION, _format_questions(tool_input), record, key=key)
         if name == "ExitPlanMode":
@@ -677,10 +839,86 @@ class TranscriptParser:
                                   else turn)))
             tasks[:] = fresh
 
+    # subagents (#468) ----------------------------------------------------------
+
+    def _agent_result(self, call: AgentCall, block: dict, record: dict, body: str) -> None:
+        """An Agent call's result. Shapes seen on Claude Code 2.1.296: one
+        that waited for the subagent has ``toolUseResult`` status
+        "completed", its ``agentId`` and the report as ``content`` blocks;
+        one sent to the background has status "async_launched" and the
+        ``agentId``, and its ending comes later as a notification. Older
+        versions' plain-text result is the report."""
+        result = record.get("toolUseResult")
+        result = result if isinstance(result, dict) else {}
+        agent_id = _text_field(result.get("agentId"))
+        if not agent_id:
+            match = _AGENT_ID.search(body or "")
+            agent_id = match.group(1) if match else ""
+        call.agent_id = call.agent_id or agent_id
+        stamp = str(record.get("timestamp") or "")
+        if block.get("is_error"):
+            call.status, call.report, call.finished_at = AGENT_FAILED, body.strip(), stamp
+            return
+        status = result.get("status")
+        if status == "async_launched":
+            call.background = True
+            if call.status in ("", AGENT_LAUNCHED):
+                call.status = AGENT_LAUNCHED
+            return
+        report = _plain_text(result.get("content")) if result.get("content") else ""
+        if not report:
+            # The text the parent was given, without the id and usage lines
+            # Claude Code adds after the report.
+            report = _USAGE_BLOCK.sub("", body or "")
+            report = "\n".join(line for line in report.splitlines()
+                               if not line.strip().startswith("agentId:")).strip()
+        call.status, call.report, call.finished_at = AGENT_COMPLETED, report.strip(), stamp
+
+    def _agent_notification(self, text: str, record: dict) -> None:
+        fields = {name: value.strip() for name, value in _NOTE_FIELD.findall(text)}
+        status = _NOTE_STATUSES.get(fields.get("status", ""))
+        if status is None:
+            return
+        report = fields.get("result", "")
+        if status != AGENT_COMPLETED and not report:
+            report = fields.get("summary", "")
+        self._note_agent(fields.get("task-id", ""), fields.get("tool-use-id", ""), status,
+                         report, record)
+
+    def _note_agent(self, agent_id: str, tool_id: str, status: str, report: str,
+                    record: dict) -> None:
+        """A background subagent ended (``status``), from a notification or
+        its hand-back. The latest word stands: a subagent sent on again with
+        SendMessage reports again."""
+        stamp = str(record.get("timestamp") or "")
+        call = self._agent_calls.get(tool_id) if tool_id else None
+        if call is None and agent_id:
+            call = next((c for c in reversed(self.transcript.agents)
+                         if c.agent_id == agent_id), None)
+        if call is not None:
+            agent_id = agent_id or call.agent_id
+            call.agent_id = call.agent_id or agent_id
+            # A hand-back carries no text of its own here; keep a report
+            # already known rather than blank it.
+            call.status, call.finished_at = status, stamp
+            call.report = report or call.report
+        if agent_id:
+            before = self.transcript.agent_notes.get(agent_id)
+            self.transcript.agent_notes[agent_id] = AgentNote(
+                status, report or (before.report if before is not None else ""), stamp)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _chain_id(value) -> str:
+    """A record uuid fit to hand back to Claude Code as an argument, or ""."""
+    return value if isinstance(value, str) and _CHAIN_ID.fullmatch(value) else ""
+
+
+_CHAIN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
 
 
 def _cross_session(text: str) -> Optional[Tuple[str, str]]:
@@ -774,7 +1012,11 @@ def _format_answers(tool_use_result, fallback: str) -> str:
     if isinstance(tool_use_result, dict):
         answers = tool_use_result.get("answers")
         if isinstance(answers, dict) and answers:
-            return "\n".join(f"{q} — {a}" for q, a in answers.items())
+            # An answer of several lines (Shift+Enter, #591) has its later
+            # lines indented under it, so none reads as a line on its own
+            # with no question in front of it.
+            return "\n".join(f"{q} — " + "\n    ".join(str(a).splitlines() or [""])
+                             for q, a in answers.items())
     text = fallback.strip()
     prefix = "Your questions have been answered:"
     if text.startswith(prefix):
@@ -808,10 +1050,13 @@ class TranscriptReader:
     Opens the file read-only, always.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, **parser_options) -> None:
+        """``parser_options`` go to each ``TranscriptParser`` it makes: a
+        subagent's transcript is read with ``sidechain=True`` (#468)."""
         self.path = Path(path)
         self._offset = 0
-        self._parser = TranscriptParser()
+        self._parser_options = parser_options
+        self._parser = TranscriptParser(**parser_options)
         self._file_id = None
         self._anchor = b""
         self._head = b""
@@ -842,7 +1087,7 @@ class TranscriptReader:
                 if rewritten or size < self._offset:
                     rewritten = True
                     self._offset, self._anchor = 0, b""
-                    self._parser = TranscriptParser()
+                    self._parser = TranscriptParser(**self._parser_options)
                 self._file_id, self._head = identity, head
                 # Keep the path's own stat, the one the next refresh compares
                 # against. On Windows fstat of the open handle can differ from
@@ -1075,6 +1320,43 @@ def _moved_to(record: dict) -> str:
     cwd = record.get("cwd")
     match = _WORKTREE_FOLDER.search(cwd) if isinstance(cwd, str) else None
     return cwd[:match.end()] if match else ""
+
+
+def latest_relocation(path: Path, tails=(64 * 1024, 1024 * 1024)) -> str:
+    """Where Claude Code last moved a chat (#561), from its newest
+    ``relocated`` record's ``relocatedCwd``: into a worktree, or back out.
+    "" when the transcript's end says none. Only that record counts: an
+    ordinary record's ``cwd`` follows a ``cd`` and a subfolder, and isn't a
+    move. Read from the end, a short stretch first, as the move is usually
+    in the turn that's just ended; only whole lines."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            for tail in tails:
+                handle.seek(max(0, size - tail))
+                data = handle.read()
+                if b'"relocatedCwd"' not in data:
+                    if size <= tail:
+                        return ""
+                    continue
+                lines = data.split(b"\n")
+                if size > tail:
+                    lines = lines[1:]  # the first may be cut short
+                for line in reversed(lines):
+                    if b'"relocatedCwd"' not in line:
+                        continue
+                    record = _json_line(line)
+                    if record is None or record.get("isSidechain"):
+                        continue
+                    moved = record.get("relocatedCwd")
+                    if isinstance(moved, str) and moved:
+                        return moved
+                if size <= tail:
+                    return ""
+    except OSError:
+        return ""
+    return ""
 
 
 class _FactsReader:

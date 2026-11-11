@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    537
+    591
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1093,7 +1093,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    635
+    697
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1121,7 +1121,7 @@
    "class": "NewSessionDialog",
    "size": [
     680,
-    620
+    666
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1149,7 +1149,7 @@
    "class": "QuestionDialog",
    "size": [
     700,
-    555
+    582
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1196,6 +1196,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Export Chats, choosing chats and a format"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-hc-desert-100.png",
+   "json": "lists-codex-deleted-file-hc-desert-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-hc-desert-100.png",
+   "json": "lists-codex-files-hc-desert-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-subagents": {
+   "kind": "dialog",
+   "png": "lists-subagents-hc-desert-100.png",
+   "json": "lists-subagents-hc-desert-100.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Subagents: one finished subagent and one at work"
+  },
+  "lists-codex-approvals": {
+   "kind": "dialog",
+   "png": "lists-codex-approvals-hc-desert-100.png",
+   "json": "lists-codex-approvals-hc-desert-100.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    820,
+    660
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Approvals in a Codex chat"
   }
  },
  "seconds": 92.2

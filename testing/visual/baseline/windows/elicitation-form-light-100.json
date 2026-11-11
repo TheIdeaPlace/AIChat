@@ -1,0 +1,327 @@
+{
+ "title": "trip-planner asks: Visual probe",
+ "class": "ElicitationDialog",
+ "size": [
+  680,
+  522
+ ],
+ "client": [
+  664,
+  483
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    8,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "Where would you like to go, and for how long?",
+   "rect": [
+    10,
+    26,
+    648,
+    110
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Where would you like to go, and for how long?"
+  },
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    2,
+    144,
+    660,
+    298
+   ],
+   "best": [
+    638,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&City (required):",
+   "rect": [
+    8,
+    150,
+    80,
+    16
+   ],
+   "best": [
+    80,
+    16
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "City, required: Which city to plan for, written the way the local tourist office writes it, so that the hotels, trains and restaurants we look up are all in the right place",
+   "label": "",
+   "rect": [
+    10,
+    168,
+    648,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Which city to plan for, written the way the local tourist office writes it, so that the hotels, trains and restaurants we\nlook up are all in the right place",
+   "rect": [
+    8,
+    195,
+    598,
+    31
+   ],
+   "best": [
+    598,
+    31
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Nights (required):",
+   "rect": [
+    8,
+    238,
+    94,
+    16
+   ],
+   "best": [
+    94,
+    16
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Nights, required: between 1 and 14",
+   "label": "",
+   "rect": [
+    10,
+    256,
+    648,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Between 1 and 14",
+   "rect": [
+    8,
+    283,
+    93,
+    16
+   ],
+   "best": [
+    93,
+    16
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website says they're welcome",
+   "label": "&Bringing pets, which some places charge extra for and a few don't allow at all, even when their own website says\nthey're welcome",
+   "rect": [
+    8,
+    311,
+    626,
+    30
+   ],
+   "best": [
+    626,
+    30
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "&Extras",
+   "rect": [
+    8,
+    353,
+    648,
+    83
+   ],
+   "best": [
+    48,
+    23
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "Extras: Breakfast each morning, served in your room or downstairs, for everyone staying with you, and for anyone who joins you later on",
+   "label": "Breakfast each morning, served in your room or downstairs, for everyone staying with you, and for anyone\nwho joins you later on",
+   "rect": [
+    17,
+    374,
+    596,
+    30
+   ],
+   "best": [
+    596,
+    30
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "Extras: Parking",
+   "label": "Parking",
+   "rect": [
+    17,
+    412,
+    62,
+    15
+   ],
+   "best": [
+    62,
+    15
+   ],
+   "depth": 1,
+   "parent": 2,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send",
+   "rect": [
+    405,
+    452,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Decline",
+   "rect": [
+    486,
+    452,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    567,
+    452,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

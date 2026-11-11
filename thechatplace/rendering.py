@@ -152,6 +152,32 @@ def html_page(title: str, body_html: str, *, landmark: bool = False) -> str:
             f"<body>{body}</body></html>")
 
 
+#: WebView2 refuses a page passed in directly past 1.57 MB of UTF-8 (measured, on
+#: ASCII, CJK and emoji), leaving a blank page and saying nothing, so a longer one
+#: goes through a file. A long chat with tool activity on measured 5 MB.
+DIRECT_PAGE_BYTES = 1_500_000
+
+
+def needs_page_file(page_html: str) -> bool:
+    # surrogatepass: a tool's output cut mid-emoji leaves half of one, from JSON.
+    return len(page_html.encode("utf-8", "surrogatepass")) > DIRECT_PAGE_BYTES
+
+
+def page_file_bytes(page_html: str) -> bytes:
+    return page_html.encode("utf-8", "replace")
+
+
+def go_to_script(anchor: str) -> str:
+    """Script moving the page to the heading ``anchor``: focus, so a screen
+    reader's browse mode starts there, and scrolled into view for anyone looking.
+    "" for anything that isn't one of ``export.message_anchor``'s."""
+    if not re.fullmatch(r"m\d+", anchor or ""):
+        return ""
+    # By heading: a message's own code fence can carry an id of its own.
+    return (f"var e=document.querySelector('h2#{anchor},h3#{anchor}');"
+            "if(e){e.setAttribute('tabindex','-1');e.focus();e.scrollIntoView();}")
+
+
 def message_page(title: str, text: str, heading: str = "") -> str:
     """A message's markdown as a whole page. With ``heading`` (who wrote it,
     "Claude"), the page starts with it as heading 1 and the message's own

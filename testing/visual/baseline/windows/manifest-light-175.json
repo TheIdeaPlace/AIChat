@@ -309,7 +309,7 @@
    "class": "QuestionDialog",
    "size": [
     1225,
-    859
+    956
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1149,11 +1149,137 @@
    "class": "QuestionDialog",
    "size": [
     1225,
-    903
+    953
    ],
    "capture": "PrintWindow",
    "problems": [],
    "about": "Claude asks about text it wrote just before, with an option's preview"
+  },
+  "sounds": {
+   "kind": "dialog",
+   "png": "sounds-light-175.png",
+   "json": "sounds-light-175.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    980,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds"
+  },
+  "lists-codex-deleted-file": {
+   "kind": "dialog",
+   "png": "lists-codex-deleted-file-light-175.png",
+   "json": "lists-codex-deleted-file-light-175.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1435,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: a deleted file's old line range"
+  },
+  "lists-codex-files": {
+   "kind": "dialog",
+   "png": "lists-codex-files-light-175.png",
+   "json": "lists-codex-files-light-175.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1435,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Changed Files: updates, additions, deletions and renames"
+  },
+  "lists-subagents": {
+   "kind": "dialog",
+   "png": "lists-subagents-light-175.png",
+   "json": "lists-subagents-light-175.json",
+   "title": "Lists: Fix the flaky upload test",
+   "class": "ListsDialog",
+   "size": [
+    1435,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Subagents: one finished subagent and one at work"
+  },
+  "lists-codex-approvals": {
+   "kind": "dialog",
+   "png": "lists-codex-approvals-light-175.png",
+   "json": "lists-codex-approvals-light-175.json",
+   "title": "Lists: Codex history preview",
+   "class": "ListsDialog",
+   "size": [
+    1435,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "View, Lists: Approvals in a Codex chat"
+  },
+  "sound-gallery": {
+   "kind": "dialog",
+   "png": "sound-gallery-light-175.png",
+   "json": "sound-gallery-light-175.json",
+   "title": "Sound Scheme Gallery",
+   "class": "SoundGalleryDialog",
+   "size": [
+    980,
+    770
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Browse Gallery: two schemes, one added"
+  },
+  "sound-tutorial": {
+   "kind": "dialog",
+   "png": "sound-tutorial-light-175.png",
+   "json": "sound-tutorial-light-175.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    770,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Help, Sound Tutorial"
+  },
+  "sounds-own-scheme": {
+   "kind": "dialog",
+   "png": "sounds-own-scheme-light-175.png",
+   "json": "sounds-own-scheme-light-175.json",
+   "title": "Sounds",
+   "class": "SoundsDialog",
+   "size": [
+    980,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds on a scheme of your own"
+  },
+  "sound-tutorial-from-sounds": {
+   "kind": "dialog",
+   "png": "sound-tutorial-from-sounds-light-175.png",
+   "json": "sound-tutorial-from-sounds-light-175.json",
+   "title": "Sound Tutorial",
+   "class": "SoundTutorialDialog",
+   "size": [
+    770,
+    956
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
   }
  },
  "seconds": 94.1

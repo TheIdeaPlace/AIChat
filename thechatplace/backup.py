@@ -350,9 +350,11 @@ def tcp_inventory() -> Inventory:
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
                      exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
+                                    platform_paths.WHOLE_CHAT_PAGE_FILE,
                                     platform_paths.BACKUP_SECRET_FILE + "*"),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
+                    "a whole chat's page while it's open (a copy, gone when it's closed)",
                     "session-tools.json (a running chat's connection key, made anew)",
                     "computer.json (this computer's id; another computer has its own)",
                     "the scheduled backups' protected passphrase (it only works here)"]
@@ -438,8 +440,11 @@ def default_filename(computer: str, now: Optional[datetime] = None) -> str:
 
 
 def _inside(child: Path, parent: Path) -> bool:
+    # Cowork's folder comes in the long form (#542), which never compares
+    # equal to the plain path of a folder someone chose.
     try:
-        child.resolve().relative_to(parent.resolve())
+        (platform_paths.plain_path(child).resolve()
+         .relative_to(platform_paths.plain_path(parent).resolve()))
         return True
     except (ValueError, OSError):
         return False
@@ -454,7 +459,8 @@ def destination_problem(dest: Path, inventories: Sequence[Inventory]) -> Optiona
     for inv in inventories:
         for area in inv.areas:
             if area.root and _inside(dest, Path(area.root)):
-                return (f"{dest} is inside {area.root}, which the backup copies. "
+                return (f"{dest} is inside {platform_paths.plain_path(Path(area.root))}, "
+                        "which the backup copies. "
                         "Choose a folder outside it, ideally on another drive.")
     return None
 
@@ -528,12 +534,7 @@ def _sqlite_snapshot(source: Path, scratch: Path, cancelled=None) -> Path:
     The copy is then checked with ``quick_check``, so a database changed
     under an immutable open is caught rather than kept torn."""
     target = scratch / (uuid.uuid4().hex + ".sqlite")
-    text = str(source)
-    if text.startswith("\\\\?\\UNC\\"):
-        text = "\\\\" + text[8:]
-    elif text.startswith("\\\\?\\"):
-        text = text[4:]  # the long form; SQLite wants a plain URI
-    plain = Path(text)
+    plain = platform_paths.plain_path(source)  # SQLite wants a plain URI
     beside = {suffix: Path(str(source) + suffix).exists()
               for suffix in ("-wal", "-shm", "-journal")}
     if beside["-journal"] or (beside["-wal"] and not beside["-shm"]):
@@ -1279,7 +1280,8 @@ def schedule_folder_problem(folder: str) -> Optional[str]:
         return f"{folder} isn't a folder that exists."
     for root in copied_roots():
         if _inside(path, root):
-            return (f"{folder} is inside {root}, which the backup copies. Choose a folder "
+            return (f"{folder} is inside {platform_paths.plain_path(root)}, which the backup "
+                    "copies. Choose a folder "
                     "outside it, ideally on another drive.")
     return None
 

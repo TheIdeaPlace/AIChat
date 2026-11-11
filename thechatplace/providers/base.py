@@ -72,6 +72,15 @@ class SessionCapabilities:
     approvals: bool = False
     #: A message into a running turn without stopping it (#238, #239).
     steer: bool = False
+    #: A new chat from part of this one's history (Rewind to Here and
+    #: Branch from Here, #468), and putting its files back as they were
+    #: before one of your messages.
+    branch: bool = False
+    rewind_files: bool = False
+    #: Ask Aside: a question about the chat that isn't added to it (#468).
+    aside: bool = False
+    #: Chat Options: agent, instructions and output style for later turns (#468).
+    chat_options: bool = False
 
 
 class ConversationReader(Protocol):

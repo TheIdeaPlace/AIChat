@@ -459,7 +459,7 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how\nfar along it is (from the next message)",
+   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how\nfar along it is (from the next turn)",
    "rect": [
     10,
     450,

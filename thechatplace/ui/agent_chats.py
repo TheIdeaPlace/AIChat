@@ -19,7 +19,7 @@ import time
 
 import wx
 
-from .. import agents, announce
+from .. import agents, announce, sound_events
 from ..agents import AGENTS, MODE_APPROVE, MODE_AUTO, AgentConversation, Member, Pending
 from ..claude_cli import describe_elapsed, new_session_id
 from ..own_store import OwnSession
@@ -58,6 +58,47 @@ class AgentChats:
         identity = (provider, native_id)
         return identity in self._agent_awaiting or identity in self._agent_answered_early
 
+    # -- sounds ---------------------------------------------------------------------------
+
+    @staticmethod
+    def _agent_sound_key(provider, native_id) -> str:
+        """A member chat's key for sounds, so Other sounds play for applies to it."""
+        return f"own:{native_id}" if provider == "claude" else f"{provider}:{native_id}"
+
+    def _agent_owe_reply_sound(self, provider, native_id) -> bool:
+        """A member's turn that the conversation started ended with a reply. Whether that's
+        Reply finished (the conversation waits for you) or Agent reply handed on (it goes on
+        by itself) is the conversation's to say, so the member chat holds its sound back
+        (#248). True when it does."""
+        if not self._agent_quiet(provider, native_id):
+            return False
+        self._agent_sound_owed.add((provider, native_id))
+        return True
+
+    def _agent_pay_reply_sound(self, provider, native_id):
+        """After the conversation has had the turn's end: a held-back sound it didn't play,
+        because it had nothing to decide, plays as the member chat's reply."""
+        self._agent_reply_sound((provider, native_id))
+
+    def _agent_queued_is_ours(self, provider, native_id, texts) -> bool:
+        """Whether the text queued for a member, going in now, holds a message
+        the conversation sent it, as opposed to only text you queued in the
+        member chat yourself."""
+        joined = "\n\n".join(t for t in texts if isinstance(t, str))
+        # Claude's queue holds the text stripped (attachments.build).
+        return any(sent.strip() and sent.strip() in joined
+                   for sent in self._agent_sent_texts.get((provider, native_id), ()))
+
+    def _agent_reply_sound(self, identity, handed_on=False):
+        if identity not in self._agent_sound_owed:
+            return  # the member chat played its own (failed, refused, stopped...)
+        self._agent_sound_owed.discard(identity)
+        key = self._agent_sound_key(*identity)
+        if handed_on:
+            self._sound(sound_events.HANDED_ON, key)
+        else:
+            self._sound_turn_end(key)
+
     def _agent_rename_member(self, provider, old_id, new_id):
         """Claude chose another id for a new member chat on its first turn:
         the conversation follows it."""
@@ -71,7 +112,7 @@ class AgentChats:
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
         for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused,
-                      self._agent_planning):
+                      self._agent_planning, self._agent_sound_owed):
             if (provider, old_id) in found:
                 found.discard((provider, old_id))
                 found.add((provider, new_id))
@@ -240,6 +281,7 @@ class AgentChats:
             if choice.provider == "claude":
                 record = OwnSession(cli_session_id=new_session_id(), title=title,
                                     cwd=plan.folder, permission_mode=choice.permission,
+                                    disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                                     started=False)
                 records.append(record)
                 members.append(Member("claude", record.cli_session_id, "", choice.role))
@@ -419,10 +461,28 @@ class AgentChats:
             self._feedback(said)
         return bool(sent)
 
-    def _agent_deliver(self, conversation, index, text, *, relay=True) -> bool:
+    def _agent_deliver(self, conversation, index, text, *, relay=True, hush=False) -> bool:
         """Send ``text`` to member ``index`` through its own provider, with
         the setup the first time. ``relay``: hand its reply on when it comes.
+        ``hush``: a reply handed on by itself, which Agent reply handed on
+        sounds for, so the send itself makes no sound (#248).
         Changes ``conversation`` (briefed); the caller saves it."""
+        member = conversation.members[index]
+        sound_key = self._agent_sound_key(member.provider, member.native_id)
+        # Any other send to it sounds as ever, even if a hushed one never came back.
+        (self._sound_hush_send if hush else self._sound_unhush_send)(sound_key)
+        delivered = False
+        try:
+            delivered = self._agent_deliver_unhushed(conversation, index, text, relay=relay)
+        finally:
+            # Claude's send has sounded (or not) by now; Codex's and Copilot's
+            # comes back later, from a worker (_agent_send_failed if it fails).
+            # A hush left behind would silence a later send of yours.
+            if not delivered or member.provider not in RUNTIME_PROVIDERS:
+                self._sound_unhush_send(sound_key)
+        return delivered
+
+    def _agent_deliver_unhushed(self, conversation, index, text, *, relay=True) -> bool:
         member = conversation.members[index]
         info = self._agent_member_info(member)
         if info is None:
@@ -531,6 +591,9 @@ class AgentChats:
     def _agent_forget_waiting(self, conversation_id):
         """Stop or Delete: its messages waiting for a Codex or Copilot member don't go.
         A preparation already running finishes, and sends nothing of these."""
+        conversation = self.agents.get(conversation_id)
+        for member in conversation.members if conversation is not None else ():
+            self._sound_unhush_send(self._agent_sound_key(member.provider, member.native_id))
         for key in list(self._agent_codex_waiting):
             items = [item for item in self._agent_codex_waiting[key]
                      if item[0] != conversation_id]
@@ -547,6 +610,7 @@ class AgentChats:
             return
         member = conversation.members[index]
         self._agent_awaiting.pop(member.identity, None)
+        self._sound_unhush_send(self._agent_sound_key(member.provider, member.native_id))
         self._agent_unbrief(conversation, index)
         reason = problem if isinstance(problem, str) and problem else "it couldn't be sent"
         conversation.paused, conversation.stop_reason = True, f"Couldn't send to {member.name}."
@@ -619,7 +683,7 @@ class AgentChats:
                 files.append(path)
 
     def _agent_answered(self, provider, native_id, reply, failed=False, detail="",
-                        more_queued=False):
+                        more_queued=False, queued_ours=True):
         """A member answered and left work running in the background (#161),
         which can take an hour: its reply goes through the conversation now
         (said, handed on or waiting for you). When the turn finally ends,
@@ -629,7 +693,7 @@ class AgentChats:
             # More of the conversation's text queued for it goes in as a
             # follow-up: the wait carries on for that answer instead.
             self._agent_turn_ended(provider, native_id, reply, failed, detail=detail,
-                                   more_queued=more_queued)
+                                   more_queued=more_queued, queued_ours=queued_ours)
             if not more_queued:
                 self._agent_answered_early.add(identity)
 
@@ -698,11 +762,32 @@ class AgentChats:
             self._agent_after_change(conversation)
         return tuple(t for t in texts if t != sent) if kept else texts
 
+    def _agent_stopped_by_quit(self, provider, native_id):
+        """Quitting stopped a member's turn (#545). The conversation is saved
+        as a Stop would leave it, so what you type next goes to that agent and
+        not on past it. Nothing is said or refreshed: the app is going."""
+        identity = (provider, native_id)
+        awaited = self._agent_awaiting.pop(identity, None)
+        conversation = self.agents.containing(provider, native_id)
+        if (conversation is None or awaited is None
+                or awaited[0] != conversation.conversation_id):
+            return
+        index = conversation.member_index(provider, native_id)
+        self._agent_unbrief(conversation, index)
+        self._agent_turn_files.pop(identity, None)
+        conversation.next_index = index
+        conversation.paused, conversation.stop_reason = True, "Stopped."
+        conversation.unread = not self._agent_is_open(conversation)
+        self._agent_note(conversation, f"Stopped {conversation.members[index].name}.")
+        self._agent_save(conversation, touch=False)
+
     def _agent_turn_ended(self, provider, native_id, reply, failed, *, more_queued=False,
-                          detail="", files=()):
+                          detail="", files=(), queued_ours=True):
         """A member's turn ended. If the conversation started it, hand the
         reply on (or wait for you to), or stop, and say so. ``detail``: why it
-        failed, or what was refused, which the member chat would have said."""
+        failed, or what was refused, which the member chat would have said.
+        ``queued_ours``: with ``more_queued``, whether what goes in next is the
+        conversation's text (``_agent_queued_is_ours``) rather than yours."""
         identity = (provider, native_id)
         conversation = self.agents.containing(provider, native_id)
         if not more_queued:
@@ -731,6 +816,11 @@ class AgentChats:
             if files:
                 gathered = self._agent_turn_files.setdefault(identity, [])
                 gathered += [f for f in files if f not in gathered]
+            # The conversation's own text goes in next: nothing is said, and
+            # nobody waits on this reply, so it has no sound either. Text you
+            # queued in the member chat yourself is yours: the reply sounds.
+            if queued_ours:
+                self._agent_sound_owed.discard(identity)
             return
         awaited = self._agent_awaiting.pop(identity, None)
         # Nothing of the conversation's waits for it now: a text you queue in
@@ -765,6 +855,7 @@ class AgentChats:
             conversation.paused, conversation.stop_reason = True, f"{member.name}'s {what}.{why}"
             self._agent_note(conversation, f"{member.name}'s {what}.{why} The relay stopped.")
             self._agent_after_change(conversation)
+            self._agent_reply_sound(identity)  # a failure had its own, from the member chat
             self._say(f"{title}: {member.name}'s {what}.{why} The relay stopped.")
             self._notify(conversation.key, f"{title}: the relay stopped",
                          f"{member.name}'s {what}.{why}", needs_you=True)
@@ -781,6 +872,7 @@ class AgentChats:
         if not awaited[1]:
             # One of several you wrote to at once: nothing goes across.
             self._agent_after_change(conversation)
+            self._agent_reply_sound(identity)
             self._agent_say(conversation, said, always=True)
             return
         to = conversation.next_after(index)
@@ -813,6 +905,7 @@ class AgentChats:
             self._agent_note(conversation, stop)
             self._agent_after_change(conversation)
             hint = f"{key_name('Ctrl+Shift+E')} hands {member.name}'s last reply to {target}."
+            self._agent_reply_sound(identity)
             self._agent_say(conversation, " ".join(p for p in (said, refused.strip(), stop, hint)
                                                    if p), always=True)
             self._notify(conversation.key, f"{title}: the relay stopped", f"{stop} {hint}")
@@ -830,11 +923,26 @@ class AgentChats:
         if auto and not stop:
             text = agents.relay_text(conversation, index, reply, files)
             conversation.exchanges += 1
-            if self._agent_deliver(conversation, to, text, relay=True):
+            # Agent reply handed on says the reply went: the send to the next
+            # agent makes no sound of its own (#248). A scheme without it (one
+            # of your own from before it, or with None chosen) hears a hand-off
+            # as it did before: the reply, then the send. Never quieter.
+            pass_plays = self._sound_scheme_has(sound_events.HANDED_ON)
+            if not pass_plays:
+                self._agent_reply_sound(identity)  # before the send, as it was
+            receiver = conversation.members[to].identity
+            if self._agent_deliver(conversation, to, text, relay=True, hush=pass_plays):
+                if receiver not in self._agent_awaiting:
+                    # Refused at once (a Codex or Copilot send while Rewind puts
+                    # files back): _agent_send_failed has paused the conversation,
+                    # saved it and said so. Saving this copy would undo that.
+                    self._agent_reply_sound(identity)
+                    return
                 # Shown by the receiving chat's history; Turn Status has the count.
                 # A newer reply went across, so nothing older still waits.
                 conversation.pending = None
                 self._agent_after_change(conversation)
+                self._agent_reply_sound(identity, handed_on=pass_plays)
                 self._agent_say(conversation, said)
                 return
             stop = f"Couldn't pass {member.name}'s reply to {target}."
@@ -845,6 +953,7 @@ class AgentChats:
         self._agent_after_change(conversation)
         hint = f"{key_name('Ctrl+Shift+E')} hands it to {target}."
         spoken = " ".join(part for part in (said, refused.strip(), stop, hint) if part)
+        self._agent_reply_sound(identity)
         self._agent_say(conversation, spoken, always=True)
         self._notify(conversation.key, f"{title}: {member.name} replied",
                      f"{stop} {hint}".strip(), needs_you=True)

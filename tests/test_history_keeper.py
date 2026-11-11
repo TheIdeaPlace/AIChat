@@ -10,7 +10,7 @@ from thechatplace import history_keeper, platform_paths
 from thechatplace.history_keeper import HistoryKeeper
 from thechatplace.providers.claude import (ClaudeConversations, kept_identity,
                                           keep_session, preserve_sessions)
-from thechatplace.sessions import IDLE, KEPT, OWN, TERMINAL, SessionInfo
+from thechatplace.sessions import DESKTOP, IDLE, KEPT, OWN, TERMINAL, SessionInfo
 
 
 def transcript(path, text='Kept answer'):
@@ -334,3 +334,25 @@ def test_kept_rows_stay_in_their_original_view(tmp_path, monkeypatch):
     history_keeper.close_all()
     again, = preserve_sessions([])
     assert again.kept_from == OWN and in_view(again, VIEW_OWN)
+
+
+def test_a_kept_cowork_chat_is_one_row_after_its_folder_moves(tmp_path, monkeypatch):
+    # #542: the old record's identity names the old folder, so it was listed
+    # again beside the live chat, wrongly saying the original was gone.
+    monkeypatch.setattr(platform_paths, 'claude_home', lambda: tmp_path/'claude')
+    cwd = str(tmp_path/'work')
+    old_home, new_home = tmp_path/'Packages'/'.claude', tmp_path/'Claude-Data'/'.claude'
+    path = transcript(platform_paths.direct_transcript_path(cwd, 'cowork-chat', old_home/'projects'))
+    info = SessionInfo(DESKTOP, 'local_c1', 'A Cowork chat', cwd, 'cowork-chat',
+                       last_activity_ms=123, created_ms=100, cowork=True, claude_home=old_home)
+    assert preserve_sessions([info]) == [info]
+    assert history_keeper.keeper().wait_idle()
+    moved = platform_paths.direct_transcript_path(cwd, 'cowork-chat', new_home/'projects')
+    moved.parent.mkdir(parents=True)
+    path.replace(moved)
+    after = replace(info, claude_home=new_home)
+    assert preserve_sessions([after]) == [after]
+    # With the chat gone, the record still brings it back.
+    assert history_keeper.keeper().wait_idle()
+    kept = preserve_sessions([])
+    assert {row.key for row in kept} == {'local_c1'} and all(row.source == KEPT for row in kept)

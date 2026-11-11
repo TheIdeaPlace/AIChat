@@ -1,0 +1,200 @@
+{
+ "title": "Connected Tools: Codex review",
+ "class": "ConnectedToolsDialog",
+ "size": [
+  700,
+  540
+ ],
+ "client": [
+  684,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Connected tools:",
+   "rect": [
+    8,
+    8,
+    91,
+    16
+   ],
+   "best": [
+    91,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Connected tools, 5",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    668,
+    211
+   ],
+   "best": [
+    380,
+    170
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "project-notes: connected, configured Codex MCP server, 1 tool",
+    "build-reports: needs sign-in, configured Codex MCP server",
+    "reference-search: off for this chat, configured Codex MCP server",
+    "The Chat Place session tools: available while this app is running",
+    "Project documents: off for this chat, Codex app"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Sign In",
+   "rect": [
+    8,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Reconnect",
+   "rect": [
+    89,
+    243,
+    77,
+    23
+   ],
+   "best": [
+    77,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy with Tool &Off",
+   "rect": [
+    172,
+    243,
+    122,
+    23
+   ],
+   "best": [
+    122,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&fresh",
+   "rect": [
+    300,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    601,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    8,
+    274,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Details",
+   "label": "",
+   "rect": [
+    10,
+    300,
+    668,
+    195
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "project-notes: connected, configured Codex MCP server, 1 tool\n\nTools:\n  find_notes\n\nIn a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On or Off makes a new copy of the chat with that choice, and this chat stays as it is. These are the tools Codex can connect to: the servers set up in Codex, and apps from ChatGPT. A tool can reach websites and services outside thi"
+  }
+ ],
+ "capture": "PrintWindow"
+}

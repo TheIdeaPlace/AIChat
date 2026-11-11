@@ -10,22 +10,24 @@ from types import SimpleNamespace
 
 import wx
 
-from ..providers.codex_requests import QUESTIONS
+from ..providers.codex_requests import QUESTIONS, ELICITATION
 from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
 from ..providers.codex_runtime import STOP_TO_RECHECK
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
-from .. import announce
+from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name
+from ..ui_text import key_name, with_stop_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
 from .permission_hosts import CODEX_MODES
+from .codex_extras import CodexExtras
+from .sound_host import SoundHost
 
 
-class CodexChats:
+class CodexChats(SoundHost, CodexExtras):
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.
         # Match its native ID rather than attaching it to the previous turn.
@@ -40,7 +42,7 @@ class CodexChats:
         if state is None:
             return f'No {name} turn is running in this chat.'
         if state.problem:
-            return state.problem
+            return with_stop_key(state.problem)
         if state.state == STATUS_UNAVAILABLE:
             return f'{name} status is unavailable. Use Stop ({key_name("Ctrl+Period")}) to recheck this chat.'
         if state.requests:
@@ -72,10 +74,11 @@ class CodexChats:
                      else f' {steering} steered messages waiting for {name} to accept them.')
         if state.notice:
             text += ' ' + state.notice
-        notices = [text for turn, _identity, text in getattr(state, 'permission_notices', ()) if turn == state.turn_id]
-        if notices:
-            count = len(notices)
-            text += f' {count} {"request" if count == 1 else "requests"} allowed automatically. Latest: ' + notices[-1]
+        # Counts only: the commands are in Lists, Approvals (#564).
+        from ..approvals import count_text
+        counted = count_text([n for n in getattr(state, 'permission_notices', ()) if n[0] == state.turn_id])
+        if counted:
+            text += ' ' + counted
         return text
 
     def _codex_work(self, action, done):
@@ -114,7 +117,7 @@ class CodexChats:
 
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
                             approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None,
-                            copilot_mode=''):
+                            copilot_mode='', instructions=None, extra_roots=()):
         """A new owned chat with a runtime provider (Codex's name is history:
         Copilot comes here too, #352). ``made(info, message)`` hears of the
         new chat (#378); with ``joint`` it sends the message, as an agent
@@ -128,6 +131,9 @@ class CodexChats:
                    ('sandbox', sandbox), ('approval_policy', approval_policy),
                    ('approvals_reviewer', approvals_reviewer), ('copilot_mode', copilot_mode))
                    if value}
+        if provider == 'codex':
+            self._session_tools_config('')
+            options.update(instructions=instructions, extra_roots=extra_roots)
         name = provider_name(provider)
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
@@ -173,7 +179,7 @@ class CodexChats:
         if state is not None and state.notice:
             self._say(f'{record.title}: {state.notice}', interrupt=False)
         if state is not None and state.problem and not message:
-            self._say(f'{record.title}: {state.problem}', interrupt=False)
+            self._say(f'{record.title}: {with_stop_key(state.problem)}', interrupt=False)
 
     def _change_copilot_model(self, info):
         """File, Change Model for a Copilot chat: the models Copilot offers
@@ -368,24 +374,44 @@ class CodexChats:
             self._feedback('Codex permissions are unavailable or already being changed.')
             after()
             return
-        from .permission_hosts import CODEX_REVIEW_MODES
-        choices = CODEX_REVIEW_MODES
-        current = (record.provider_options.get('sandbox', 'read-only'),
-                   record.provider_options.get('approval_policy', 'on-request'),
-                   record.provider_options.get('approvals_reviewer', 'user'))
+        from .permission_hosts import CODEX_REVIEW_MODES, CODEX_PLAN, CODEX_PLAN_LABEL, codex_mode_label
+        # Plan is offered here as Claude's is, and is the same saved mode as
+        # /plan's, so the two always agree (#596, decision 17).
+        choices = CODEX_REVIEW_MODES + [(CODEX_PLAN, CODEX_PLAN_LABEL)]
+        grant = (record.provider_options.get('sandbox', 'read-only'),
+                 record.provider_options.get('approval_policy', 'on-request'),
+                 record.provider_options.get('approvals_reviewer', 'user'))
+        # A Plan saved on a Codex without it runs in Default (unavailable_mode),
+        # so it isn't shown as the chat's mode; choosing Plan says it's missing.
+        in_plan = (record.provider_options.get('collaboration') == CODEX_PLAN and not getattr(
+            self._codex_states.get(info.key), 'plan_unavailable', False))
+        current = CODEX_PLAN if in_plan else grant
+        plan_access = codex_mode_label(dict(record.provider_options, collaboration=None)) if in_plan else ''
+        # In Plan, the file access it keeps is marked too, so arrowing the
+        # list says which row leaves Plan with the access it has.
+        shown = [(value, label + (' (file access now)' if in_plan and value == grant else ''))
+                 for value, label in choices]
         selected = self._change_setting('Change Permission Mode',
-            codex_permission_prompt(self, info.title, record.cwd),
-            choices, current)
+            codex_permission_prompt(self, info.title, record.cwd, plan_access),
+            shown, current)
         if selected is None:
             after()
             return
-        if len(selected) == 2:
+        if isinstance(selected, tuple) and len(selected) == 2:
             selected += ('user',)
+        if selected == CODEX_PLAN:
+            action, arguments = 'prepare_mode', (CODEX_PLAN,)
+        elif in_plan and selected == grant:
+            action, arguments = 'prepare_mode', ('default',)
+        elif in_plan:
+            action, arguments = 'prepare_policy', selected + ('default',)
+        else:
+            action, arguments = 'prepare_policy', selected
         before_cwd, before_options = record.cwd, dict(record.provider_options)
         earlier = self._codex_states.get(info.key)
         earlier_problem = earlier.problem if earlier is not None else ''
         self._codex_policy_pending.add(info.key)
-        self._feedback('Verifying Codex permissions.')
+        self._feedback('Checking the new permissions with Codex.')
         def failure(fallback):
             # The runtime's update for a latched problem arrives first (both
             # come through wx.CallAfter, in order) but is not spoken while the
@@ -395,9 +421,9 @@ class CodexChats:
             state = self._codex_states.get(info.key)
             problem = state.problem if state is not None else ''
             text = problem if problem and problem != earlier_problem else fallback
-            if problem and 'use stop' not in text.lower():
+            if problem and 'use stop' not in text.lower() and 'press stop' not in text.lower():
                 text += ' ' + STOP_TO_RECHECK
-            self._feedback(text)
+            self._feedback(with_stop_key(text))
         def prepared(change, error):
             if error:
                 failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
@@ -415,16 +441,20 @@ class CodexChats:
                 state = self._codex_states.get(info.key)
                 # A problem that arrived meanwhile also stops the new mode.
                 if failed or not saved or (state is not None and state.problem):
-                    failure('Changed Codex permissions could not be saved or confirmed. Use Stop to recheck the saved permissions before sending.')
+                    failure("The new Codex permissions couldn't be saved, or Codex didn't confirm "
+                            'the change. ' + STOP_TO_RECHECK)
                 else:
                     self._codex_policy_pending.discard(info.key)
                     label = next(label for value, label in choices if value == selected)
-                    self._feedback(f'Codex permissions for {info.title}: {label}.')
+                    ended = ' Plan mode is off.' if in_plan and selected != CODEX_PLAN else ''
+                    self._feedback(f'Codex permissions for {info.title}: {label}.{ended}')
                 self._update_send_state()
+                if self._open is not None and self._open.key == info.key:
+                    self._update_heading()  # it says ", plan mode" (#596)
                 self.refresh_sessions()
                 after()
             self._codex_work(lambda: self.sessions.owned_action('finish_policy', record, change, saved), finished)
-        self._codex_work(lambda: self.sessions.owned_action('prepare_policy', record, *selected), prepared)
+        self._codex_work(lambda: self.sessions.owned_action(action, record, *arguments), prepared)
 
     def _prepare_codex_owned(self, generation):
         info = self._open
@@ -438,6 +468,8 @@ class CodexChats:
             return
         key = info.key
         self._codex_preparation_running.add(key)
+        if provider == 'codex':
+            self._session_tools_config('')
         def prepare():
             self.sessions.owned_action('prepare', record)
         def done(_result, error):
@@ -492,13 +524,16 @@ class CodexChats:
             else:
                 del self._codex_send_pending[key]
             if error and not restore:
-                pass
+                self._sound(sound_events.NOT_SENT, key, on_its_own=True)
             elif error:
+                self._sound(sound_events.NOT_SENT, key)
                 self._restore_codex_text(key, (text,))
                 self._feedback(queued or f'{provider_name(record.provider)} could not confirm this send. Check the chat history before sending again.')
             elif not announce_send:
-                pass
+                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key,
+                            on_its_own=True)
             else:
+                self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
                                          self.speech.announce_own))
@@ -508,6 +543,12 @@ class CodexChats:
             self._update_send_state()
             if on_result is not None:
                 on_result(queued, error)
+        # Rewind to Here's lock is the folder's, whichever AI asks (#468). Agent
+        # conversations and relays use this mixin on windows without rewinding.
+        going_back = getattr(self, '_files_going_back_in', None)
+        if going_back is not None and going_back(getattr(record, 'cwd', '')):
+            done('Still putting files back in this folder. Send again in a moment.', True)
+            return
         self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
 
     def _steer_codex_owned(self, record, text, index=None):
@@ -549,6 +590,7 @@ class CodexChats:
                 # a queued message's turn has started since: it may never be
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
+            self._sound(sound_events.NOT_SENT if error or refused else sound_events.STEERED, key)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -577,6 +619,7 @@ class CodexChats:
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             return
+        self._sound_note_stop(info.key)
         name = provider_name(record.provider)
         state = self._codex_states.get(info.key)
         recover_idle = (record.provider == 'codex' and state is not None
@@ -701,6 +744,7 @@ class CodexChats:
                     key = (f'{provider}-account', warning.key)
                     if key not in self._warned:
                         self._warned.add(key)
+                        self._sound(sound_events.LIMIT)
                         self._say(warning.text, interrupt=False)
             # A second chat can finish after the first report was sampled.
             # Coalesce that request without overlapping queries or losing it.
@@ -765,6 +809,14 @@ class CodexChats:
             asks = asks_now(state)
             if asks:
                 self._say(f"{record.title}: {asks}", interrupt=False)
+        self._sound_tools_since(provider, previous, state)
+        retry = getattr(state, 'retry', '')
+        if retry and (previous is None or previous.turn_id != state.turn_id or getattr(previous, 'retry', '') != retry):
+            # The Service trouble sound with each retry said, as a Claude
+            # chat's retries have (live_turns), so it's heard in the
+            # background too (#596).
+            self._sound(sound_events.TROUBLE, key)
+            self._say(f'{record.title}: {retry}', interrupt=False)
         loaded = self._open is not None and self._open.key == key
         seen = getattr(self, '_codex_permission_notices_seen', None)
         if seen is None:
@@ -773,7 +825,14 @@ class CodexChats:
             identity = (provider, state.native_id, notice[0], notice[1])
             if identity not in seen:
                 seen.add(identity)
-                self._say(f'{record.title}: {notice[2]}', interrupt=False)
+                # Allowed requests are said only with the chat's tool activity
+                # on, like its tool calls: a long turn has dozens. One that
+                # wasn't allowed is always said once, after what's being said
+                # (#564).
+                from ..approvals import is_routine
+                activity = self._show_activity if loaded else key in self.tool_activity
+                if activity or not is_routine(notice[1], notice[2]):
+                    self._say(f'{record.title}: {notice[2]}', interrupt=False)
         if loaded and (state.token_usage is not None or previous is not None and previous.token_usage is not None):
             self._check_context()
         if (state.turn_id and state.outcome == 'inProgress' and not state.problem
@@ -788,7 +847,8 @@ class CodexChats:
             # A Copilot chat being opened may be switched back to its mode
             # yet: its preparation's done() says a mode problem still left
             # (#424).
-            self._say(f'{record.title}: {state.problem}', interrupt=False)
+            self._sound(sound_events.TROUBLE, key)
+            self._say(f'{record.title}: {with_stop_key(state.problem)}', interrupt=False)
         from ..providers.copilot_runtime import notice_to_say
         new_notice = notice_to_say(previous.notice if previous is not None else '', state.notice)
         if new_notice:
@@ -814,6 +874,7 @@ class CodexChats:
         if state.requests and not state.problem and (previous is None or previous.requests != state.requests):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
+            self._sound(sound_events.NEEDS_YOU, key)
             self._say(f'{record.title}: {name} needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
         if loaded and state.plan_received and provider == 'codex':  # plans are Codex's own
@@ -823,25 +884,47 @@ class CodexChats:
         fresh_terminal = (state.turn_id and state.outcome in ('completed', 'failed', 'interrupted')
                           and finished not in self._codex_finished)
         if fresh_terminal:
+            # Taken whatever the ending, so a Stop that came too late can't label a later turn.
+            stop_asked = self._sound_stop_was_asked(key)
             self._codex_finished.add(finished)
             self._store_write(self.store.update, state.native_id, provider=provider,
                               state=IDLE, unread=not loaded,
                               last_activity_ms=int(time.time() * 1000))
             reply = '\n\n'.join(text for _identity, text in state.replies)
-            text = (f'{record.title}: {name} answered.' if state.outcome == 'completed'
-                    else f'{record.title}: {name} turn {state.outcome}.')
-            # Use the same configured announcement level as Claude replies.
-            if reply:
-                text = announce.reply_text(record.title, reply, self.speech.announce)
+            # /compact runs as a turn of its own, which answers nothing (#467).
+            compacted = getattr(state, 'compaction', False) and state.outcome == 'completed'
             agent_quiet = getattr(self, '_agent_quiet', None)
             quiet = agent_quiet is not None and agent_quiet(provider, state.native_id)
+            if compacted:
+                self._sound(sound_events.COMPACTED, key)
+            elif state.outcome == 'completed':
+                # In an agent conversation, the conversation sounds it as it's handed on
+                # or waits for you (#248).
+                if not (quiet and self._agent_owe_reply_sound(provider, state.native_id)):
+                    self._sound_turn_end(key)
+            elif state.outcome == 'failed':
+                self._sound(sound_events.FAILED, key)
+            elif stop_asked:
+                self._sound(sound_events.STOPPED, key)
+            else:
+                # The provider or its runtime ended it: not something you did.
+                self._sound(sound_events.TROUBLE, key)
+            text = (f'{record.title}: context compacted.' if compacted else
+                    f'{record.title}: {name} answered.' if state.outcome == 'completed'
+                    else f'{record.title}: {name} turn {state.outcome}.')
+            # Use the same configured announcement level as Claude replies.
+            if reply and not compacted:
+                text = announce.reply_text(record.title, reply, self.speech.announce)
             if not quiet:  # an agent conversation says it, by its own name (#248)
                 self._say(text, interrupt=False)
             if state.outcome != 'interrupted' and not quiet:
-                self._notify(key, f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
+                self._notify(key, f'{record.title}: context compacted' if compacted else
+                             f'{record.title}: {name} ' + ('answered' if state.outcome == 'completed' else state.outcome),
                              text, needs_you=state.outcome == 'failed')
             self._check_codex_usage(record.to_info())
         if unsent:
+            if state.outcome != 'interrupted':
+                self._sound(sound_events.NOT_SENT, key, on_its_own=True)
             # Queue this after interrupting error/reply speech, so the news
             # about recovered text is not immediately cut off by that speech.
             # Only what came back here: an agent conversation's own message
@@ -853,10 +936,16 @@ class CodexChats:
         if fresh_terminal:
             agent_ended = getattr(self, '_agent_turn_ended', None)
             if agent_ended is not None:
-                agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
-                            more_queued=bool(state.queued),
-                            detail=state.problem or '',
-                            files=tuple(getattr(state, 'changed_paths', ())))
+                try:
+                    agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
+                                more_queued=bool(state.queued),
+                                queued_ours=self._agent_queued_is_ours(
+                                    provider, state.native_id, state.queued),
+                                detail=state.problem or '',
+                                files=tuple(getattr(state, 'changed_paths', ())))
+                finally:
+                    # Whatever happened there, a held-back reply sound isn't lost.
+                    self._agent_pay_reply_sound(provider, state.native_id)
         if loaded:
             if fresh_terminal:
                 # A verified turn ended even if second-resolution catalog
@@ -892,7 +981,7 @@ class CodexChats:
         # a command, letter for letter (#426): the provider says whether this
         # one can be kept.
         from ..providers.copilot_runtime import COMMAND as COPILOT_COMMAND
-        if ((request.method != QUESTIONS and info.provider == 'codex')
+        if ((request.method not in (QUESTIONS, ELICITATION) and info.provider == 'codex')
                 or (request.method == COPILOT_COMMAND and info.provider == 'copilot')):
             pending = getattr(self, '_codex_answer_checks', None)
             if pending is None:
@@ -910,7 +999,10 @@ class CodexChats:
         self._show_codex_answer(info, record, request, state, None)
 
     def _show_codex_answer(self, info, record, request, state, chat_rule):
-        if request.method == QUESTIONS:
+        if request.method == ELICITATION:
+            from .dialogs import ElicitationDialog
+            dialog = ElicitationDialog(self, info.title, request.elicitation(), feedback=self._feedback)
+        elif request.method == QUESTIONS:
             questions = [dict(id=q.question_id, header=q.header, question=q.text,
                               options=[dict(label=l, description=d) for l, d in q.options],
                               isOther=q.allow_other, isSecret=q.secret) for q in request.questions]
@@ -921,7 +1013,10 @@ class CodexChats:
             dialog = QuestionDialog(self, info.title, SimpleNamespace(questions=lambda: questions),
                                     provider=provider_name(info.provider), said=said)
         else:
-            detail = dict(state.file_changes).get(request.item_id, '')
+            # Copilot shares this dialog but has no Codex child-thread fields.
+            # A child must use its pinned diff, never a same-ID parent diff.
+            detail = (request.file_detail if info.provider == 'codex' and request.source_thread_id
+                      else dict(state.file_changes).get(request.item_id, ''))
             dialog = CodexPermissionDialog(self, info.title, request, detail, chat_rule=chat_rule,
                                            provider=provider_name(info.provider))
         keep = False
@@ -929,7 +1024,10 @@ class CodexChats:
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
-            if request.method == QUESTIONS:
+            if request.method == ELICITATION:
+                choice = dialog.action
+                result = request.elicitation_answer(choice, dialog.content)
+            elif request.method == QUESTIONS:
                 if dialog.declined:
                     self._stop_codex_owned(info)
                     return
@@ -943,12 +1041,34 @@ class CodexChats:
             return
         finally:
             dialog.Destroy()
+        # The answer goes in the background, and the state that says it was
+        # taken comes later still, with you back in the messages: they say
+        # the chat is working now, as Claude's do (#596).
+        waiting_now = self._codex_states.get(info.key, state).requests or ()
+        self._answered_open_chat(info.key, any(r.request_id != request.request_id
+                                               for r in waiting_now))
         def done(_result, error):
             name = provider_name(info.provider)
+            if error and self._open is not None and self._open.key == info.key:
+                # Not taken: back to what the chat's own state says.
+                current = self._codex_states.get(info.key)
+                if current is not None and self._open.state != current.state:
+                    self._open = replace(self._open, state=current.state)
+                    self._update_messages_label(arriving=True)
+                    self._update_heading()
+            if not error:
+                # Any answer that went, a refusal too (#250); for any chat, as for Claude's.
+                self._sound(sound_events.ANSWER_SENT)
             not_kept = getattr(_result, 'said', '') if keep and not error else ''
             self._feedback((_result or f'This {name} request could not be answered. It may no longer be waiting.')
                            if error else not_kept or (f'Approval kept for this chat and answer sent to {name}.'
                                                       if keep else f'Answer sent to {name}.'))
+            if not error and request.method == ELICITATION and choice == 'accept' and request.elicitation().is_url:
+                from ..platform_paths import open_url
+                try:
+                    open_url(request.elicitation().url)
+                except (OSError, ValueError):
+                    self._feedback('The answer was sent, but your browser could not open. Open this address: ' + request.elicitation().url)
             agent_answered = getattr(self, '_agent_member_answered', None)
             if not error and agent_answered is not None:
                 # An approval or an answer lets an agent conversation's

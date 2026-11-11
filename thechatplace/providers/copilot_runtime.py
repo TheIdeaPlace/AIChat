@@ -207,7 +207,7 @@ def asks_now(state, detail: bool = False) -> str:
     if getattr(state, "rules_broken", False):
         parts.append("Commands ask until your copilot-rules.json is fixed.")
     if moved:
-        parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Permissions, "
+        parts.append("Commands in this chat ask until you use Restart Copilot, in File, Chat Settings, Chat Permissions, "
                      "since a command you allowed may have moved Copilot's shell.")
     program = True
     if background and not moved:
@@ -259,6 +259,21 @@ def _answered(chat, call_id: str) -> None:
 
 #: The most tool calls whose preview is kept for one chat.
 MAX_PREVIEWS = 64
+
+
+def _count_for_sounds(chat, kind: str, update: dict) -> None:
+    """Counts a tool as it starts, and an edit once it has worked, as Claude and Codex report
+    theirs: one you decline, or that fails, changed nothing (#250). Only the first report of a
+    call says its kind, so an edit's id is kept for the update that says it's done."""
+    call_id = update.get("toolCallId")
+    if kind == "tool_call":
+        if update.get("kind") not in ("edit", "delete", "move"):
+            chat.tools_started += 1
+        elif isinstance(call_id, str) and len(chat.edit_calls) < 500:
+            chat.edit_calls.add(call_id)
+    if update.get("status") == "completed" and isinstance(call_id, str) and call_id in chat.edit_calls:
+        chat.edit_calls.discard(call_id)
+        chat.edits_made += 1
 
 
 def _remember_preview(chat, update: dict) -> None:
@@ -417,7 +432,7 @@ STILL_RUNNING_ASKS = ("This file change asks, since a program allowed in this fo
                       f"says the program ended. {_STOP_DOESNT_END}")
 #: Said when something would answer a command, but these make it ask.
 MOVED_ASKS = ("This asks since a command you allowed may have moved Copilot's shell. Restart "
-              "Copilot, in File, Chat Permissions, clears that.")
+              "Copilot, in File, Chat Settings, Chat Permissions, clears that.")
 BACKGROUND_ASKS = ("This asks while a program allowed here runs in the background. It's answered "
                    "for you again once it ends.")
 RUNS_IN_BACKGROUND_ASKS = "This asks since Copilot will run it in the background."
@@ -472,7 +487,7 @@ def _ask_reason(chat, request, covered, why: str, *, running: bool, background: 
 
 #: Said once a run when your rules file for Copilot can't be used.
 RULES_PROBLEM = ("Your rules file for Copilot, copilot-rules.json, {problem}, so every command "
-                 "asks until it's fixed. File, Chat Permissions says where it is.")
+                 "asks until it's fixed. File, Chat Settings, Chat Permissions says where it is.")
 
 
 #: Said when a chat's folder is a whole drive or the home folder.
@@ -527,6 +542,10 @@ class CopilotChatState:
     plan_received: bool = False
     permission_notices: tuple = field(default=(), repr=False)
     changed_paths: tuple = field(default=(), repr=False)
+    #: This turn's tool calls started, for sounds (#250), and its edits, ACP's
+    #: edit, delete and move kinds, counted once they've worked.
+    tools_started: int = 0
+    edits_made: int = 0
     #: Context used and its size, from Copilot's usage_update (0 if unknown).
     context_used: int = 0
     context_size: int = 0
@@ -1063,6 +1082,9 @@ class _Chat:
         self.notice = ""
         self.outcome = ""
         self.activity = ""
+        self.tools_started = 0
+        self.edits_made = 0
+        self.edit_calls = set()  # toolCallIds of edits not known to have worked
         self.started_at = 0.0
         self.loading = False
         self.stopping = False
@@ -1476,7 +1498,7 @@ class CopilotChatRuntime:
             except CopilotChatError:
                 with self._lock:
                     chat.notice = ("Copilot couldn't switch this chat to the model chosen, so it "
-                                   "uses Copilot's own. File, Change Model chooses another.")
+                                   "uses Copilot's own. File, Chat Settings, Change Model chooses another.")
         if mode and mode != chat.mode:
             # Only the mode Copilot reports counts: the problem set above is
             # cleared when a reply taken in names the mode asked for. A
@@ -1998,6 +2020,8 @@ class CopilotChatRuntime:
         chat.started_at = time.monotonic()
         chat.reply_open = False
         chat.replies = []  # this turn's replies, as Codex's state has
+        chat.tools_started = chat.edits_made = 0
+        chat.edit_calls = set()
         chat.changed_paths = ()
         chat.unsent = ()
         # Billing is checked on what this turn adds to the log, never on an
@@ -2537,6 +2561,7 @@ class CopilotChatRuntime:
                 chat.last_chunk_notice = now
             elif kind in ("tool_call", "tool_call_update"):
                 chat.reply_open = False  # text after a tool is a new reply
+                _count_for_sounds(chat, kind, update)
                 shared = self._shared(chat)
                 _remember_preview(chat, update)
                 folder_changed = shared != self._shared(chat)
@@ -2595,6 +2620,7 @@ class CopilotChatRuntime:
             running=any(folder.live() for folder in self._related(chat)),
             background=any(folder.live_background() for folder in self._related(chat)),
             changed_paths=chat.changed_paths, model=chat.model, models=chat.models,
+            tools_started=chat.tools_started, edits_made=chat.edits_made,
             token_usage=(ContextReport(min(1.0, chat.context[0] / chat.context[1]), chat.context[1])
                          if chat.context[1] > 0 and chat.context[0] >= 0 else None))
 

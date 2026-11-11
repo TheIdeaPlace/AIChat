@@ -15,7 +15,7 @@ import threading
 
 from .. import __version__, platform_paths
 from .codex_events import decode_event, CodexTokenUsageEvent, CodexEvent, _text
-from .codex_requests import (decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS,
+from .codex_requests import (decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS, ELICITATION,
                              ACCEPT, ACCEPT_SESSION)
 
 
@@ -32,7 +32,7 @@ class CodexRememberedApprovalError(CodexRpcError):
         'not_sent': 'The answer was not sent and no new approval was kept. Open Answer to try again.',
         'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
         'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
-        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Permissions before continuing.',
+        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Settings, Chat Permissions before continuing.',
     }
 
     def __init__(self, code):
@@ -103,7 +103,10 @@ class CodexTurnRejected(CodexRpcError):
         'provider': 'Codex turns require the built-in OpenAI provider',
         'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
         'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
-        'mcp_tools': 'Codex external tools could not be disabled for this chat. No new turn was sent.',
+        'mcp_tools': 'Codex external tools could not be verified against this chat\'s selection. No new turn was sent.',
+        'mcp_server_removed': 'A connected tool this chat uses is no longer in your Codex configuration. No new turn was sent. View, Connected Tools lists it and can make a copy of this chat without it, or you can add it back to Codex\'s config.toml.',
+        'input_unavailable': 'An attached image or skill is no longer available. No message was sent. Check the attachments and try again.',
+        'input_size': 'This message and its attachments exceed Codex\'s request size limit. Shorten the message or remove attachments. No message was sent.',
         # Likely, not certain: Codex also falls back to read-only when managed
         # requirements allow only read-only, or a profile can't be met (#257).
         'sandbox_unavailable': "Codex reported this chat as read-only, so it can't edit its folder. This usually means Codex's Windows sandbox isn't set up: set it up with Set up Agent sandbox in the Codex app, or with the windows sandbox setting in Codex's config.toml. Otherwise your Codex settings may allow only read-only. Try again, or choose read-only. No new turn was sent.",
@@ -117,6 +120,9 @@ class CodexTurnRejected(CodexRpcError):
 
 
 _ENDED_TURNS = ('completed', 'failed', 'interrupted')
+#: How a server says it doesn't know a method. App-server's own parser answers
+#: an unknown one with -32600 and serde's "unknown variant", not -32601.
+_UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found', re.IGNORECASE)
 
 
 def _token(value):
@@ -178,19 +184,29 @@ def verify_codex_rule_layers(result):
     return count
 
 
-def codex_tool_overrides(config):
+def codex_tool_overrides(config, allowed=(), apps=()):
+    from .codex_tools import server_names
+    allowed = server_names(allowed)
+    if 'codex_apps' in allowed:
+        raise CodexTurnRejected('mcp_tools')
     servers = config.get('mcp_servers')
     if servers is None:
         servers = {}
     if not isinstance(servers, dict) or any(not isinstance(v, dict) for v in servers.values()):
         raise CodexTurnRejected('mcp_tools')
+    if set(allowed) - set(servers):
+        raise CodexTurnRejected('mcp_server_removed')
     # External services are outside the selected folder's sandbox. Disable them
     # in this thread only, including app/plugin-provided servers (#255).
-    return {'mcp_servers': {name: {'enabled': False} for name in servers},
-            'features': {'plugins': False, 'apps': False}}
+    result = {'mcp_servers': {name: {'enabled': name in allowed} for name in servers},
+              'features': {'plugins': False, 'apps': bool(apps)}}
+    if apps:
+        from .codex_tools import app_overrides
+        result['apps'] = app_overrides(config, apps)
+    return result
 
 
-def verify_codex_tools(connection, thread_id):
+def verify_codex_tools(connection, thread_id, allowed=()):
     result = connection.request('mcpServerStatus/list', {
         'threadId': thread_id, 'limit': 100, 'detail': 'toolsAndAuthOnly'})
     rows = result.get('data')
@@ -199,8 +215,13 @@ def verify_codex_tools(connection, thread_id):
     if (not isinstance(rows, list) or len(rows) > 100
             or result.get('nextCursor') not in (None, '')
             or (result.get('nextCursor') is not None and type(result.get('nextCursor')) is not str)
-            or any(not isinstance(row, dict) or row.get('runtimeStatus') != 'disabled'
-                   or row.get('tools') != {} for row in rows)):
+            or any(not isinstance(row, dict) or not isinstance(row.get('tools'), dict)
+                   or (row.get('name') not in allowed and
+                       (row.get('runtimeStatus') != 'disabled' or row.get('tools') != {}))
+                   or (row.get('name') in allowed and (row.get('pluginId') is not None
+                       or row.get('runtimeStatus') not in ('notStarted', 'starting', 'connected',
+                           'authenticationRequired', 'failed', 'cancelled', 'disabled')))
+                   for row in rows)):
         raise CodexTurnRejected('mcp_tools')
 
 
@@ -212,8 +233,8 @@ class _Pending:
 
 
 class ReadOnlyCodexConnection:
-    METHODS = frozenset({"account/read", "account/rateLimits/read", "thread/list", "thread/read", "config/read",
-                         "thread/turns/list", "thread/items/list", "model/list", "mcpServerStatus/list"})
+    METHODS = frozenset({"account/read", "account/rateLimits/read", "thread/list", "thread/read", "config/read", "app/list", "app/installed",
+                         "thread/turns/list", "thread/items/list", "model/list", "mcpServerStatus/list", "skills/list", "collaborationMode/list"})
     MAX_FRAME = 32 * 1024 * 1024
     MAX_REQUEST = 64 * 1024
     MAX_PENDING = 32
@@ -312,8 +333,11 @@ class ReadOnlyCodexConnection:
             truncated = getattr(self, '_display_truncated', {})
             terminal = getattr(event, 'kind', None) == 'turn_completed'
             pair = (event.thread_id, event.turn_id) if terminal else None
-            key = next((k for k in displays if pair is None or k[:2] == pair), None)
-            if key is not None and (event is None or terminal):
+            candidates = [k for k, pending in displays.items() if
+                (event is None or terminal and k[:2] == pair or
+                 isinstance(event, CodexEvent) and pending.sequence < event.sequence)]
+            key = min(candidates, key=lambda k: displays[k].sequence) if candidates else None
+            if key is not None:
                 self._deferred_event = event
                 return displays.pop(key)
             cut = next((k for k in truncated if pair is None or k == pair), None)
@@ -332,9 +356,9 @@ class ReadOnlyCodexConnection:
         with self._lock:
             pending = self._display_events
             category = 'reply' if event.kind in ('text_delta', 'text_completed') else event.kind
-            key = (event.thread_id, event.turn_id, event.item_id, category)
+            key = (event.thread_id, event.turn_id, event.item_id, category, event.part)
             previous = pending.get(key)
-            if event.kind == 'text_delta' and previous is not None:
+            if event.kind in ('text_delta', 'reasoning_delta') and previous is not None:
                 if previous.kind == 'text_completed':
                     return
                 event = replace(event, text=_text(previous.text + event.text))
@@ -346,13 +370,16 @@ class ReadOnlyCodexConnection:
                 cuts[(old.thread_id, old.turn_id)] = True
             pending[key] = event
 
+    def _bind_server_request(self, request):
+        return request
+
     def _accept_server_request(self, request):
         return False  # read-only callers never receive executable approvals
 
     def respond_request(self, request, result, *, dispatch_guard=None):
         result = request.validate_answer(result)
         try:
-            if result.get("decision") in (ACCEPT, ACCEPT_SESSION):
+            if result.get("decision") in (ACCEPT, ACCEPT_SESSION) or result.get("action") == ACCEPT:
                 account = self.request("account/read", {"refreshToken": True})
                 if not is_chatgpt_account(account):
                     raise CodexRpcError("Codex approvals require ChatGPT sign-in")
@@ -395,7 +422,12 @@ class ReadOnlyCodexConnection:
                 raise CodexRpcError("Too many pending Codex requests")
             self._next_id += 1
             request_id = self._next_id
-            payload = self._encode({"id": request_id, "method": method, "params": params})
+            try:
+                payload = self._encode({"id": request_id, "method": method, "params": params})
+            except ValueError:
+                if method in ('turn/start', 'turn/steer'):
+                    raise CodexTurnRejected('input_size') from None
+                raise
             self._pending[request_id] = pending
             self._outgoing.put(payload)
         if not pending.ready.wait(self._timeout):
@@ -416,6 +448,9 @@ class ReadOnlyCodexConnection:
         if pending.error:
             raise pending.error
         return pending.result
+
+    def _allowed_codex_tools(self, thread_id):
+        return ()
 
     def _verify_turn_route(self, params):
         """Reject alternate billing routes before any future turn is queued.
@@ -440,7 +475,10 @@ class ReadOnlyCodexConnection:
         config = result.get("config")
         if not isinstance(config, dict):
             raise CodexRpcError("Codex turn configuration is unavailable")
-        verify_codex_tools(self, thread_id)
+        allowed = self._allowed_codex_tools(thread_id)
+        external = tuple(n for n in allowed if not (n == "ccd_session_mgmt" and getattr(self, "session_tools", False)) and n != "codex_apps")
+        codex_tool_overrides(config, external)  # selected servers must still be configured
+        verify_codex_tools(self, thread_id, allowed)
         providers = config.get("model_providers", {})
         if (config.get("model_provider") not in (None, "openai")
                 or config.get("forced_login_method") not in (None, "chatgpt")
@@ -497,25 +535,11 @@ class ReadOnlyCodexConnection:
                 if not self._receive_requests:
                     raise ValueError("Unexpected server request")
                 try:
-                    request = decode_request(message["id"], message["method"], message.get("params"))
+                    request = self._bind_server_request(decode_request(message["id"], message["method"], message.get("params")))
                 except ValueError as error:
                     self._decline_unsupported_request(message, getattr(error, 'reason', ''))
                     return
-                if not self._accept_server_request(request):
-                    raise ValueError("Unowned Codex request")
-                with self._lock:
-                    if (request.thread_id, request.turn_id) in self._retired_turns:
-                        self._outgoing.put(self._encode({'id': request.request_id, 'error': {
-                            'code': -32600, 'message': 'This Codex turn has ended.'}}))
-                        return
-                    if (request.request_id in self._server_pending
-                            or len(self._server_pending) >= self.MAX_EVENTS):
-                        raise ValueError("Codex request limit exceeded")
-                    self._server_pending[request.request_id] = request
-                try:
-                    self._events.put_nowait(request)
-                except queue.Full:
-                    raise ValueError("Codex request queue overflow") from None
+                self._receive_server_request(request)
                 return
             if self._receive_events:
                 if self._receive_requests and message["method"] == "serverRequest/resolved":
@@ -528,6 +552,9 @@ class ReadOnlyCodexConnection:
                 else:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
+                    if isinstance(event, CodexEvent):
+                        self._event_sequence = getattr(self, '_event_sequence', 0) + 1
+                        event = replace(event, sequence=self._event_sequence)
                     if isinstance(event, CodexTokenUsageEvent):
                         # Optional counters are replaceable snapshots. Keep
                         # them out of the bounded approval/completion queue.
@@ -546,7 +573,7 @@ class ReadOnlyCodexConnection:
                     # must not crowd out Stop, approvals or completion (#247).
                     if getattr(event, 'kind', None) == 'tool_output_delta':
                         return
-                    if getattr(event, 'kind', None) in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated'):
+                    if getattr(event, 'kind', None) in ('text_delta', 'text_completed', 'activity', 'file_changes', 'plan_updated', 'reasoning_delta', 'reasoning_completed'):
                         self._display_event(event)
                         return
                     if getattr(event, "kind", None) == "turn_completed":
@@ -580,12 +607,34 @@ class ReadOnlyCodexConnection:
                 details = message.get("error")
                 code = details.get("code") if isinstance(details, dict) else None
                 pending.error.rpc_code = code if type(code) is int else None
+                # A yes or no from the message, which itself is never kept.
+                said = details.get("message") if isinstance(details, dict) else None
+                pending.error.unknown_method = code == -32601 or (
+                    isinstance(said, str) and _UNKNOWN_METHOD.search(said) is not None)
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:
                 raise ValueError("Invalid response")
             del self._pending[request_id]
             pending.ready.set()
+
+    def _receive_server_request(self, request):
+        if not self._accept_server_request(request):
+            raise ValueError("Unowned Codex request")
+        with self._lock:
+            if ((request.thread_id, request.turn_id) in self._retired_turns or
+                    (request.source_thread_id, request.source_turn_id) in self._retired_turns):
+                self._outgoing.put(self._encode({'id': request.request_id, 'error': {
+                    'code': -32600, 'message': 'This Codex turn has ended.'}}))
+                return
+            if (request.request_id in self._server_pending
+                    or len(self._server_pending) >= self.MAX_EVENTS):
+                raise ValueError("Codex request limit exceeded")
+            self._server_pending[request.request_id] = request
+            try:
+                self._events.put_nowait(request)
+            except queue.Full:
+                raise ValueError("Codex request queue overflow") from None
 
     def forget_turn_requests(self, thread_id, turn_id):
         """Confirmed ended turns may not emit serverRequest/resolved."""

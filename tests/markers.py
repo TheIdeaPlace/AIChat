@@ -30,3 +30,6 @@ windows_layout = pytest.mark.skipif(
 #: Linux (ui/gtk_a11y.py).
 atk = pytest.mark.skipif(not sys.platform.startswith("linux"),
                          reason="ATK (Orca's names) is Linux-only")
+
+#: NTFS junctions, which only Windows makes and which a delete must never follow.
+windows_junctions = pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows-only")

@@ -19,6 +19,21 @@ def key_name(shortcut: str, platform=None) -> str:
             .replace(" Option+Return on a Mac", ""))
 
 
+#: The first choice of a Codex chat's model or effort, and how Properties
+#: names it: whatever Codex itself is set to use. One name everywhere (#596),
+#: not "Configured Codex model" here and "Configured effort" there.
+CODEX_DEFAULT = "Codex's default"
+
+
+def with_stop_key(text: str, platform=None) -> str:
+    """A provider's "Press Stop to ..." with Stop's key added, the first time
+    it's named (#596): the provider says what Stop does, and the window,
+    which owns the keys, names the key."""
+    if not text or "Press Stop (" in text:
+        return text
+    return text.replace("Press Stop ", f"Press Stop ({key_name('Ctrl+Period', platform)}) ", 1)
+
+
 SHORTCUTS_PLATFORM_NOTE = (
     "This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, "
     "Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver: VO+M), "
@@ -74,10 +89,12 @@ SHORTCUTS = [
         ("Ctrl+Shift+N", "Continue the selected chat from the desktop app, a terminal or "
                          "another app here, as a copy you can reply to (the original isn't "
                          "changed)"),
-        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access and "
-                         "approval reviewer, or Copilot agent mode, plan mode or Auto for the "
-                         "selected (or loaded) Chat Place session (File, Change Effort and Change "
-                         "Model are beside it)"),
+        ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access, "
+                         "approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the "
+                         "selected (or loaded) Chat Place session (in File, Chat Settings, with "
+                         "Change Model and Change Effort)"),
+        ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
+                         "moves from message to message; Alt+P reads it as plain text instead"),
         ("Ctrl+Shift+H", "Chat Permissions: the selected (or loaded) Chat Place chat's permission "
                          "mode, and the commands and tools it may use without asking: for a "
                          "Claude chat, those it keeps and the rules from Claude Code's own "
@@ -102,6 +119,9 @@ SHORTCUTS = [
         ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
+        ("Alt+F, I", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
+                     "Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat "
+                     "Options (O)"),
         ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
                      "claude.ai and your phone (a desktop app session can be continued here "
                      "with it on)"),
@@ -126,25 +146,35 @@ SHORTCUTS = [
                                            "answers it"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
+        ("Ctrl+Shift+Z on one of your messages", "Retry from Here (Claude and Codex chats): start a new "
+                                                 "chat just before it, with your message ready to change "
+                                                 "and send. Claude can also restore files changed with "
+                                                 "its edit tools in chats started here; Codex doesn't. "
+                                                 "The new chat keeps the original's settings, and the "
+                                                 "original chat is kept. Branch from Here (Alt+F, F, or on "
+                                                 "a message's menu) "
+                                                 "starts a new chat from that point; in Codex it includes "
+                                                 "the whole turn containing that message"),
         ("Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks",
          "Lists, on Code Blocks for this message: read and copy each code block"),
         ("Ctrl+F, then F3 and Shift+F3", "Find a message containing some text (its whole "
                                          "text, not just the first line), then the next or "
                                          "previous one"),
         ("End", "Newest message"),
-        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions and "
-                         "tasks, for this message or the whole chat; it opens on the kind you used last, and "
+        ("Ctrl+Shift+I", "Lists: code blocks, links, changed files, commands, decisions, "
+                         "tasks, subagents and auto approvals, for this message or the whole chat; it opens on the kind you used last, and "
                          "the Kinds list (Alt+K) chooses another. From anywhere in it, Ctrl+Page Down "
                          "and Ctrl+Page Up change the kind (also Cmd+Shift+] and Cmd+Shift+[ on a "
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
-                         "(a link opens), Ctrl+C copies, typing narrows the list (also from the "
+                         "(a link opens, a subagent's conversation opens), Ctrl+C copies, typing narrows the list (also from the "
                          "session list and the reply box)"),
         ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
                    "browser, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done"),
-        ("Ctrl+T", "Show or hide tool activity in the loaded session"),
+        ("Ctrl+T", "Show or hide tool activity in the loaded session, and in Codex chats "
+                   "started here, the requests allowed for it"),
         ("Ctrl+O", "Open the loaded session in the Claude desktop app"),
     ]),
     ("Reply box", [
@@ -156,13 +186,17 @@ SHORTCUTS = [
         ("Ctrl+Alt+Enter", "Steer: during a turn, send the message into it without stopping "
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
-        ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box"),
-        ("Ctrl+/", "Insert a Claude slash command or one of your skills (type to search); it goes at "
-                   "the start of the reply box"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude message (Attach Files button, Alt+T); "
+        ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box. "
+                        "View, Stop Background Task, just below it, ends one background task "
+                        "and lets the turn carry on"),
+        ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
+                   "the start of the reply box. Codex offers enabled skills and chat controls "
+                   "such as /plan and /compact"),
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
                          "Delete in the attachments list removes one"),
-        ("Ctrl+V with a picture copied", "Attach the picture to a Claude message (a screenshot from Win+Shift+S, "
-                                         "say)"),
+        ("Ctrl+V with a picture or files copied", "Attach the picture (a screenshot from Win+Shift+S, say), "
+                                                  "or files copied in File Explorer or the Finder, to a "
+                                                  "Claude or Codex message"),
         ("Ctrl+Shift+M", "Other machines: list your sessions on other computers and send one "
                          "a message, through Claude in the loaded Chat Place session (it needs "
                          "Remote Control on)"),
@@ -191,7 +225,13 @@ SHORTCUTS = [
         ("Ctrl+N", "New Session: start a chat here, from anywhere in the window"),
         ("Ctrl+Shift+A", "Answer: approve or deny a tool, answer the provider's questions, or "
                          "approve its plan (the loaded session first, then another chat "
-                         "waiting for an answer). Escape in the dialog answers later"),
+                         "waiting for an answer). Escape in the dialog answers later. In "
+                         "your own answer, What to Change, or a reason for Deny, Shift+Enter "
+                         "starts a new line"),
+        ("Ctrl+Shift+Y", "Ask Aside (Claude and Codex chats): a quick question about the selected (or "
+                         "loaded) chat, answered without the question or answer being added "
+                         "to it; Ctrl+Enter asks, and the answer is read and goes in the "
+                         "Answer box"),
         ("Ctrl+Shift+K", "What AI knows about you: choose Claude or Codex, then read "
                          "local instructions, memories, skills and settings, or open "
                          "them in your editor"),
@@ -204,6 +244,8 @@ SHORTCUTS = [
         ("Alt+H, G", "The user guide, read by heading"),
         ("Ctrl+Comma", "Settings: announcements, speech, notifications and more"),
         ("Ctrl+Shift+R", "Repeat the last announcement"),
+        ("Ctrl+Shift+X", "Mute All Sounds: silence every sound at once, or bring them back "
+                         "(File, Sounds chooses them)"),
         ("Alt+F4", "Quit"),
     ]),
 ]
@@ -267,6 +309,30 @@ def _tables_as_text(text: str) -> str:
 #: About how long the session list's Last message column is (#146): enough
 #: to hear where a conversation ended, short enough to arrow past.
 LAST_MESSAGE_LIMIT = 150
+
+
+def choose_access_key(label: str, taken: set) -> str:
+    """A key for a field a server named (#468), "" if every letter in ``label``
+    is taken: the first free letter or digit that starts a word, else any in
+    it, lower case. It's added to ``taken``, the keys already spoken for. Only
+    plain ones, as a key that isn't on the keyboard is no use."""
+    plain = [c.lower() for c in label if c.isascii() and c.isalnum()]
+    starts = [m.group().lower() for m in re.finditer(r"\b[A-Za-z0-9]", label)]
+    for key in starts + plain:
+        if key not in taken:
+            taken.add(key)
+            return key
+    return ""
+
+
+def mark_access_key(text: str, key: str) -> str:
+    """A server's ``text`` as a control's label: each "&" of its own shown, not
+    taken as an access key, and ``key`` marked where it first comes."""
+    text = text.replace("&", "&&")
+    for index, char in enumerate(text):
+        if key and char.isascii() and char.lower() == key:
+            return f"{text[:index]}&{text[index:]}"
+    return text
 
 
 def codex_effort_label(value: str) -> str:

@@ -133,7 +133,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "B&ranch (choose one, or type a new name):",
+   "label": "Branch (choose one, or type a new name):",
    "rect": [
     10,
     106,
@@ -171,10 +171,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&Title:",
+   "label": "Start from:",
    "rect": [
     10,
     137,
+    57,
+    16
+   ],
+   "best": [
+    57,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Start from (for a new branch in a new worktree)",
+   "label": "",
+   "rect": [
+    241,
+    134,
+    413,
+    23
+   ],
+   "best": [
+    236,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": [],
+   "value": "The remote's main branch, fetched first"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Title:",
+   "rect": [
+    10,
+    168,
     27,
     16
    ],
@@ -193,7 +232,7 @@
    "label": "",
    "rect": [
     243,
-    136,
+    167,
     413,
     23
    ],
@@ -213,7 +252,7 @@
    "label": "Mo&del:",
    "rect": [
     10,
-    168,
+    199,
     38,
     16
    ],
@@ -229,45 +268,6 @@
   {
    "class": "Choice",
    "name": "Model",
-   "label": "",
-   "rect": [
-    241,
-    165,
-    413,
-    23
-   ],
-   "best": [
-    211,
-    23
-   ],
-   "depth": 0,
-   "parent": -1,
-   "enabled": true,
-   "problems": [],
-   "value": "Default (your Claude Code setting)"
-  },
-  {
-   "class": "StaticText",
-   "name": "staticText",
-   "label": "&Effort:",
-   "rect": [
-    10,
-    199,
-    33,
-    16
-   ],
-   "best": [
-    33,
-    16
-   ],
-   "depth": 0,
-   "parent": -1,
-   "enabled": true,
-   "problems": []
-  },
-  {
-   "class": "Choice",
-   "name": "Effort",
    "label": "",
    "rect": [
     241,
@@ -288,10 +288,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Permission m&ode:",
+   "label": "&Effort:",
    "rect": [
     10,
     230,
+    33,
+    16
+   ],
+   "best": [
+    33,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Effort",
+   "label": "",
+   "rect": [
+    241,
+    227,
+    413,
+    23
+   ],
+   "best": [
+    211,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Default (your Claude Code setting)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Permission m&ode:",
+   "rect": [
+    10,
+    261,
     96,
     16
    ],
@@ -310,7 +349,7 @@
    "label": "",
    "rect": [
     241,
-    227,
+    258,
     413,
     23
    ],
@@ -325,12 +364,50 @@
    "value": "Auto: Claude decides what is safe to run without asking"
   },
   {
+   "class": "Button",
+   "name": "button",
+   "label": "C&hat Options...",
+   "rect": [
+    241,
+    289,
+    100,
+    23
+   ],
+   "best": [
+    100,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "None chosen",
+   "rect": [
+    349,
+    292,
+    305,
+    16
+   ],
+   "best": [
+    71,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "About &permissions:",
    "rect": [
     10,
-    260,
+    322,
     103,
     16
    ],
@@ -346,10 +423,10 @@
   {
    "class": "TextCtrl",
    "name": "About permissions",
-   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. Change Permission Mode and Change Effort, in File, Chat Settings, change them later.",
    "rect": [
     12,
-    278,
+    340,
     644,
     72
    ],
@@ -361,7 +438,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them l"
+   "value": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. Change Permission Mode and Change Effort, in File, Chat Sett"
   },
   {
    "class": "StaticText",
@@ -369,7 +446,7 @@
    "label": "First &message:",
    "rect": [
     10,
-    358,
+    420,
     75,
     16
    ],
@@ -388,9 +465,9 @@
    "label": "",
    "rect": [
     12,
-    386,
+    448,
     644,
-    148
+    86
    ],
    "best": [
     127,

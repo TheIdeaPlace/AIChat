@@ -188,7 +188,8 @@ def test_codex_properties_do_not_invent_claude_models_policies_or_usage():
     assert "Kind: Chat Place session" in result
     assert "Codex's replies: 1" in result
     assert "Model of the latest reply: synthetic-codex-model" in result
-    assert "Model chosen: configured Codex model" in result
+    # One name for it, as New Session and Change Effort use (#596).
+    assert "Model chosen: Codex's default" in result and "Effort: Codex's default" in result
     assert "Sandbox: read-only" in result
     assert "History: read from Codex" in result
     assert not any(line.startswith(("Permission mode:", "Remote Control:",
@@ -260,3 +261,15 @@ def test_a_steering_rows_properties_say_where_it_is():
     lines = message_properties(row, 3, 3)
     assert lines[0] == "From: You"
     assert "Steered into the running turn: waiting for Claude" in lines
+
+
+def test_branch_facts_go_after_the_folder():
+    # #331, #561
+    from thechatplace.properties import with_branch_facts
+    lines = ["Kind: Chat Place session", "Folder: C:\\G\\Repo", "Model: Opus"]
+    facts = [("Branch", "fix/x"), ("Branch started from", "origin/main")]
+    assert with_branch_facts(lines, facts) == [
+        "Kind: Chat Place session", "Folder: C:\\G\\Repo", "Branch: fix/x",
+        "Branch started from: origin/main", "Model: Opus"]
+    assert with_branch_facts(lines, []) == lines
+    assert with_branch_facts(["Kind: x"], facts)[-1] == "Branch started from: origin/main"

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from markers import windows_paths
 from thechatplace import backup, platform_paths
 from thechatplace.providers import claude_backup
 
@@ -16,6 +17,11 @@ def write(path: Path, text: str = "x") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+# The real lookups, for the test of them: ``homes`` turns them off.
+_REAL_DESKTOP_DIRS = platform_paths.desktop_sessions_dirs
+_REAL_COWORK_DIRS = platform_paths.cowork_sessions_dirs
 
 
 @pytest.fixture
@@ -71,6 +77,22 @@ def test_claude_includes_desktop_session_folders(homes, monkeypatch):
     inv = claude_backup.inventory()
     assert "claude/desktop-code-0/o/u/local_1.json" in names(inv)
     assert any(a.root == str(code) for a in inv.areas)
+
+
+def test_backup_finds_desktop_and_cowork_sessions_in_claude_data(homes, monkeypatch):
+    # #542: the Store app's move left backups without these, and said nothing.
+    monkeypatch.setattr(platform_paths, "desktop_sessions_dirs", _REAL_DESKTOP_DIRS)
+    monkeypatch.setattr(platform_paths, "cowork_sessions_dirs", _REAL_COWORK_DIRS)
+    monkeypatch.setattr(platform_paths.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(homes["tmp"] / "Local"))
+    monkeypatch.setenv("APPDATA", str(homes["tmp"] / "Roaming"))
+    monkeypatch.setattr(platform_paths, "long_path", lambda path: path)
+    data = homes["tmp"] / "Local" / "Claude-Data" / "claude_pkg"
+    write(data / "claude-code-sessions" / "o" / "u" / "local_1.json", "{}")
+    write(data / "local-agent-mode-sessions" / "o" / "u" / "local_2.json", "{}")
+    got = names(claude_backup.inventory())
+    assert "claude/desktop-code-0/o/u/local_1.json" in got
+    assert "claude/desktop-cowork-0/o/u/local_2.json" in got
 
 
 def test_missing_claude_home_is_a_note_not_a_crash(homes):
@@ -157,6 +179,21 @@ def test_backup_round_trip_with_a_live_wal_database(homes):
 
 def test_computer_id_is_stable(homes):
     assert backup.computer_identity()["id"] == backup.computer_identity()["id"]
+
+
+def test_each_sound_schemes_folder_goes_in_the_backup(homes):
+    """Sound files are kept in a folder for each scheme (#250); the backup carries them all."""
+    mine = platform_paths.scheme_sounds_dir("user-" + "a" * 32) / "knock.wav"
+    glass = platform_paths.scheme_sounds_dir("glass") / "chime.wav"
+    for path in (mine, glass):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"RIFF")
+    result = backup.create(homes["dest"], collectors=[backup.tcp_inventory])
+    assert result.complete
+    with zipfile.ZipFile(result.path) as z:
+        listed = set(z.namelist())
+    assert f"thechatplace/data/sounds/user-{'a' * 32}/knock.wav" in listed
+    assert "thechatplace/data/sounds/glass/chime.wav" in listed
 
 
 def test_two_backups_with_the_same_name_never_overwrite(homes):
@@ -910,3 +947,33 @@ def test_the_protected_passphrase_file_isnt_backed_up(homes):
     write(homes["data"] / platform_paths.BACKUP_SECRET_FILE, "protected")
     write(homes["data"] / "a.json", "{}")
     assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json"}
+
+
+def test_a_whole_chats_open_page_isnt_backed_up(tmp_path, monkeypatch):
+    # A copy, gone when it's closed: closing it mid-backup would count as a failure.
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    (tmp_path / platform_paths.WHOLE_CHAT_PAGE_FILE).write_text("a chat", encoding="utf-8")
+    (tmp_path / "groups.json").write_text("{}", encoding="utf-8")
+    inventory = backup.tcp_inventory()
+    assert "groups.json" in str(inventory.items)
+    assert platform_paths.WHOLE_CHAT_PAGE_FILE not in str(inventory.items)
+
+
+@windows_paths
+def test_a_folder_inside_a_long_form_root_is_refused_and_named_plainly(tmp_path, monkeypatch):
+    # #542: Cowork's folder comes in the long form, which a chosen folder's
+    # plain path never matched, so a backup could land in the desktop app's data.
+    plain = tmp_path / "local-agent-mode-sessions"
+    inside = plain / "chosen"
+    inside.mkdir(parents=True)
+    root = platform_paths.long_path(plain)
+    assert str(root).startswith("\\\\?\\")
+    assert backup._inside(inside, root)
+    assert not backup._inside(tmp_path, root)
+    monkeypatch.setattr(backup, "copied_roots", lambda: [root])
+    problem = backup.schedule_folder_problem(str(inside))
+    assert problem and "?" not in problem
+    inv = backup.Inventory("claude", "Claude", areas=[backup.Area("a", str(root), "Cowork")])
+    problem = backup.destination_problem(inside, [inv])
+    assert problem and "?" not in problem

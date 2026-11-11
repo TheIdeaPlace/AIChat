@@ -341,11 +341,13 @@ def test_a_failed_migration_keeps_the_copilot_record_it_moved(tmp_path, monkeypa
     assert [item["cli_session_id"] for item in own["sessions"]] == ["copilot-id"]
 
 
-# Fields 0.5 writes that this release doesn't know: 0.5 -> 0.4.1 -> 0.5 must
-# not lose them when 0.4.1 saves (marking a chat read, a turn ending).
-CLAUDE_NEWER = {"agent": "reviewer", "instructions": "Be brief.", "output_style": "Explanatory",
-                "disabled_mcp": ["github"], "prompt_fresh": True}
-CODEX_NEWER = {"provider_extras": {"collaboration": "plan", "mcp_servers": ["docs"]}}
+# Fields a newer release writes that this one doesn't know: 0.6 -> 0.5 -> 0.6
+# must not lose them when 0.5 saves (marking a chat read, a turn ending), as
+# 0.4.1 keeps 0.5's (#611). The names stand in for fields this release lacks;
+# Codex's provider_extras mixes a setting this release reads with a later one.
+CLAUDE_NEWER = {"later_agent": "reviewer", "later_style": "Explanatory",
+                "later_servers": ["github"], "later_flag": True}
+CODEX_NEWER = {"provider_extras": {"collaboration": "plan", "later_mode": "pair"}}
 COPILOT_NEWER = {"some_later_field": [1, 2]}
 
 
@@ -393,18 +395,37 @@ def test_a_newer_field_never_overrides_what_this_release_knows(tmp_path):
     assert "provider" not in claude and "provider_options" not in claude
 
 
+def test_a_codex_chats_own_setting_wins_over_a_kept_copy_of_it(tmp_path):
+    # The one name both could hold: a known extra beside a later one in
+    # provider_extras. What the chat has now is what's written.
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.update("same-id", provider="codex", provider_options={"collaboration": "default"})
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["provider_extras"] == {"collaboration": "default", "later_mode": "pair"}
+
+
+def test_a_renamed_codex_chat_keeps_its_later_fields(tmp_path):
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    store.rename_id("same-id", "new-id", provider="codex")
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["cli_session_id"] == "new-id"
+    assert codex["provider_extras"] == CODEX_NEWER["provider_extras"]
+
+
 def test_newer_fields_follow_a_renamed_id_and_go_with_a_removed_chat(tmp_path):
     path = _newer_layout(tmp_path)
     store = OwnSessionStore(path)
     store.rename_id("same-id", "new-id")
     claude, = _records(tmp_path, "sessions.json")
-    assert claude["cli_session_id"] == "new-id" and claude["agent"] == "reviewer"
+    assert claude["cli_session_id"] == "new-id" and claude["later_agent"] == "reviewer"
     store.remove("new-id")
     assert _records(tmp_path, "sessions.json") == []
     # A new chat later given the old id carries nothing of the removed one.
     store.add(OwnSession("new-id", "Fresh", "/synthetic"))
     fresh, = _records(tmp_path, "sessions.json")
-    assert "agent" not in fresh
+    assert "later_agent" not in fresh
 
 
 def test_a_failed_remove_keeps_the_newer_fields(tmp_path, monkeypatch):
@@ -419,4 +440,19 @@ def test_a_failed_remove_keeps_the_newer_fields(tmp_path, monkeypatch):
     monkeypatch.undo()
     store.save()
     claude, = _records(tmp_path, "sessions.json")
-    assert claude["agent"] == "reviewer"
+    assert claude["later_agent"] == "reviewer"
+
+
+def test_a_codex_setting_cleared_here_stays_cleared_and_a_later_one_stays(tmp_path):
+    # provider_extras is this release's own: what it reads from it is written
+    # from the chat as it is now, and only a later setting is kept as it was.
+    path = _newer_layout(tmp_path)
+    store = OwnSessionStore(path)
+    assert store.get("same-id", "codex").provider_options == {"collaboration": "plan"}
+    store.update("same-id", provider="codex", provider_options={})
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["provider_extras"] == {"later_mode": "pair"}
+    store.update("same-id", provider="codex", provider_options={"mcp_servers": ["docs"]})
+    codex, = _records(tmp_path, "provider-sessions.json")
+    assert codex["provider_extras"] == {"later_mode": "pair", "mcp_servers": ["docs"]}
+    assert OwnSessionStore(path).get("same-id", "codex").provider_options == {"mcp_servers": ["docs"]}

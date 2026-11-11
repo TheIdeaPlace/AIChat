@@ -12,9 +12,10 @@ app (none of this is documented, so every caller treats it as best effort):
 * Desktop app session metadata:
   ``%APPDATA%\\Claude\\claude-code-sessions\\<id>\\<orgId>\\local_<id>.json``,
   or for the Microsoft Store version
-  ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
+  ``%LOCALAPPDATA%\\Claude-Data\\claude_<id>\\claude-code-sessions`` (#542), or
+  before that ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude\\claude-code-sessions``
 * Cowork sessions (#91): ``local-agent-mode-sessions\\<id>\\<orgId>\\local_<id>.json``
-  in the same two ``Claude`` folders. The ``local_<id>`` folder beside each is
+  in the same ``Claude`` folders. The ``local_<id>`` folder beside each is
   the session's own Claude Code home (``.claude\\projects\\...\\<cli>.jsonl``).
 * Transcripts: ``%USERPROFILE%\\.claude\\projects\\<encoded cwd>\\<cliSessionId>.jsonl``
 * Live sessions: ``%USERPROFILE%\\.claude\\sessions\\<pid>.json``
@@ -292,14 +293,26 @@ def _store_app_sessions_dirs(name: str = "claude-code-sessions") -> List[Path]:
     app (issue #183). Windows redirects a packaged app's AppData writes into
     its package folder, so ``%APPDATA%\\Claude`` doesn't exist there. Matched
     on ``Claude_*`` rather than the package id seen on Kelly's PCs
-    (``Claude_pzs8sxrjxfjjc``), in case it differs."""
+    (``Claude_pzs8sxrjxfjjc``), in case it differs.
+
+    The Store app has since moved its data out of the package, to
+    ``%LOCALAPPDATA%\\Claude-Data\\claude_<package id>`` (#542), leaving only a
+    marker file behind. Both are looked in: not every install has moved."""
     if sys.platform != "win32":
         return []
     local = os.environ.get("LOCALAPPDATA")
-    packages = Path(local) / "Packages" if local else Path.home() / "AppData" / "Local" / "Packages"
+    root = Path(local) if local else Path.home() / "AppData" / "Local"
+    moved = [p / name for p in _folders_matching(root / "Claude-Data", "claude_*")]
+    packaged = [p / "LocalCache" / "Roaming" / "Claude" / name
+                for p in _folders_matching(root / "Packages", "Claude_*")]
+    return [*moved, *packaged]
+
+
+def _folders_matching(folder: Path, pattern: str) -> List[Path]:
+    """Sorted, or none if ``folder`` can't be read: one unreadable place
+    mustn't hide the sessions in another."""
     try:
-        return sorted(p / "LocalCache" / "Roaming" / "Claude" / name
-                      for p in packages.glob("Claude_*"))
+        return sorted(folder.glob(pattern))
     except OSError:
         return []
 
@@ -350,6 +363,17 @@ def long_path(path: Path) -> Path:
     if text.startswith("\\\\"):
         return Path("\\\\?\\UNC\\" + text[2:])
     return Path("\\\\?\\" + text)
+
+
+def plain_path(path: Path) -> Path:
+    """``path`` without the long form ``long_path`` adds, to compare it with
+    an ordinary path or show it to someone."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + text[8:])
+    if text.startswith("\\\\?\\"):
+        return Path(text[4:])
+    return Path(path)
 
 
 def os_name() -> str:
@@ -442,10 +466,82 @@ def app_icon_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "app.ico"
 
 
+def built_in_sounds_dir() -> Path:
+    """The sounds shipped with the app (#250), a folder for each style. Copied from app-kit's
+    ``sounds``, whose README says where they come from and how they're made."""
+    return Path(__file__).resolve().parent / "assets" / "sounds"
+
+
+def custom_sounds_dir() -> Path:
+    """A person's own sounds (#250), copied here so they outlive the original and go with
+    backups. Nothing is kept here itself: each scheme's files are in its own folder
+    (``scheme_sounds_dir``), so a scheme and its files go together."""
+    return app_data_dir() / "sounds"
+
+
+#: A folder name a scheme id can be: the built-in schemes' ("glass") and ``user-<32 hex>``. No dot
+#: or slash, so it can't name a parent folder or reach outside ``sounds``.
+_SCHEME_FOLDER = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+
+
+def scheme_sounds_dir(scheme_id: str) -> Path:
+    """The folder holding one sound scheme's own files (#250): ``sounds/<scheme id>``. Raises
+    ValueError for an id that isn't a plain folder name, so a bad id never reaches the disk."""
+    if not isinstance(scheme_id, str) or not _SCHEME_FOLDER.fullmatch(scheme_id):
+        raise ValueError(f"Not a sound scheme id: {scheme_id!r}")
+    return custom_sounds_dir() / scheme_id
+
+
+def show_silent_balloon(hwnd: int, title: str, text: str) -> bool:
+    """Windows: a tray balloon that makes no sound of its own, on wx's icon in the window
+    ``hwnd``, for someone who has chosen that in File, Sounds. wx's ShowBalloon can't ask for
+    this (it passes on only the icon flags). 99 is the id wx gives its one icon. False if it
+    didn't work, so the caller can fall back on wx."""
+    if sys.platform != "win32" or not hwnd:
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class NotifyIconData(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uID", wintypes.UINT),
+                    ("uFlags", wintypes.UINT), ("uCallbackMessage", wintypes.UINT),
+                    ("hIcon", wintypes.HICON), ("szTip", ctypes.c_wchar * 128),
+                    ("dwState", wintypes.DWORD), ("dwStateMask", wintypes.DWORD),
+                    ("szInfo", ctypes.c_wchar * 256), ("uTimeoutOrVersion", wintypes.UINT),
+                    ("szInfoTitle", ctypes.c_wchar * 64), ("dwInfoFlags", wintypes.DWORD),
+                    ("guidItem", ctypes.c_byte * 16), ("hBalloonIcon", wintypes.HICON)]
+
+    nim_modify, nim_setversion, nif_info = 1, 4, 0x10
+    niif_info, niif_nosound = 0x1, 0x10
+    try:
+        notify = ctypes.WinDLL("shell32").Shell_NotifyIconW
+        notify.argtypes = [wintypes.DWORD, ctypes.POINTER(NotifyIconData)]
+        notify.restype = wintypes.BOOL
+        data = NotifyIconData()
+        data.cbSize = ctypes.sizeof(NotifyIconData)
+        data.hWnd = hwnd
+        data.uID = 99
+        # As wx asks before each balloon, so clicks on one are still reported to it.
+        data.uTimeoutOrVersion = 3
+        notify(nim_setversion, ctypes.byref(data))
+        data.uTimeoutOrVersion = 0
+        data.uFlags = nif_info
+        data.szInfo = text
+        data.szInfoTitle = title
+        data.dwInfoFlags = niif_info | niif_nosound
+        return bool(notify(nim_modify, ctypes.byref(data)))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def user_guide_path() -> Path:
     """The user guide's Markdown (#102), shipped in ``assets`` like the icon so
     every build has it; tools/make_docs.py makes the docs/ copies from it."""
     return Path(__file__).resolve().parent / "assets" / "user-guide.md"
+
+
+#: A whole chat's page while it's open, when too long to pass to WebView2.
+WHOLE_CHAT_PAGE_FILE = "whole chat page.html"
 
 
 def app_data_dir() -> Path:
@@ -566,6 +662,13 @@ def transcript_path(cwd: str, cli_session_id: str,
     return None
 
 
+def subagents_dir(transcript: Path) -> Path:
+    """Where Claude Code keeps a session's subagents' transcripts (#468):
+    ``<session id>/subagents/`` beside ``<session id>.jsonl``, each one
+    ``agent-<id>.jsonl`` with an ``agent-<id>.meta.json``. The same in a
+    Cowork session's own Claude home, which ``transcript`` is already in."""
+    transcript = Path(transcript)
+    return transcript.with_suffix("") / "subagents"
 
 
 def is_safe_id(value: str) -> bool:

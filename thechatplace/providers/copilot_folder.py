@@ -914,7 +914,7 @@ def _git_asks(why: str) -> bool:
 
 _PATH_INSIDE_ASKS = ("This asks since {entry}, on your PATH, is inside this chat's folder or is a "
                      "relative path, so a program there could stand in for the one named.")
-_GIT_MOVED_ASKS = ("git asks here until you use Restart Copilot, in File, Chat Permissions, because "
+_GIT_MOVED_ASKS = ("git asks here until you use Restart Copilot, in File, Chat Settings, Chat Permissions, because "
                    "Copilot's shell may be in a subfolder.")
 _GIT_ALTERNATES = "this repository borrows objects from another (objects/info/alternates)"
 _GIT_TOO_OLD = "this git is too old for The Chat Place's check, which needs git 2.31 or later"
@@ -1516,7 +1516,7 @@ EXACT_RULE_ASKS = "This asks since your rule allows only those exact words."
 UNUSABLE_RULE_ASKS = ("This asks since a rule of yours that names it can't be used. File, Chat "
                       "Permissions says why.")
 RULES_BROKEN_ASKS = ("This asks since your copilot-rules.json can't all be read, and it may hold a "
-                     "rule that should stop this. File, Chat Permissions says why.")
+                     "rule that should stop this. File, Chat Settings, Chat Permissions says why.")
 TOO_BROAD_ASKS = ("This asks since nothing is answered for you in this chat's folder: start a "
                   "Copilot chat in a project's own folder for that.")
 

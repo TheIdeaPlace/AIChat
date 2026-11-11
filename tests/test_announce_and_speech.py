@@ -277,7 +277,7 @@ def test_update_notice_settings_round_trip_and_default(tmp_path):
 
 
 def test_startup_update_check_setting_round_trip_and_default(tmp_path):
-    # On unless turned off: an absent or odd value means on.
+    # On unless turned off, as 0.4.1 saved it: an absent or odd value means on.
     path = tmp_path / "speech.json"
     assert SpeechSettings.load(path).check_updates_at_start is True
     settings = SpeechSettings.load(path)
@@ -292,23 +292,25 @@ def test_startup_update_check_setting_round_trip_and_default(tmp_path):
 
 
 def test_saving_keeps_settings_a_newer_release_wrote(tmp_path):
-    # 0.5 -> 0.4.1 -> 0.5: what 0.5 saved (its sounds and sound schemes) must
-    # still be there when it starts again, even after 0.4.1 saved a change.
+    # 0.6 -> 0.5 -> 0.6 (as 0.4.1 does for 0.5, #611): what a newer release
+    # saved must still be there when it starts again, even after this one
+    # saved a change. The names stand in for settings this release lacks.
     import dataclasses
     path = tmp_path / "speech.json"
-    newer = {"announce": "full", "sounds_on": True, "sound_volume": 60,
-             "sound_scheme": "user-1", "sound_schemes": {"user-1": {"reply": "a.wav"}}}
+    newer = {"announce": "full", "sounds_on": True, "later_flag": True, "later_volume": 60,
+             "later_scheme": "user-1", "later_schemes": {"user-1": {"reply": "a.wav"}}}
     path.write_text(json.dumps(newer), encoding="utf-8")
     settings = SpeechSettings.load(path)
-    assert not hasattr(settings, "sounds_on")
+    assert not hasattr(settings, "later_flag")
     # The Settings dialog hands back a copy, not what was loaded.
-    changed = dataclasses.replace(settings, check_updates_at_start=False)
+    changed = dataclasses.replace(settings, check_updates_at_start=False, sounds_on=False)
     changed.save(path)
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["check_updates_at_start"] is False
-    for name in ("sounds_on", "sound_volume", "sound_scheme", "sound_schemes"):
-        assert saved[name] == newer[name]
     # A known setting is this release's to write, never the file's old value.
+    assert saved["sounds_on"] is False
+    for name in ("later_flag", "later_volume", "later_scheme", "later_schemes"):
+        assert saved[name] == newer[name]
     changed.announce = ANNOUNCE_SUMMARY
     changed.save(path)
     assert json.loads(path.read_text(encoding="utf-8"))["announce"] == changed.announce

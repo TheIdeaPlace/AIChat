@@ -1,0 +1,835 @@
+"""Shared Codex workflows. These tests create windows: VM or CI only."""
+from dataclasses import replace
+from types import SimpleNamespace
+
+import pytest
+
+wx = pytest.importorskip('wx')
+from test_ui_hidden import env, frame  # noqa: F401,E402
+from fake_env import pump  # noqa: E402
+from thechatplace.own_store import OwnSession  # noqa: E402
+from thechatplace.ui_text import key_name  # noqa: E402
+from thechatplace.providers.codex import transcript_from_thread  # noqa: E402
+from test_codex_provider import history  # noqa: E402
+
+
+def owned(frame, env):
+    record = OwnSession('native-owned', 'Codex original', str(env['tmp']), provider='codex',
+                        provider_options={'model': 'old', 'sandbox': 'read-only', 'effort': 'high'})
+    frame.store.add(record)
+    frame._open = record.to_info()
+    return record
+
+
+def test_codex_rewind_routes_real_native_anchor_and_preserves_original(frame, env, monkeypatch):
+    from thechatplace.ui.codex_extras import RewindDialog
+    record = owned(frame, env)
+    message = transcript_from_thread(history()).messages[0]
+    calls, opened = [], []
+    def branch(info, title, anchor, before, own=None):
+        calls.append((info, title, anchor, before, own))
+        return OwnSession('new-copy', title, info.cwd, provider='codex')
+    monkeypatch.setattr(frame.sessions, 'branch', branch)
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(RewindDialog, 'ShowModal', lambda self: wx.ID_OK)
+    frame._branch_codex(record.to_info(), message, before=True)
+    assert pump(lambda: opened)
+    # The saved record goes along, so the copy keeps its settings even if
+    # the original isn't loaded (#596, decision 3).
+    assert calls[0][2:] == ('turn-1', True, record)
+    assert opened[0].cli_session_id != record.cli_session_id
+    assert frame._codex_drafts[opened[0].key] == 'Hi'
+    assert frame.store.get(record.cli_session_id, provider='codex') is record
+    # The copy keeps the original's settings, and says so, briefly, as it opens (#596).
+    assert env['feedback'][-1] == ("Opened Codex original (retry). It keeps the original's settings. "
+        'The original chat is kept. Change your message and send when ready.')
+
+
+def test_codex_branch_says_what_the_copy_can_do_before_and_after(frame, env, monkeypatch):
+    record = owned(frame, env)
+    message = transcript_from_thread(history()).messages[0]
+    asked, opened = [], []
+    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before, own=None:
+                        OwnSession('branch-copy', title, info.cwd, provider='codex'))
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame._branch_codex(record.to_info(), message)
+    assert pump(lambda: opened)
+    from thechatplace.ui.codex_extras import copy_note
+    assert asked == ['A new Codex chat will start with the whole turn containing this message, and this '
+                     'chat is kept. ' + copy_note() + ' Branch here?']
+    assert env['feedback'][-1] == ('Opened Codex original (branch). ' + copy_note(short=True)
+                                   + ' The original chat is kept.')
+
+
+def test_a_branch_of_a_chat_started_elsewhere_says_it_starts_on_codexs_defaults(frame, env, monkeypatch):
+    """A Codex CLI chat has no settings here to keep: its copy starts as a
+    new chat does, and the question and message say so (review of #609)."""
+    from dataclasses import replace as replaced
+    record = owned(frame, env)
+    from thechatplace.sessions import TERMINAL
+    info = replaced(record.to_info(), source=TERMINAL)
+    assert not info.is_own
+    message = transcript_from_thread(history()).messages[0]
+    asked, opened, passed = [], [], []
+    monkeypatch.setattr(frame.sessions, 'branch', lambda info, title, anchor, before, own=None:
+                        passed.append(own) or OwnSession('branch-copy', title, info.cwd, provider='codex'))
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame._branch_codex(info, message)
+    assert pump(lambda: opened)
+    from thechatplace.ui.codex_extras import copy_note
+    assert passed == [None]
+    assert copy_note(own=False) in asked[0] and 'keeps the original' not in asked[0]
+    assert env['feedback'][-1] == ('Opened Codex original (branch). ' + copy_note(short=True, own=False)
+                                   + ' The original chat is kept.')
+
+
+def test_codex_attachments_are_separate_from_a_claude_chat_with_the_same_id(frame, env):
+    record = owned(frame, env)
+    document = env['tmp'] / 'spec.txt'
+    document.write_text('Review this.')
+    frame._attachments[record.cli_session_id] = ['claude-only.txt']
+    frame._attachments[record.to_info().key] = [str(document)]
+    value = frame._codex_message(record.to_info(), 'Review')
+    assert str(document) in value
+    assert 'claude-only' not in value
+    frame._show_attachments()
+    assert frame.attach_list.GetString(0) == 'spec.txt'
+
+
+def test_settings_save_failure_restores_the_record_and_does_not_activate_it(frame, env, monkeypatch):
+    from thechatplace.providers.codex_models import CodexModel
+    record = owned(frame, env)
+    before = dict(record.provider_options)
+    proposed = replace(record, provider_options=dict(before, model='new'))
+    change = SimpleNamespace(record=lambda: proposed)
+    calls = []
+    def action(name, rec, *args):
+        calls.append((name, args))
+        return change if name == 'prepare_settings' else None
+    def work(action, done):
+        done(action(), False)
+    def failed_save(method, *args, **kwargs):
+        record.provider_options = kwargs['provider_options']
+        return False
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('new', 'New model', ('medium',), 'medium', True)], False))
+    # Row 0 is Codex's default (#596); this chooses the listed model.
+    monkeypatch.setattr(frame, '_choose', lambda *a, **k: 1)
+    monkeypatch.setattr(frame, '_codex_work', work)
+    monkeypatch.setattr(frame, '_store_write', failed_save)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert record.provider_options == before
+    assert calls[-1] == ('finish_policy', (change, False))
+
+
+def test_codex_side_question_names_its_provider(frame, env):
+    from thechatplace.ui.dialogs import AskAsideDialog
+    said = []
+    dialog = AskAsideDialog(frame, 'Codex example',
+        lambda question, event: SimpleNamespace(cancel=lambda: None),
+        provider='Codex', feedback=said.append)
+    try:
+        dialog.question.SetValue('Which file matters?')
+        dialog.on_ask()
+        assert said[-1] == 'Asking Codex.'
+    finally:
+        dialog.stop()
+        dialog.Destroy()
+
+
+def test_stopping_codex_aside_restores_ask_and_allows_another_question(frame, env):
+    from thechatplace.ui.dialogs import AskAsideDialog
+    from thechatplace.providers.codex_aside import CodexAsideRunner
+    def ask(question, event):
+        return CodexAsideRunner(None, question, event)  # no native process in this test
+    dialog = AskAsideDialog(frame, 'Codex example', ask, provider='Codex')
+    try:
+        dialog.question.SetValue('First question')
+        dialog.on_ask()
+        assert dialog.asking
+        dialog.stop()
+        assert not dialog.asking and dialog.ask_btn.GetLabel() == '&Ask'
+        dialog.question.SetValue('Another question')
+        dialog.on_ask()
+        assert dialog.asking and len(dialog.items) == 2
+    finally:
+        dialog.stop()
+        dialog.Destroy()
+
+
+def test_client_command_keeps_the_draft_below_it(frame, env, monkeypatch):
+    record = owned(frame, env)
+    controls = []
+    monkeypatch.setattr(frame, '_codex_control', lambda info, command: controls.append(command))
+    frame.reply_text.SetValue('/compact\nDraft to finish later')
+    assert frame._handle_codex_command(record.to_info(), frame.reply_text.GetValue())
+    assert controls == ['/compact']
+    assert frame.reply_text.GetValue() == 'Draft to finish later'
+
+
+def test_connected_tools_note_names_the_app_in_full(frame, env):
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    note = CodexConnectedTools(frame, owned(frame, env).to_info()).note()
+    assert "something The Chat Place can't show" in note and "TCP" not in note
+
+
+def test_tool_copy_is_serial_and_does_not_navigate_after_dialog_closes(frame, env, monkeypatch):
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.providers.codex_tools import CodexTool
+    record = owned(frame, env)
+    host = CodexConnectedTools(frame, record.to_info())
+    jobs, results, opened = [], [], []
+    monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.YES)
+    monkeypatch.setattr(frame, '_codex_work', lambda action, done: jobs.append((action, done)))
+    monkeypatch.setattr(frame, 'open_session', opened.append)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    done = lambda rows, error: results.append((rows, error))
+    host.set_off(CodexTool('notes', 'off'), False, done)
+    host.set_off(CodexTool('notes', 'off'), False, done)
+    assert len(jobs) == 1 and 'Still creating' in results[-1][1]
+    host.close()
+    jobs[0][1](OwnSession('saved-copy', 'Tools copy', record.cwd, provider='codex'), False)
+    assert frame.store.get('saved-copy', provider='codex') is not None
+    assert not opened
+
+
+def test_direct_steering_keeps_image_and_skill_inputs(frame, env, monkeypatch):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import WORKING
+    record = owned(frame, env)
+    info = record.to_info()
+    path = env['tmp'] / 'image.png'
+    path.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0' * 32)
+    skill = env['tmp'] / 'SKILL.md'
+    skill.write_text('Review only.')
+    frame.reply_text.SetValue('$review this')
+    frame._attachments[info.key] = [str(path)]
+    frame._codex_skills = {info.key: {'review': str(skill)}}
+    frame._codex_states[info.key] = CodexChatState(info.cli_session_id, WORKING, 'turn', 'inProgress')
+    monkeypatch.setattr(frame, '_can_edit', lambda info: True)
+    monkeypatch.setattr(frame, '_can_steer', lambda info: True)
+    monkeypatch.setattr(frame, '_history_unknown', lambda: False)
+    steered = []
+    monkeypatch.setattr(frame, '_steer_codex_owned', lambda rec, text: steered.append(text))
+    frame.on_steer()
+    assert [part['type'] for part in steered[0].items()] == ['text', 'localImage', 'skill']
+    assert info.key not in frame._attachments and info.key not in frame._codex_skills
+
+
+# -- pickers and dialogs that come back from Codex (#467) -------------------------------
+
+
+def _sync_work(frame, monkeypatch, answer=None):
+    """_codex_work on the spot; ``answer(action)`` stands in for Codex."""
+    def work(action, done):
+        try:
+            done(action() if answer is None else answer(action), False)
+        except Exception as error:  # noqa: BLE001 - as _codex_work reports it
+            done(str(error) or None, True)
+    monkeypatch.setattr(frame, '_codex_work', work)
+
+
+def _no_picker(monkeypatch):
+    from thechatplace.ui import codex_extras
+    opened = []
+
+    class Picker:
+        chosen = None
+
+        def __init__(self, parent, rows):
+            opened.append(rows)
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_extras, 'CommandPickerDialog', Picker)
+    return opened
+
+
+def _focus_moves_during_work(frame, monkeypatch):
+    """The reply box changes while Codex is asked: typing went on elsewhere."""
+    real = frame._codex_work
+
+    def work(action, done):
+        frame.reply_text.SetValue('typed meanwhile')
+        real(action, done)
+    monkeypatch.setattr(frame, '_codex_work', work)
+
+
+def test_commands_say_they_are_being_got_and_open_if_nothing_moved(frame, env, monkeypatch):
+    record = owned(frame, env)
+    opened = _no_picker(monkeypatch)
+    _sync_work(frame, monkeypatch)
+    monkeypatch.setattr(frame.sessions, 'skills', lambda info: [
+        dict(name='review', path='x', description='Review')])
+    frame._codex_commands(record.to_info())
+    assert any('Getting the Codex commands' in text for text in env['feedback'])
+    assert any(row['name'] == 'review' for row in opened[0])
+
+
+def test_commands_do_not_open_over_typing_or_after_focus_moved(frame, env, monkeypatch):
+    record = owned(frame, env)
+    opened = _no_picker(monkeypatch)
+    _sync_work(frame, monkeypatch)
+    monkeypatch.setattr(frame.sessions, 'skills', lambda info: [])
+    _focus_moves_during_work(frame, monkeypatch)
+    frame._codex_commands(record.to_info())
+    assert not opened and "you've moved on" in env['feedback'][-1]
+
+
+def test_commands_do_not_open_when_another_dialog_is_up(frame, env, monkeypatch):
+    record = owned(frame, env)
+    opened = _no_picker(monkeypatch)
+    _sync_work(frame, monkeypatch)
+    monkeypatch.setattr(frame.sessions, 'skills', lambda info: [])
+    dialog = wx.Dialog(frame)
+    monkeypatch.setattr(dialog, 'IsModal', lambda: True)
+    monkeypatch.setattr(wx, 'GetTopLevelWindows', lambda: [frame, dialog])
+    try:
+        frame._codex_commands(record.to_info())
+    finally:
+        dialog.Destroy()
+    assert not opened and "you've moved on" in env['feedback'][-1]
+
+
+def test_a_skills_failure_is_said_as_a_failure(frame, env, monkeypatch):
+    record = owned(frame, env)
+    opened = _no_picker(monkeypatch)
+    _sync_work(frame, monkeypatch)
+
+    def fail(info):
+        raise ValueError('')
+    monkeypatch.setattr(frame.sessions, 'skills', fail)
+    frame._codex_commands(record.to_info(), skills_only=True)
+    assert not opened
+    assert env['feedback'][-1] == "Could not get this folder's Codex skills."
+    assert not any('No enabled' in text for text in env['feedback'])
+    frame._codex_commands(record.to_info())
+    assert opened and all(row.get('builtin') for row in opened[0])
+    assert 'only the chat controls' in env['feedback'][-1]
+
+
+def test_no_skills_at_all_is_still_said_as_none(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _no_picker(monkeypatch)
+    _sync_work(frame, monkeypatch)
+    monkeypatch.setattr(frame.sessions, 'skills', lambda info: [])
+    frame._codex_commands(record.to_info(), skills_only=True)
+    assert env['feedback'][-1] == 'No enabled Codex skills are available for this folder.'
+
+
+def _controls(frame, monkeypatch, answers):
+    """owned_action('feature', ...) answered from ``answers`` by method."""
+    calls = []
+
+    def action(name, record, *args):
+        calls.append((name, args))
+        answer = answers[args[0]]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    _sync_work(frame, monkeypatch)
+    return calls
+
+
+def test_a_malformed_goal_is_said_not_raised(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {'thread/goal/get': {'goal': {'objective': 3}}})
+    frame._codex_control(record.to_info(), '/goal')
+    assert "Getting this chat's Codex goal." in env['feedback']
+    assert env['feedback'][-1] == "Codex returned a goal The Chat Place can't read."
+
+
+def test_the_goal_dialog_does_not_open_after_focus_moved(frame, env, monkeypatch):
+    from thechatplace.ui import codex_extras
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {'thread/goal/get': {'goal': None}})
+    monkeypatch.setattr(codex_extras, 'LinesDialog', lambda *a: pytest.fail('Opened by itself'))
+    _focus_moves_during_work(frame, monkeypatch)
+    frame._codex_control(record.to_info(), '/goal')
+    assert "you've moved on" in env['feedback'][-1]
+
+
+def test_background_list_does_not_open_after_focus_moved(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {'thread/backgroundTerminals/list': {'data': [{'processId': 'one'}]}})
+    monkeypatch.setattr(frame, '_choose', lambda *a, **k: pytest.fail('Opened by itself'))
+    _focus_moves_during_work(frame, monkeypatch)
+    frame._codex_control(record.to_info(), '/background')
+    assert "you've moved on" in env['feedback'][-1]
+
+
+@pytest.mark.parametrize('answer,said', [({'terminated': False}, 'That background task had already finished.'),
+                                         ({'terminated': True}, 'Background task stopped.')])
+def test_stop_background_task_says_what_codex_found(frame, env, monkeypatch, answer, said):
+    record = owned(frame, env)
+    calls = _controls(frame, monkeypatch, {
+        'thread/backgroundTerminals/list': {'data': [{'processId': 'one', 'command': 'npm test'}]},
+        'thread/backgroundTerminals/terminate': answer})
+    offered, asked = [], []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k: offered.append((title, prompt, rows)) or 0)
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: asked.append(text) or wx.YES)
+    frame.on_stop_background_task()
+    # "Background task", as the menu says, not "terminal" (#596).
+    assert offered == [('Stop Background Task', f'Background tasks in {record.title}. Stop which?', ['npm test'])]
+    assert asked == ['Stop npm test? The turn and other background tasks carry on.']
+    assert calls[-1][1] == ('thread/backgroundTerminals/terminate', {'processId': 'one'})
+    assert env['feedback'][-2:] == ['Stopping the background task.', said]
+
+
+def test_stop_background_task_says_none_are_running_and_is_on_for_a_codex_chat(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {'thread/backgroundTerminals/list': {'data': []}})
+    frame._update_send_state()
+    assert frame.stop_background_item.IsEnabled()
+    frame.on_stop_background_task()
+    assert env['feedback'][-1] == 'No background tasks are running in this Codex chat.'
+    frame._open = None
+    frame._update_send_state()
+    assert not frame.stop_background_item.IsEnabled()
+    frame._open = replace(record.to_info(), source='external')
+    assert not frame._can_stop_background()
+
+
+# -- settings changes are said once (#467) ----------------------------------------------
+
+
+def _change(frame, monkeypatch, *, prepared=None, saved=True):
+    from thechatplace.providers.codex_models import CodexModel
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('new', 'New model', ('medium',), 'medium', True)], False))
+    monkeypatch.setattr(frame, '_choose', lambda *a, **k: 0)
+    monkeypatch.setattr(frame, '_store_write', lambda *a, **k: saved)
+    _sync_work(frame, monkeypatch)
+    calls = []
+
+    def action(name, record, *args):
+        calls.append(name)
+        if name in ('prepare_settings', 'prepare_mode'):
+            if prepared is None:
+                raise ValueError('')
+            return prepared
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    return calls
+
+
+def test_a_failed_setting_change_is_said_once_and_says_what_was_changing(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _change(frame, monkeypatch)
+    said = []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-2:] == ['Checking the new model with Codex.',
+                                    'Could not change the Codex model. The chat keeps its current one.']
+    assert not frame._codex_policy_pending and not said
+
+
+def test_a_problem_arriving_during_a_setting_change_is_held_for_it(frame, env, monkeypatch):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    record = owned(frame, env)
+    said = []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    frame._codex_policy_pending.add(record.to_info().key)
+    frame._on_codex_update(CodexChatState(record.cli_session_id, STATUS_UNAVAILABLE, problem='Bad. Use Stop.'))
+    assert not any('Bad' in text for text in said)
+    frame._codex_policy_pending.clear()
+
+
+def test_a_codex_retry_plays_service_trouble_once_with_what_is_said(frame, env, monkeypatch):
+    """A Claude chat's retry plays Service trouble with its words; a Codex
+    or Copilot one only spoke (#596). Once per retry said, not per update."""
+    from thechatplace import sound_events
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import WORKING
+    record = owned(frame, env)
+    said = []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    frame.speech.sounds_on = True
+    env['sounds'].clear()
+    retrying = CodexChatState(record.cli_session_id, WORKING, 'turn', 'inProgress', retry='Reconnecting, try 1 of 5.')
+    frame._on_codex_update(retrying)
+    frame._on_codex_update(replace(retrying))
+    assert said.count('Codex original: Reconnecting, try 1 of 5.') == 1
+    assert env['sounds'].count(sound_events.TROUBLE) == 1
+    frame._on_codex_update(replace(retrying, retry='Reconnecting, try 2 of 5.'))
+    assert env['sounds'].count(sound_events.TROUBLE) == 2
+
+
+def test_only_one_setting_change_at_a_time(frame, env, monkeypatch):
+    record = owned(frame, env)
+    calls = _change(frame, monkeypatch)
+    frame._codex_policy_pending.add(record.to_info().key)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert not calls and 'already being changed' in env['feedback'][-1]
+    frame._codex_policy_pending.clear()
+
+
+def test_the_mode_picker_needs_no_models(frame, env, monkeypatch):
+    record = owned(frame, env)
+    calls = _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, collaboration='plan'))))
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: pytest.fail('Asked Codex for models'))
+    frame._change_codex_settings(record.to_info(), 'mode')
+    assert calls == ['prepare_mode', 'finish_policy']
+    assert env['feedback'][-1] == f'Codex mode for {record.title} changed, from its next turn.'
+
+
+def test_models_do_not_open_after_focus_moved(frame, env, monkeypatch):
+    record = owned(frame, env)
+    calls = _change(frame, monkeypatch)
+    from thechatplace.providers.codex_models import CodexModel
+
+    def typed_then_loaded(done):
+        frame.reply_text.SetValue('typed meanwhile')
+        done([CodexModel('new', 'New model', ('medium',), 'medium', True)], False)
+    monkeypatch.setattr(frame, '_load_codex_models', typed_then_loaded)
+    monkeypatch.setattr(frame, '_choose', lambda *a, **k: pytest.fail('Opened by itself'))
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert not calls and "you've moved on" in env['feedback'][-1]
+
+
+def test_a_setting_codex_did_not_confirm_says_why_to_press_stop(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))))
+    real = frame.sessions.owned_action
+
+    def action(name, rec, *args):
+        if name == 'finish_policy':
+            raise ValueError('')
+        return real(name, rec, *args)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == (f"Codex didn't confirm the new model. Press Stop ({key_name('Ctrl+Period')}) to have "
+                                   'The Chat Place check this chat with Codex before you send again.')
+
+
+def test_a_setting_change_the_runtime_latched_says_its_problem_with_stops_key(frame, env, monkeypatch):
+    """The usual failure (#596): finish_policy latches the chat's problem,
+    which the runtime words with what Stop does, and the window adds the key."""
+    from thechatplace.providers.codex_runtime import CodexChatState, STOP_TO_RECHECK
+    from thechatplace.sessions import STATUS_UNAVAILABLE
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))))
+    real = frame.sessions.owned_action
+    latched = "The new model or effort couldn't be saved, or Codex didn't confirm the change. " + STOP_TO_RECHECK
+
+    def action(name, rec, *args):
+        if name == 'finish_policy':
+            frame._codex_states[record.to_info().key] = CodexChatState(
+                record.cli_session_id, STATUS_UNAVAILABLE, problem=latched)
+            return None
+        return real(name, rec, *args)
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == latched.replace('Press Stop ', f'Press Stop ({key_name("Ctrl+Period")}) ')
+    assert 'Use Stop' not in env['feedback'][-1]
+
+
+def test_the_effort_picker_names_codexs_default_and_reads_as_words(frame, env, monkeypatch):
+    from thechatplace.providers.codex_models import CodexModel
+    record = owned(frame, env)
+    record.provider_options['model'] = 'new'
+    _change(frame, monkeypatch)
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('new', 'New model', ('low', 'xhigh'), 'low', True)], False))
+    offered = []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k: offered.append((title, prompt, rows)))
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert offered == [('Change Effort', f'Effort for {record.title}, from its next turn:',
+                        ["Codex's default", 'Low', 'Extra high'])]
+
+
+def _settings_sent(frame, monkeypatch, choose):
+    """Change Model and Change Effort with two models, the second Codex's
+    default: what each picker offered, and the (model, effort) sent."""
+    from thechatplace.providers.codex_models import CodexModel
+    _change(frame, monkeypatch)
+    monkeypatch.setattr(frame, '_load_codex_models', lambda done: done([
+        CodexModel('other', 'Other model', ('low',), 'low', False),
+        CodexModel('main', 'Main model', ('low', 'xhigh'), 'low', True)], False))
+    offered, sent = [], []
+    monkeypatch.setattr(frame, '_choose', lambda title, prompt, rows, *a, **k:
+                        offered.append((title, prompt, rows)) or choose)
+    def action(name, rec, *args):
+        sent.append((name, args))
+        raise ValueError('')
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    return offered, sent
+
+
+def test_change_model_can_go_back_to_codexs_default(frame, env, monkeypatch):
+    """Change Model listed only Codex's models, so a chat could never go back
+    to Codex's default, as Change Effort's first row does for effort (#596)."""
+    record = owned(frame, env)
+    offered, sent = _settings_sent(frame, monkeypatch, 0)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert offered == [('Change Model', f'Model for {record.title}, from its next turn:',
+                        ["Codex's default (Main model)", 'Other model', 'Main model'])]
+    assert sent == [('prepare_settings', (None, None))]
+
+
+def test_change_model_marks_the_model_now(frame, env, monkeypatch):
+    record = owned(frame, env)
+    record.provider_options['model'] = 'main'
+    offered, sent = _settings_sent(frame, monkeypatch, 1)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert offered[0][2] == ["Codex's default (Main model)", 'Other model', 'Main model (now)']
+    assert sent == [('prepare_settings', ('other', None))]
+
+
+@pytest.mark.parametrize('choose,model,effort', [(0, None, None), (2, 'main', 'xhigh')])
+def test_change_effort_works_on_codexs_default_model(frame, env, monkeypatch, choose, model, effort):
+    """Change Effort refused a chat on Codex's default model ("Choose an
+    available Codex model first"). It offers the efforts of the model Codex
+    says is its default, and an effort names that model, as Codex takes an
+    effort only with one (#596)."""
+    record = owned(frame, env)
+    record.provider_options.pop('model')
+    record.provider_options.pop('effort')
+    offered, sent = _settings_sent(frame, monkeypatch, choose)
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert offered == [('Change Effort', f"Effort for {record.title}, on Main model, Codex's default model, "
+                        'from its next turn:', ["Codex's default (now)", 'Low', 'Extra high'])]
+    assert sent == [('prepare_settings', (model, effort))]
+
+
+def test_change_effort_on_a_model_codex_no_longer_lists_says_what_to_do(frame, env, monkeypatch):
+    record = owned(frame, env)
+    record.provider_options['model'] = 'retired'
+    offered, sent = _settings_sent(frame, monkeypatch, 0)
+    frame._change_codex_settings(record.to_info(), 'effort')
+    assert not offered and not sent
+    assert env['feedback'][-1] == ("retired isn't in Codex's list of models now, so its effort can't be "
+                                   'changed. Change Model, on the File menu, chooses another.')
+
+
+def test_codex_chat_options_stay_open_with_what_you_typed_during_a_turn(frame, env, monkeypatch):
+    """OK in a Codex chat's Chat Options during a turn lost the edit: the
+    runtime changes settings only between turns. It stays open and says so,
+    and OK once the turn has finished goes on (#596)."""
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import IDLE, WORKING
+    from thechatplace.ui import dialogs
+    from thechatplace.ui.codex_extras import CHAT_OPTIONS_WAIT
+    record = owned(frame, env)
+    key = record.to_info().key
+    frame._codex_states[key] = CodexChatState(record.cli_session_id, WORKING, 'turn', 'inProgress')
+    _change(frame, monkeypatch)
+    calls = []
+
+    def action(name, rec, *args):
+        calls.append(name)
+        raise ValueError('')
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    results = []
+    real = dialogs.ChatOptionsDialog
+
+    def shown(self):
+        self.instructions.SetValue('Answer in French.')
+        self.on_ok()
+        results.append((self.instructions.GetValue(), env['feedback'][-1]))
+        frame._codex_states[key] = CodexChatState(record.cli_session_id, IDLE, 'turn', 'completed')
+        self.on_ok()
+        return wx.ID_OK
+    monkeypatch.setattr(real, 'ShowModal', shown)
+    ended = []
+    monkeypatch.setattr(dialogs, '_end_modal', lambda dialog, code: ended.append(code))
+    frame._change_codex_settings(record.to_info(), 'chat options')
+    assert results == [('Answer in French.', CHAT_OPTIONS_WAIT)]
+    assert ended == [wx.ID_OK]
+    assert calls == ['prepare_chat_options']
+
+
+@pytest.mark.parametrize('command, said', [('/memories on', 'Codex memories are on for Codex original.'),
+                                           ('/goal clear', 'Goal cleared for Codex original.')])
+def test_a_control_says_what_is_now_so(frame, env, monkeypatch, command, said):
+    from thechatplace.ui.codex_extras import CONTROLS
+    record = owned(frame, env)
+    _controls(frame, monkeypatch, {CONTROLS[command][0]: {}})
+    frame._codex_control(record.to_info(), command)
+    assert env['feedback'][-1] == said
+
+
+def test_a_setting_that_could_not_be_saved_says_so_without_stop(frame, env, monkeypatch):
+    record = owned(frame, env)
+    _change(frame, monkeypatch, prepared=SimpleNamespace(record=lambda: replace(
+        record, provider_options=dict(record.provider_options, model='new'))), saved=False)
+    frame._change_codex_settings(record.to_info(), 'model')
+    assert env['feedback'][-1] == 'Could not save the Codex model. The chat keeps its current one.'
+
+
+# -- the rest of what's said (#467) -----------------------------------------------------
+
+
+def test_a_message_over_the_limit_says_so_not_that_an_attachment_is_missing(frame, env, monkeypatch):
+    record = owned(frame, env)
+    monkeypatch.setattr(frame, '_can_edit', lambda info: True)
+    monkeypatch.setattr(frame, '_still_preparing', lambda info: False)
+    frame.reply_text.SetValue('x' * 32001)
+    frame.on_send()
+    assert '32000' in env['feedback'][-1] and 'attachment is missing' not in env['feedback'][-1]
+    assert frame.reply_text.GetValue() == 'x' * 32001
+
+
+def _compaction_state(record, **kw):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import IDLE
+    return CodexChatState(record.cli_session_id, IDLE, 'compact-turn', 'completed', **kw)
+
+
+def test_a_compaction_says_compacted_not_answered(frame, env, monkeypatch):
+    record = owned(frame, env)
+    said, notified = [], []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    monkeypatch.setattr(frame, '_notify', lambda key, title, text, **k: notified.append((title, text)))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    frame._on_codex_update(_compaction_state(record, compaction=True))
+    assert said[-1] == f'{record.title}: context compacted.'
+    assert notified[-1] == (f'{record.title}: context compacted', said[-1])
+    assert not any('answered' in text for text in said)
+
+
+def test_a_compaction_that_failed_is_not_called_compacted(frame, env, monkeypatch):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import IDLE
+    record = owned(frame, env)
+    said = []
+    monkeypatch.setattr(frame, '_say', lambda text, **k: said.append(text))
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    monkeypatch.setattr(frame, '_refresh_chat', lambda *a, **k: None)
+    frame._on_codex_update(CodexChatState(record.cli_session_id, IDLE, 'compact-turn', 'failed', compaction=True))
+    assert said[-1] == f'{record.title}: Codex turn failed.'
+
+
+def test_a_plan_mode_this_codex_lacks_is_left_out_of_the_heading(frame, env):
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from thechatplace.sessions import IDLE
+    record = owned(frame, env)
+    record.provider_options['collaboration'] = 'plan'
+    frame._update_heading()
+    assert 'plan mode' in frame.session_heading.GetLabel()
+    frame._codex_states[record.to_info().key] = CodexChatState(record.cli_session_id, IDLE, plan_unavailable=True)
+    frame._update_heading()
+    assert 'plan mode' not in frame.session_heading.GetLabel()
+
+
+# -- a selected tool removed from config.toml (#467) -------------------------------------
+
+
+def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env, monkeypatch):
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.providers.codex_tools import CodexTool
+    record = owned(frame, env)
+    record.provider_options['mcp_servers'] = ['kept', 'gone', 'also gone']
+    rows = [CodexTool('gone', 'removed', (), False, True), CodexTool('also gone', 'removed', (), False, True),
+            CodexTool('kept', 'connected', (), False)]
+    asked, copied, boxes = [], [], []
+    monkeypatch.setattr(frame.sessions, 'connected_tools', lambda info, **k: asked.append(k) or rows)
+    monkeypatch.setattr(frame.sessions, 'copy_with_tools', lambda s, t, names, apps, own=None: copied.append(names))
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: boxes.append(text) or wx.YES)
+    jobs = []
+    monkeypatch.setattr(frame, '_codex_work', lambda action, done: jobs.append((action, done)))
+    host = CodexConnectedTools(frame, record.to_info())
+    host.load(lambda rows, error: None)
+    action, done = jobs.pop()
+    done(action(), False)
+    assert asked == [{'selected': ('kept', 'gone', 'also gone'), 'apps': ()}]
+    assert host.toggle_label(rows[0]) == 'Copy with Tool &Off'
+    host.set_off(rows[0], True, lambda rows, error: None)
+    assert "no longer in Codex's configuration" in boxes[-1]
+    assert env['feedback'][-1] == 'Creating the Codex copy.'
+    jobs.pop()[0]()
+    assert copied == [['kept']]
+
+
+def test_read_status_on_a_removed_server_says_what_is_wrong(frame, env, monkeypatch):
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.providers.codex_tools import CodexTool
+    record = owned(frame, env)
+    row = CodexTool('gone', 'removed', (), False, True)
+    monkeypatch.setattr(frame.sessions, 'connected_tools', lambda info, **k: [row])
+    told = []
+    dialog = ConnectedToolsDialog(frame, record.title, CodexConnectedTools(frame, record.to_info()))
+    try:
+        monkeypatch.setattr(dialog, '_tell', lambda text, *a, **k: told.append(text))
+        dialog.busy = ''
+        dialog._fill([row])
+        dialog.on_reconnect()
+        assert told == [row.text()]
+    finally:
+        dialog.Destroy()
+
+
+def test_change_permission_mode_offers_plan_and_leaves_it_with_a_grant(frame, env, monkeypatch):
+    """Plan is in Change Permission Mode for Codex, as Claude's is, saved as
+    the mode /plan chooses; another row takes the chat out of it, with the
+    new grant in the same change (#596, decision 17)."""
+    from test_codex_runtime import policy_runtime
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+    from thechatplace.ui.permission_hosts import CODEX_PLAN, CODEX_PLAN_LABEL, CodexPermissions
+    service, connection, record = policy_runtime(env['tmp'])
+    original = connection.request
+    connection.request = lambda method, params: (
+        {'data': [{'name': 'Plan', 'mode': 'plan'}, {'name': 'Default', 'mode': 'default'}]}
+        if method == 'collaborationMode/list' else original(method, params))
+    frame.store.add(record)
+    frame.sessions = SessionController([ClaudeConversations(), CodexProvider(connection, runtime=service)])
+    info = record.to_info()
+    asked, answers = [], [CODEX_PLAN, ('workspace-write', 'on-request', 'user')]
+    def change_setting(title, prompt, choices, now):
+        asked.append((prompt, choices, now))
+        return answers.pop(0)
+    monkeypatch.setattr(frame, '_selected_session', lambda: info)
+    monkeypatch.setattr(frame, '_change_setting', change_setting)
+    monkeypatch.setattr(frame, 'refresh_sessions', lambda *args, **kwargs: None)
+    try:
+        frame.on_change_permission_mode()
+        assert pump(lambda: not frame._codex_policy_pending)
+        prompt, choices, now = asked[0]
+        assert choices[-1] == (CODEX_PLAN, CODEX_PLAN_LABEL) and now == ('read-only', 'on-request', 'user')
+        assert 'In Plan mode' not in prompt
+        saved = frame.store.get(record.cli_session_id, 'codex')
+        assert saved.provider_options['collaboration'] == 'plan'
+        assert saved.provider_options['sandbox'] == 'read-only'
+        assert env['feedback'][-1] == f'Codex permissions for {record.title}: {CODEX_PLAN_LABEL}.'
+        assert CodexPermissions(frame, info, saved).mode_text().endswith(', in Plan mode')
+        frame.on_change_permission_mode()
+        assert pump(lambda: not frame._codex_policy_pending)
+        prompt, shown, now = asked[1]
+        assert now == CODEX_PLAN
+        # The file access Plan keeps is marked too.
+        assert shown[0] == (('read-only', 'on-request', 'user'),
+                            'Read-only; asks before allowing changes (file access now)')
+        assert 'In Plan mode, with file access: Read-only; asks before allowing changes.' in ' '.join(prompt.split())
+        saved = frame.store.get(record.cli_session_id, 'codex')
+        assert saved.provider_options['collaboration'] == 'default'
+        assert saved.provider_options['sandbox'] == 'workspace-write'
+        assert env['feedback'][-1].endswith('Can edit files in this folder; asks before anything else. '
+                                            'Plan mode is off.')
+        assert service.ready(saved)
+    finally:
+        service.close()

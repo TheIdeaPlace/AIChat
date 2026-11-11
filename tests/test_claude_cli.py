@@ -496,7 +496,8 @@ def test_runner_sends_prompt_on_stdin_and_reports_events(tmp_path):
     assert sent[1]["type"] == "user"
     assert sent[1]["message"] == {"role": "user", "content": "Hello -p --bare"}
     assert captured["cwd"] == str(tmp_path)
-    assert captured["env"] == {"PATH": "x", "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"}
+    assert captured["env"] == {"PATH": "x", "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1",
+                               cli.CHECKPOINT_VAR: "1"}
     assert "encoding" not in captured and "text" not in captured  # byte pipes
     assert [e.kind for e in events] == ["started", "text", "finished"]
     assert events[-1].session_id == "s1"
@@ -892,6 +893,54 @@ def test_fork_command_refuses_a_cowork_session():
                                taken_ids=OWN, cowork_ids={"cccc-4444"})
 
 
+def test_fork_command_cuts_the_history_at_a_record():
+    # Rewind to Here and Branch from Here (#468): a copy, never a cut in place.
+    command = cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333", "t", "auto",
+                                     taken_ids=OWN | DESKTOP,
+                                     resume_at="3a6ba3b1-5eda-48f6-a740-2466a932e3e8")
+    assert command[command.index("--resume-session-at") + 1] == \
+        "3a6ba3b1-5eda-48f6-a740-2466a932e3e8"
+    assert "--fork-session" in command
+    assert "--resume-drops-turn" not in command
+    assert "--resume-session-at" not in cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333",
+                                                               "t", "auto")
+
+
+@pytest.mark.parametrize("cut", ["-p", "--bare", "a b", "x" * 101, "../up"])
+def test_fork_command_refuses_a_cut_that_is_not_a_record_id(cut):
+    with pytest.raises(ValueError):
+        cli.build_fork_command(EXE, "dddd-2222", "nnnn-3333", "t", "auto", resume_at=cut)
+
+
+def test_fork_command_with_a_cut_still_refuses_cowork_and_desktop_app_ids():
+    with pytest.raises(cli.ResumeRefused):
+        cli.build_fork_command(EXE, "cccc-4444", "nnnn-3333", "t", "auto",
+                               cowork_ids={"cccc-4444"}, resume_at="abc-1")
+    with pytest.raises(cli.ResumeRefused):
+        cli.build_fork_command(EXE, "local_abc", "nnnn-3333", "t", "auto", resume_at="abc-1")
+
+
+def test_rewind_files_command_only_for_our_own_sessions():
+    command = cli.build_rewind_files_command(EXE, "aaaa-1111", "uuuu-1", OWN, DESKTOP)
+    assert command == [EXE, "-p", "--resume", "aaaa-1111", "--rewind-files", "uuuu-1"]
+    assert "--bare" not in command
+    for session in ("dddd-2222", "local_abc", "zzzz-9999", "-p"):
+        with pytest.raises(cli.ResumeRefused):
+            cli.build_rewind_files_command(EXE, session, "uuuu-1", OWN, DESKTOP)
+    for message in ("", "-p", "a b"):
+        with pytest.raises(ValueError):
+            cli.build_rewind_files_command(EXE, "aaaa-1111", message, OWN, DESKTOP)
+
+
+def test_checkpoints_are_on_for_every_turn_even_when_a_host_set_them_off():
+    # Stripped as a host session's variable, then set again (#468).
+    assert cli.CHECKPOINT_VAR in cli.SESSION_INJECTED_VARS
+    env = child_environment({"PATH": "x", cli.CHECKPOINT_VAR: "0"})
+    assert cli.CHECKPOINT_VAR not in env
+    runner = TurnRunner([EXE], ".", "hi", lambda e: None, env=env)
+    assert runner._env[cli.CHECKPOINT_VAR] == "1"
+
+
 def test_tool_events_say_what_the_tool_acts_on():
     parser = StreamParser()
     events = parser.feed(ev(type="assistant", message={"content": [
@@ -971,7 +1020,7 @@ def test_a_turn_on_an_unchosen_fable_is_stopped():
     assert fable_problem("claude-fable-5-1", "") == (
         "Claude Code would have used Fable, Claude Code's default model. Some plans bill Fable "
         "to usage credits, so The Chat Place didn't send your message. Choose another model "
-        "with File, Change Model, then send again.")
+        "with File, Chat Settings, Change Model, then send again.")
     assert "instead of Opus, the model this session chose" in fable_problem(
         "claude-fable-5-1", "opus")
     assert "as soon as it started" in fable_problem("claude-fable-5-1", "", sent=True)
@@ -1526,12 +1575,16 @@ def test_the_parser_reads_the_background_task_list():
     parser = StreamParser()
     [event] = parser.feed(_tasks("Windows build", "Watch CI"))
     assert event.kind == "background"
-    assert event.data == {"tasks": ["Windows build", "Watch CI"]}
-    assert parser.feed(_tasks())[0].data == {"tasks": []}
+    assert event.data["tasks"] == ["Windows build", "Watch CI"]
+    # With each one's id, for Stop Background Task (#468).
+    assert event.data["entries"] == [
+        {"task_id": "b0", "description": "Windows build", "task_type": "local_bash"},
+        {"task_id": "b1", "description": "Watch CI", "task_type": "local_bash"}]
+    assert parser.feed(_tasks())[0].data == {"tasks": [], "entries": []}
     odd = ev(type="system", subtype="background_tasks_changed", tasks=[{}, "x"])
-    assert parser.feed(odd)[0].data == {"tasks": ["a background task"]}
+    assert parser.feed(odd)[0].data["tasks"] == ["a background task"]
     assert parser.feed(ev(type="system", subtype="background_tasks_changed"))[0].data == \
-        {"tasks": []}
+        {"tasks": [], "entries": []}
 
 
 def test_ambient_background_tasks_arent_work():
@@ -1541,10 +1594,10 @@ def test_ambient_background_tasks_arent_work():
     event = ev(type="system", subtype="background_tasks_changed", tasks=[
         {"task_id": "w", "task_type": "monitor", "description": "Watch PR", "ambient": True},
         {"task_id": "b", "task_type": "local_bash", "description": "Build"}])
-    assert parser.feed(event)[0].data == {"tasks": ["Build"]}
+    assert parser.feed(event)[0].data["tasks"] == ["Build"]
     only_ambient = ev(type="system", subtype="background_tasks_changed", tasks=[
         {"task_id": "w", "description": "Watch PR", "ambient": True}])
-    assert parser.feed(only_ambient)[0].data == {"tasks": []}
+    assert parser.feed(only_ambient)[0].data["tasks"] == []
 
 
 def test_background_work_keeps_the_turn_open_until_claude_carries_on(tmp_path):
@@ -1668,7 +1721,7 @@ def test_work_brought_back_by_a_background_command_stays_without_a_ceiling(tmp_p
     gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             held.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("Windows build"), STARTED, IDLE, RUNNING, gate, _tasks(),
@@ -1691,7 +1744,7 @@ def test_a_second_agent_finishing_doesnt_cut_off_claudes_follow_up(tmp_path):
     seen = threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             seen.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("One", "Two"), STARTED, gate, _tasks("Two"),
@@ -1717,7 +1770,7 @@ def test_turn_status_doesnt_name_agents_while_claude_answers_a_send_now(tmp_path
     gate, listed, carry_on = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == ["Two"]:
             box["activity"] = box["runner"].last_activity
             listed.set()
     events, box, _ = _background_turn(tmp_path, [
@@ -1817,7 +1870,7 @@ def test_turn_status_doesnt_name_agents_while_claude_carries_on(tmp_path):
     gate, listed = threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": ["Two"]}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == ["Two"]:
             box["activity"] = box["runner"].last_activity
             listed.set()
     events, box, _ = _background_turn(tmp_path, [
@@ -1887,7 +1940,7 @@ def test_the_agent_finishing_starts_no_ceiling_for_a_send_now(tmp_path):
     gate, carry_on, held = threading.Event(), threading.Event(), threading.Event()
 
     def on_event(event, box):
-        if event.kind == "background" and event.data == {"tasks": []}:
+        if event.kind == "background" and (event.data or {}).get("tasks") == []:
             held.set()
     events, box, process = _background_turn(tmp_path, [
         RUNNING, INIT, _tasks("Implement the fixes"), STARTED, gate, _tasks(), carry_on,

@@ -35,6 +35,9 @@ class FileEdit:
     deleted: bool = False
     #: The old path when a provider renamed the file.
     moved_from: str = ""
+    #: The subagent that made it ("code-reviewer"), "" for the chat's own
+    #: AI (#468). A file changed by both is listed once for each.
+    by: str = ""
 
     @property
     def added(self) -> int:
@@ -62,6 +65,11 @@ class FileChanges:
     @property
     def created(self) -> bool:
         return bool(self.edits) and self.edits[0].created
+
+    @property
+    def by(self) -> str:
+        """The subagent that made these changes, "" for the chat's AI (#468)."""
+        return self.edits[0].by if self.edits else ""
 
     @property
     def deleted(self) -> bool:
@@ -198,10 +206,11 @@ def parse_git_diff(text: str) -> List[Tuple[str, List[Hunk]]]:
 
 
 def by_file(edits: List[FileEdit]) -> List[FileChanges]:
-    """The edits grouped by file, files in the order first changed."""
-    files: Dict[str, FileChanges] = {}
+    """The edits grouped by file, files in the order first changed. A
+    subagent's edits to a file are grouped apart from the chat's own (#468)."""
+    files: Dict[Tuple[str, str], FileChanges] = {}
     for edit in edits:
-        key = os.path.normcase(os.path.normpath(edit.path))
+        key = (os.path.normcase(os.path.normpath(edit.path)), edit.by)
         if key not in files:
             files[key] = FileChanges(edit.path, [])
         files[key].edits.append(edit)
@@ -224,7 +233,8 @@ def file_text(changes: FileChanges, style: str = difftext.DEFAULT) -> str:
     """One file's changes, to read by line: where each change is, then its
     lines, each marked in ``style`` (a ``difftext.STYLES`` value; the
     default reads "Removed:", "Added:" and "Unchanged:")."""
-    out: List[str] = [f"{changes.path}: {changes.counts()}."]
+    by = f", by {changes.by}" if changes.by else ""
+    out: List[str] = [f"{changes.path}: {changes.counts()}{by}."]
     for edit in changes.edits:
         if edit.moved_from:
             out.append(f"Renamed from: {edit.moved_from}")

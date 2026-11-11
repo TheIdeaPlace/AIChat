@@ -1,0 +1,294 @@
+{
+ "title": "Chat Options: Visual probe",
+ "class": "ChatOptionsDialog",
+ "size": [
+  620,
+  600
+ ],
+ "client": [
+  604,
+  561
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Run as &agent:",
+   "rect": [
+    10,
+    13,
+    72,
+    16
+   ],
+   "best": [
+    72,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Run as agent",
+   "label": "",
+   "rect": [
+    90,
+    10,
+    504,
+    23
+   ],
+   "best": [
+    425,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "code-reviewer (uses its own model, opus): Independent review of a change."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Output &style:",
+   "rect": [
+    10,
+    44,
+    69,
+    16
+   ],
+   "best": [
+    69,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Output style",
+   "label": "",
+   "rect": [
+    90,
+    41,
+    504,
+    23
+   ],
+   "best": [
+    141,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Concise"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Instructions for this chat:",
+   "rect": [
+    10,
+    74,
+    132,
+    16
+   ],
+   "best": [
+    132,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Instructions for this chat",
+   "label": "Answer in British English.\r\nNever change the tests.",
+   "rect": [
+    12,
+    92,
+    584,
+    187
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Answer in British English.\nNever change the tests."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "More &folders:",
+   "rect": [
+    10,
+    287,
+    71,
+    16
+   ],
+   "best": [
+    71,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "More folders, Delete removes one",
+   "label": "",
+   "rect": [
+    12,
+    305,
+    584,
+    70
+   ],
+   "best": [
+    475,
+    70
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\chat-options\\Projects\\Website"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "A&dd Folder...",
+   "rect": [
+    10,
+    383,
+    88,
+    23
+   ],
+   "best": [
+    88,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove",
+   "rect": [
+    104,
+    383,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "A&bout these options:",
+   "rect": [
+    10,
+    416,
+    111,
+    16
+   ],
+   "best": [
+    111,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About these options",
+   "label": "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every turn in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next turn.",
+   "rect": [
+    12,
+    434,
+    584,
+    90
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every turn in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next turn."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    434,
+    530,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    517,
+    530,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

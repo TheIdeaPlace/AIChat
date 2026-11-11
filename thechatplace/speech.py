@@ -213,6 +213,9 @@ class SpeechSettings:
     last_run_version: str = ""
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
+    #: Claude connected tools that new chats start without and that are never
+    #: warned about (Connected Tools, Turn Off for New Chats). The server names.
+    mcp_off_for_new_chats: List[str] = field(default_factory=list)
     #: None follows native CLI discovery; booleans preserve the user choice (#277).
     codex_enabled: Optional[bool] = None
     #: Local GitHub Copilot CLI history (read-only), opt-in (#352).
@@ -224,9 +227,27 @@ class SpeechSettings:
     #: How Changed Files marks each line of a change (#174): a value from
     #: app-kit's ``difftext.STYLES``.
     change_marks: str = "words"
+    #: Sounds (#250), off until turned on: an update adds no noises nobody asked
+    #: for. ``sounds_muted`` is Mute All Sounds, which silences them all at once
+    #: and leaves every other choice alone.
+    sounds_on: bool = False
+    sounds_muted: bool = False
+    sound_volume: int = 80
+    #: The sound scheme playing: a pack's id (glass, softbell, wood) or one of your own.
+    sound_scheme: str = "glass"
+    #: Which chats' tools make a sound, and whether others' other sounds play:
+    #: values from ``sound_events``.
+    sound_tools: str = "loaded"
+    sound_others: str = "all"
+    #: Schemes by id, as ``sound_events.save_schemes`` writes them: a built-in one only
+    #: with what you changed, one of your own with every event (app-kit's SCHEMES.md).
+    sound_schemes: dict = field(default_factory=dict)
+    #: Windows notifications without Windows' own sound. Only if you choose it: what Windows does
+    #: for your notifications is yours to change, and turning on these sounds doesn't change it.
+    sound_silent_notifications: bool = False
     #: Look for a newer release a few seconds after starting (Settings). Off
-    #: leaves only Help, Check for Updates: someone who went back to an older
-    #: release isn't offered the newer one again at every start.
+    #: leaves only Help, Check for Updates. The same name and default as
+    #: 0.4.1's, which added it, so a choice made there is kept here.
     check_updates_at_start: bool = True
 
     def includes_codex(self) -> bool:
@@ -298,9 +319,34 @@ class SpeechSettings:
         limit = raw.get("recent_folder_limit", RECENT_LIMIT)
         settings.recent_folder_limit = limit if isinstance(limit, int) \
             and not isinstance(limit, bool) and 0 <= limit <= RECENT_MAX else RECENT_LIMIT
+        from .claude_mcp import is_safe_server_name
+        names = raw.get("mcp_off_for_new_chats")
+        settings.mcp_off_for_new_chats = list(dict.fromkeys(
+            n for n in (names if isinstance(names, list) else ())
+            if isinstance(n, str) and is_safe_server_name(n)))
         from theideaplace_appkit.difftext import DEFAULT as MARKS_DEFAULT, STYLES as MARKS
         marks = raw.get("change_marks", MARKS_DEFAULT)
         settings.change_marks = marks if marks in MARKS else MARKS_DEFAULT
+        from . import sound_events
+        settings.sounds_on = raw.get("sounds_on") is True
+        settings.sounds_muted = raw.get("sounds_muted") is True
+        volume = raw.get("sound_volume")
+        settings.sound_volume = (volume if type(volume) is int and volume in sound_events.VOLUMES
+                                 else sound_events.DEFAULT_VOLUME)
+        if "sound_scheme" in raw or "sound_schemes" in raw:
+            scheme_id, saved = raw.get("sound_scheme"), raw.get("sound_schemes")
+        else:  # a 0.5 preview's style and choices
+            scheme_id, saved = sound_events.migrate(raw.get("sound_style"), raw.get("sound_choices"))
+        schemes = sound_events.load_schemes(saved)
+        settings.sound_schemes = sound_events.save_schemes(schemes)
+        settings.sound_scheme = sound_events.find(schemes, scheme_id if isinstance(scheme_id, str) else "").id
+        tools = raw.get("sound_tools")
+        settings.sound_tools = (tools if isinstance(tools, str) and tools in sound_events.TOOLS_LABELS
+                                else sound_events.TOOLS_LOADED)
+        others = raw.get("sound_others")
+        settings.sound_others = (others if isinstance(others, str) and others in sound_events.OTHERS_LABELS
+                                 else sound_events.OTHERS_ALL)
+        settings.sound_silent_notifications = raw.get("sound_silent_notifications") is True
         settings.check_updates_at_start = raw.get("check_updates_at_start") is not False
         return settings
 
@@ -326,10 +372,10 @@ class SpeechSettings:
 
 def _unknown_settings(path: Path) -> dict:
     """Settings in the file that this release doesn't know: ones a newer
-    release saved (0.5's sounds and sound schemes). Saving writes them back as
-    they were, so going back to an older release and up again loses none of
-    them. Read from the file each time, as the Settings dialog hands back a
-    copy rather than what was loaded."""
+    release saved. Saving writes them back as they were, so going back to an
+    older release and up again loses none of them (as 0.4.1 does, #611). Read from
+    the file each time, as the Settings dialog hands back a copy rather than
+    what was loaded."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
