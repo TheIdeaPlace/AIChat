@@ -32,6 +32,7 @@ BuildAndRelease/LinuxBuilds/build_linux.sh         # Linux: tests, app, Velopack
 python tools/check_version.py [vTAG]               # print version / check a tag against it
 powershell -File tools\ui_probe_vm.ps1 [-Variant light-100] [-Surface settings]  # visual probe, in the test VM (vmtest begin first)
 .venv/bin/python tools/ui_compare.py RUN_FOLDER [--accept]   # what changed against testing/visual/baseline/windows
+.venv/bin/python tools/coverage_check.py coverage.json [--accept]   # weekly Coverage run against testing/coverage/baseline.json
 ```
 
 - Tests of Windows-only behaviour (made-up `C:\` paths, MSAA via `wx.Accessible`) are marked with
