@@ -281,6 +281,7 @@ class AgentChats:
             if choice.provider == "claude":
                 record = OwnSession(cli_session_id=new_session_id(), title=title,
                                     cwd=plan.folder, permission_mode=choice.permission,
+                                    disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                                     started=False)
                 records.append(record)
                 members.append(Member("claude", record.cli_session_id, "", choice.role))

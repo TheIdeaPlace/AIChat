@@ -43,7 +43,7 @@ class Window(AgentChats):
         self.cid = self.conversation.conversation_id
         self.speech = SimpleNamespace(announce='full', announce_own=True,
                                       agent_auto_mode=auto_setting,
-                                      session_order='newest')
+                                      session_order='newest', mcp_off_for_new_chats=[])
         self._runners, self._pending, self._codex_states = {}, {}, {}
         self._agent_awaiting, self._agent_asked = {}, set()
         self._agent_last_reply, self._agent_last_heard = {}, {}

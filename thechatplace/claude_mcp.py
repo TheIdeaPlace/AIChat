@@ -157,6 +157,9 @@ class McpServer:
     tools: List[str] = field(default_factory=list)
     #: The chat turns it off for its turns (``disabled_mcp``).
     off_for_chat: bool = False
+    #: New chats start with it off, and it's never warned about: a setting of
+    #: The Chat Place's alone (``SpeechSettings.mcp_off_for_new_chats``).
+    off_for_new: bool = False
     #: Kept off for the chat and not in Claude Code's list, which is how every
     #: turned-off tool looks once it's kept out of the idle process (#468).
     missing: bool = False
@@ -190,13 +193,15 @@ class McpServer:
 
     def text(self) -> str:
         """One row of the Connected Tools list, read in full."""
+        new = ["off for new chats"] if self.off_for_new else []
         if self.missing:
-            return f"{self.label}: off for this chat"
+            here = ["off for this chat"] if self.off_for_chat else []
+            return f"{self.label}: " + ", ".join(here + new)
         parts = [self.status_words(), source_words(self.source, self.scope, self.name)]
         if self.status == "connected" and not self.off_for_chat and self.tools:
             count = len(self.tools)
             parts.append(f"{count} tool" + ("" if count == 1 else "s"))
-        return f"{self.label}: " + ", ".join(parts)
+        return f"{self.label}: " + ", ".join(parts + new)
 
 
 def parse_servers(body) -> List[McpServer]:
@@ -221,20 +226,28 @@ def parse_servers(body) -> List[McpServer]:
     return servers
 
 
-def with_chat_settings(servers: List[McpServer], disabled: Collection[str]) -> List[McpServer]:
+def with_chat_settings(servers: List[McpServer], disabled: Collection[str],
+                       off_for_new: Collection[str] = ()) -> List[McpServer]:
     """The list as a chat sees it: those it turns off say so, and one it
     keeps off that Claude Code doesn't list is still shown, so it can be
     turned on again. That's every turned-off tool in a new idle process, which
-    doesn't start them. The session tools come last, as they're The Chat
-    Place's own."""
+    doesn't start them. ``off_for_new`` names the tools off for new chats:
+    each is shown in every chat, even one whose folder doesn't have it, so
+    there's always a way back. The session tools come last, as they're The
+    Chat Place's own."""
     disabled = [n for n in disabled if is_safe_server_name(n)]
+    off_for_new = [n for n in off_for_new if is_safe_server_name(n)]
     rows = []
     for server in servers:
         server.off_for_chat = server.name in disabled
+        server.off_for_new = server.name in off_for_new
         rows.append(server)
     known = {s.name for s in servers}
-    rows += [McpServer(name, "", off_for_chat=True, missing=True)
+    rows += [McpServer(name, "", off_for_chat=True, missing=True, off_for_new=name in off_for_new)
              for name in disabled if name not in known]
+    known |= set(disabled)
+    rows += [McpServer(name, "", off_for_new=True, missing=True)
+             for name in off_for_new if name not in known]
     return sorted(rows, key=lambda s: s.is_session_tools)
 
 
@@ -305,7 +318,15 @@ def problems_text(servers: List[Tuple[str, str]], skip: Collection[str] = ()) ->
     if failed:
         sentences.append(f"Claude can't use {_and(failed)}: "
                          + ("it" if len(failed) == 1 else "they") + " failed to connect.")
-    return " ".join(sentences) + " View, Connected Tools."
+    # What you can do about it, not only where to go. No key: a sentence that
+    # names Alt+V is wrong on a Mac, and every extra word is read every time.
+    if needs and failed:
+        sentences.append("To fix this, or stop hearing it, use View, Connected Tools.")
+    elif needs:
+        sentences.append("To sign in, or stop hearing this, use View, Connected Tools.")
+    else:
+        sentences.append("To reconnect, or stop hearing this, use View, Connected Tools.")
+    return " ".join(sentences)
 
 
 def _and(names: List[str]) -> str:

@@ -625,6 +625,10 @@ Copilot chats don't have these yet.
   until you've finished; past that you're told it expired. **Refresh** (Alt+F) reads the list
   again, stays on the same row and says the result ("3 connected tools, 1 needs sign-in").
   **Reconnect** (Alt+R) tries a failed tool again.
+- **Turn Off for New Chats** (Alt+N, Claude chats) keeps a tool out of every chat started from
+  then on, and stops the message saying Claude can't use it, in every chat. It's saved by The
+  Chat Place alone (`mcp_off_for_new_chats`); chats you already have keep their own setting, and
+  **Turn On for New Chats** brings it back. The tool is listed in every chat so that you can (#626).
 - **Turn Off for This Chat** (Alt+O, or Delete in the list) keeps a tool out of this chat's turns
   from the next one, and **Turn On for This Chat** brings it back. It's kept with the chat and
   given to each turn as `--settings` with `deniedMcpServers`, which Claude Code applies to that

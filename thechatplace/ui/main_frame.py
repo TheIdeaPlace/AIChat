@@ -4370,11 +4370,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """At a turn's start: the connected tools Claude can't use (they need
         sign-in or failed), said once per tool each time The Chat Place runs,
         on the status bar, and spoken at the full level without cutting
-        anything off (#468). A tool the chat turned off isn't mentioned."""
+        anything off (#468). A tool the chat turned off isn't mentioned, nor
+        one turned off for new chats: that's how you say you don't want to
+        hear about it, in the chats you already have too."""
         own = self.store.get(session_id)
         listed = init_servers(servers)
         skip = {name for name, status in listed if ("mcp", name, status) in self._warned}
         skip |= set(own.disabled_mcp if own is not None else ())
+        skip |= set(self.speech.mcp_off_for_new_chats)
         text = problems_text(listed, skip)
         if not text:
             return
@@ -4839,6 +4842,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
                          permission_mode=mode, started=False, model=model, effort=effort,
+                         disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -5103,6 +5107,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          # prompt (checked: instructions given to a fork were
                          # ignored), so its own options need it made afresh.
                          prompt_fresh=bool(chat_options),
+                         disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return

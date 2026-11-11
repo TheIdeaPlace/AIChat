@@ -617,7 +617,8 @@ def test_a_turn_says_once_which_tools_claude_cant_use(frame, env):
                {"name": "github", "status": "failed"}]
     _start(frame, servers)
     said = ("Tools probe: Claude can't use claude.ai Morningstar: it needs sign-in. Claude "
-            "can't use github: it failed to connect. View, Connected Tools.")
+            "can't use github: it failed to connect. To fix this, or stop hearing it, use "
+            "View, Connected Tools.")
     assert env["feedback"][-1] == said
     assert frame._status_latest == said
     count = len(env["feedback"])
@@ -641,7 +642,95 @@ def test_below_the_full_level_its_only_on_the_status_bar(frame, env):
     _start(frame, [{"name": "github", "status": "failed"}])
     assert len(env["feedback"]) == count
     assert frame._status_latest == ("Tools probe: Claude can't use github: it failed to "
-                                    "connect. View, Connected Tools.")
+                                    "connect. To reconnect, or stop hearing this, use View, "
+                                    "Connected Tools.")
+
+
+def test_turn_off_for_new_chats_stops_the_message_and_can_be_undone(frame, env, monkeypatch):
+    from thechatplace.speech import ANNOUNCE_FULL, SpeechSettings
+    frame.speech.announce = ANNOUNCE_FULL
+    select(frame, "Tools probe")
+
+    def off(dialog):
+        dialog.list.SetSelection(1)
+        dialog._show_selected()
+        assert dialog.new_chats_btn.GetLabel() == "Turn Off for &New Chats"
+        dialog.on_toggle_new_chats()
+        assert dialog.list.GetSelection() == 1
+        assert dialog.new_chats_btn.GetLabel() == "Turn On for &New Chats"
+        assert "New chats start with this tool off" in dialog.details.GetValue()
+        return dialog.list.GetString(1)
+    assert _connected_tools(frame, monkeypatch, off) == (
+        "claude.ai Morningstar: needs sign-in, claude.ai connector, off for new chats")
+    assert env["feedback"][-1] == ("claude.ai Morningstar is off for new chats. "
+                                   "You won't hear about it again.")
+    assert SpeechSettings.load().mcp_off_for_new_chats == ["claude.ai Morningstar"]
+    # This chat kept its own setting, and the message has stopped for it too.
+    assert frame.store.get("own-1").disabled_mcp == []
+    count = len(env["feedback"])
+    _start(frame, [{"name": "claude.ai Morningstar", "status": "needs-auth"}])
+    assert len(env["feedback"]) == count
+
+    def on(dialog):
+        dialog.list.SetSelection(1)
+        dialog._show_selected()
+        assert dialog.new_chats_btn.GetLabel() == "Turn On for &New Chats"
+        dialog.on_toggle_new_chats()
+        assert dialog.new_chats_btn.GetLabel() == "Turn Off for &New Chats"
+    _connected_tools(frame, monkeypatch, on)
+    assert env["feedback"][-1] == "claude.ai Morningstar is on for new chats."
+    assert SpeechSettings.load().mcp_off_for_new_chats == []
+
+
+def test_new_chats_start_with_those_tools_off(frame, env, monkeypatch):
+    from thechatplace.ui import main_frame
+    frame.speech.mcp_off_for_new_chats = ["claude.ai Morningstar"]
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            self.set_folder(env["folder"])
+            self.message.SetValue("Hello")
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    frame.on_new_session()
+    assert pump(lambda: FakeRunner.instances, timeout=10)
+    made = [s for s in frame.store.all() if s.cli_session_id != "own-1"]
+    assert [s.disabled_mcp for s in made] == [["claude.ai Morningstar"]]
+    # The chats you already have are left as they were.
+    assert frame.store.get("own-1").disabled_mcp == []
+
+
+def test_a_save_that_fails_changes_nothing_for_new_chats(frame, env, monkeypatch):
+    select(frame, "Tools probe")
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+
+    def refuse():
+        raise OSError("disk full")
+    monkeypatch.setattr(frame.speech, "save", refuse)
+
+    def drive(dialog):
+        dialog.list.SetSelection(1)
+        dialog._show_selected()
+        dialog.on_toggle_new_chats()
+        return dialog.new_chats_btn.GetLabel()
+    assert _connected_tools(frame, monkeypatch, drive) == "Turn Off for &New Chats"
+    assert boxes == ["It couldn't be saved, so nothing changed."]
+    assert frame.speech.mcp_off_for_new_chats == []
+
+
+def test_the_chat_places_own_tools_cant_be_turned_off_for_new_chats(frame, env, monkeypatch):
+    from thechatplace.session_tools import SERVER_NAME
+    select(frame, "Tools probe")
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text) or wx.OK)
+
+    def drive(dialog):
+        dialog._fill([McpServer(SERVER_NAME, "connected", source="dynamic")])
+        dialog.on_toggle_new_chats()
+    _connected_tools(frame, monkeypatch, drive)
+    assert boxes and boxes[0].endswith("can't be turned off here.")
+    assert frame.speech.mcp_off_for_new_chats == []
 
 
 # -- a connected tool's question ----------------------------------------------------------------

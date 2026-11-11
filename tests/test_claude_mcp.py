@@ -195,11 +195,47 @@ def test_problems_text_says_what_claude_cant_use():
                ("claude.ai Shop", "needs-auth"), ("github", "failed"), ("x", "pending")]
     assert problems_text(servers) == (
         "Claude can't use claude.ai Travel and claude.ai Shop: they need sign-in. "
-        "Claude can't use github: it failed to connect. View, Connected Tools.")
+        "Claude can't use github: it failed to connect. "
+        "To fix this, or stop hearing it, use View, Connected Tools.")
     assert problems_text(servers, skip={"claude.ai Shop", "github"}) == (
-        "Claude can't use claude.ai Travel: it needs sign-in. View, Connected Tools.")
+        "Claude can't use claude.ai Travel: it needs sign-in. "
+        "To sign in, or stop hearing this, use View, Connected Tools.")
+    assert problems_text([("github", "failed")]) == (
+        "Claude can't use github: it failed to connect. "
+        "To reconnect, or stop hearing this, use View, Connected Tools.")
     assert problems_text([("claude.ai Docs", "connected"), ("x", "pending")]) == ""
     assert problems_text(servers, skip={"claude.ai Travel", "claude.ai Shop", "github"}) == ""
+
+
+def test_a_tool_off_for_new_chats_says_so_and_is_always_listed():
+    listed = [McpServer("claude.ai Shop", "needs-auth", source="claudeai"),
+              McpServer("github", "connected", source="user", tools=["a", "b"])]
+    rows = with_chat_settings(listed, ["gone-here-too"],
+                              ["claude.ai Shop", "elsewhere", "gone-here-too"])
+    assert [r.text() for r in rows] == [
+        "claude.ai Shop: needs sign-in, claude.ai connector, off for new chats",
+        "github: connected, your settings, 2 tools",
+        "gone-here-too: off for this chat, off for new chats",
+        # Not in this folder: still listed, as this is the way to turn it back on.
+        "elsewhere: off for new chats",
+    ]
+    # Nothing in new chats' list: rows read as they always did.
+    assert with_chat_settings([McpServer("github", "connected", source="user")], []
+                              )[0].text() == "github: connected, your settings"
+
+
+def test_the_tools_off_for_new_chats_are_saved_and_checked(tmp_path):
+    from thechatplace.speech import SpeechSettings
+    path = tmp_path / "speech.json"
+    assert SpeechSettings.load(path).mcp_off_for_new_chats == []
+    SpeechSettings(mcp_off_for_new_chats=["claude.ai Shop", "github"]).save(path)
+    assert SpeechSettings.load(path).mcp_off_for_new_chats == ["claude.ai Shop", "github"]
+    for bad in ("github", 3, None, {"a": 1}):
+        path.write_text(json.dumps({"mcp_off_for_new_chats": bad}), encoding="utf-8")
+        assert SpeechSettings.load(path).mcp_off_for_new_chats == []
+    path.write_text(json.dumps({"mcp_off_for_new_chats": ["ok", 3, "", "ok", "bad\nname"]}),
+                    encoding="utf-8")
+    assert SpeechSettings.load(path).mcp_off_for_new_chats == ["ok"]
 
 
 def test_init_servers_survives_odd_input():

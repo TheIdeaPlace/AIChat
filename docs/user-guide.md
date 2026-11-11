@@ -2509,6 +2509,11 @@ long as the dialog is open; a tool turned off for the chat isn't started.
   turns from the next one; the row then says "off for this chat", and the button becomes
   **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
   Only chats started here can do this; The Chat Place's session tools can't be turned off.
+- **Turn Off for New Chats** (Alt+N), in a Claude chat, is for a tool you don't plan to use. Every
+  chat you start from then on has it off, and The Chat Place stops telling you Claude can't use
+  it. Chats you already have keep their own setting. The row says "off for new chats", and the
+  button becomes **Turn On for New Chats**. The desktop app, Claude Code's own settings and your
+  claude.ai account are left alone.
 
 ### When a Claude turn starts
 

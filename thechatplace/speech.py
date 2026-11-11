@@ -213,6 +213,9 @@ class SpeechSettings:
     last_run_version: str = ""
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
+    #: Claude connected tools that new chats start without and that are never
+    #: warned about (Connected Tools, Turn Off for New Chats). The server names.
+    mcp_off_for_new_chats: List[str] = field(default_factory=list)
     #: None follows native CLI discovery; booleans preserve the user choice (#277).
     codex_enabled: Optional[bool] = None
     #: Local GitHub Copilot CLI history (read-only), opt-in (#352).
@@ -316,6 +319,11 @@ class SpeechSettings:
         limit = raw.get("recent_folder_limit", RECENT_LIMIT)
         settings.recent_folder_limit = limit if isinstance(limit, int) \
             and not isinstance(limit, bool) and 0 <= limit <= RECENT_MAX else RECENT_LIMIT
+        from .claude_mcp import is_safe_server_name
+        names = raw.get("mcp_off_for_new_chats")
+        settings.mcp_off_for_new_chats = list(dict.fromkeys(
+            n for n in (names if isinstance(names, list) else ())
+            if isinstance(n, str) and is_safe_server_name(n)))
         from theideaplace_appkit.difftext import DEFAULT as MARKS_DEFAULT, STYLES as MARKS
         marks = raw.get("change_marks", MARKS_DEFAULT)
         settings.change_marks = marks if marks in MARKS else MARKS_DEFAULT
