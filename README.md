@@ -1372,8 +1372,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
   Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
-  default), its Claude or Codex transcript is deleted from the computer and it leaves the list, its
-  groups and the hidden list. Codex also deletes any spawned subagent chats. It waits while the session is working, here or in a terminal.
+  default), its conversation is deleted from the computer and it leaves the list, its groups and
+  the hidden list. A Claude chat's transcript is deleted; a Codex chat is deleted through Codex
+  itself, along with any subagent chats it started. A Codex chat Codex no longer has (deleted
+  already, or never saved because nothing was sent) just leaves the list, and "was already gone"
+  is said. It waits while the session is working, here or in a terminal.
   Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
   can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
@@ -1792,7 +1795,7 @@ shows it as plain text instead.
 | Messages | Alt+F, F | Branch from Here: a new chat whose history ends with the selected message |
 | Session list | F5 | Refresh the list now and put it in order |
 | Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
-| Session list | Shift+Delete | Delete a Claude or Codex chat started here permanently, transcript and all, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
+| Session list | Shift+Delete | Delete a Claude or Codex chat started here permanently, conversation and all, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
@@ -1834,7 +1837,7 @@ Everything it reads is on your own computer, so reading costs nothing.
 | Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`) that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
 | Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json` (on a Mac, `~/.claude/sessions/<pid>.json`), which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
 | The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`), where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. If it ever misses, the app searches all the project folders for the session id instead. |
-| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. The Chat Place can't delete Codex chats yet, so these files stay until you delete them. |
+| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. Deleting the chat permanently (Shift+Delete) deletes its file too. |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (on a Mac, `~/Library/Application Support/TheChatPlace/sessions.json`), and `speech.json` for settings. If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json` (on a Mac, `~/Library/Application Support/TheChatPlace/prompts.json`). If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | The session tools' connection | `%APPDATA%\TheChatPlace\session-tools.json` (on a Mac, `~/Library/Application Support/TheChatPlace/session-tools.json`): where Claude turns' session tools reach the running app, and the key they need (see Session tools for Claude turns). Readable only by you, and deleted when The Chat Place closes. |
@@ -1861,7 +1864,7 @@ view's WebView2 profile in `%LOCALAPPDATA%\TheChatPlace WebView2`; the installed
 registers `thechatplace://` links for your account each time it starts. Otherwise it writes only
 when you ask: exports go where you save them, From GitHub clones into your GitHub folder, a new
 worktree goes in the repository's `.claude\worktrees` folder, and Delete Session Permanently
-deletes a Claude session's transcript. Providers save the messages you send, as they always do.
+deletes a Claude session's transcript, or has Codex delete a Codex chat. Providers save the messages you send, as they always do.
 Only one copy runs at a time; starting a second brings the first to the front.
 
 ### Its own sessions, and why desktop sessions are read-only

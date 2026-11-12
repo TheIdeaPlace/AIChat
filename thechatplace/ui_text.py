@@ -129,7 +129,7 @@ SHORTCUTS = [
                    "from Group and Manage Groups are on the File menu"),
         ("Delete", "Hide the selected session; View, Show Sessions, Hidden lists hidden "
                    "sessions, and File, Bring Back Session returns one"),
-        ("Shift+Delete", "Delete a Claude or Codex chat started here permanently, transcript and "
+        ("Shift+Delete", "Delete a Claude or Codex chat started here permanently, conversation and "
                          "all, after you confirm, or The Chat Place's copy of a restored or kept chat "
                          "(other chats can only be hidden); on an agent "
                          "conversation, delete the conversation and keep its chats"),
