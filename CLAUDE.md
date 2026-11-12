@@ -78,7 +78,7 @@ Versions below 1.0 publish as pre-releases. Every platform updates through Velop
 (`updater.CHANNEL`: `windows`, `osx`, `linux-x64`, `linux-arm64`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
 
-Only Kelly can release or sign: tags are admin-only by ruleset, releases are immutable, and every
+Only Kelly can release or sign: tags are admin-only by ruleset, and every
 signing run (a tag, a hand run with "sign", a `sign-build` pull request) waits for his approval of
 the `azure-signing` environment, where the signing secrets belong. After his "go", approve only the
 tag run he pushed, never a run on someone else's branch (it runs that branch's workflow with the
@@ -90,10 +90,12 @@ id=$(gh run list -R TheIdeaPlace/AIChat -w "Release The Chat Place" -b v<version
 [ -n "$id" ] && gh api -X POST repos/TheIdeaPlace/AIChat/actions/runs/$id/pending_deployments -F "environment_ids[]=23643397700" -f state=approved -f comment=release
 ```
 
-Code-owner review covers every file (`.github/CODEOWNERS`): for now Kelly reviews whatever ships,
-from anyone. He can't approve his own PRs, so his PRs merge with an admin bypass. That bypass
-skips the code-owner check, so before an admin merge confirm with `gh pr view N --json commits`
-that every commit is Kelly's or his agent's; a collaborator can push to his branches.
+Kelly is the only person with write access. Contributors work from forks, and their pull requests
+need his merge. Main's ruleset requires a pull request and the Windows and macOS test runs, the
+same shape as his other repos; it doesn't require a code-owner review (that was on from 2026-10-23
+to 2026-11-11, while a contributor had write access). Releases are no longer immutable either, so
+a release can take a file added after publishing; releases published in that window (0.3.0 to
+0.5.0) stay locked.
 
 **Release notes and the user guide, with every user-visible change** (the QuickMail process):
 - The **open** notes file is the highest `release-notes/vX.Y.Z.md` with no matching tag. Add an

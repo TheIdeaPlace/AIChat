@@ -47,7 +47,7 @@ If your change needs a screen reader check, list the exact steps in the pull req
 ## Commits and pull requests
 
 - A commit message is one plain-English sentence about the change as a user would see it, ending with the issue number, for example `Code blocks: list, read and copy each one (#17)`.
-- Every pull request is reviewed by a code owner (`.github/CODEOWNERS`) before it merges.
+- Work from a fork. Kelly reviews and merges every pull request.
 - Keep a pull request to one feature or fix, and link the issue it closes (`Closes #N`).
 - A user-visible change adds an entry to the open release notes file in `release-notes/` (the highest version without a tag). `CLAUDE.md` explains the format. Tests, CI and refactors need no entry.
 - Research and design notes go in `dev-notes/`, not `docs/`: GitHub Pages publishes everything in `docs/`.
