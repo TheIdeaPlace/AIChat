@@ -45,7 +45,9 @@ class Connection:
         try:
             return self.request('thread/delete', {'threadId': native_id})
         except CodexRpcError as error:
-            error.delete_sent = True
+            if getattr(error, 'rpc_code', None) is None:
+                from thechatplace.providers.codex_rpc import CodexDeleteUnanswered
+                raise CodexDeleteUnanswered() from error
             raise
 
     def pop_event(self):

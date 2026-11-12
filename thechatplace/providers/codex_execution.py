@@ -75,7 +75,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         those guard turns, and deleting runs none, so a chat whose folder was
         removed can still be deleted."""
         from .codex_features import DELETE_METHOD, validate_action, CodexFeatureError
-        from .codex_rpc import is_chatgpt_account
+        from .codex_rpc import is_chatgpt_account, CodexDeleteUnanswered
         params = {'threadId': native_id}
         validate_action(DELETE_METHOD, params, deleting=True)
         with self._runtime_lock:
@@ -84,12 +84,16 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             raise CodexFeatureError('unavailable')
         if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
             raise CodexTurnRejected('chatgpt_required')
+        sent = []
         try:
-            return super().request(DELETE_METHOD, params)
+            return super().request(DELETE_METHOD, params, on_sent=lambda: sent.append(True))
         except CodexRpcError as error:
-            # Only from here on may Codex have deleted it: a failure before
-            # (the account check, say) left the chat as it was.
-            error.delete_sent = True
+            # Codex's own answer (a fresh error for each reply) says what it
+            # did. With no answer to a delete that went, it may be gone; one
+            # that never went (connection closed, too many waiting) left the
+            # chat as it was. The connection's shared failure isn't changed.
+            if sent and getattr(error, 'rpc_code', None) is None:
+                raise CodexDeleteUnanswered() from error
             raise
 
     def __init__(self, *args, **kwargs):

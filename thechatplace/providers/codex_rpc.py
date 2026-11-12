@@ -132,6 +132,15 @@ _UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found',
 _MISSING_THREAD = re.compile(r'thread not found: ([A-Za-z0-9_-]{1,128})')
 
 
+class CodexDeleteUnanswered(CodexRpcError):
+    """thread/delete went to Codex and no answer came back (a timeout, the
+    connection closing): it may have been deleted (#634). Raised only once the
+    request was sent; a failure before that is raised as it was."""
+
+    def __init__(self):
+        super().__init__('Codex did not answer the delete')
+
+
 def missing_thread(error, native_id) -> bool:
     """Whether Codex answered that ``native_id`` doesn't exist. Only its own
     answer counts: a timeout or a lost connection says nothing either way."""
@@ -325,12 +334,12 @@ class ReadOnlyCodexConnection:
     def __exit__(self, *exc):
         self.close()
 
-    def request(self, method: str, params: dict) -> dict:
+    def request(self, method: str, params: dict, *, on_sent=None) -> dict:
         if method not in self.METHODS:
             raise ValueError("Method is not supported by the read-only Codex connection")
         if not self._initialized:
             raise CodexRpcError("Codex connection is not initialized")
-        return self._request(method, params)
+        return self._request(method, params, on_sent=on_sent)
 
     def pop_event(self):
         """Keep controls prompt, but flush final display data before completion."""
@@ -410,7 +419,9 @@ class ReadOnlyCodexConnection:
                 self._outgoing.put(payload)
                 del self._server_pending[request.request_id]
 
-    def _request(self, method, params):
+    def _request(self, method, params, on_sent=None):
+        """``on_sent``: called once the request is queued to go, so a caller
+        can tell a failure before sending from one after (#634)."""
         if not isinstance(params, dict):
             raise ValueError("Codex request parameters must be an object")
         if method in ("turn/start", "turn/steer"):
@@ -444,6 +455,8 @@ class ReadOnlyCodexConnection:
                 raise
             self._pending[request_id] = pending
             self._outgoing.put(payload)
+            if on_sent is not None:
+                on_sent()
         if not pending.ready.wait(self._timeout):
             with self._lock:
                 expired = self._pending.pop(request_id, None) is pending

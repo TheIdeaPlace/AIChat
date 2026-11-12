@@ -606,7 +606,7 @@ class CodexChatRuntime:
         counts; a timeout or a lost connection is an ordinary failure, and the
         chat stays."""
         from .codex_features import CodexFeatureError
-        from .codex_rpc import missing_thread
+        from .codex_rpc import missing_thread, CodexDeleteUnanswered
         if not isinstance(record, OwnSession) or record.provider != 'codex':
             raise CodexRpcError('Only owned Codex chats can be deleted')
         native_id = record.cli_session_id
@@ -653,7 +653,7 @@ class CodexChatRuntime:
                 self._delete_settled(native_id)
                 unknown = error.rpc_code == -32601 or getattr(error, 'unknown_method', False)
                 raise CodexFeatureError('unsupported' if unknown else 'refused') from None
-            if getattr(error, 'delete_sent', False) or isinstance(error, CodexFeatureError) and error.code == 'failed':
+            if isinstance(error, CodexDeleteUnanswered) or isinstance(error, CodexFeatureError) and error.code == 'failed':
                 # Sent, with no answer: it may be gone. Nothing reopens it
                 # (to send, or Stop's recheck) until it's deleted again,
                 # which is safe to repeat and settles it either way.
@@ -809,6 +809,12 @@ class CodexChatRuntime:
         """
         if not isinstance(record, OwnSession) or record.provider != 'codex':
             raise CodexRpcError('Only owned Codex chats can be prepared')
+        with self._lock:
+            unconfirmed = record.cli_session_id in self._delete_unconfirmed
+        if unconfirmed:
+            # Loaded or not, it may be gone: say what settles it (#634).
+            from .codex_features import CodexFeatureError
+            raise CodexFeatureError('delete_unconfirmed')
         if self.known(record.cli_session_id):
             if not self.ready(record):
                 raise CodexRpcError('Codex connection or turn status is uncertain. Automatic resume is disabled.')

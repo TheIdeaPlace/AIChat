@@ -310,6 +310,9 @@ def test_after_an_unanswered_delete_stop_and_sending_say_to_delete_again():
             service.recover(record)
         with pytest.raises(CodexRpcError, match='Delete it again'):
             service.send(record, 'Too soon')
+        # Opening it again says the same, though it's still loaded here.
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.prepare(record)
         assert connection.calls[before:] == []  # nothing asked of Codex
         with pytest.raises(CodexThreadGone):
             service.delete(record)
@@ -543,6 +546,54 @@ def test_a_deleted_chat_saves_nothing_more(tmp_path):
         service.close()
 
 
+def _delete_connection():
+    """A real CodexExecutionConnection's request path, with no Codex behind it."""
+    import queue
+    import threading
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    c = object.__new__(CodexExecutionConnection)
+    c._runtime_lock, c._lock, c._closed = threading.Lock(), threading.Lock(), False
+    c._runtime_threads, c._pending, c._next_id, c._initialized = {}, {}, 0, True
+    c._outgoing, c._timeout, c._failure = queue.Queue(), 5, None
+    c._abandoned, c._abandoned_before = set(), 0
+    c.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+    return c
+
+
+def test_only_a_delete_that_went_can_be_unanswered():
+    # A delete that never went (connection closed, too many waiting) left the
+    # chat as it was; one that went with no answer may have deleted it.
+    import json
+    import threading
+    from thechatplace.providers.codex_rpc import CodexDeleteUnanswered, missing_thread
+    c = _delete_connection()
+    c._closed = True
+    with pytest.raises(CodexRpcError) as closed:
+        c.delete_owned_thread('owned')
+    assert not isinstance(closed.value, CodexDeleteUnanswered) and c._outgoing.empty()
+    c._closed = False
+    c._pending = {n: object() for n in range(c.MAX_PENDING)}
+    with pytest.raises(CodexRpcError) as full:
+        c.delete_owned_thread('owned')
+    assert not isinstance(full.value, CodexDeleteUnanswered) and c._outgoing.empty()
+    c._pending, c._timeout = {}, 0.05
+    with pytest.raises(CodexDeleteUnanswered):
+        c.delete_owned_thread('owned')
+    assert json.loads(c._outgoing.get_nowait())['method'] == 'thread/delete'
+    # Codex's own answer comes through as it was.
+    c._timeout = 5
+    def answer():
+        sent = json.loads(c._outgoing.get(timeout=5))
+        c._receive({'id': sent['id'], 'error': {'code': -32600, 'message': 'thread not found: owned'}})
+    worker = threading.Thread(target=answer)
+    worker.start()
+    with pytest.raises(CodexRpcError) as answered:
+        c.delete_owned_thread('owned')
+    worker.join(5)
+    assert not isinstance(answered.value, CodexDeleteUnanswered)
+    assert missing_thread(answered.value, 'owned')
+
+
 def test_thread_delete_is_sent_only_by_deleting_an_owned_chat(monkeypatch):
     """#512 refused thread/delete outright. It's allowed now (#634), but only
     from Delete Session Permanently on a Codex chat started here: not as an
@@ -591,7 +642,7 @@ def test_thread_delete_is_sent_only_by_deleting_an_owned_chat(monkeypatch):
     calls = []
     account = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
     monkeypatch.setattr(ReadOnlyCodexConnection, 'request',
-                        lambda self, m, p: calls.append(m) or (account if m == 'account/read' else {}))
+                        lambda self, m, p, on_sent=None: calls.append(m) or (account if m == 'account/read' else {}))
     with pytest.raises(CodexFeatureError):
         c.request(delete, {'threadId': 'owned'})
     # A loaded chat only with the proof held for it; and none claimed for it.
@@ -792,8 +843,10 @@ def test_feature_connection_rechecks_account_route_and_tools_before_mutation(mon
     calls = []
     account = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
     fake = LifecycleConnection()
-    def rpc(self, method, params):
+    def rpc(self, method, params, on_sent=None):
         calls.append((method, params))
+        if on_sent is not None:
+            on_sent()
         if method == 'account/read':
             return account
         if method == 'thread/read':
