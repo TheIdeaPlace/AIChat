@@ -101,3 +101,121 @@ def test_the_windows_own_access_keys_are_the_ones_the_menus_keep_clear_of(frame)
     assert frame.attach_btn.GetLabel() == "Attach F&iles..."
     assert frame.reply_claude_btn.GetLabel() == "Open &in Claude"
     assert frame.continue_btn.GetLabel() == "Continue H&ere..."
+
+
+# -- your keys (#635) ------------------------------------------------------------------------
+
+def _accel(item):
+    """The item's accelerator in keymap's names: wx's own string orders the
+    modifiers differently by version ("Alt+Ctrl+P" in wx 3.2)."""
+    from thechatplace.keymap import normalize
+    accel = item.GetAccel()
+    return normalize(accel.ToString()) if accel is not None else ""
+
+
+def test_the_menus_start_with_the_keys_in_keys_json(env):
+    import json
+    from thechatplace import platform_paths
+    from thechatplace.ui.main_frame import MainFrame
+    path = platform_paths.app_data_dir() / "keys.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 1, "keys": {"prompts": "Ctrl+K", "sounds": "Ctrl+J",
+                                                         "find": ""}}), encoding="utf-8")
+    window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"), check_updates_at_start=False)
+    try:
+        items = window.menu_items
+        assert items["prompts"].GetItemLabel() == "&Prompts...\tCtrl+K"
+        assert _accel(items["prompts"]) == "Ctrl+K"
+        assert items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+J"
+        assert items["find"].GetItemLabel() == "F&ind..." and items["find"].GetAccel() is None
+    finally:
+        window.stop_timers()
+        window._pool.shutdown(wait=True)
+        wx.GetApp().ProcessPendingEvents()
+        window.Destroy()
+        wx.GetApp().ProcessPendingEvents()
+
+
+def test_a_changed_key_shows_at_once_in_the_menus(frame):
+    taken = frame.keymap.set("sounds", "Ctrl+Shift+P")
+    assert taken == "prompts"
+    frame.apply_keys()
+    items = frame.menu_items
+    assert items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+Shift+P"
+    assert _accel(items["sounds"]) == "Ctrl+Shift+P"
+    assert items["prompts"].GetItemLabel() == "&Prompts..."
+    assert items["prompts"].GetAccel() is None
+    # The context menus follow the menu bar.
+    frame.keymap.set("properties", "Ctrl+B")
+    frame.apply_keys()
+    menu = frame._message_menu()
+    try:
+        labels = [item.GetItemLabel() for item in menu.GetMenuItems()]
+        assert "&Properties...\tCtrl+B" in labels
+    finally:
+        menu.Destroy()
+
+
+def test_a_command_on_an_enter_key_runs_from_the_messages(frame, monkeypatch):
+    # The window's key hook takes Enter keys first (Enter reads a message),
+    # so a command you put on one runs from there, and Alt+Enter is no
+    # longer Properties once you've moved Properties.
+    ran = []
+    handlers = frame._command_handlers()
+    handlers["sounds"] = lambda e: ran.append("sounds")
+    handlers["properties"] = lambda e: ran.append("properties")
+    monkeypatch.setattr(frame, "_command_handlers", lambda: handlers)
+    frame._build_menu()  # it runs through the menu item, as its accelerator would
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    monkeypatch.setattr(frame, "on_read_message", lambda *a: ran.append("read"))
+
+    def press(alt=False, shift=False):
+        event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+        event.SetKeyCode(wx.WXK_RETURN)
+        event.SetAltDown(alt)
+        event.SetShiftDown(shift)
+        frame._on_char_hook(event)
+
+    press(alt=True)
+    assert ran == ["properties"]
+    frame.keymap.set("sounds", "Alt+Shift+Enter")
+    frame.keymap.set("properties", "Ctrl+B")
+    press(alt=True, shift=True)
+    press(alt=True)
+    assert ran == ["properties", "sounds", "read"]
+
+
+def test_a_check_item_on_an_enter_key_toggles_and_an_unavailable_one_doesnt_run(frame, monkeypatch):
+    # Through its menu item, as an accelerator would (#639): the check
+    # changes, which is what Show Tool Activity's handler reads.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    frame.keymap.set("show_tool_activity", "Alt+Shift+Enter")
+    before = frame.activity_item.IsChecked()
+    asked = []
+    # With no session loaded it would put the check back; what matters is
+    # what the handler read from the item.
+    monkeypatch.setattr(frame, "_set_activity", lambda show: asked.append(show))
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(wx.WXK_RETURN)
+    event.SetAltDown(True)
+    event.SetShiftDown(True)
+    frame._on_char_hook(event)
+    assert asked == [not before]
+    ran = []
+    monkeypatch.setattr(frame, "on_stop_background_task", lambda: ran.append("stop"))
+    frame.keymap.set("stop_background_task", "Alt+Shift+Enter")
+    assert not frame.stop_background_item.IsEnabled()
+    frame._run_command("stop_background_task")
+    assert ran == []
+
+
+def test_stop_is_named_by_your_key(frame):
+    from thechatplace.ui_text import with_stop_key
+    try:
+        frame.keymap.set("stop_running_turn", "Ctrl+J")
+        frame.apply_keys()
+        assert "Press Stop (Ctrl+J)" in with_stop_key("Press Stop to end it.", "win32")
+    finally:
+        frame.keymap.reset_all()
+        frame.apply_keys()
+    assert "Press Stop (Ctrl+Period)" in with_stop_key("Press Stop to end it.", "win32")

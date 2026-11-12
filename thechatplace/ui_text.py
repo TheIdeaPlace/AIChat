@@ -30,13 +30,24 @@ def key_name(shortcut: str, platform=None) -> str:
 CODEX_DEFAULT = "Codex's default"
 
 
-def with_stop_key(text: str, platform=None) -> str:
+#: Stop Running Turn's key as said, set by the window from your keys (#635).
+_STOP_KEY = ["Ctrl+Period"]
+
+
+def set_stop_key(key: str) -> None:
+    """The window's keys changed: Stop's is now ``key`` ("" for none)."""
+    _STOP_KEY[0] = key
+
+
+def with_stop_key(text: str, platform=None, key=None) -> str:
     """A provider's "Press Stop to ..." with Stop's key added, the first time
     it's named (#596): the provider says what Stop does, and the window,
-    which owns the keys, names the key."""
-    if not text or "Press Stop (" in text:
+    which owns the keys, names the key: yours, if you changed it (#635), and
+    none if you removed it."""
+    key = _STOP_KEY[0] if key is None else key
+    if not text or not key or "Press Stop (" in text:
         return text
-    return text.replace("Press Stop ", f"Press Stop ({key_name('Ctrl+Period', platform)}) ", 1)
+    return text.replace("Press Stop ", f"Press Stop ({key_name(key, platform)}) ", 1)
 
 
 SHORTCUTS_PLATFORM_NOTE = (
@@ -382,7 +393,51 @@ def last_message_line(label: str, text: str) -> str:
     return f"{label}: {plain}" if plain else ""
 
 
-def shortcuts_html(*, platform=None) -> str:
+#: A key named in the shortcuts list's key column: modifiers, then an F key,
+#: a named key or one letter, digit or mark.
+_KEY_IN_TEXT = re.compile(r"(?<![\w+])(?:(?:Ctrl|Alt|Shift)\+)*"
+                          r"(?:F\d{1,2}|Period|Comma|Slash|Enter|Delete|[A-Z0-9/.,])(?![\w+])")
+
+
+def shortcuts_with_yours(keys=None):
+    """SHORTCUTS with your keys (#635): a key you changed is shown in place
+    of the default, which is named after what it does; one you removed reads
+    "No key"; keys you gave commands that had none are a group of their own.
+    ``keys`` is a keymap.KeyMap, or None for the defaults (the README)."""
+    if keys is None:
+        return SHORTCUTS
+    from .keymap import normalize, spoken  # keymap needs this module first
+    remapped = keys.remapped()
+    groups = []
+    for group, items in SHORTCUTS:
+        rows = []
+        for key, action in items:
+            # Each key the row names ("Ctrl+F, then F3 and Shift+F3", "Ctrl+Shift+Z
+            # on one of your messages"), in place, with what it was (#639).
+            was = []
+
+            def yours(match):
+                try:
+                    default = normalize(match.group(0))
+                except ValueError:
+                    return match.group(0)
+                if default not in remapped:
+                    return match.group(0)
+                was.append(spoken(default, "win32"))
+                return spoken(remapped[default], "win32") if remapped[default] else "No key"
+
+            key = _KEY_IN_TEXT.sub(yours, key)
+            if was:
+                action = f"{action} (changed from {', '.join(was)})"
+            rows.append((key, action))
+        groups.append((group, rows))
+    added = keys.added()
+    if added:
+        groups.append(("Keys you added", [(spoken(key, "win32"), name) for key, name in added]))
+    return groups
+
+
+def shortcuts_html(*, platform=None, keys=None) -> str:
     """The same list as a page body: a heading and a table per group, with
     the keys as row headers, so a screen reader moves by heading (H) and
     reads each key with what it does as it moves through a table."""
@@ -391,7 +446,7 @@ def shortcuts_html(*, platform=None) -> str:
     parts = ["<h1>Keyboard shortcuts</h1>", f"<p>{html.escape(LAYOUT)}</p>"]
     if platform == "all":
         parts.append(f"<p>{html.escape(SHORTCUTS_PLATFORM_NOTE)}</p>")
-    for number, (group, items) in enumerate(SHORTCUTS, start=1):
+    for number, (group, items) in enumerate(shortcuts_with_yours(keys), start=1):
         # The table takes its name from the heading above it, so the group
         # is named once, not as a heading and again as a separate label.
         parts.append(f'<h2 id="group{number}">{html.escape(group)}</h2>')
@@ -407,11 +462,11 @@ def shortcuts_html(*, platform=None) -> str:
     return "\n".join(parts)
 
 
-def shortcuts_text(*, platform=None) -> str:
+def shortcuts_text(*, platform=None, keys=None) -> str:
     lines: List[str] = [LAYOUT, ""]
     if platform == "all":
         lines += [SHORTCUTS_PLATFORM_NOTE, ""]
-    for group, items in SHORTCUTS:
+    for group, items in shortcuts_with_yours(keys):
         lines.append(f"{group}:")
         for key, action in items:
             if platform != "all":
