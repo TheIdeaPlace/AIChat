@@ -237,6 +237,18 @@ def test_tab_escape_and_alt_letters_still_work_in_the_key_box(capture, monkeypat
     assert capture.key == "Alt+Shift+Enter"
 
 
+def test_the_key_box_is_in_the_tab_order_and_keeps_only_the_key(capture):
+    # wx leaves a read-only one-line box out of the Tab order: Tab from
+    # Cancel skipped it (the VM keyboard walk, #640).
+    assert capture.box.AcceptsFocusFromKeyboard()
+    capture.capture("Ctrl+J")
+    capture.box.SetValue("pasted text")  # as Paste would
+    assert capture.box.GetValue() == K("Ctrl+J") and capture.key == "Ctrl+J"
+    capture.on_again()
+    capture.box.SetValue("x")
+    assert capture.box.GetValue() == ""
+
+
 def test_a_key_it_cant_name_is_answered(capture, monkeypatch):
     # The Applications key has no name here: it's answered, not ignored.
     _press(capture, monkeypatch, wx.WXK_WINDOWS_MENU)

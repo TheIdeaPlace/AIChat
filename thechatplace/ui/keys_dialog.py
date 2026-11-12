@@ -99,7 +99,12 @@ class KeyCaptureDialog(wx.Dialog):
         intro.Wrap(dip(self, 480, -1)[0])
         sizer.Add(intro, 0, wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Key:"), 0, wx.LEFT | wx.RIGHT, 8)
-        self.box = wx.TextCtrl(self, style=wx.TE_READONLY)
+        # Not read-only: wx leaves a read-only one-line box out of the Tab
+        # order, so Tab from Cancel skipped it (the VM keyboard walk, #640).
+        # Every key reaches _on_key first and is taken there, so nothing is
+        # typed; anything that gets in another way (Paste) is put back.
+        self.box = wx.TextCtrl(self)
+        self.box.Bind(wx.EVT_TEXT, self._on_box_text)
         set_accessible_name(self.box, "Key, press the keys you want")
         mac_a11y.set_label(self.box, "Key, press the keys you want")
         gtk_a11y.set_label(self.box, "Key, press the keys you want")  # Orca
@@ -152,6 +157,11 @@ class KeyCaptureDialog(wx.Dialog):
             self.key = ""
             self.box.ChangeValue("")
             self._status("That key can't be used for a shortcut.")
+
+    def _on_box_text(self, _event):
+        shown = spoken(self.key) if self.key else ""
+        if self.box.GetValue() != shown:
+            self.box.ChangeValue(shown)
 
     def capture(self, key: str):
         """``key`` was pressed: show it and say what Assign would do."""
