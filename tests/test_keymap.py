@@ -119,7 +119,7 @@ def test_every_default_can_be_given_back():
 def test_keys_owned_by_a_part_of_the_window_cant_be_changed(keys):
     ids = dict(keys.items())
     assert "hide_session" not in ids and "steer" not in ids
-    assert "settings" in ids and "sounds" in ids
+    assert "sounds" in ids and "find" in ids
     with pytest.raises(ValueError):
         keys.set("hide_session", "Ctrl+Shift+Q")
 
@@ -197,10 +197,10 @@ def test_ids_this_release_doesnt_know_are_kept(tmp_path):
 
 def test_a_hand_edited_file_is_read_in_any_spelling_and_bad_entries_are_said(tmp_path):
     path = tmp_path / "keys.json"
-    path.write_text(json.dumps({"keys": {"prompts": "shift+ctrl+q", "sounds": "Ctrl+V",
+    path.write_text(json.dumps({"keys": {"prompts": "shift+ctrl+v", "sounds": "Ctrl+V",
                                          "find": "nonsense+key"}}), encoding="utf-8")
     keys = KeyMap(path)
-    assert keys.key("prompts") == "Ctrl+Shift+Q"
+    assert keys.key("prompts") == "Ctrl+Shift+V"
     assert keys.key("sounds") == "" and keys.key("find") == "Ctrl+F"
     assert "2 of your keyboard shortcuts" in keys.load_error
 
@@ -244,12 +244,12 @@ def test_a_file_cant_put_two_commands_on_one_key(tmp_path):
     # Yours wins over a default, which loses its key; of two of yours on one
     # key, the first keeps it and the other is named as unusable (#639).
     path = tmp_path / "keys.json"
-    path.write_text(json.dumps({"keys": {"sounds": "Ctrl+N", "about": "Ctrl+K",
-                                         "exit": "ctrl+k"}}), encoding="utf-8")
+    path.write_text(json.dumps({"keys": {"sounds": "Ctrl+N", "user_guide": "Ctrl+K",
+                                         "report_bug": "ctrl+k"}}), encoding="utf-8")
     keys = KeyMap(path)
     assert keys.key("sounds") == "Ctrl+N" and keys.key("new_session") == ""
     assert keys.command_for("Ctrl+N") == "sounds"
-    assert keys.key("about") == "Ctrl+K" and keys.key("exit") == ""
+    assert keys.key("user_guide") == "Ctrl+K" and keys.key("report_bug") == ""
     assert "1 of your keyboard shortcuts" in keys.load_error
     owners = [k for _, k in keys.items() if k]
     assert len(owners) == len(set(owners))

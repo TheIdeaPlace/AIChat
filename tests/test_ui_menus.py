@@ -191,12 +191,16 @@ def test_a_check_item_on_an_enter_key_toggles_and_an_unavailable_one_doesnt_run(
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
     frame.keymap.set("show_tool_activity", "Alt+Shift+Enter")
     before = frame.activity_item.IsChecked()
+    asked = []
+    # With no session loaded it would put the check back; what matters is
+    # what the handler read from the item.
+    monkeypatch.setattr(frame, "_set_activity", lambda show: asked.append(show))
     event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
     event.SetKeyCode(wx.WXK_RETURN)
     event.SetAltDown(True)
     event.SetShiftDown(True)
     frame._on_char_hook(event)
-    assert frame.activity_item.IsChecked() is not before
+    assert asked == [not before]
     ran = []
     monkeypatch.setattr(frame, "on_stop_background_task", lambda: ran.append("stop"))
     frame.keymap.set("stop_background_task", "Alt+Shift+Enter")
