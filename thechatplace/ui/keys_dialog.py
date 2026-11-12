@@ -247,7 +247,6 @@ class KeyboardShortcutsDialog(wx.Dialog):
         self.reset_all_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_reset_all())
         self.filter.Bind(wx.EVT_TEXT, lambda e: self._fill(self._selected_id()))
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.on_change())
-        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
         self._fill(None)
@@ -287,6 +286,10 @@ class KeyboardShortcutsDialog(wx.Dialog):
         return self._shown[index] if 0 <= index < len(self._shown) else None
 
     def _on_list_key(self, event):
+        """Enter changes the command's key, Delete removes it. Called from
+        the dialog's key hook: in a Windows dialog with no default button,
+        Enter never reaches the list's own key-down (found walking it in the
+        VM, #640)."""
         key = event.GetKeyCode()
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers():
             self.on_change()
@@ -298,6 +301,9 @@ class KeyboardShortcutsDialog(wx.Dialog):
         event.Skip()
 
     def _on_key(self, event):
+        if wx.Window.FindFocus() is self.list:
+            self._on_list_key(event)
+            return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()

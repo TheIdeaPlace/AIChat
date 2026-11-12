@@ -142,11 +142,18 @@ def test_enter_changes_and_delete_removes_in_the_list(dialog, monkeypatch):
     deletes = [wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE]
     if sys.platform == "darwin":
         deletes.append(wx.WXK_BACK)  # a Mac's Delete key
+    # Through the dialog's key hook, as Windows sends them: Enter never
+    # reaches the list's own key-down in a dialog with no default button
+    # (the VM keyboard walk found it, #640).
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.list))
     for code in [wx.WXK_RETURN] + deletes:
-        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
-        event.SetKeyCode(code)
-        dialog._on_list_key(event)
+        dialog._on_key(_key_event(code))
     assert done == ["change"] + ["remove"] * len(deletes)
+    # Elsewhere in the dialog, Enter is left to it.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.filter))
+    event = _key_event(wx.WXK_RETURN)
+    dialog._on_key(event)
+    assert done == ["change"] + ["remove"] * len(deletes) and event.GetSkipped()
 
 
 def test_a_command_changed_out_of_the_filter_stays_in_view(dialog, monkeypatch):
