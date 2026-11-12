@@ -123,6 +123,20 @@ _ENDED_TURNS = ('completed', 'failed', 'interrupted')
 #: How a server says it doesn't know a method. App-server's own parser answers
 #: an unknown one with -32600 and serde's "unknown variant", not -32601.
 _UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found', re.IGNORECASE)
+#: How app-server says it has no such thread, each as an invalid request
+#: (-32600) naming the thread (Codex 0.163, codex-rs/app-server): thread/delete
+#: says "thread not found", thread/read of a thread neither saved nor loaded
+#: "thread not loaded", and thread/resume "no rollout found" (#634).
+_MISSING_THREAD = re.compile(
+    r'(?:thread not found: |thread not loaded: |no rollout found for (?:thread|conversation) id )'
+    r'([A-Za-z0-9_-]{1,128})')
+
+
+def missing_thread(error, native_id) -> bool:
+    """Whether Codex answered that ``native_id`` doesn't exist. Only its own
+    answer counts: a timeout or a lost connection says nothing either way."""
+    return (isinstance(error, CodexRpcError) and getattr(error, 'rpc_code', None) == -32600
+            and isinstance(native_id, str) and getattr(error, 'missing_thread', None) == native_id)
 
 
 def _token(value):
@@ -611,6 +625,10 @@ class ReadOnlyCodexConnection:
                 said = details.get("message") if isinstance(details, dict) else None
                 pending.error.unknown_method = code == -32601 or (
                     isinstance(said, str) and _UNKNOWN_METHOD.search(said) is not None)
+                # Which thread it said doesn't exist, if that's what it said:
+                # the id, which the request already had, and nothing else.
+                missing = _MISSING_THREAD.fullmatch(said) if isinstance(said, str) else None
+                pending.error.missing_thread = missing.group(1) if missing and code == -32600 else None
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:

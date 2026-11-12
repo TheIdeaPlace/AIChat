@@ -37,24 +37,41 @@ class CodexTurnState:
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
-    from .codex_features import ACTION_METHODS, READ_METHODS
-    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt', 'mcpServer/oauth/login', 'config/mcpServer/reload'} | ACTION_METHODS | READ_METHODS
+    from .codex_features import ACTION_METHODS, READ_METHODS, DELETE_METHOD
+    METHODS = (CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt', 'mcpServer/oauth/login', 'config/mcpServer/reload'}
+               | ACTION_METHODS | READ_METHODS | {DELETE_METHOD})
 
     def request(self, method, params):
+        from .codex_features import DELETE_METHOD, CodexFeatureError
+        if method == DELETE_METHOD:
+            # Only delete_owned_thread sends it (#634).
+            raise CodexFeatureError('invalid')
+        return self._checked_request(method, params)
+
+    def delete_owned_thread(self, proof):
+        """Delete a chat started here and loaded on this connection: the one
+        way thread/delete is sent, with the same checks as any action."""
+        from .codex_features import DELETE_METHOD
+        return self._checked_request(DELETE_METHOD, {'threadId': proof.native_id}, deleting=proof)
+
+    def _checked_request(self, method, params, deleting=None):
+        """``deleting``: the proof of the chat being deleted, which must still
+        be the one this connection holds for it."""
         from .codex_features import ACTION_METHODS, READ_METHODS, validate_action, CodexFeatureError
-        if method in ACTION_METHODS | READ_METHODS:
-            validate_action(method, params)
+        if deleting is not None or method in ACTION_METHODS | READ_METHODS:
+            validate_action(method, params, deleting=deleting is not None)
             with self._runtime_lock:
                 proof = self._runtime_threads.get(params['threadId'])
-            if proof is None or not self.owns_runtime(proof):
+            if (proof is None or not self.owns_runtime(proof)
+                    or (deleting is not None and proof is not deleting)):
                 raise CodexFeatureError('unavailable')
             proof.policy.verify_workspace(proof.cwd)
             from .codex_rpc import is_chatgpt_account, ReadOnlyCodexConnection
             if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
                 raise CodexTurnRejected('chatgpt_required')
             ReadOnlyCodexConnection._verify_turn_route(self, {'threadId': proof.native_id, 'cwd': proof.cwd})
-            if method in ACTION_METHODS and not (method.startswith('thread/goal/')
-                    or method == 'thread/backgroundTerminals/terminate'):
+            if deleting is not None or (method in ACTION_METHODS and not (method.startswith('thread/goal/')
+                    or method == 'thread/backgroundTerminals/terminate')):
                 thread = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False}).get('thread')
                 check_startable(self, proof.native_id, thread, check_turns=False)
         return super().request(method, params)

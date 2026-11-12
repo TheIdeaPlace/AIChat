@@ -37,6 +37,10 @@ class Connection:
     def owns_runtime(self, proof):
         return not self.closed and self.proofs.get(proof.native_id) is proof
 
+    def delete_owned_thread(self, proof):
+        # As CodexExecutionConnection's: the only way thread/delete is sent.
+        return self.request('thread/delete', {'threadId': proof.native_id})
+
     def pop_event(self):
         if self.closed:
             raise CodexRpcError('closed')

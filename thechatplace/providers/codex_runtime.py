@@ -20,6 +20,17 @@ from .. import platform_paths
 #: pressing it does (#596). The window adds Stop's key (ui_text.with_stop_key),
 #: which is the UI's to name, not the provider's.
 STOP_TO_RECHECK = 'Press Stop to have The Chat Place check this chat with Codex before you send again.'
+
+
+class CodexThreadGone(CodexRpcError):
+    """Delete Session Permanently found nothing in Codex to delete (#634):
+    Codex said it has no such chat, or it was never sent to. The Chat Place
+    can remove its own entry."""
+
+    def __init__(self):
+        super().__init__('Codex has no such chat')
+
+
 #: What each kind of change is called when it can't be confirmed.
 _CHANGING = {'permissions': 'permissions', 'settings': 'model or effort', 'mode': 'mode'}
 _KEEP = object()
@@ -572,16 +583,62 @@ class CodexChatRuntime:
         return self.fork(source, title, allow_retired=True, **kept)
 
     def delete(self, record: OwnSession) -> dict:
-        """Delete through Codex, never by changing its transcript files."""
-        self.prepare(record)
-        return self.feature(record, 'thread/delete')
+        """Delete through Codex, never by changing its transcript files (#634).
+
+        Raises CodexThreadGone when Codex says it has no such chat: one never
+        sent to, one already deleted whose reply was lost, or one deleted here
+        whose entry couldn't be saved. Only Codex's own answer counts; a
+        timeout or a lost connection is an ordinary failure, and the chat
+        stays."""
+        from .codex_features import DELETE_METHOD
+        from .codex_rpc import missing_thread
+        native_id = record.cli_session_id if isinstance(record, OwnSession) else None
+        if not isinstance(record, OwnSession) or record.provider != 'codex':
+            raise CodexRpcError('Only owned Codex chats can be deleted')
+        with self._lock:
+            deleted = native_id in self._deleted
+        if deleted or record.started is not True:
+            # Deleted already, or never a Codex thread at all.
+            raise CodexThreadGone()
+        try:
+            if self.known(native_id) and not self.ready(record):
+                # What Stop's recheck does: after a lost reply (the delete's
+                # own, say) or a dropped connection, ask Codex again rather
+                # than leave the chat impossible to delete.
+                self._reopen(record)
+            else:
+                self.prepare(record)
+        except CodexRpcError as error:
+            if missing_thread(error, native_id):
+                self._forget_deleted(native_id)
+                raise CodexThreadGone() from None
+            raise
+        return self._feature(record, DELETE_METHOD, deleting=True)
+
+    def _forget_deleted(self, native_id, proof=None):
+        """A deleted thread can authorize nothing more, here or on its connection."""
+        with self._lock:
+            proof = proof or self._proofs.get(native_id)
+            self._deleted.add(native_id)
+            self._proofs.pop(native_id, None)
+            self._new_threads.discard(native_id)
+            self._settings_pending.discard(native_id)
+            self._problems.pop(native_id, None)
+            self._queues.pop(native_id, None)
+        if proof is not None:
+            proof.connection._forget_owned_thread(proof)
 
     def feature(self, record, method, arguments=None):
-        """Explicit native controls, serialized with sends and policy changes."""
+        """Explicit native controls, serialized with sends and policy changes.
+        Never deletion: only delete() sends that (#634)."""
+        return self._feature(record, method, arguments)
+
+    def _feature(self, record, method, arguments=None, *, deleting=False):
         from .codex_features import ACTIVE_SAFE_METHODS, CodexFeatureError, validate_action
+        from .codex_rpc import missing_thread
         proof, executor = self._context(record, allow_reopening=True)
         params = dict(arguments or {}, threadId=proof.native_id)
-        validate_action(method, params)
+        validate_action(method, params, deleting=deleting)
         # Reserving the chat refuses Stop, Send and Answer, and an RPC can take
         # 20 seconds, so only what really needs an idle chat reserves it.
         idle_only = method not in ACTIVE_SAFE_METHODS
@@ -600,7 +657,8 @@ class CodexChatRuntime:
         try:
             if starts_turn:
                 executor.expect_native_turns(proof)
-            result = proof.connection.request(method, params)
+            result = (proof.connection.delete_owned_thread(proof) if deleting
+                      else proof.connection.request(method, params))
             if not isinstance(result, dict):
                 raise CodexFeatureError('failed')
             if method == 'thread/backgroundTerminals/list':
@@ -621,16 +679,15 @@ class CodexChatRuntime:
                     raise CodexFeatureError('failed')
             if not proof.connection.owns_runtime(proof):
                 raise CodexFeatureError('unavailable')
-            if method == 'thread/delete':
-                proof.connection._forget_owned_thread(proof)
-                with self._lock:
-                    self._deleted.add(proof.native_id)
-                    self._proofs.pop(proof.native_id, None)
-                    self._new_threads.discard(proof.native_id)
-                    self._settings_pending.discard(proof.native_id)
-                    self._queues.pop(proof.native_id, None)
+            if deleting:
+                self._forget_deleted(proof.native_id, proof)
             return result
         except CodexRpcError as error:
+            if deleting and missing_thread(error, proof.native_id):
+                # Already gone (a lost reply to an earlier delete, say):
+                # nothing is left in Codex to keep the chat for.
+                self._forget_deleted(proof.native_id, proof)
+                raise CodexThreadGone() from None
             refused = getattr(error, 'rpc_code', None) is not None  # Codex answered: nothing was done
             if starts_turn and (refused or isinstance(error, CodexTurnRejected)):
                 executor.cancel_native_turns(proof)
