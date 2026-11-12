@@ -364,8 +364,10 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # A GTK message box is read as "alert Warning" and its text, not its title
+    # (CI on #634), so the question is checked, and No, the default, focused.
     Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
-         expect=["Delete Session Permanently", "subagent chats", "No"],
+         expect=["permanently?", "subagent chats", "No push button"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Cancel Codex deletion", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote
