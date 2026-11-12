@@ -62,9 +62,47 @@ def test_delete_keeps_record_until_codex_confirms(frame, env, chat, monkeypatch,
                                   if error else f'Deleted {info.title} permanently.')
 
 
+def _saved_for_later(frame, native_id):
+    """The task list, Allow for This Chat rules and review history The Chat
+    Place saves for a Codex chat, where its own store keeps them."""
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.providers.codex_permissions import CodexPermissionStore, CodexReviewStore
+    root = frame.store.path.parent
+    stores = (CodexPlanStore(root / 'provider-tasks' / 'codex'),
+              CodexPermissionStore(root / 'provider-permissions' / 'codex'),
+              CodexReviewStore(root / 'provider-permissions' / 'codex'))
+    stores[0].save(native_id, 'turn-1', [])
+    stores[1].save(native_id, ())
+    stores[2].remember(native_id, 'turn-1', [('review', 'Allowed')])
+    return [store._path(native_id) for store in stores]
+
+
+@pytest.mark.parametrize('outcome', ['deleted', 'gone', 'failed'])
+def test_what_was_saved_for_the_chat_goes_with_it(frame, env, chat, monkeypatch, outcome):
+    # Deleted, or Codex no longer has it: its task list, rules and reviews
+    # go with its entry (#634 review). A failed delete keeps them all.
+    info, work = chat
+    files = _saved_for_later(frame, info.cli_session_id)
+    assert all(path.exists() for path in files)
+    frame.on_delete_permanently()
+    _action, done = work[0]
+    done(None if outcome == 'failed' else outcome, outcome == 'failed')
+    kept = outcome == 'failed'
+    assert [path.exists() for path in files] == [kept] * 3
+    assert bool(frame.store.get(info.cli_session_id, provider='codex')) == kept
+
+
+def test_cancelling_keeps_what_was_saved_for_the_chat(frame, env, chat, monkeypatch):
+    info, work = chat
+    files = _saved_for_later(frame, info.cli_session_id)
+    monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.NO)
+    frame.on_delete_permanently()
+    assert not work and all(path.exists() for path in files)
+
+
 def test_a_chat_codex_no_longer_has_is_removed_and_said_to_be_gone(frame, env, chat, monkeypatch):
-    # Its reply lost, the app quit mid-delete, or never saved by Codex: the
-    # entry used to be stuck, since every try reopened the chat first (#634).
+    # Its reply lost, or the app quit mid-delete: the entry used to be
+    # stuck, since every try reopened the chat first (#634).
     from thechatplace.providers.codex_runtime import CodexThreadGone
     info, work = chat
     def gone(*args):
@@ -98,8 +136,10 @@ def test_any_other_failure_keeps_the_chat(frame, env, chat, monkeypatch):
     assert len(work) == 2
 
 
-def test_a_chat_never_sent_to_is_removed_after_confirming(frame, env, chat, monkeypatch):
-    # No Codex thread to delete, so no Codex call and no "could not confirm".
+def test_an_entry_saved_as_never_started_is_removed_after_confirming(frame, env, chat, monkeypatch):
+    """A guard for an older or hand-edited entry: no Codex chat this release
+    makes is saved unstarted (CodexOwnedThread.record). It has no Codex
+    thread, so there's no Codex call and no "couldn't delete"."""
     info, work = chat
     frame.store.update(info.cli_session_id, provider='codex', started=False)
     asked = []

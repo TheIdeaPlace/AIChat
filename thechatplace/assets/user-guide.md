@@ -2653,9 +2653,12 @@ makes a Chat Place group of the same name, which is shown together with the desk
   lists hidden chats, and File, Bring Back Session returns one.
 - **Shift+Delete** deletes a Claude or Codex chat started here permanently, conversation and all,
   after you confirm (No is the default; on a Mac, Fn+Shift+Delete). Stop or finish its turn first.
-  A Codex chat is deleted by Codex itself, along with any subagent chats it started. If Codex no
-  longer has the chat (it was deleted already, or nothing was ever sent in it), it just leaves the
-  list, and you hear that it was already gone. Copilot chats and chats started elsewhere can
+  A Codex chat is deleted by Codex itself, along with any subagent chats it started, even if it's
+  archived or its folder has gone. The Chat Place also deletes what it saved for the chat: its
+  task list, its Allow for This Chat rules and its automatic review history. If Codex no longer
+  has the chat (it was deleted already, say), it just leaves the list, and you hear that it was
+  already gone. If Codex can't confirm the deletion, the chat stays and you can try again.
+  Copilot chats and chats started elsewhere can
   only be hidden; delete those where they were started. A restored or kept chat can be deleted:
   that deletes only The Chat Place's copy.
 - **Shift+Delete on an agent conversation's row** deletes the conversation, not its chats: they

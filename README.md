@@ -1374,9 +1374,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
   default), its conversation is deleted from the computer and it leaves the list, its groups and
   the hidden list. A Claude chat's transcript is deleted; a Codex chat is deleted through Codex
-  itself, along with any subagent chats it started. A Codex chat Codex no longer has (deleted
-  already, or never saved because nothing was sent) just leaves the list, and "was already gone"
-  is said. It waits while the session is working, here or in a terminal.
+  itself, along with any subagent chats it started, even if it's archived or its folder has
+  gone. The Chat Place also deletes what it saved for a Codex chat: its task list, its Allow for
+  This Chat rules and its automatic review history. A Codex chat Codex no longer has (deleted
+  already, say) just leaves the list, and "was already gone" is said. If Codex can't confirm
+  the deletion, the chat stays, and you can try again. It waits while the session is working,
+  here or in a terminal.
   Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
   can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
@@ -1837,7 +1840,7 @@ Everything it reads is on your own computer, so reading costs nothing.
 | Terminal sessions | Every `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`) that no desktop app or Chat Place session claims and whose records say Claude Code was started interactively (`"entrypoint": "cli"`, where `claude -p` writes `sdk-cli` and the desktop app `claude-desktop`). Its folder and title come from the transcript too. Each is read once, at its start and its last megabyte, and then only what's added to it. |
 | Whether a session is working | `%USERPROFILE%\.claude\sessions\<pid>.json` (on a Mac, `~/.claude/sessions/<pid>.json`), which says busy or idle while Claude Code runs it. Files whose process has gone are ignored. |
 | The conversation | `%USERPROFILE%\.claude\projects\<folder>\<session>.jsonl` (on a Mac, `~/.claude/projects/<folder>/<session>.jsonl`), where `<folder>` is the session's folder with every character that isn't a letter or digit turned into `-`. If it ever misses, the app searches all the project folders for the session id instead. |
-| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. Deleting the chat permanently (Shift+Delete) deletes its file too. |
+| Saved Codex task lists | `%APPDATA%\TheChatPlace\provider-tasks\codex\<sha256>.json` (on a Mac, `~/Library/Application Support/TheChatPlace/provider-tasks/codex/<sha256>.json`): the latest task list captured for each owned Codex chat, with its turn ID. Deleting the chat permanently (Shift+Delete) deletes its file too, along with its Allow for This Chat rules (`provider-permissions\codex\<sha256>.json`) and its automatic review history (`provider-permissions\codex\automatic-reviews\<sha256>.json`). |
 | The Chat Place's own sessions | `%APPDATA%\TheChatPlace\sessions.json` (on a Mac, `~/Library/Application Support/TheChatPlace/sessions.json`), and `speech.json` for settings. If `sessions.json` can't be read, it's renamed to `sessions.json.bad-<date>` rather than overwritten, and the app says so. |
 | Your saved prompts | `%APPDATA%\TheChatPlace\prompts.json` (on a Mac, `~/Library/Application Support/TheChatPlace/prompts.json`). If it can't be understood, it's renamed to `prompts.json.bad-<date>` rather than overwritten, and the app says so. |
 | The session tools' connection | `%APPDATA%\TheChatPlace\session-tools.json` (on a Mac, `~/Library/Application Support/TheChatPlace/session-tools.json`): where Claude turns' session tools reach the running app, and the key they need (see Session tools for Claude turns). Readable only by you, and deleted when The Chat Place closes. |
