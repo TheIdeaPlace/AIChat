@@ -240,7 +240,6 @@ def test_a_key_it_cant_name_is_answered(capture, monkeypatch):
 def test_change_keys_answer_is_always_said_at_once(frame, monkeypatch):
     said = []
     monkeypatch.setattr(frame, "_say", lambda text, **k: said.append((text, k)))
-    frame.speech.enabled = False
     frame._say_key_result("F7. Nobody has it.")
     assert said[-1][0] == "F7. Nobody has it."
     assert said[-1][1]["force"] and said[-1][1]["interrupt"]

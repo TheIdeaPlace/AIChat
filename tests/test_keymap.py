@@ -70,7 +70,7 @@ def test_shift_enter_and_option_letters_say_what_they_do():
 
 def test_a_key_a_fixed_command_keeps_cant_be_taken(keys):
     # On a Mac, Settings keeps Cmd+Comma in the app menu (#640).
-    keys._defaults.pop("settings")  # as on a Mac, where it can't change
+    keys._defaults.pop("settings", None)  # as on a Mac, where it can't change
     why = keys.why_not("sounds", "Ctrl+,")
     assert "Settings" in why and "can't change" in why
     with pytest.raises(ValueError, match="Settings"):

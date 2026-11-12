@@ -101,6 +101,8 @@ class KeyCaptureDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Key:"), 0, wx.LEFT | wx.RIGHT, 8)
         self.box = wx.TextCtrl(self, style=wx.TE_READONLY)
         set_accessible_name(self.box, "Key, press the keys you want")
+        mac_a11y.set_label(self.box, "Key, press the keys you want")
+        gtk_a11y.set_label(self.box, "Key, press the keys you want")  # Orca
         sizer.Add(self.box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         self.status = wx.StaticText(self, label="Nothing pressed yet.")
         sizer.Add(self.status, 0, wx.EXPAND | wx.ALL, 8)
