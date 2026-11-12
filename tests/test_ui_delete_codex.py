@@ -204,9 +204,10 @@ def test_completion_preserves_other_selection_or_refocuses_unloaded_chat(
         # one leaves no selection, where Windows moves it up. Every platform
         # must end with the same row selected.
         delete = frame.session_list.Delete
+        clear = frame.session_list.SetSelection  # the list's own, not the app's
         def drop(index):
             delete(index)
-            frame.session_list.SetSelection(wx.NOT_FOUND)
+            clear(wx.NOT_FOUND)
         monkeypatch.setattr(frame.session_list, 'Delete', drop)
     frame._open = info if loaded else other
     frame.on_delete_permanently()
@@ -215,9 +216,23 @@ def test_completion_preserves_other_selection_or_refocuses_unloaded_chat(
     focus_rows = []
     monkeypatch.setattr(frame.session_list, 'SetFocus',
                         lambda: focus_rows.append(list(frame._list_keys)))
+    # Selecting the row again when the list already has it selected can make a
+    # screen reader say it twice, so it's selected again only if it isn't.
+    after_delete, reselected = [], []
+    delete_now = frame.session_list.Delete
+    def watch_delete(index):
+        delete_now(index)
+        after_delete.append(frame.session_list.GetSelection())
+    monkeypatch.setattr(frame.session_list, 'Delete', watch_delete)
+    select_now = frame.session_list.SetSelection
+    def watch_select(row):
+        reselected.append(row)
+        select_now(row)
+    monkeypatch.setattr(frame.session_list, 'SetSelection', watch_select)
     work[0][1]({}, False)
     assert frame._list_keys == [other.key]
     assert frame.session_list.GetSelection() == 0
+    assert reselected == ([] if after_delete == [0] else [0])
     assert frame._open is (None if loaded else other)
     assert focus_rows == ([ [other.key] ] if loaded else [])
 
