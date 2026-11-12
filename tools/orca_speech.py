@@ -364,6 +364,12 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # A GTK message box is read as "alert Warning" and its text, not its title
+    # (CI on #634), so the question is checked, and No, the default, focused.
+    Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
+         expect=["permanently?", "subagent chats", "No push button"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Cancel Codex deletion", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote
     # has a main branch, with A new worktree chosen and a new branch typed.
     Step("New Session, a new branch in a new worktree", [], trigger="start-from",
@@ -600,6 +606,28 @@ def _codex_dialog(name, frame, env) -> None:
     getattr(ui_probe, name)(frame, env)()
 
 
+def codex_delete_confirmation(frame, env) -> None:
+    """A synthetic chat: exercise only the native confirmation's No path.
+    Its message box is real while it's open, as Connected Tools' are: the
+    probe's stand-in answers Yes at once, so the confirmation was never shown
+    or read (#634 CI). Nothing is sent to Codex even if Yes were pressed."""
+    import wx
+    import wx._core
+    from thechatplace.own_store import OwnSession
+    record = OwnSession('orca-delete-preview', 'Codex deletion preview', str(env['tmp']),
+                        provider='codex', started=True)
+    frame.store.add(record)
+    stand_in, work = wx.MessageBox, frame._codex_work
+    wx.MessageBox = wx._core.MessageBox
+    frame._codex_work = lambda action, done: None
+    try:
+        frame._delete_codex(record.to_info())
+    finally:
+        wx.MessageBox, frame._codex_work = stand_in, work
+        frame._codex_deleting.discard(record.to_info().key)
+        frame.store.remove(record.cli_session_id, provider='codex')
+
+
 def codex_tools(frame, env) -> None:
     """Connected Tools for a Codex chat started here (#596), over the window
     without opening a Codex chat in it, so the steps after still have the
@@ -733,6 +761,7 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
     "refresh": lambda frame, env: refresh(frame),

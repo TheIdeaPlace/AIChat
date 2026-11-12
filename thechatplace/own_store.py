@@ -610,7 +610,13 @@ class OwnSessionStore:
                     self._extras[session.identity] = extras
                 raise
         if provider == 'codex':
+            # What The Chat Place saved for the chat goes with its entry: its
+            # task list, its Allow for This Chat rules and its automatic
+            # review history (#634). Delete Session Permanently comes here
+            # whether Codex deleted the chat or no longer had it.
             # Repeating removal also retries cleanup after a sharing violation.
             CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
-            from .providers.codex_permissions import CodexPermissionStore
-            CodexPermissionStore(self.path.parent / 'provider-permissions' / 'codex').remove(cli_session_id)
+            from .providers.codex_permissions import CodexPermissionStore, CodexReviewStore
+            permissions = self.path.parent / 'provider-permissions' / 'codex'
+            CodexPermissionStore(permissions).remove(cli_session_id)
+            CodexReviewStore(permissions).remove(cli_session_id)

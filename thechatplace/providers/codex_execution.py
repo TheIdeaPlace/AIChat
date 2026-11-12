@@ -37,11 +37,15 @@ class CodexTurnState:
 
 
 class CodexExecutionConnection(CodexLifecycleConnection):
-    from .codex_features import ACTION_METHODS, READ_METHODS
-    METHODS = CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt', 'mcpServer/oauth/login', 'config/mcpServer/reload'} | ACTION_METHODS | READ_METHODS
+    from .codex_features import ACTION_METHODS, READ_METHODS, DELETE_METHOD
+    METHODS = (CodexLifecycleConnection.METHODS | {'turn/start', 'turn/steer', 'turn/interrupt', 'mcpServer/oauth/login', 'config/mcpServer/reload'}
+               | ACTION_METHODS | READ_METHODS | {DELETE_METHOD})
 
     def request(self, method, params):
-        from .codex_features import ACTION_METHODS, READ_METHODS, validate_action, CodexFeatureError
+        from .codex_features import ACTION_METHODS, READ_METHODS, DELETE_METHOD, validate_action, CodexFeatureError
+        if method == DELETE_METHOD:
+            # Only delete_owned_thread sends it (#634).
+            raise CodexFeatureError('invalid')
         if method in ACTION_METHODS | READ_METHODS:
             validate_action(method, params)
             with self._runtime_lock:
@@ -58,6 +62,39 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                 thread = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False}).get('thread')
                 check_startable(self, proof.native_id, thread, check_turns=False)
         return super().request(method, params)
+
+    def delete_owned_thread(self, native_id, proof=None):
+        """The one way thread/delete is sent (#634), for a chat The Chat Place
+        started (the runtime checks its record). ``proof``: the chat's proof if
+        it's loaded on this connection, which must be the one held for it; a
+        chat not loaded here has none, and this connection mustn't hold one.
+
+        Nothing is resumed or loaded first: Codex deletes a thread that isn't
+        loaded, or is archived, and shuts down one that is (codex-rs
+        thread_delete.rs, 0.163). Nor are the folder or turn route checked:
+        those guard turns, and deleting runs none, so a chat whose folder was
+        removed can still be deleted."""
+        from .codex_features import DELETE_METHOD, validate_action, CodexFeatureError
+        from .codex_rpc import is_chatgpt_account, CodexDeleteUnanswered
+        params = {'threadId': native_id}
+        validate_action(DELETE_METHOD, params, deleting=True)
+        with self._runtime_lock:
+            held = self._runtime_threads.get(native_id)
+        if held is not proof or (proof is not None and not self.owns_runtime(proof)):
+            raise CodexFeatureError('unavailable')
+        if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
+            raise CodexTurnRejected('chatgpt_required')
+        sent = []
+        try:
+            return super().request(DELETE_METHOD, params, on_sent=lambda: sent.append(True))
+        except CodexRpcError as error:
+            # Codex's own answer (a fresh error for each reply) says what it
+            # did. With no answer to a delete that went, it may be gone; one
+            # that never went (connection closed, too many waiting) left the
+            # chat as it was. The connection's shared failure isn't changed.
+            if sent and getattr(error, 'rpc_code', None) is None:
+                raise CodexDeleteUnanswered() from error
+            raise
 
     def __init__(self, *args, **kwargs):
         self.session_tools = kwargs.pop("session_tools", False)
@@ -78,6 +115,12 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             raise CodexRpcError('Codex execution requires a persistent owned chat')
         with self._runtime_lock:
             self._runtime_threads[proof.native_id] = proof
+
+    def _forget_owned_thread(self, proof) -> None:
+        """A deleted thread can no longer authorize requests in this connection."""
+        with self._runtime_lock:
+            if self._runtime_threads.get(proof.native_id) is proof:
+                self._runtime_threads.pop(proof.native_id)
 
     def loaded_caller(self, native_id):
         with self._runtime_lock:

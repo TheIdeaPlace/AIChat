@@ -30,8 +30,25 @@ class Connection:
     def _accept_owned_thread(self, proof):
         self.proofs[proof.native_id] = proof
 
+    def _forget_owned_thread(self, proof):
+        if self.proofs.get(proof.native_id) is proof:
+            self.proofs.pop(proof.native_id)
+
     def owns_runtime(self, proof):
         return not self.closed and self.proofs.get(proof.native_id) is proof
+
+    def delete_owned_thread(self, native_id, proof=None):
+        # As CodexExecutionConnection's: the only way thread/delete is sent,
+        # with the loaded chat's proof or, for one not loaded here, none.
+        assert self.proofs.get(native_id) is proof
+        self.request('account/read', {'refreshToken': True})
+        try:
+            return self.request('thread/delete', {'threadId': native_id})
+        except CodexRpcError as error:
+            if getattr(error, 'rpc_code', None) is None:
+                from thechatplace.providers.codex_rpc import CodexDeleteUnanswered
+                raise CodexDeleteUnanswered() from error
+            raise
 
     def pop_event(self):
         if self.closed:
@@ -67,7 +84,7 @@ class Connection:
                 assert self.release.wait(5)
             self.turns += 1
             return {'turn': {'id': f'turn-{self.turns}', 'status': 'inProgress'}}
-        if method == 'turn/interrupt':
+        if method in ('turn/interrupt', 'thread/delete'):
             return {}
         raise AssertionError(method)
 

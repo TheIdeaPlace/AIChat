@@ -116,7 +116,7 @@ def test_anchor_handles_pagination_and_refuses_unfinished_turn():
     ('thread/backgroundTerminals/terminate', {'processId': '../other'}),
     ('thread/compact/start', {'config': {}}),
     ('thread/backgroundTerminals/list', {'cursor': '', 'limit': True}),
-    ('thread/delete', {}),
+    ('thread/delete', {'recursive': False}),
 ])
 def test_feature_validation_does_not_admit_autonomy_or_arbitrary_options(method, args):
     with pytest.raises(CodexFeatureError):
@@ -147,6 +147,566 @@ def test_feature_refuses_active_turn_and_never_replays_unknown_mutation():
             service.feature(record, 'thread/memoryMode/set', {'mode': 'disabled'})
         assert len(mutations) == 1 and not service.ready(record)
     finally:
+        service.close()
+
+
+def test_only_an_owned_codex_chat_has_delete_capability():
+    from thechatplace.providers.codex import CodexProvider
+    service, connection, _ = runtime()
+    try:
+        provider = CodexProvider(connection, runtime=service)
+        assert provider.capabilities(_session()).delete
+        assert not provider.capabilities(_session(is_own=False)).delete
+        assert not CodexProvider(connection).capabilities(_session()).delete
+    finally:
+        service.close()
+
+
+def test_delete_retires_only_the_selected_owned_chat():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Delete this')
+        other = service.create('/workspace', 'Keep this')
+        original = connection.request
+        deleted = []
+        def request(method, params):
+            if method == 'thread/delete':
+                deleted.append(params)
+                return {}
+            return original(method, params)
+        connection.request = request
+        assert service.delete(record) == {}
+        assert deleted == [{'threadId': record.cli_session_id}]
+        assert not service.known(record.cli_session_id)
+        assert record.cli_session_id not in connection.proofs
+        assert service.ready(other)
+        for action in (service.prepare, service.reopen):
+            with pytest.raises(CodexRpcError):
+                action(record)
+        from thechatplace.providers.codex_runtime import CodexThreadGone
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+        assert len(deleted) == 1
+    finally:
+        service.close()
+
+
+def test_delete_refuses_a_running_chat_and_unowned_record_before_rpc():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Working')
+        with pytest.raises(CodexRpcError):
+            service.delete(replace(record, provider='claude'))
+        service.send(record, 'Work')
+        with pytest.raises(CodexFeatureError, match='finish'):
+            service.delete(record)
+        assert not any(m == 'thread/delete' for m, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def _missing(native_id):
+    """thread/delete's answer that it has no such thread, as the connection keeps it."""
+    error = CodexRpcError('Codex request failed')
+    error.rpc_code, error.unknown_method, error.missing_thread = -32600, False, native_id
+    return error
+
+
+def _answered(code):
+    error = CodexRpcError('Codex request failed')
+    error.rpc_code, error.unknown_method, error.missing_thread = code, False, None
+    return error
+
+
+def _deletes(connection, *answers):
+    """thread/delete answers with each of ``answers`` in turn (an exception is
+    raised), then succeeds. Returns the list of requests it got."""
+    original = connection.request
+    sent = []
+    def request(method, params):
+        if method == 'thread/delete':
+            sent.append(params)
+            connection.calls.append((method, params))
+            if len(sent) <= len(answers):
+                raise answers[len(sent) - 1]
+            return {}
+        return original(method, params)
+    connection.request = request
+    return sent
+
+
+def _restarted(record):
+    """A new runtime, as after The Chat Place restarts: ``record`` isn't loaded."""
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    from test_codex_runtime import Connection
+    connection = Connection()
+    return CodexChatRuntime(lambda state: None, factory=lambda exe: connection), connection
+
+
+def _made(title='Chat', cwd='/workspace'):
+    first, _, _ = runtime()
+    try:
+        return first.create(cwd, title)
+    finally:
+        first.close()
+
+
+def test_delete_after_a_lost_reply_can_simply_be_tried_again():
+    # Deleting twice is safe: Codex either deletes it or says it's not found.
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Uncertain')
+        sent = _deletes(connection, CodexRpcError('Synthetic lost response'))
+        with pytest.raises(CodexRpcError):
+            service.delete(record)
+        # Kept, and no sending until it's settled: it may have gone.
+        assert service.known(record.cli_session_id) and not service.ready(record)
+        assert service.delete(record) == {}
+        assert len(sent) == 2 and not service.known(record.cli_session_id)
+    finally:
+        service.close()
+
+
+def test_delete_after_a_lost_reply_finds_the_chat_already_gone():
+    # The first delete worked but its reply was lost: Codex now says the
+    # thread isn't there, so the entry can go.
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Lost reply')
+        sent = _deletes(connection, CodexRpcError('Synthetic lost response'), _missing(record.cli_session_id))
+        with pytest.raises(CodexRpcError):
+            service.delete(record)
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+        assert len(sent) == 2
+        assert not service.known(record.cli_session_id) and record.cli_session_id not in connection.proofs
+        # Gone for good here, as a chat deleted here is: nothing reopens it,
+        # and deleting again sends nothing.
+        with pytest.raises(CodexRpcError):
+            service.reopen(record)
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+        assert len(sent) == 2
+    finally:
+        service.close()
+
+
+def test_after_an_unanswered_delete_stop_and_sending_say_to_delete_again():
+    # The delete went through but its reply was lost. Stop's recheck would
+    # ask about a thread Codex no longer has, which settles nothing: it says
+    # to delete again, and so does sending, and deleting again finishes it.
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Lost reply')
+        _deletes(connection, CodexRpcError('Synthetic timeout'), _missing(record.cli_session_id))
+        with pytest.raises(CodexFeatureError) as lost:
+            service.delete(record)
+        assert lost.value.code == 'delete_unconfirmed' and 'Delete it again' in str(lost.value)
+        assert service.snapshot(record.cli_session_id).problem == str(lost.value)
+        before = len(connection.calls)
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.recover(record)
+        with pytest.raises(CodexRpcError, match='Delete it again'):
+            service.send(record, 'Too soon')
+        # Opening it again says the same, though it's still loaded here.
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.prepare(record)
+        assert connection.calls[before:] == []  # nothing asked of Codex
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+    finally:
+        service.close()
+
+
+def test_after_an_unanswered_delete_of_a_chat_not_loaded_here():
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    record = _made('Not loaded')
+    service, connection = _restarted(record)
+    try:
+        _deletes(connection, CodexRpcError('Synthetic timeout'), _missing(record.cli_session_id))
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.delete(record)
+        # Opening it to send is refused the same way, with nothing resumed.
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.prepare(record)
+        assert not any(m == 'thread/resume' for m, _ in connection.calls)
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+    finally:
+        service.close()
+
+
+def test_a_delete_refused_after_an_unanswered_one_unblocks_the_chat():
+    # Codex answering without deleting says the chat is still there.
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Still there')
+        _deletes(connection, CodexRpcError('Synthetic timeout'), _answered(-32600))
+        with pytest.raises(CodexFeatureError, match='Delete it again'):
+            service.delete(record)
+        with pytest.raises(CodexFeatureError) as refused:
+            service.delete(record)
+        assert refused.value.code == 'refused' and service.ready(record)
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize('code,reason', [(-32600, 'refused'), (-32601, 'unsupported')])
+def test_codex_refusing_a_delete_keeps_the_chat_usable(code, reason):
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Refused')
+        _deletes(connection, _answered(code))
+        with pytest.raises(CodexFeatureError) as raised:
+            service.delete(record)
+        assert raised.value.code == reason and service.ready(record)
+    finally:
+        service.close()
+
+
+def test_a_failure_before_the_delete_is_sent_changes_nothing():
+    # The account check timed out: no delete went, so nothing is blocked.
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Not sent')
+        original = connection.request
+        def request(method, params):
+            if method == 'account/read':
+                raise CodexRpcError('Synthetic timeout')
+            return original(method, params)
+        connection.request = request
+        with pytest.raises(CodexRpcError) as raised:
+            service.delete(record)
+        assert not isinstance(raised.value, CodexFeatureError)
+        assert not any(m == 'thread/delete' for m, _ in connection.calls)
+        assert service.ready(record) and not service.snapshot(record.cli_session_id).problem
+    finally:
+        service.close()
+
+
+def test_delete_refuses_a_chat_whose_turn_has_not_ended():
+    # Waiting on an approval, or a status Codex hasn't settled: not deleted.
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Waiting')
+        proof = connection.proofs[record.cli_session_id]
+        snapshot = service._executor.snapshot
+        service._executor.snapshot = lambda p: (replace(snapshot(p), status='waitingOnApproval')
+                                                if p is proof else snapshot(p))
+        with pytest.raises(CodexFeatureError, match='finish'):
+            service.delete(record)
+        assert not any(m == 'thread/delete' for m, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def test_a_chat_loaded_on_an_earlier_connection_is_deleted_as_not_loaded():
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Earlier connection')
+        # The connection it was loaded on has gone: this one doesn't hold it.
+        connection.proofs.pop(record.cli_session_id)
+        given = []
+        original = connection.delete_owned_thread
+        connection.delete_owned_thread = lambda native_id, proof=None: (
+            given.append(proof) or original(native_id, proof))
+        assert service.delete(record) == {}
+        assert given == [None] and not service.known(record.cli_session_id)
+    finally:
+        service.close()
+
+
+def test_delete_after_a_restart_sends_only_the_delete():
+    # Not resumed or loaded first (#634 review): Codex deletes a thread that
+    # isn't loaded, or is archived (thread/resume refuses an archived one).
+    record = _made('After restart')
+    service, connection = _restarted(record)
+    try:
+        assert service.delete(record) == {}
+        assert [m for m, _ in connection.calls] == ['account/read', 'thread/delete']
+        assert connection.calls[-1][1] == {'threadId': record.cli_session_id}
+    finally:
+        service.close()
+
+
+def test_delete_of_a_chat_whose_folder_was_removed(tmp_path):
+    # Its folder deleted in a cleanup: it couldn't be reopened (the saved
+    # grant's folder is checked), but it can still be deleted, as nothing
+    # runs in it.
+    folder = tmp_path / 'removed'
+    folder.mkdir()
+    record = _made('Folder gone', str(folder))
+    folder.rmdir()
+    service, connection = _restarted(record)
+    try:
+        assert service.delete(record) == {}
+        assert not any(m in ('thread/resume', 'thread/read', 'config/read') for m, _ in connection.calls)
+    finally:
+        service.close()
+
+
+def test_delete_after_a_restart_of_a_chat_codex_no_longer_has():
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    record = _made('Gone after restart')
+    service, connection = _restarted(record)
+    try:
+        _deletes(connection, _missing(record.cli_session_id))
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize('error', [
+    CodexRpcError('Synthetic timeout'),           # no answer from Codex at all
+    _answered(-32600),                            # refused, but not "no such thread"
+    _answered(-32603),                            # Codex's own failure
+    _missing('some-other-thread'),                # about a different thread
+])
+def test_delete_keeps_a_chat_codex_did_not_say_was_gone(error):
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    record = _made('Still there')
+    service, connection = _restarted(record)
+    try:
+        _deletes(connection, error)
+        with pytest.raises(CodexRpcError) as raised:
+            service.delete(record)
+        assert not isinstance(raised.value, CodexThreadGone)
+        # And it can be tried again.
+        assert service.delete(record) == {}
+    finally:
+        service.close()
+
+
+def test_delete_of_an_already_deleted_chat_sends_nothing():
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Deleted, entry not saved')
+        _deletes(connection)
+        assert service.delete(record) == {}
+        # The Chat Place couldn't save its list afterwards; trying again
+        # finds nothing to delete rather than an error that keeps the entry.
+        before = len(connection.calls)
+        with pytest.raises(CodexThreadGone):
+            service.delete(record)
+        assert len(connection.calls) == before
+    finally:
+        service.close()
+
+
+def test_delete_guards_an_entry_saved_as_never_started():
+    # No Codex chat this release makes is saved unstarted
+    # (CodexOwnedThread.record); this guards an older or hand-edited entry,
+    # which has no thread to delete.
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Real')
+        before = len(connection.calls)
+        with pytest.raises(CodexThreadGone):
+            service.delete(replace(record, cli_session_id='hand-edited', started=False))
+        assert len(connection.calls) == before
+    finally:
+        service.close()
+
+
+def test_a_new_chat_with_no_turn_yet_is_deleted_through_codex():
+    # Loaded but with no turn yet: Codex deletes a live thread before its
+    # rollout exists (thread_delete_handles_live_threads_before_rollout_exists).
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Empty')
+        sent = _deletes(connection)
+        assert service.delete(record) == {}
+        assert sent == [{'threadId': record.cli_session_id}] and not service.known(record.cli_session_id)
+    finally:
+        service.close()
+
+
+def test_a_deleted_chat_saves_nothing_more(tmp_path):
+    # Its saved task list and reviews are removed with its entry; a late
+    # update mustn't write them back.
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.providers.codex_permissions import CodexReviewStore
+    service, connection, _ = runtime()
+    try:
+        service.plan_store = CodexPlanStore(tmp_path / 'tasks')
+        service.review_store = CodexReviewStore(tmp_path / 'permissions')
+        record = service.create('/workspace', 'Deleted')
+        _deletes(connection)
+        service.delete(record)
+        state = service.snapshot(record.cli_session_id)
+        service._save_for_later(record.cli_session_id, replace(
+            state, plan_received=True, permission_notices=(('turn-1', 'review', 'Allowed'),)))
+        assert not any(tmp_path.rglob('*.json'))
+    finally:
+        service.close()
+
+
+def _delete_connection():
+    """A real CodexExecutionConnection's request path, with no Codex behind it."""
+    import queue
+    import threading
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    c = object.__new__(CodexExecutionConnection)
+    c._runtime_lock, c._lock, c._closed = threading.Lock(), threading.Lock(), False
+    c._runtime_threads, c._pending, c._next_id, c._initialized = {}, {}, 0, True
+    c._outgoing, c._timeout, c._failure = queue.Queue(), 5, None
+    c._abandoned, c._abandoned_before = set(), 0
+    c.request = lambda method, params: {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+    return c
+
+
+def test_only_a_delete_that_went_can_be_unanswered():
+    # A delete that never went (connection closed, too many waiting) left the
+    # chat as it was; one that went with no answer may have deleted it.
+    import json
+    import threading
+    from thechatplace.providers.codex_rpc import CodexDeleteUnanswered, missing_thread
+    c = _delete_connection()
+    c._closed = True
+    with pytest.raises(CodexRpcError) as closed:
+        c.delete_owned_thread('owned')
+    assert not isinstance(closed.value, CodexDeleteUnanswered) and c._outgoing.empty()
+    c._closed = False
+    c._pending = {n: object() for n in range(c.MAX_PENDING)}
+    with pytest.raises(CodexRpcError) as full:
+        c.delete_owned_thread('owned')
+    assert not isinstance(full.value, CodexDeleteUnanswered) and c._outgoing.empty()
+    c._pending, c._timeout = {}, 0.05
+    with pytest.raises(CodexDeleteUnanswered):
+        c.delete_owned_thread('owned')
+    assert json.loads(c._outgoing.get_nowait())['method'] == 'thread/delete'
+    # Codex's own answer comes through as it was.
+    c._timeout = 5
+    def answer():
+        sent = json.loads(c._outgoing.get(timeout=5))
+        c._receive({'id': sent['id'], 'error': {'code': -32600, 'message': 'thread not found: owned'}})
+    worker = threading.Thread(target=answer)
+    worker.start()
+    with pytest.raises(CodexRpcError) as answered:
+        c.delete_owned_thread('owned')
+    worker.join(5)
+    assert not isinstance(answered.value, CodexDeleteUnanswered)
+    assert missing_thread(answered.value, 'owned')
+
+
+def test_thread_delete_is_sent_only_by_deleting_an_owned_chat(monkeypatch):
+    """#512 refused thread/delete outright. It's allowed now (#634), but only
+    from Delete Session Permanently on a Codex chat started here: not as an
+    ordinary action, not through feature(), not as a plain request."""
+    from thechatplace.providers import codex_features
+    from thechatplace.providers.codex import CodexProvider
+    from thechatplace.session_controller import SessionController
+    delete = codex_features.DELETE_METHOD
+    assert delete == 'thread/delete'
+    assert delete not in codex_features.ACTION_METHODS | codex_features.READ_METHODS
+    with pytest.raises(CodexFeatureError):
+        validate_action(delete, {'threadId': 'owned'})
+    validate_action(delete, {'threadId': 'owned'}, deleting=True)
+    # The delete path admits nothing else, and nothing beside the thread.
+    for method in codex_features.ACTION_METHODS | codex_features.READ_METHODS:
+        with pytest.raises(CodexFeatureError):
+            validate_action(method, {'threadId': 'owned'}, deleting=True)
+    with pytest.raises(CodexFeatureError):
+        validate_action(delete, {'threadId': 'owned', 'recursive': False}, deleting=True)
+
+    service, connection, _ = runtime()
+    try:
+        record = service.create('/workspace', 'Not like this')
+        sessions = SessionController([CodexProvider(connection, runtime=service)])
+        for attempt in (lambda: service.feature(record, delete),
+                        lambda: sessions.owned_action('feature', record, delete)):
+            with pytest.raises(CodexFeatureError):
+                attempt()
+        assert not any(m == delete for m, _ in connection.calls) and service.ready(record)
+        # Only the delete path sends it, for the owned chat it was given.
+        sent = _deletes(connection)
+        sessions.owned_action('delete', record)
+        assert sent == [{'threadId': record.cli_session_id}]
+    finally:
+        service.close()
+
+    # The execution connection refuses it as a plain request, sending nothing.
+    import threading
+    from thechatplace.providers.codex_execution import CodexExecutionConnection
+    from thechatplace.providers.codex_owned import CodexOwnedThread
+    from thechatplace.providers.codex_rpc import ReadOnlyCodexConnection
+    c = object.__new__(CodexExecutionConnection)
+    c._runtime_lock, c._lock, c._closed = threading.Lock(), threading.Lock(), False
+    proof = CodexOwnedThread('owned', '/workspace', 'gpt-default', 'Test', 0, c)
+    c._runtime_threads = {'owned': proof}
+    calls = []
+    account = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
+    monkeypatch.setattr(ReadOnlyCodexConnection, 'request',
+                        lambda self, m, p, on_sent=None: calls.append(m) or (account if m == 'account/read' else {}))
+    with pytest.raises(CodexFeatureError):
+        c.request(delete, {'threadId': 'owned'})
+    # A loaded chat only with the proof held for it; and none claimed for it.
+    stale = CodexOwnedThread('owned', '/workspace', 'gpt-default', 'Test', 0, c)
+    for wrong in (stale, None):
+        with pytest.raises(CodexFeatureError):
+            c.delete_owned_thread('owned', wrong)
+    # A chat not loaded here mustn't come with a proof either.
+    with pytest.raises(CodexFeatureError):
+        c.delete_owned_thread('other', proof)
+    assert not calls
+    # With the right proof, or none for a chat not loaded: the ChatGPT check,
+    # then the delete. No folder or route check (#634 review).
+    from thechatplace.providers.codex_policy import CodexPolicy
+    monkeypatch.setattr(CodexPolicy, 'verify_workspace',
+                        lambda *a: pytest.fail('deleting runs nothing in the folder'))
+    c.delete_owned_thread('owned', proof)
+    c.delete_owned_thread('other')
+    assert calls == ['account/read', delete] * 2
+    calls.clear()
+    account['account']['type'] = 'apiKey'
+    with pytest.raises(CodexTurnRejected, match='ChatGPT'):
+        c.delete_owned_thread('other')
+    assert calls == ['account/read']
+
+
+def test_delete_serializes_with_sends_and_other_deletions():
+    import threading
+    service, connection, _ = runtime()
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    worker = None
+    try:
+        record = service.create('/workspace', 'Deleting')
+        original = connection.request
+        attempts = []
+        def request(method, params):
+            if method == 'thread/delete':
+                attempts.append(params)
+                entered.set()
+                assert release.wait(5)
+                return {}
+            return original(method, params)
+        connection.request = request
+        def delete():
+            try:
+                service.delete(record)
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=delete)
+        worker.start()
+        assert entered.wait(5)
+        with pytest.raises(CodexRpcError):
+            service.send(record, 'Too late')
+        with pytest.raises(CodexRpcError):
+            service.delete(record)
+        release.set()
+        worker.join(5)
+        assert not worker.is_alive() and not errors
+        assert len(attempts) == 1
+    finally:
+        release.set()
+        if worker is not None:
+            worker.join(5)
         service.close()
 
 
@@ -267,7 +827,10 @@ def test_settings_change_pins_default_and_defers_compaction_until_a_normal_turn(
         service.close()
 
 
-def test_feature_connection_rechecks_account_route_and_tools_before_mutation(monkeypatch):
+@pytest.mark.parametrize('method,arguments', [
+    ('thread/memoryMode/set', {'mode': 'disabled'}), ('thread/delete', {}),
+])
+def test_feature_connection_rechecks_account_route_and_tools_before_mutation(monkeypatch, method, arguments):
     import threading
     from thechatplace.providers.codex_execution import CodexExecutionConnection
     from thechatplace.providers.codex_owned import CodexOwnedThread
@@ -280,8 +843,10 @@ def test_feature_connection_rechecks_account_route_and_tools_before_mutation(mon
     calls = []
     account = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
     fake = LifecycleConnection()
-    def rpc(self, method, params):
+    def rpc(self, method, params, on_sent=None):
         calls.append((method, params))
+        if on_sent is not None:
+            on_sent()
         if method == 'account/read':
             return account
         if method == 'thread/read':
@@ -291,18 +856,24 @@ def test_feature_connection_rechecks_account_route_and_tools_before_mutation(mon
             pytest.fail('Unsent chats have no rollout history')
         return fake.request(method, params)
     monkeypatch.setattr(ReadOnlyCodexConnection, 'request', rpc)
-    c.request('thread/memoryMode/set', {'threadId': 'owned', 'mode': 'disabled'})
+    # Deleting has its own way in (#634); everything else is a plain request.
+    def send():
+        return (c.delete_owned_thread('owned', proof) if method == 'thread/delete'
+                else c.request(method, dict(arguments, threadId='owned')))
+    send()
     assert calls[0][0] == 'account/read'
-    assert [m for m, p in calls][-1] == 'thread/memoryMode/set'
+    assert [m for m, p in calls][-1] == method
     calls.clear()
     account['account']['type'] = 'apiKey'
     with pytest.raises(CodexTurnRejected, match='ChatGPT'):
-        c.request('thread/memoryMode/set', {'threadId': 'owned', 'mode': 'disabled'})
+        send()
     assert [m for m, p in calls] == ['account/read']
     calls.clear()
     c._runtime_threads.clear()
     with pytest.raises(CodexFeatureError):
         c.request('thread/goal/clear', {'threadId': 'owned'})
+    with pytest.raises(CodexFeatureError):
+        send()
     assert not calls
 
 
@@ -809,6 +1380,36 @@ def test_the_connection_notes_an_unknown_method_without_keeping_codexs_words():
     assert answer({'code': -32601}).unknown_method
     assert not answer({'code': -32600, 'message': 'turn is not active'}).unknown_method
     assert not answer('not a dict').unknown_method
+
+
+def test_the_connection_notes_which_thread_codex_says_is_missing():
+    # thread/delete's words in Codex 0.163 (#634); only the id is kept, never them.
+    import threading
+    from thechatplace.providers.codex_rpc import ReadOnlyCodexConnection, _Pending, missing_thread
+    connection = object.__new__(ReadOnlyCodexConnection)
+    connection._lock, connection._closed = threading.Lock(), False
+    connection._abandoned, connection._abandoned_before = set(), 0
+
+    def answer(error):
+        pending = _Pending()
+        connection._pending = {1: pending}
+        connection._receive({'id': 1, 'error': error})
+        return pending.error
+    said = 'thread not found: owned-1'
+    error = answer({'code': -32600, 'message': said})
+    assert error.missing_thread == 'owned-1' and said not in str(error)
+    assert missing_thread(error, 'owned-1') and not missing_thread(error, 'owned-2')
+    # Other methods' answers don't count: resume refuses an archived chat,
+    # which still exists ("session <id> is archived").
+    for error in ({'code': -32600, 'message': 'thread not loaded: owned-1'},
+                  {'code': -32600, 'message': 'no rollout found for thread id owned-1'},
+                  {'code': -32600, 'message': 'session owned-1 is archived'},
+                  {'code': -32603, 'message': 'thread not found: owned-1'},
+                  {'code': -32600, 'message': 'failed to delete thread: thread not found: owned-1'},
+                  {'code': -32600, 'message': 'thread not found: owned-1 and more'},
+                  {'code': -32600}, 'not a dict'):
+        assert not missing_thread(answer(error), 'owned-1')
+    assert not missing_thread(CodexRpcError('timed out'), 'owned-1')
 
 
 # -- changing the model, effort or mode (#467) ------------------------------------------

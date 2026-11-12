@@ -278,6 +278,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._codex_policy_pending = set()
         self._codex_delayed_updates = {}
         self._codex_finished = set()
+        # Codex chats Delete Session Permanently is waiting on (#634): sends
+        # and a second delete are refused until Codex answers.
+        self._codex_deleting = set()
         # Send Reply to Another Chat (#248): which chat last sent a reply to
         # which (to offer sending back first), and a message waiting for a
         # Codex chat to be ready.
@@ -1560,7 +1563,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_delete_permanently(self):
         """File, Delete Session Permanently (Shift+Delete): one of The Chat
-        Place's own sessions, gone for good, its Claude Code transcript with
+        Place's own supported sessions, gone for good, its transcript with
         it. It works from any view, hidden or not: having to hide a session
         first and then find it in the Hidden view was a hunt nobody could
         guess, and the confirmation (No by default) is the safeguard."""
@@ -1582,6 +1585,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                               APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
                 return
         if info is not None and info.provider != "claude" and not self._require_capability("delete", info):
+            return
+        if info is not None and info.provider == "codex":
+            self._delete_codex(info)
             return
         if info is None:
             self._feedback("No session selected.")
@@ -1740,10 +1746,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             refocus = True
         index = self._list_keys.index(info.key) if info.key in self._list_keys else -1
         if index >= 0:
+            selected = self.session_list.GetSelection()
             self.session_list.Delete(index)
             del self._list_keys[index]
-            if self._list_keys:
-                self.session_list.SetSelection(min(index, len(self._list_keys) - 1))
+            # The selected row stays selected, set again explicitly: Windows
+            # moves the selection up with the rows after a deletion, but GTK
+            # and macOS drop it (#634). The deleted row's own selection goes
+            # to its neighbour, which moves into its place.
+            if self._list_keys and selected != wx.NOT_FOUND:
+                target = (min(index, len(self._list_keys) - 1) if selected == index
+                          else selected - 1 if selected > index else selected)
+                # Only when it isn't already there: on Windows it usually is,
+                # and selecting it again can make a screen reader say it twice.
+                if self.session_list.GetSelection() != target:
+                    self.session_list.SetSelection(target)
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()
@@ -3166,7 +3182,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             add("&Bring Back Session", self.on_unhide)
         else:
             add("H&ide Session\tDelete", self.on_hide)
-        if info.is_own or conversation or imported:
+        if info.is_own or conversation or imported or info.source == "kept":
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
         menu.AppendSeparator()
         add("Pr&operties...\tAlt+Enter", self.on_properties)
@@ -5128,6 +5144,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_send(self, _event=None):
         info = self._open
+        if info is not None and info.key in self._codex_deleting:
+            self._feedback('This chat is being deleted. Wait for it to finish first.')
+            return
         if info is not None and info.provider == AGENTS:
             message = self.reply_text.GetValue().strip()
             if not message:

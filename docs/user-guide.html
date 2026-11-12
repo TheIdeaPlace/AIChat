@@ -1356,7 +1356,7 @@ whether the chat was started here:</p>
 <tr>
 <td>Delete Session Permanently</td>
 <td>yes</td>
-<td>no</td>
+<td>chats started here</td>
 <td>no</td>
 </tr>
 <tr>
@@ -2665,9 +2665,15 @@ makes a Chat Place group of the same name, which is shown together with the desk
   own.</li>
 <li><strong>Delete</strong> hides a chat without changing it (on a Mac, Fn+Delete). View, Show Sessions, Hidden
   lists hidden chats, and File, Bring Back Session returns one.</li>
-<li><strong>Shift+Delete</strong> deletes a Claude chat started here permanently, conversation and all, after
-  you confirm (No is the default; on a Mac, Fn+Shift+Delete). Stop or finish its turn first.
-  Codex and Copilot chats can't be deleted here yet, and chats started elsewhere can
+<li><strong>Shift+Delete</strong> deletes a Claude or Codex chat started here permanently, conversation and all,
+  after you confirm (No is the default; on a Mac, Fn+Shift+Delete). Stop or finish its turn first.
+  A Codex chat is deleted by Codex itself, along with any subagent chats it started, even if it's
+  archived or its folder has gone. The Chat Place also deletes what it saved for the chat: its
+  task list, its Allow for This Chat rules and its automatic review history. If Codex no longer
+  has the chat (it was deleted already, say), it just leaves the list, and you hear that it was
+  already gone. If Codex doesn't answer, the chat stays, and can't be sent to until you delete it
+  again, which finishes the job. The Chat Place can only see a Codex chat working here, not in
+  the Codex app or a terminal. Copilot chats and chats started elsewhere can
   only be hidden; delete those where they were started. A restored or kept chat can be deleted:
   that deletes only The Chat Place's copy.</li>
 <li><strong>Shift+Delete on an agent conversation's row</strong> deletes the conversation, not its chats: they
@@ -3304,7 +3310,8 @@ support@theideaplace.net.</p>
 <li>Otherwise it writes only when you ask it to, apart from the desktop entry a Linux AppImage adds
   at its first start: an export goes where you save it, From GitHub
   clones into your GitHub folder, A new worktree is made in the repository's <code>.claude\worktrees</code>
-  folder, and Shift+Delete deletes a Claude chat's conversation file.</li>
+  folder, and Shift+Delete deletes a Claude chat's conversation file, or asks Codex to delete a
+  Codex chat (Codex removes its own files).</li>
 <li>Copilot CLI keeps its chats in <code>%USERPROFILE%\.copilot\session-state</code> (on a Mac or Linux,
   <code>~/.copilot/session-state</code>), or under <code>COPILOT_HOME</code> if you've set it. The Chat Place only
   reads them.</li>
