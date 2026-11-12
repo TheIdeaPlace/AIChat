@@ -165,7 +165,9 @@ STEPS = [
     # Assign would do, and Escape twice changes nothing.
     Step("Customize Keyboard Shortcuts", ["alt+t", "k"],
          expect=["Customize Keyboard Shortcuts", "New Session, Ctrl+N, File menu"]),
-    Step("Change Key", ["Return"], expect=["Change Key: New Session", "press the keys you want"]),
+    # Orca names the box by its visible label (GTK's labelled-by), so "Key:
+    # read only text" is what shows focus reached the box, not the title.
+    Step("Change Key", ["Return"], expect=["Change Key: New Session", "Key: read only text"]),
     Step("a key pressed in Change Key", ["ctrl+shift+v"],
          expect=["Ctrl+Shift+V", "Nobody has it"]),
     Step("Change Key closed, back in the list", ["Escape"],
