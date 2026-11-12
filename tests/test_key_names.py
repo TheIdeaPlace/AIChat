@@ -52,6 +52,11 @@ def test_ui_shortcut_literals_are_translated_except_native_menu_accelerators():
             ancestor = parent
             canonical = False
             while ancestor in parents:
+                if (path.name == 'commands.py' and isinstance(ancestor, ast.Call)
+                        and isinstance(ancestor.func, ast.Name) and ancestor.func.id == 'Command'):
+                    # A command's key is data: menu_label makes it a tab
+                    # accelerator or puts it through key_name (#575).
+                    canonical = True
                 if path.name == 'ui_text.py':
                     if isinstance(ancestor, ast.FunctionDef) and ancestor.name == 'key_name':
                         canonical = True

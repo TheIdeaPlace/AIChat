@@ -51,6 +51,12 @@ def test_the_menu_bar_is_the_list(frame):
                     check(item.GetSubMenu(), entry)
             elif entry.id == "check_for_updates":
                 assert item.GetItemLabel().startswith("Check for &Updates (running ")
+            elif entry.stock:
+                # A Mac names these itself ("Quit\tCtrl+Q") and puts them in
+                # its app menu; what matters is the stock id.
+                stock = {"preferences": wx.ID_PREFERENCES, "about": wx.ID_ABOUT,
+                         "exit": wx.ID_EXIT}
+                assert item.GetId() == stock[entry.stock]
             else:
                 assert item.GetItemLabel() == menu_label(entry)
                 assert item.IsCheckable() == entry.check
