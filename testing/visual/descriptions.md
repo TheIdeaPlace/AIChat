@@ -31,7 +31,7 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 
 **Since #564, in every Lists picture:** Kinds has an eighth row, Auto Approvals (named Approvals until #596), last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Auto Approvals, not available"; a Codex chat started here ends "Auto Approvals" and a count. The Lists pictures in the baseline took this row only on 2026-11-09 (#596, #608): the ones before it still had seven rows.
 
-**Since #596 (2026-11-09, #608):** light-100 and hc-aquatic-100 pictures of every screen whose words changed: Retry from Here (was Rewind to Here) and its new Files only picture, codex-rewind, Chat Options ("Run as agent"), Settings' task-list check box ("from the next turn"), the About permissions notes of New Session (Claude, Codex and Copilot), which now name Chat, Chat Settings, Copilot's Chat Permissions note, the plain-text shortcuts, and every Lists picture. Contrast was measured from the pixels; nothing new fell below 4.5:1. The formatted shortcuts page's first screen didn't change (its High Contrast picture didn't draw in the VM twice, a WebView2 blank, so its baseline was kept).
+**Since #596 (2026-11-09, #608):** light-100 and hc-aquatic-100 pictures of every screen whose words changed: Retry from Here (was Rewind to Here) and its new Files only picture, codex-rewind, Chat Options ("Run as agent"), Settings' task-list check box ("from the next turn"), the About permissions notes of New Session (Claude, Codex and Copilot), which now name File, Chat Settings, Copilot's Chat Permissions note, the plain-text shortcuts, and every Lists picture. Contrast was measured from the pixels; nothing new fell below 4.5:1. The formatted shortcuts page's first screen didn't change (its High Contrast picture didn't draw in the VM twice, a WebView2 blank, so its baseline was kept).
 
 ## main-start: Main window as it opens: session list, no session loaded
 
@@ -1023,7 +1023,7 @@ The same 751 by 360 dialog as usage. "Usage and context:" heads a white list, 71
 
 **What looks off:** The probe's first row says 2 tokens used and that the window's size isn't known, right above a breakdown with 14,431 tokens of messages and a free space figure. That's the made-up data: the breakdown is added to a session that has run no turn here.
 
-## stop-background-task: Chat, Stop Background Task (#468; in File until #596)
+## stop-background-task: Chat, Stop Background Task (#468; in File until #596, then in View until #575)
 
 wx's standard single-choice dialog, 578 by 189. "Background work in Visual probe. Stop which?", then a list 532 by 49 with two rows: "Run the synthetic probe project's full Windows build and tests, running 3 minutes 10 seconds" (selected) and "Watch CI, running 1 minute 5 seconds". The long row fits, ending short of the scroll bar. A separator line, then OK (default) and Cancel at the bottom right. Selected row white on #0078D4 (4.5:1), the other black on white (21:1); in High Contrast Aquatic #263B50 on aqua (7.9:1) and white on #202020 (16.3:1), with OK filled aqua.
 

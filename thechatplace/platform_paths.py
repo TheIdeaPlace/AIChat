@@ -1164,7 +1164,7 @@ class ClaudeLookup:
 _SCRIPT_SUFFIXES = (".cmd", ".bat", ".ps1")
 
 #: Claude Code's own install commands (https://code.claude.com/docs/en/setup),
-#: shown when it can't be found and run by Claude Code Sign-in.
+#: shown when it can't be found and run by Tools, Sign In, Claude Code.
 INSTALL_SH = "curl -fsSL https://claude.ai/install.sh | bash"
 INSTALL_PS1 = "irm https://claude.ai/install.ps1 | iex"
 INSTALL_CMD = ("curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd "
@@ -1181,7 +1181,7 @@ def claude_install_help() -> str:
     else:
         commands = f"In a terminal:\n    {INSTALL_SH}"
     return (f"To install it, run its native installer. {commands}\n"
-            "Then run claude once to sign in, or use Claude Code Sign-in here again.")
+            "Then run claude once to sign in, or choose Tools, Sign In, Claude Code again.")
 
 
 def _native_candidates() -> List[Path]:

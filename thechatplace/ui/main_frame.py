@@ -3085,7 +3085,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _session_menu(self):
         """The session list's context menu (#89), as (menu, {item id:
-        handler}). The commands are the Session menu's, for the selected row."""
+        handler}). The commands for the selected row, from the Session, File
+        and Chat menus."""
         info = self._selected_session()
         menu = wx.Menu()
         actions = {}

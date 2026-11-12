@@ -270,7 +270,7 @@ STEPS = [
     Step("Chat Options closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Mute All Sounds (#250), said whatever the announcements level, and Tools, Sounds, by the
-    # trigger as the item has no access key: Tab through every control, then Escape back out.
+    # trigger: Tab through every control, then Escape back out.
     Step("Mute All Sounds", ["ctrl+shift+x"], expect=["Sounds muted"]),
     Step("Mute All Sounds again", ["ctrl+shift+x"], expect=["Sounds not muted"]),
     Step("Sounds", [], trigger="sounds", expect=["Sounds", "Play sounds"],
@@ -326,7 +326,7 @@ STEPS = [
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Chat, Stop Background Task (#468, #596), opened by the trigger once the
-    # open chat's turn has background work: the item has no access key.
+    # open chat's turn has background work, which only the trigger can make.
     Step("Stop Background Task", [], trigger="background",
          expect=["Stop Background Task", "Windows build, running"]),
     Step("the next task", ["Down"], expect=["Watch CI"]),

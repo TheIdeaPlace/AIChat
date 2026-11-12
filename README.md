@@ -113,7 +113,7 @@ too).
   unavailable status means live state could not be verified. After an uncertain send, use Stop
   (Ctrl+Period) to recheck the chat, and check its history before sending again.
 - **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
-  VoiceOver on a Mac, or a right-click) has the Session menu's commands for the selected session:
+  VoiceOver on a Mac, or a right-click) has the commands for the selected session:
   load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
 
 ### Reading a chat
@@ -1248,7 +1248,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   "No sound" for an event without one, or that its file is missing (and plays the built-in sound,
   as the event would). The **Sound Tutorial** button in Tools, Sounds (Alt+U) opens it too, playing
   the scheme and volume showing in Sounds, changes not yet kept included. **Mute All Sounds**
-  (Ctrl+Shift+X, or View; Tools, Sounds has no mute of its own) silences everything at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
+  (Ctrl+Shift+X, or Tools, Mute All Sounds; Sounds has no mute of its own) silences everything at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not
   under Do Not Disturb, which Windows doesn't let apps detect: use Mute for that. Windows plays its
   own sound with each notification, so you can hear two; **Disable Windows sound for The Chat Place's
