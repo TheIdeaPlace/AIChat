@@ -1377,9 +1377,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   itself, along with any subagent chats it started, even if it's archived or its folder has
   gone. The Chat Place also deletes what it saved for a Codex chat: its task list, its Allow for
   This Chat rules and its automatic review history. A Codex chat Codex no longer has (deleted
-  already, say) just leaves the list, and "was already gone" is said. If Codex can't confirm
-  the deletion, the chat stays, and you can try again. It waits while the session is working,
-  here or in a terminal.
+  already, say) just leaves the list, and "was already gone" is said. If Codex doesn't answer,
+  the chat stays, and can't be sent to until you delete it again, which finishes the job. A
+  Claude chat waits while it's working, here or in a terminal; a Codex chat is refused while
+  it's working here (The Chat Place can't see the Codex app or a terminal using it).
   Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
   can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).

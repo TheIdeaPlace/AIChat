@@ -2657,8 +2657,9 @@ makes a Chat Place group of the same name, which is shown together with the desk
   archived or its folder has gone. The Chat Place also deletes what it saved for the chat: its
   task list, its Allow for This Chat rules and its automatic review history. If Codex no longer
   has the chat (it was deleted already, say), it just leaves the list, and you hear that it was
-  already gone. If Codex can't confirm the deletion, the chat stays and you can try again.
-  Copilot chats and chats started elsewhere can
+  already gone. If Codex doesn't answer, the chat stays, and can't be sent to until you delete it
+  again, which finishes the job. The Chat Place can only see a Codex chat working here, not in
+  the Codex app or a terminal. Copilot chats and chats started elsewhere can
   only be hidden; delete those where they were started. A restored or kept chat can be deleted:
   that deletes only The Chat Place's copy.
 - **Shift+Delete on an agent conversation's row** deletes the conversation, not its chats: they
