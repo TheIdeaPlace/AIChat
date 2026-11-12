@@ -35,7 +35,7 @@ The preview checkout is not modified. `f859738` is an implementation checkpoint,
   no login identity. Check that canceling the address dialog opens no browser.
 - Ask a test server for a form. Answer should expose named controls, validate missing required answers,
   preserve numeric zero, and leave the request waiting on Escape. Decline sends no form content.
-- Ask Codex to delegate a small test task. View, Subagents should expose each child and its speaker
+- Ask Codex to delegate a small test task. Tools, Subagents should expose each child and its speaker
   names. Child approvals identify the subagent; a finished child must not leave an answerable request.
 - With Show Tool Activity on, read a reasoning summary. It must not be spoken as a final reply.
   If Codex reports a retry, listen for one notice per changed status and check Turn Status.

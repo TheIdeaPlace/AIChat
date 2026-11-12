@@ -2,7 +2,7 @@
 
 Provider adapters supply ``TaskStep`` lists. Claude transcript parsing and
 Codex live plan updates stay in their respective adapters. This module says it: a row for each task in
-View, Lists, the progress line Turn Status and Properties give, and what's
+Tools, Lists, the progress line Turn Status and Properties give, and what's
 announced when a task is marked done. No window is needed, so it's all tested
 without one.
 """

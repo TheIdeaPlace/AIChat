@@ -21,9 +21,10 @@ Accessibility decisions, and why
 * **The full message opens from the list** (Enter, or the context menu) in a
   read-only multiline text box in a dialog, to read by line, word and
   character. Escape closes it, back on the same message.
-* **Mnemonics stay off the menu bar's letters.** Menus are File, View and
-  Help, so no control on a page uses Alt+F, Alt+V or Alt+H (a panel mnemonic
-  would take the letter away from the menu).
+* **Mnemonics stay off the menu bar's letters.** Menus are File, Session,
+  Chat, View, Tools and Help (#575), so no control in the window uses Alt+F,
+  S, C, V, T or H (a panel mnemonic would take the letter away from the
+  menu). tests/test_commands.py's WINDOW_ACCESS_KEYS lists the controls'.
 * **Refreshes do not move the reader.** The list is only rewritten where it
   changed, and the selection follows the same session, not the same row.
 * **Announcements are spoken through the screen reader** (or a system
@@ -387,7 +388,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # for idle time, so a menu VO+Shift+M scheduled just before Cmd+Q
         # would otherwise still open, on a hidden window that has stopped.
         self._closing = False
-        self._properties_busy = False  # View, Properties reading a transcript (#214)
+        self._properties_busy = False  # Session, Properties reading a transcript (#214)
         # Each provider's command-line version for bug reports (#464), found
         # in the background; "checking" until then.
         self._cli_versions: Dict[str, str] = {}
@@ -795,8 +796,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.stop_btn = wx.Button(self.own_reply, label="Sto&p")
         # After Stop, so Tab from the reply box is still Send, then Stop (#175).
         self.commands_btn = wx.Button(self.own_reply, label="C&ommands...")
-        # Alt+T: Alt+A is Show tool activity, and F, V, H are the menus'.
-        self.attach_btn = wx.Button(self.own_reply, label="A&ttach Files...")
+        # Alt+I (#575): Alt+A is Show tool activity, and F, S, C, V, T and H
+        # are the menus'. Open in Claude has I too; the two are never shown
+        # together. tests/test_commands.py's WINDOW_ACCESS_KEYS lists these.
+        self.attach_btn = wx.Button(self.own_reply, label="Attach F&iles...")
         orow.Add(self.send_btn, 0, wx.RIGHT, 6)
         orow.Add(self.stop_btn, 0, wx.RIGHT, 6)
         orow.Add(self.commands_btn, 0, wx.RIGHT, 6)
@@ -839,9 +842,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.desktop_note.SetMinSize(dip(self, -1, 120))
         dsizer.Add(self.desktop_note, 1, wx.EXPAND)
         drow = wx.BoxSizer(wx.HORIZONTAL)
-        self.reply_claude_btn = wx.Button(self.desktop_reply, label="Open in &Claude")
+        # Alt+I and Alt+E, clear of the Chat and Tools menus' C and T (#575).
+        self.reply_claude_btn = wx.Button(self.desktop_reply, label="Open &in Claude")
         drow.Add(self.reply_claude_btn, 0, wx.RIGHT, 6)
-        self.continue_btn = wx.Button(self.desktop_reply, label="Con&tinue Here...")
+        self.continue_btn = wx.Button(self.desktop_reply, label="Continue H&ere...")
         drow.Add(self.continue_btn, 0)
         dsizer.Add(drow, 0, wx.TOP, 6)
         self.desktop_reply.SetSizer(dsizer)
@@ -864,7 +868,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.session_view = root
 
         # Session-list commands come last in the Tab order; all of them are
-        # also on the File menu with shortcuts.
+        # also on the menus with shortcuts.
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.new_btn = new_btn = wx.Button(root, label="&New Session...")
         self.refresh_btn = refresh_btn = wx.Button(root, label="&Refresh")
@@ -1152,7 +1156,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         snap.sessions = self._agent_rows(snap.sessions)
         self._snapshot = snap
         self._previous_states = snap.fresh_states(self._previous_states)
-        # Hidden sessions (File, Hide Session) are out of everything here:
+        # Hidden sessions (Session, Hide Session) are out of everything here:
         # counts, announcements and notifications as well as the list.
         for info in snap.sessions:
             info.hidden = info.key in self.hidden
@@ -1387,15 +1391,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return min(max(index, 0), count - 1)
 
     def on_hide(self):
-        """File, Hide Session (Delete): out of the list, into View, Show
-        Sessions, Hidden. Nothing about the session changes; File, Bring Back
-        Session shows it again."""
+        """Session, Hide Session (Delete): out of the list, into View, Show
+        Sessions, Hidden. Nothing about the session changes; Session, Bring
+        Back Session shows it again."""
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
             return
         if info.key in self.hidden:
-            self._feedback(f"{info.title} is already hidden. File, Bring Back Session "
+            self._feedback(f"{info.title} is already hidden. Session, Bring Back Session "
                            "returns it to the list.")
             return
         if info.is_own and info.cli_session_id in self._runners:
@@ -1408,11 +1412,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                           wx.OK | wx.ICON_WARNING, self)
             return
         self._leave_list(info)
-        self._feedback(f"Hid {info.title}. View, Show Sessions, Hidden lists it; File, Bring "
-                       "Back Session shows it again.")
+        self._feedback(f"Hid {info.title}. View, Show Sessions, Hidden lists it; Session, "
+                       "Bring Back Session shows it again.")
 
     def on_unhide(self):
-        """File, Bring Back Session: a hidden session back in the list."""
+        """Session, Bring Back Session: a hidden session back in the list."""
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
@@ -1430,7 +1434,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._refresh_list_in_place()
 
     def on_rename(self):
-        """File, Rename Session (F2, #93). One of The Chat Place's own
+        """Session, Rename Session (F2, #93). One of The Chat Place's own
         sessions is renamed in its own store. A desktop app session's files
         are never written, so its new name is kept in titles.json and shows
         only here; an empty name goes back to the desktop app's."""
@@ -1506,7 +1510,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        else f"{title} keeps its name.")
 
     def on_delete_permanently(self):
-        """File, Delete Session Permanently (Shift+Delete): one of The Chat
+        """Session, Delete Session Permanently (Shift+Delete): one of The Chat
         Place's own supported sessions, gone for good, its transcript with
         it. It works from any view, hidden or not: having to hide a session
         first and then find it in the Hidden view was a hunt nobody could
@@ -2689,12 +2693,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.on_lists(lists.CODE, lists.SCOPE_MESSAGE)
 
     def on_links(self):
-        """View, Links (Ctrl+L, #190): every link in the chat, on the Lists
+        """Tools, Links (Ctrl+L, #190): every link in the chat, on the Lists
         dialog's Links tab (#279)."""
         self.on_lists(lists.LINKS, lists.SCOPE_CHAT)
 
     def on_tasks(self):
-        """View, Tasks (Ctrl+Shift+J, #231): the task list for the whole
+        """Tools, Tasks (Ctrl+Shift+J, #231): the task list for the whole
         chat, on the Lists dialog's Tasks tab."""
         self.on_lists(lists.TASKS, lists.SCOPE_CHAT)
 
@@ -2714,7 +2718,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._say(text, interrupt=False)
 
     def on_lists(self, category: Optional[str] = None, scope: Optional[str] = None):
-        """View, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
+        """Tools, Lists (Ctrl+Shift+I, #279): code blocks, links, changed
         files, commands, decisions and tasks (#231, #318), for the selected
         message or the whole chat. It opens on the kind used last; Code
         Blocks, Links, Changed Files and Tasks open it on their own kind. The
@@ -2828,7 +2832,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return approvals.merge(saved, live), ""
 
     def _show_lists(self, dialog):
-        """Show View, Lists modally. Tests replace this to act on the dialog
+        """Show Tools, Lists modally. Tests replace this to act on the dialog
         without showing it."""
         return dialog.ShowModal()
 
@@ -2847,7 +2851,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._feedback(f"Opening {chosen.address}.")
 
     def on_properties(self):
-        """View, Properties (Alt+Enter, #214): the focused message's
+        """Session, Properties (Alt+Enter, #214): the focused message's
         properties in the messages list; anywhere else, the session's
         (_selected_session: the highlighted one in the session list, else
         the loaded one). A session's need its whole transcript read, so
@@ -3081,7 +3085,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _session_menu(self):
         """The session list's context menu (#89), as (menu, {item id:
-        handler}). The commands are the File menu's, for the selected row."""
+        handler}). The commands are the Session menu's, for the selected row."""
         info = self._selected_session()
         menu = wx.Menu()
         actions = {}
@@ -3562,7 +3566,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._model_windows.get(model, 0)
 
     def on_usage(self):
-        """View, Usage and Context (Ctrl+Shift+U): how full the loaded
+        """Tools, Usage and Context (Ctrl+Shift+U): how full the loaded
         session's context is, and how much of the plan's limits are used, as
         a list to arrow through (#130). It used to be only spoken, which
         left someone who can't follow the system voice (#98) nothing to
@@ -3610,7 +3614,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("Couldn't open the clipboard.")
 
     def on_changes(self):
-        """View, Changed Files (Ctrl+Shift+D): the files the AI changed, on
+        """Tools, Changed Files (Ctrl+Shift+D): the files the AI changed, on
         the Lists dialog's Changed Files tab (#279): in the selected
         message's turn (your latest, if none is selected) if it changed any,
         else in the whole chat. From the transcript, so desktop sessions
@@ -3779,7 +3783,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     # ------------------------------------------------------- links (#144)
 
     def on_copy_session_link(self, _event=None):
-        """File, Copy Session Link (Ctrl+Shift+L, #144): the links that
+        """Session, Copy Session Link (Ctrl+Shift+L, #144): the links that
         apply to the selected session, best first, each as a Markdown link
         and then bare. Enter on the first copies a Markdown link that opens
         it in The Chat Place."""
@@ -3933,7 +3937,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                  or bool(own.bridge_session_id))
 
     def on_remote_control(self):
-        """File, Remote Control (#72): on, off, or as Settings says, for
+        """Session, Remote Control (#72): on, off, or as Settings says, for
         the selected session from its next turn. While a turn runs, the
         session can be reached from claude.ai and your other devices."""
         info = self._selected_session()
@@ -3983,7 +3987,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        "from its next turn.")
 
     def on_other_machines(self):
-        """File, Other Machines (Ctrl+Shift+M, #123): your sessions on other
+        """Chat, Other Machines (Ctrl+Shift+M, #123): your sessions on other
         computers, listed and messaged through Claude in the loaded session.
         Only Claude can reach them (ListAgents, SendMessage), and only with
         Remote Control on; see remote.py for why it's done this way."""
@@ -4002,7 +4006,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         if not self._remote_control_on(own):
             wx.MessageBox(f"Remote Control is off for {info.title}, and Claude can only "
-                          "reach your other computers with it on. Turn it on with File, "
+                          "reach your other computers with it on. Turn it on with Session, "
                           "Remote Control, then try again.", APP_NAME,
                           wx.OK | wx.ICON_INFORMATION, self)
             return
@@ -4122,7 +4126,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._store_write(self.store.update, session_id, bridge_session_id=bridge,
                           remote_url=url)
         if first:
-            self._say(f"{title} is on Remote Control. File, Remote Control copies its "
+            self._say(f"{title} is on Remote Control. Session, Remote Control copies its "
                       "claude.ai address." if url else f"{title} is on Remote Control.")
 
     @staticmethod
@@ -4139,7 +4143,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _own_for_setting(self, what: str, info: Optional[SessionInfo] = None):
         """The selected session (or ``info``) and its stored record, for a
-        File, Change item; None (and why, said) for a session whose ``what``
+        Chat Settings item; None (and why, said) for a session whose ``what``
         is set elsewhere."""
         info = info if info is not None else self._selected_session()
         if info is not None and info.provider != "claude" and not self._require_capability("options", info):
@@ -4184,7 +4188,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ()
 
     def on_change_model(self):
-        """File, Change Model: the model for this session's next turns, and
+        """Chat, Chat Settings, Change Model: the model for this session's next turns, and
         the running turn's if Claude Code takes it (#468). A session's model
         goes with every turn, so it can change at any time."""
         selected = self._selected_session()
@@ -4216,7 +4220,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                           f"{info.title} now uses {model_label(model)}, from its next turn.")
 
     def on_change_permission_mode(self, info: Optional[SessionInfo] = None):
-        """File, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
+        """Chat, Chat Settings, Change Permission Mode (Ctrl+Shift+O, #189): the mode this
         session's next turns start in. Every turn is given its stored mode,
         as approving a plan already relies on. ``info`` is the chat Chat
         Permissions is showing (#329): focus is in that dialog then, so the
@@ -4253,7 +4257,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                           "next turn.")
 
     def on_chat_permissions(self):
-        """File, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
+        """Chat, Chat Settings, Chat Permissions (Ctrl+Shift+H, #307, #329): the permission
         mode, and the rules kept with a chat started here, to read and remove:
         Claude's tool rules, Codex's remembered approvals, and the commands
         allowed for a Copilot chat (#426)."""
@@ -4285,7 +4289,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             returning_to.SetFocus()
 
     def on_connected_tools(self):
-        """View, Connected Tools (#468): the MCP servers and claude.ai
+        """Tools, Connected Tools (#468): the MCP servers and claude.ai
         connectors Claude can use in the chat's folder, how each is doing,
         with Sign In, Reconnect and Turn Off for This Chat."""
         info = self._selected_session()
@@ -4353,7 +4357,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._status(problems_short(listed, skip))
 
     def on_change_effort(self):
-        """File, Change Effort (#189): how hard Claude thinks in this
+        """Chat, Chat Settings, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
         selected = self._selected_session()
         if selected is not None and selected.provider == 'codex':
@@ -4596,7 +4600,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 else:
                     # The rule and the folders suggested with it: a command
                     # that writes needs both on later turns (#332). When each
-                    # was allowed, for File, Chat Permissions (#329).
+                    # was allowed, for Chat, Chat Settings, Chat Permissions (#329).
                     now = int(time.time() * 1000)
                     kept = list(own.allowed_tools) if own is not None else []
                     times = dict(own.allowed_tools_at) if own is not None else {}
@@ -6861,7 +6865,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        "in it again.")
 
     def on_back_up_now(self):
-        """File, Back Up Now (#433): one zip of every provider's history,
+        """File, Backup, Back Up Now (#433): one zip of every provider's history,
         memory and settings, and The Chat Place's own data, in a folder the
         user picks. Choosing it again while one runs offers to stop it."""
         running = getattr(self, "_backup_job", None)
@@ -6924,7 +6928,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         job["thread"].start()
 
     def on_backup_schedule(self):
-        """File, Backup Schedule (#437): every day or week, to a folder,
+        """File, Backup, Backup Schedule (#437): every day or week, to a folder,
         keeping so many."""
         state = backup.load_state()
         status = " ".join(t for t in (backup.last_backup_text(state),
@@ -7089,7 +7093,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                       self)
 
     def on_check_backup(self):
-        """File, Check Backup (#433): read a backup back and compare every
+        """File, Backup, Check Backup (#433): read a backup back and compare every
         file with its manifest, so a copy on another drive can be trusted
         before it's needed."""
         start = backup.load_state().get("folder") or ""
@@ -7136,7 +7140,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                       wx.OK | (wx.ICON_INFORMATION if check.ok else wx.ICON_ERROR), self)
 
     def on_restore_backup(self):
-        """File, Restore from Backup (#436): every chat in a backup comes
+        """File, Backup, Restore from Backup (#436): every chat in a backup comes
         back as a read-only imported chat, after a question saying how many
         and from where. Nothing is written to any provider's folder."""
         if getattr(self, "_backup_job", None) is not None:
@@ -7661,7 +7665,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             then()
 
     def on_insert_command(self):
-        """File, Insert Command or Skill (Ctrl+/): choose one of Claude
+        """Chat, Insert Command or Skill (Ctrl+/): choose one of Claude
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
@@ -7735,7 +7739,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return ""
 
     def on_prompts(self):
-        """File, Prompts (#131): look after your saved prompts, and Use one
+        """Chat, Prompts (#131): look after your saved prompts, and Use one
         to put it in the reply box."""
         returning_to = wx.Window.FindFocus()
         dialog = PromptsDialog(self, self.prompts, self._feedback, self._prompt_refused())
@@ -7938,14 +7942,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pool.submit(work)
 
     def on_sign_in(self):
-        """Help, Claude Code Sign-in (#52): whether Claude Code is signed in,
+        """Tools, Sign In, Claude Code (#52): whether Claude Code is signed in,
         to which plan, and a way to sign in if it isn't."""
         self._feedback("Checking Claude Code's sign-in.")
         self._sign_in_asked = True  # this answer replaces the start-up one
         self._check_sign_in(manual=True)
 
     def on_codex_sign_in(self):
-        """Help, Codex Sign-in (#301): check and offer ChatGPT sign-in."""
+        """Tools, Sign In, Codex (#301): check and offer ChatGPT sign-in."""
         self._feedback("Checking Codex's sign-in.")
         self._check_codex_sign_in()
 
@@ -8003,7 +8007,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             check=self._check_codex_sign_in)
 
     def on_copilot_sign_in(self):
-        """Help, Copilot Sign-in (#391): whether GitHub Copilot CLI is
+        """Tools, Sign In, Copilot (#391): whether GitHub Copilot CLI is
         installed and signed in, and a way to sign in if it isn't. Shown
         whether or not the Copilot preview is on: it's where you'd look
         before turning it on."""
@@ -8091,11 +8095,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
             if status.missing:
                 first = re.split(r"(?<=\.) ", status.problem, maxsplit=1)[0]
-                self._feedback(f"{first} To install it, choose Claude Code Sign-in on the "
-                               "Help menu.")
+                self._feedback(f"{first} To install it, choose "
+                               "Tools, Sign In, Claude Code.")
             elif status.known and not (status.signed_in and status.subscription):
-                self._feedback(f"{text} To sign in, choose Claude Code Sign-in on the "
-                               "Help menu.")
+                self._feedback(f"{text} To sign in, choose "
+                               "Tools, Sign In, Claude Code.")
             return
         self._sign_in_asked = False
         if status.missing:

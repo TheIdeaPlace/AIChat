@@ -117,7 +117,7 @@ class SessionInfo:
     remote: bool = False
     #: Chat Place groups it's in (#31), set by the window, read in its row.
     groups: tuple = ()
-    #: Hidden with File, Hide Session: only in the Hidden view.
+    #: Hidden with Session, Hide Session: only in the Hidden view.
     hidden: bool = False
     #: A desktop app Cowork session (#91) rather than a Code one.
     cowork: bool = False

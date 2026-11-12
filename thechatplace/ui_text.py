@@ -6,14 +6,19 @@ import sys
 from typing import List
 
 
+#: The menu bar's menus by access key (#575), for naming a menu on a Mac.
+MENU_NAMES = {"F": "File", "S": "Session", "C": "Chat", "V": "View", "T": "Tools", "H": "Help"}
+
+
 def key_name(shortcut: str, platform=None) -> str:
     """Translate app-authored key names, before inserting any chat/user text."""
     if (platform or sys.platform) != "darwin":
         return shortcut
-    shortcut = shortcut.replace(", Alt+T)", ")")
+    # A Mac has no access keys: "(Attach Files button, Alt+I)" names the button.
+    shortcut = shortcut.replace(", Alt+I)", ")")
     shortcut = shortcut.replace("Alt+F4", "Cmd+Q").replace("Alt+Tab", "Cmd+Tab").replace("Applications key / ", "")
-    shortcut = re.sub(r"Alt\+([FVH]),\s*[A-Za-z]",
-                      lambda match: {"F": "File", "V": "View", "H": "Help"}[match.group(1)] + " menu (VO+M)", shortcut)
+    shortcut = re.sub(r"Alt\+([FSCVTH]),\s*[A-Za-z]",
+                      lambda match: MENU_NAMES[match.group(1)] + " menu (VO+M)", shortcut)
     text = re.sub(r"\bEnter\b", "Return", shortcut.replace("Ctrl+", "Cmd+").replace("Alt+", "Option+"))
     return (text.replace("Win+Shift+S", "Control+Cmd+Shift+4")
             .replace(" Option+Return on a Mac", ""))
@@ -91,7 +96,7 @@ SHORTCUTS = [
                          "changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access, "
                          "approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the "
-                         "selected (or loaded) Chat Place session (in File, Chat Settings, with "
+                         "selected (or loaded) Chat Place session (in Chat, Chat Settings, with "
                          "Change Model and Change Effort)"),
         ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
                          "moves from message to message; Alt+P reads it as plain text instead"),
@@ -109,7 +114,7 @@ SHORTCUTS = [
                      "new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote "
                      "Control, ungrouped (in no group), Claude chats, Codex chats, GitHub "
                      "Copilot chats, archived, hidden, or one of your groups"),
-        ("Alt+V, E", "Session List Columns: choose what each session's line says and in "
+        ("Alt+V, C", "Session List Columns: choose what each session's line says and in "
                      "what order, such as status first; in the dialog, Enter adds, Delete "
                      "removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move"),
         ("Ctrl+E", "Export the selected (or loaded) session as Markdown, a web page or "
@@ -119,16 +124,16 @@ SHORTCUTS = [
         ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
-        ("Alt+F, I", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
+        ("Alt+C, N", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
                      "Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat "
                      "Options (O)"),
-        ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
+        ("Alt+S, C", "Remote Control (Claude chats): reach the selected session from "
                      "claude.ai and your phone (a desktop app session can be continued here "
                      "with it on)"),
-        ("Ctrl+G", "Add the selected session to a group (or a new one); File, Remove "
-                   "from Group and Manage Groups are on the File menu"),
+        ("Ctrl+G", "Add the selected session to a group (or a new one); Remove from "
+                   "Group and Manage Groups are on the Session menu"),
         ("Delete", "Hide the selected session; View, Show Sessions, Hidden lists hidden "
-                   "sessions, and File, Bring Back Session returns one"),
+                   "sessions, and Session, Bring Back Session returns one"),
         ("Shift+Delete", "Delete a Claude or Codex chat started here permanently, conversation and "
                          "all, after you confirm, or The Chat Place's copy of a restored or kept chat "
                          "(other chats can only be hidden); on an agent "
@@ -151,7 +156,7 @@ SHORTCUTS = [
                                                  "and send. Claude can also restore files changed with "
                                                  "its edit tools in chats started here; Codex doesn't. "
                                                  "The new chat keeps the original's settings, and the "
-                                                 "original chat is kept. Branch from Here (Alt+F, F, or on "
+                                                 "original chat is kept. Branch from Here (Alt+C, F, or on "
                                                  "a message's menu) "
                                                  "starts a new chat from that point; in Codex it includes "
                                                  "the whole turn containing that message"),
@@ -187,12 +192,12 @@ SHORTCUTS = [
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box. "
-                        "View, Stop Background Task, just below it, ends one background task "
+                        "Chat, Stop Background Task, just below it, ends one background task "
                         "and lets the turn carry on"),
         ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
                    "the start of the reply box. Codex offers enabled skills and chat controls "
                    "such as /plan and /compact"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+I); "
                          "Delete in the attachments list removes one"),
         ("Ctrl+V with a picture or files copied", "Attach the picture (a screenshot from Win+Shift+S, say), "
                                                   "or files copied in File Explorer or the Finder, to a "
@@ -245,7 +250,7 @@ SHORTCUTS = [
         ("Ctrl+Comma", "Settings: announcements, speech, notifications and more"),
         ("Ctrl+Shift+R", "Repeat the last announcement"),
         ("Ctrl+Shift+X", "Mute All Sounds: silence every sound at once, or bring them back "
-                         "(File, Sounds chooses them)"),
+                         "(Tools, Sounds chooses them)"),
         ("Alt+F4", "Quit"),
     ]),
 ]

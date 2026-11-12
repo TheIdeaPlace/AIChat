@@ -611,7 +611,7 @@ def test_a_copilot_that_isnt_signed_in_says_so_for_a_new_chat(make, tmp_path):
     with pytest.raises(CopilotChatError) as raised:
         runtime.create(str(tmp_path))
     assert str(raised.value) == copilot_acp.NOT_SIGNED_IN
-    assert "Help, Copilot Sign-in" in str(raised.value)
+    assert "Tools, Sign In, Copilot" in str(raised.value)
     assert "Authentication required" not in str(raised.value)
 
 

@@ -142,7 +142,7 @@ def test_archiving_an_own_session_hides_it():
                   hidden=hidden)
     assert not result.is_error and hidden == ["own:own-1"]
     assert result.text.startswith('Archived session own:own-1 ("Chat Place work")')
-    assert "File, Bring Back Session" in result.text
+    assert "Session, Bring Back Session" in result.text
 
 
 def test_a_terminal_session_can_be_hidden_too():
@@ -156,7 +156,7 @@ def test_desktop_app_sessions_are_never_changed():
     result = call("archive_session", {"session_id": "local_d1", "reason": "done"}, hidden=hidden)
     assert result.is_error and hidden == []
     assert "was not archived" in result.text and "Claude desktop app" in result.text
-    assert "sidebar" in result.text and "File, Hide Session" in result.text
+    assert "sidebar" in result.text and "Session, Hide Session" in result.text
     cowork = world()
     cowork.sessions[0].cowork = True
     assert "Cowork session" in call("archive_session", {"session_id": "local_d1"}, cowork).text

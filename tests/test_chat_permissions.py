@@ -1,4 +1,4 @@
-"""File, Chat Permissions without windows (#307, #329): rows, notes, kept-rule
+"""Chat, Chat Settings, Chat Permissions without windows (#307, #329): rows, notes, kept-rule
 times in the session store, and each provider's host. Synthetic data only."""
 from types import SimpleNamespace
 

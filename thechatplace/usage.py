@@ -122,7 +122,7 @@ def limits_text(info: Optional[dict], now: Optional[float] = None) -> str:
 
 def usage_lines(context: Optional[Tuple[str, int, int]], info: Optional[dict],
                 now: Optional[float] = None) -> List[str]:
-    """What View, Usage and Context (Ctrl+Shift+U) lists, one line each
+    """What Tools, Usage and Context (Ctrl+Shift+U) lists, one line each
     (#130): the loaded session's context, then each usage limit. ``context``
     is the loaded session's (title, tokens, window), or None when no session
     is loaded. Shown rather than spoken, so a person

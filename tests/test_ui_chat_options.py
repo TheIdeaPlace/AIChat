@@ -615,7 +615,7 @@ def test_continue_here_carries_its_chat_options(frame, folder, tmp_path, monkeyp
     assert frame.store.get(new_id).prompt_fresh
 
 
-# -- File, Chat Options ---------------------------------------------------------------------
+# -- Chat, Chat Settings, Chat Options ---------------------------------------------------------------------
 
 
 class _Chosen:
@@ -674,19 +674,19 @@ def test_chat_options_only_for_chats_started_here(frame, env, monkeypatch):
     assert "Desktop one is" in env["feedback"][-1]
 
 
-def test_chat_options_are_in_file_chat_settings_and_ask_aside_has_its_key(frame, monkeypatch):
+def test_chat_options_are_in_chat_settings_and_ask_aside_has_its_key(frame, monkeypatch):
     # The chat's five settings in one submenu, each with an access key, their
-    # shortcuts unchanged (#596).
+    # shortcuts unchanged (#596), in the Chat menu (#575).
     import wx
-    file_menu = frame.GetMenuBar().GetMenu(0)
+    file_menu = frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Chat"))
     labels = [item.GetItemLabel() for item in file_menu.GetMenuItems()]
-    assert "Ask Aside...\tCtrl+Shift+Y" in labels
-    assert "Chat Sett&ings" in labels
+    assert "Ask As&ide...\tCtrl+Shift+Y" in labels
+    assert "Chat Setti&ngs" in labels
     for gone in ("Change Mo&del...", "Change E&ffort...", "Chat Options...",
                  "Change Permission Mode...\tCtrl+Shift+O", "Chat Permissions...\tCtrl+Shift+H"):
         assert gone not in labels
     submenu = next(item.GetSubMenu() for item in file_menu.GetMenuItems()
-                   if item.GetItemLabel() == "Chat Sett&ings")
+                   if item.GetItemLabel() == "Chat Setti&ngs")
     items = submenu.GetMenuItems()
     assert [item.GetItemLabel() for item in items] == [
         "Change &Model...", "Change &Effort...", "Change &Permission Mode...\tCtrl+Shift+O",
@@ -708,17 +708,15 @@ def test_chat_options_are_in_file_chat_settings_and_ask_aside_has_its_key(frame,
                       "on_chat_permissions", "on_chat_options"]
 
 
-def test_branch_from_here_has_an_access_key_and_stop_background_task_is_in_view(frame):
-    # #596: Branch from Here is Alt+F, F; Stop Background Task sits just
-    # after Stop Running Turn, in View.
+def test_branch_from_here_has_an_access_key_and_stop_background_task_follows_stop(frame):
+    # #596, #575: Branch from Here is Alt+C, F; Stop Background Task sits just
+    # after Stop Running Turn, in the Chat menu.
     bar = frame.GetMenuBar()
-    file_labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("File")).GetMenuItems()]
-    assert "Branch &from Here" in file_labels
-    assert any(label.startswith("Retry from Here...") for label in file_labels)
-    assert "Stop Background Task..." not in file_labels
-    view_labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("View")).GetMenuItems()]
-    stop = view_labels.index("Sto&p Running Turn\tCtrl+.")
-    assert view_labels[stop + 1] == "Stop Background Task..."
+    labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("Chat")).GetMenuItems()]
+    assert "Branch &from Here" in labels
+    assert any(label.startswith("Retr&y from Here...") for label in labels)
+    stop = labels.index("&Stop Running Turn\tCtrl+.")
+    assert labels[stop + 1] == "Stop &Background Task..."
 
 
 # -- Ask Aside ------------------------------------------------------------------------------

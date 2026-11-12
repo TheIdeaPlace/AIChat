@@ -1,4 +1,4 @@
-"""View, Links (#190): finding the links in a session's messages."""
+"""Tools, Links (#190): finding the links in a session's messages."""
 import pytest
 
 from thechatplace.message_links import FoundLink, find_links, links_in_text, matches

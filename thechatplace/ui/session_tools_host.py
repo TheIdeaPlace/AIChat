@@ -126,8 +126,8 @@ class SessionToolsHost:
                                   cancelled=lambda: self._closing or self._gone())
 
     def _session_tools_hide(self, info: SessionInfo) -> Optional[str]:
-        """File, Hide Session for ``info``, asked for by a tool: why it
-        wasn't hidden, or None once it is. Unlike File, Hide Session it
+        """Session, Hide Session for ``info``, asked for by a tool: why it
+        wasn't hidden, or None once it is. Unlike Session, Hide Session it
         happens in the background, so it never moves you: a chat you have
         open is left alone, and the list stays on the session you're on."""
         listed = self._current_info(info.key)
@@ -138,8 +138,8 @@ class SessionToolsHost:
                 listed is not None and listed.state == WORKING):
             return "a turn is running in it."
         if self._open is not None and self._open.key == info.key:
-            return ("it's open in The Chat Place's window. Hide it there with File, Hide "
-                    "Session once you're done with it.")
+            return ("it's open in The Chat Place's window. Hide it there with Session, "
+                    "Hide Session once you're done with it.")
         if info.key in self.hidden:
             return None
         try:
@@ -160,6 +160,6 @@ class SessionToolsHost:
                     self.session_list.SetSelection(min(gone, len(self._list_keys) - 1))
             self._update_list_label(len(self._list_keys))
         self.refresh_sessions()
-        self._status(f"Hid {info.title}, archived by a session tool. File, Bring Back "
+        self._status(f"Hid {info.title}, archived by a session tool. Session, Bring Back "
                      "Session returns it.")
         return None

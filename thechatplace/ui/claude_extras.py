@@ -92,10 +92,10 @@ class ClaudeExtras:
         del history[:-KEPT_QUESTIONS]
         return history
 
-    # -- File, Chat Options
+    # -- Chat, Chat Settings, Chat Options
 
     def on_chat_options(self):
-        """File, Chat Options (#468): agent, instructions, output style and
+        """Chat, Chat Settings, Chat Options (#468): agent, instructions, output style and
         more folders for one of The Chat Place's own Claude chats, from its
         next turn."""
         from .main_frame import kind_name
@@ -163,10 +163,10 @@ class ClaudeExtras:
         self._feedback(said)
         self._update_heading()
 
-    # -- File, Ask Aside
+    # -- Chat, Ask Aside
 
     def on_ask_aside(self):
-        """File, Ask Aside (Ctrl+Shift+Y, #468): a question about the
+        """Chat, Ask Aside (Ctrl+Shift+Y, #468): a question about the
         selected (or loaded) Claude chat, answered without being added to it."""
         info = self._selected_session()
         if info is None:

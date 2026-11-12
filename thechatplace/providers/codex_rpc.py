@@ -32,7 +32,7 @@ class CodexRememberedApprovalError(CodexRpcError):
         'not_sent': 'The answer was not sent and no new approval was kept. Open Answer to try again.',
         'kept_uncertain': 'The approval was kept, but its answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
         'removed_uncertain': 'The approval was removed, but its earlier answer could not be confirmed. Use Stop to end any running turn and recheck this chat; the answer will not be resent.',
-        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check File, Chat Settings, Chat Permissions before continuing.',
+        'cleanup_failed': 'The answer was not sent, but removing the new approval failed. Check Chat, Chat Settings, Chat Permissions before continuing.',
     }
 
     def __init__(self, code):
@@ -104,7 +104,7 @@ class CodexTurnRejected(CodexRpcError):
         'command_rules': 'The Chat Place could not check Codex saved command rules. No new turn was sent.',
         'project_rules': 'This folder supplies Codex saved command rules. Choose a folder without project rules, or move those rules out of the project before trying again. No new turn was sent.',
         'mcp_tools': 'Codex external tools could not be verified against this chat\'s selection. No new turn was sent.',
-        'mcp_server_removed': 'A connected tool this chat uses is no longer in your Codex configuration. No new turn was sent. View, Connected Tools lists it and can make a copy of this chat without it, or you can add it back to Codex\'s config.toml.',
+        'mcp_server_removed': 'A connected tool this chat uses is no longer in your Codex configuration. No new turn was sent. Tools, Connected Tools lists it and can make a copy of this chat without it, or you can add it back to Codex\'s config.toml.',
         'input_unavailable': 'An attached image or skill is no longer available. No message was sent. Check the attachments and try again.',
         'input_size': 'This message and its attachments exceed Codex\'s request size limit. Shorten the message or remove attachments. No message was sent.',
         # Likely, not certain: Codex also falls back to read-only when managed

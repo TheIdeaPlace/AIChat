@@ -5,7 +5,7 @@ merged on 2026-10-08:
 
 - **#124**: messages from other sessions show as "From <session>" and are announced, and a Chat
   Place session keeps its name every turn.
-- **#126**: File, Other Machines (Ctrl+Shift+M).
+- **#126**: Chat, Other Machines (Ctrl+Shift+M).
 
 Each test says what to do and what you should hear. Note anything else as a comment on #123, with
 the test number.
@@ -19,16 +19,16 @@ installed copy is 0.1.2 and doesn't have it. Either:
   `.venv\Scripts\pythonw TheChatPlace.pyw`; or
 - release 0.1.3 first, and let the installed copy update itself.
 
-To check you have it: the File menu should have **Other Machines... Ctrl+Shift+M**. (From
+To check you have it: the Chat menu should have **Other Machines... Ctrl+Shift+M**. (From
 source, Help, About still says 0.1.2 until the release.)
 
 **2. Pick a session to send from on Clark.** Make or choose one of The Chat Place's own sessions.
-Rename it (F2) to **Clark Hub**. Turn Remote Control on for it (File, Remote Control, "On for this
+Rename it (F2) to **Clark Hub**. Turn Remote Control on for it (Session, Remote Control, "On for this
 session"), and send it one ordinary message so it has connected once.
 
 **3. Have a session to send to on another computer.** On the Surface, a Claude Code session
 with Remote Control on: in the Claude desktop app (turn Remote Control on for the session), or in
-The Chat Place there (File, Remote Control). A desktop app session is the better first test: it
+The Chat Place there (Session, Remote Control). A desktop app session is the better first test: it
 stays running, so it can answer without you going to the Surface. Note its exact title, for example **Surface Hub**. Keep the Surface
 awake.
 
@@ -42,7 +42,7 @@ awake.
    - **Expect:** a message box saying other machines are reached through one of The Chat Place's
      own sessions with Remote Control on. Nothing is sent.
 2. Load one of The Chat Place's own sessions with Remote Control **off**, press Ctrl+Shift+M.
-   - **Expect:** "Remote Control is off for <title>…", telling you to turn it on with File,
+   - **Expect:** "Remote Control is off for <title>…", telling you to turn it on with Session,
      Remote Control. Nothing is sent.
 
 ### 2. The first list

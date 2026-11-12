@@ -14,9 +14,15 @@ def test_key_names_on_each_platform():
     assert key_name('Win+Shift+S', 'darwin') == 'Control+Cmd+Shift+4'
     assert key_name('Applications key / Shift+F10', 'darwin') == 'Shift+F10'
     assert key_name('Alt+F4', 'darwin') == 'Cmd+Q'
-    assert key_name('Alt+V, E', 'darwin') == 'View menu (VO+M)'
-    assert key_name('Alt+F, O', 'darwin') == 'File menu (VO+M)'
+    assert key_name('Alt+V, C', 'darwin') == 'View menu (VO+M)'
+    assert key_name('Alt+F, H', 'darwin') == 'File menu (VO+M)'
     assert key_name('Alt+H, G', 'darwin') == 'Help menu (VO+M)'
+    # The menus #575 added.
+    assert key_name('Alt+S, C', 'darwin') == 'Session menu (VO+M)'
+    assert key_name('Alt+C, N', 'darwin') == 'Chat menu (VO+M)'
+    assert key_name('Alt+T, G', 'darwin') == 'Tools menu (VO+M)'
+    # A control's own Alt key isn't a menu.
+    assert key_name('Attach Files (Alt+I)', 'darwin') == 'Attach Files (Option+I)'
     assert key_name('Alt+Tab', 'darwin') == 'Cmd+Tab'
     assert key_name('Enterprise folder', 'darwin') == 'Enterprise folder'
 
@@ -26,7 +32,7 @@ def test_help_names_mac_keys_and_published_help_is_portable():
         assert 'Cmd+Shift+A' in body and 'Option+' in body and 'Return' in body
         assert 'Ctrl+' not in body and 'Alt+' not in body
     assert 'Ctrl+Shift+A' in shortcuts_text(platform='win32')
-    assert 'Alt+T' in shortcuts_text(platform='win32')
+    assert 'Attach Files button, Alt+I' in shortcuts_text(platform='win32')
     assert 'Attach Files button)' in shortcuts_text(platform='darwin')
     assert 'Option+Return on a Mac' not in shortcuts_text(platform='darwin')
     portable = shortcuts_text(platform='all')

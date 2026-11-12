@@ -208,7 +208,7 @@ class SubagentsHost:
         return dialog.ShowModal()
 
     def on_subagents(self) -> None:
-        """View, Subagents (#468): Lists on Subagents, for the whole chat."""
+        """Tools, Subagents (#468): Lists on Subagents, for the whole chat."""
         from .. import lists
         self.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
 

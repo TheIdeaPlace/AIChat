@@ -826,7 +826,7 @@ def test_aside_stops_before_asking_if_fable_would_answer(tmp_path):
     runner.join(10)
     assert events[-1].kind == "failed" and "Fable" in events[-1].text
     assert "didn't ask your question" in events[-1].text
-    # File, Change Model does nothing for a desktop or terminal chat.
+    # Chat, Chat Settings, Change Model does nothing for a desktop or terminal chat.
     assert "Claude Code's model setting" in events[-1].text and "ask again" in events[-1].text
     assert "send again" not in events[-1].text
     sent = [json.loads(line) for line in (process.written or process.stdin.getvalue())

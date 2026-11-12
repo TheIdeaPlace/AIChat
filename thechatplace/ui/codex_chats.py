@@ -256,7 +256,7 @@ class CodexChats(SoundHost, CodexExtras):
             self._say(f'{record.title}: {with_stop_key(state.problem)}', interrupt=False)
 
     def _change_copilot_model(self, info):
-        """File, Change Model for a Copilot chat: the models Copilot offers
+        """Chat, Chat Settings, Change Model for a Copilot chat: the models Copilot offers
         that chat, each with the premium requests a message costs. From its
         next turn (what a turn already running does is Copilot's; unchecked)."""
         if not info.is_own:
@@ -296,8 +296,8 @@ class CodexChats(SoundHost, CodexExtras):
 
     def _change_copilot_mode(self, info, after=None):
         """Change Permission Mode for a Copilot chat (_start_copilot_mode_change).
-        ``after()`` runs once it's finished, refused or cancelled, so File, Chat
-        Permissions shows the new mode (Kelly's review of 58c5f03), as Codex's
+        ``after()`` runs once it's finished, refused or cancelled, so Chat, Chat
+        Settings, Chat Permissions shows the new mode (Kelly's review of 58c5f03), as Codex's
         does (#329)."""
         after = after or (lambda: None)
         if not self._start_copilot_mode_change(info, after):
@@ -437,7 +437,7 @@ class CodexChats(SoundHost, CodexExtras):
 
     def _change_codex_permissions(self, info, after=None):
         """``after()`` runs once the change is finished, refused or cancelled,
-        so File, Chat Permissions can show the new mode (#329)."""
+        so Chat, Chat Settings, Chat Permissions can show the new mode (#329)."""
         after = after or (lambda: None)
         if not info.is_own or not self.sessions.can_create('codex'):
             self._feedback('Only Codex chats started here can change permissions here.')

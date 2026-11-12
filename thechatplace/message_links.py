@@ -1,4 +1,4 @@
-"""The links in a session's messages (#190), for View, Links (Ctrl+L): a list
+"""The links in a session's messages (#190), for Tools, Links (Ctrl+L): a list
 to open one in the browser, or copy it, without arrowing through the
 conversation to find it.
 

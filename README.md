@@ -31,7 +31,7 @@ For Claude chats, replies use your existing Claude subscription, signed in to Cl
 key. Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 says those count against a monthly credit; past it, turns stop unless you've turned on extra
-usage, which is billed. View, Usage and Context (Ctrl+Shift+U) shows where you
+usage, which is billed. Tools, Usage and Context (Ctrl+Shift+U) shows where you
 stand. Reading the desktop app's sessions costs nothing.
 
 ## What it does
@@ -69,7 +69,7 @@ too).
   Choosing one keeps you on the same session when it's still listed.
   **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
   available with Codex or Copilot turned off; each is empty until its provider is enabled.
-  **View, Session List Columns** (Alt+V, E) chooses what each line says and in what order, so
+  **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
   Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
@@ -113,7 +113,7 @@ too).
   unavailable status means live state could not be verified. After an uncertain send, use Stop
   (Ctrl+Period) to recheck the chat, and check its history before sending again.
 - **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
-  VoiceOver on a Mac, or a right-click) has the File menu's commands for the selected session:
+  VoiceOver on a Mac, or a right-click) has the Session menu's commands for the selected session:
   load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
 
 ### Reading a chat
@@ -133,7 +133,7 @@ too).
   heading and table commands; Command+W also closes it. On Windows the page needs Microsoft's Edge
   WebView2 runtime, which comes with Windows 11; without it, the text box opens. Nothing in the
   page is fetched from the internet, and HTML in a message is shown as text, never run. **Lists**
-  (View, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box) is
+  (Tools, Lists, **Ctrl+Shift+I**, from the session list, the messages or the reply box) is
   one dialog for each kind of thing in a chat: **Code Blocks**, **Links**, **Changed
   Files**, **Commands** (each command Claude ran: what it was for, "done", "failed" or "no result
   yet", and its output), **Decisions** (each question Claude asked, with your answer) and
@@ -158,7 +158,7 @@ too).
   controls; where ] and [ need Option, use Cmd+Page Down and Up); on Windows, **Ctrl+1** to
   **Ctrl+8** go straight to one. It opens on the kind you used last.
   **Ctrl+Shift+B** opens it on Code Blocks for the selected message, **Ctrl+L** on Links for the
-  whole chat, **Ctrl+Shift+J** (View, Tasks) on Tasks for the whole chat, View, Subagents (Alt+V,
+  whole chat, **Ctrl+Shift+J** (Tools, Tasks) on Tasks for the whole chat, Tools, Subagents (Alt+T,
   G) on Subagents for the whole chat, the messages' Subagents (G, on the reply or Agent
   tool call of a turn that used subagents) on Subagents for that turn, and **Ctrl+Shift+D** on
   Changed Files, for the selected message's turn (or your
@@ -212,7 +212,7 @@ too).
   removed; long command output is shortened with a notice, including in exports.
   Command-result notifications use a brief summary even in Full announcements;
   Silent keeps them in the status bar.
-- **Changed Files** (Ctrl+Shift+D, View menu) opens Lists on Changed Files: the files
+- **Changed Files** (Ctrl+Shift+D, Tools menu) opens Lists on Changed Files: the files
   Claude, Codex or Copilot changed in the selected message's turn (your latest, if none is selected), or in the
   whole chat, each with its line counts ("main_frame.py, 40 lines added, 12
   removed, in thechatplace\ui"). Enter on a file reads its changes in a text box, a line at a
@@ -235,7 +235,7 @@ too).
   "Changed 3 files: main_frame.py, 40 lines added, 12 removed; …".
 - **The task list.** On longer work Claude keeps a list of its steps (Claude Code's
   TaskCreate and TaskUpdate, or the older TodoWrite), and The Chat Place reads it from the
-  transcript, for desktop app and terminal sessions as well as its own. View, Tasks
+  transcript, for desktop app and terminal sessions as well as its own. Tools, Tasks
   (**Ctrl+Shift+J**) lists it; Turn Status (Ctrl+Shift+T) and Properties say how far along it is
   ("Task 3 of 7: Running the tests. 2 done.", or "Stopped at task 3 of 7: …" once Claude isn't
   working; Turn Status leaves out a list that's finished or from an earlier turn); and when the
@@ -321,11 +321,11 @@ too).
   Opus)"). Fable isn't offered: on some plans it bills to usage credits, and in the headless
   mode The Chat Place uses, Claude Code does that without asking. So if a turn would run on
   Fable anyway (Claude Code's own default, or a fallback), The Chat Place stops it before
-  anything is sent and says why. **Change Model** (File, Chat Settings: Alt+F, I, M) changes a session's model from its
+  anything is sent and says why. **Change Model** (Chat, Chat Settings: Alt+C, N, M) changes a session's model from its
   next turn, and a running turn's too (below). **Effort** is Default (your Claude Code setting), Low, Medium, High, Extra high or
   Max, passed to every turn as Claude Code's `--effort`; models that don't support effort levels
-  ignore it. **Change Effort** (Alt+F, I, E) and **Change Permission Mode**
-  (Ctrl+Shift+O, or Alt+F, I, P), also in File, Chat Settings, change them from the next turn: the list starts on the current choice, marked
+  ignore it. **Change Effort** (Alt+C, N, E) and **Change Permission Mode**
+  (Ctrl+Shift+O, or Alt+C, N, P), also in Chat, Chat Settings, change them from the next turn: the list starts on the current choice, marked
   "(now)", and you hear, for example, "Permission mode for Build: plan, from its next turn." While
   a turn runs, Change Model and Change Permission Mode change it too (Claude Code's `set_model` and
   `set_permission_mode` control requests), and you hear "…, now and for later turns."; if Claude
@@ -380,8 +380,8 @@ too).
   folder, so it has none of these. git and gh are run with no shell and never prompt; branch and
   repository names are checked before either sees them. On a Mac without Apple's Command Line
   Tools, `/usr/bin/git` isn't used, since running it asks to install them.
-- **Chat Options** (Alt+H in New Session and Continue Here, for Claude and Codex; File, Chat
-  Settings, Chat Options (Alt+F, I, O) for a chat started here; Codex's is under **Codex chats** below) chooses, for Claude, what every turn in the chat also gets: an agent to
+- **Chat Options** (Alt+H in New Session and Continue Here, for Claude and Codex; Chat, Chat
+  Settings, Chat Options (Alt+C, N, O) for a chat started here; Codex's is under **Codex chats** below) chooses, for Claude, what every turn in the chat also gets: an agent to
   **Run as agent** (None, or one of the agents Claude Code knows for the folder, such as your
   code-reviewer, listed with the start of its description), **Instructions for this chat**
   (added to Claude's own; Enter starts a new line; up to 8,000 characters, and OK says if they're
@@ -397,14 +397,14 @@ too).
   passed to every turn (`--agent`, `--append-system-prompt`, an output style through
   `--settings`, and `--add-dir`). More folders show in Chat Permissions, as "Work in the folder
   …", where you can take one back. In New Session the button is followed by what's chosen;
-  after OK you hear it ("Chat options: agent code-reviewer, instructions."). File, Chat Settings,
+  after OK you hear it ("Chat options: agent code-reviewer, instructions."). Chat, Chat Settings,
   Chat Options changes them from the chat's next turn, and you hear what changed ("Build: agent
   code-reviewer, from its next turn."). Claude Code keeps the system prompt it made for a
   chat's first message, so once a chat's options change, The Chat Place has every later turn
   make it afresh (`--system-prompt-snapshot off`); a turn that's running carries on as it
   started. The heading says the agent when its name is short ("as code-reviewer"), and
   Properties lists all three.
-- **Ask Aside** (Ctrl+Shift+Y, File, Ask Aside, or Ask Aside on a session's menu) asks Claude a
+- **Ask Aside** (Ctrl+Shift+Y, Chat, Ask Aside, or Ask Aside on a session's menu) asks Claude a
   quick question about the selected (or loaded) Claude chat, like Claude Code's `/btw`, without
   the question or its answer joining the chat. It works for chats started here, desktop app
   chats and terminal chats, even while a turn is running (it answers from what the chat holds so
@@ -428,7 +428,7 @@ too).
   the reply box. While a turn is running, Ctrl+Alt+Enter steers instead (see
   [Steering a running turn](#steering-a-running-turn)). For a desktop app or terminal session the same place holds a read-only note
   saying where you reply, with Open in Claude and Continue Here as they apply.
-- **Commands and skills** (Ctrl+/, the Commands button after Stop, or File, Insert Command
+- **Commands and skills** (Ctrl+/, the Commands button after Stop, or Chat, Insert Command
   or Skill), in The Chat Place's own Claude and Codex sessions (not yet for Copilot chats). Claude offers a searchable list of your skills and custom commands, then Claude Code's own
   (/compact, /context, /code-review and the rest), each with its description and what it
   takes. Type to filter by name or description, Down to the list, Enter to choose: it goes
@@ -437,7 +437,7 @@ too).
   folder, asked for in the background when the session loads (no turn, no cost) and kept
   current by each turn. If it isn't there yet, you hear "Commands are ready" when it is; the list
   never opens by itself.
-- **Prompts** (Ctrl+Shift+P, File, Prompts): a library of messages you send often, each with a
+- **Prompts** (Ctrl+Shift+P, Chat, Prompts): a library of messages you send often, each with a
   name. The dialog lists them by name, with the selected one's text below to read (Alt+X). **Use**
   (or Enter on a prompt) closes it and puts the prompt in the reply box of the loaded Chat Place
   session: in place of an empty reply, or at the cursor in what you've typed (replacing any text
@@ -445,13 +445,13 @@ too).
   Ctrl+Enter saves), **Delete** (or Delete on a prompt) asks first, and **Move Up** and **Move
   Down** put them in the order you want. Each change is saved at once and spoken ("Prompt saved:
   Review", "Prompt deleted: Review"); Close or Escape closes. To save something as you send it,
-  press **Ctrl+Shift+Enter** in the reply box (File, Send and Save as Prompt): it asks for a name,
+  press **Ctrl+Shift+Enter** in the reply box (Chat, Send and Save as Prompt): it asks for a name,
   starting with the message's first few words, saves the prompt and then sends the message as
   Ctrl+Enter does. Escape at the name does neither, and leaves your message in the reply box.
   Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/prompts.json`). The Chat Place doesn't read Claude
   Code's own history of what you've typed.
-- **Attachments**, in The Chat Place's own Claude and Codex sessions: **Attach Files** (Alt+T, after Commands;
+- **Attachments**, in The Chat Place's own Claude and Codex sessions: **Attach Files** (Alt+I, after Commands;
   Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
   attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed
   under the reply box ("2 attachments: screenshot.png, log.txt"); Delete there removes one.
@@ -466,7 +466,7 @@ too).
 In a Claude chat, you can go back to an earlier message and try again from there. The chat you
 went back from is always kept as it was, in the list.
 
-- **Retry from Here** (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; File, Retry from Here, or Retry from Here on a message's menu)
+- **Retry from Here** (Ctrl+Shift+Z; on a Mac, Cmd+Shift+Z in the messages list, as elsewhere it's Redo; Chat, Retry from Here, or Retry from Here on a message's menu)
   works on one of your own messages: select it in the messages list first. **What goes back**
   (Alt+W) asks what to take back:
   - **Conversation and files**,
@@ -510,7 +510,7 @@ went back from is always kept as it was, in the list.
   working in the chat, or while another chat of yours is working or waiting on you in the same
   folder. Until the files are back, nothing in that folder sends: not this chat, and not New
   Session or Continue Here.
-- **Branch from Here** (Alt+F, F; or Branch from Here on a message's menu) works on any of your
+- **Branch from Here** (Alt+C, F; or Branch from Here on a message's menu) works on any of your
   messages or Claude's replies: a new chat, "<title> (branch)", whose conversation ends with
   that message, opened with an empty reply box, to try another way from there. It changes no
   files.
@@ -574,7 +574,7 @@ Copilot chats don't have these yet.
   This Chat" lasts for the chat, not just the turn: The Chat Place keeps the rule with the
   chat and gives it to every later turn. It never writes Claude Code's settings files.
 
-  **Chat Permissions** (Ctrl+Shift+H; File, Chat Settings) shows what a chat started here may do without
+  **Chat Permissions** (Ctrl+Shift+H; Chat, Chat Settings) shows what a chat started here may do without
   asking: its permission mode in words, with **Change...** (the same choices as Change
   Permission Mode), and the rules and folders kept with the chat, one to a row, each read in
   full (a folder reads "Work in the folder …"). Removing a rule leaves a folder kept with it;
@@ -608,7 +608,7 @@ Copilot chats don't have these yet.
   (`claude mcp`) or on claude.ai, and Codex's with Codex in a terminal (`codex mcp add`), then press Refresh.
   "3 tools" on a row means it offers three separate things the AI can use; Details lists their
   names, not what each one does.
-- **View, Connected Tools (MCP)** (#468; the View menu's last item, Alt+V then Up) lists the
+- **Tools, Connected Tools (MCP)** (#468; Alt+T, C) lists the
   tools a Claude chat can use in its folder: MCP servers from your Claude Code settings, the
   project's `.mcp.json` and plugins, the connectors you've added on claude.ai, and, for a chat
   started here, The Chat Place's own session tools. One row each, read in full: "claude.ai Microsoft Learn: connected,
@@ -637,7 +637,7 @@ Copilot chats don't have these yet.
   alone. Only chats started here can do this; the session tools can't be turned off.
 - When a turn starts with a tool that needs sign-in or failed, it's said once each time The Chat
   Place runs ("Claude can't use claude.ai Morningstar: it needs sign-in. To sign in, or stop
-  hearing this, use View, Connected Tools."), on the status bar and spoken at the Full level
+  hearing this, use Tools, Connected Tools."), on the status bar and spoken at the Full level
   without cutting anything off. A tool turned off for the chat or for new chats isn't mentioned.
 - Codex chats also use Connected Tools, with different per-chat controls described below.
 
@@ -657,7 +657,7 @@ model; choices load in the background and are rechecked before the chat starts. 
 Codex's defaults remain available. For which model suits which task, see
 [Choosing a model in Codex](https://github.com/TheIdeaPlace/AIChat/blob/main/docs/codex-model-guide.md). New Codex chats default to editing files in their selected folder with on-request approvals.
 Choose read-only in New Session, or change an idle chat started here with Change
-Permission Mode (Ctrl+Shift+O; File, Chat Settings). Existing chats retain their saved permissions.
+Permission Mode (Ctrl+Shift+O; Chat, Chat Settings). Existing chats retain their saved permissions.
 Continue Here copies a local Codex chat into a new chat started here. These chats
 support text replies, Stop, queued messages and Answer (Ctrl+Shift+A) for
 permissions and questions. Externally started Codex chats remain read-only. Turning the
@@ -666,7 +666,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
 
 **More controls for Codex chats started here:**
 
-- **Chat Options** (Alt+H in New Session and Continue Here; File, Chat Settings, Chat Options later)
+- **Chat Options** (Alt+H in New Session and Continue Here; Chat, Chat Settings, Chat Options later)
   sets instructions for this chat, sent with each Codex turn, and more folders. Codex can change
   files in those folders only when its permission mode lets it edit files. Codex takes the
   changes between turns: OK during a turn keeps the dialog open with what you typed and says
@@ -675,7 +675,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   before they count. A folder you remove
   is left out of the next turn. Codex uses its own agents and styles, so Claude's Agent and
   Output Style choices aren't shown.
-- **View, Subagents** lists the work Codex handed to subagents, including ones another subagent
+- **Tools, Subagents** lists the work Codex handed to subagents, including ones another subagent
   started and ones Codex has archived. Read Conversation opens one to read; it doesn't become a
   chat you can reply to. A subagent's requests come to the chat that started it while that chat
   is running, and say which subagent is asking; its commands can be allowed only once at a time,
@@ -694,7 +694,7 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   You can send attachments with an empty reply box. Queued messages keep their image and skill
   inputs. If a send fails, the recovered draft names its files; attach images again to resend
   them as image inputs.
-- **Change Model** and **Change Effort** (File, Chat Settings) change an idle chat from its next turn. Choices
+- **Change Model** and **Change Effort** (Chat, Chat Settings) change an idle chat from its next turn. Choices
   come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
   such as "Codex's default (GPT-5.5)": the chat goes on Codex's default and its default effort,
   and follows that default at each turn, so it moves to a new one if Codex's default changes;
@@ -735,8 +735,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   You hear that they're being fetched, and they open by themselves only if you haven't moved
   on. If you have, you hear so and choose the command again.
 - `/plan` opens **Plan Mode**, which chooses Codex's **Plan** or **Default** mode for later
-  turns; the heading says when Plan is selected. **Plan** is also the last choice in File,
-  **Change Permission Mode** (Ctrl+Shift+O), as for Claude, and the two always agree. Plan keeps
+  turns; the heading says when Plan is selected. **Plan** is also the last choice in Chat,
+  Chat Settings, **Change Permission Mode** (Ctrl+Shift+O), as for Claude, and the two always agree. Plan keeps
   the chat's file access, which Change Permission Mode names above its list ("In Plan mode, with
   file access: …") and marks "(file access now)" in it. Choose Default, or another mode in Change Permission Mode, to carry out the
   plan; you hear "Plan mode is off." If the chat is opened on a version of Codex without
@@ -784,7 +784,7 @@ including Git hooks and configured programs, and may access files elsewhere and 
 The working folder is where it starts, not a confinement boundary. A plain push follows the
 repository's configuration, which can itself request forced updates or deletion. The Chat Place sends one-time answers
 on your behalf; it never has Codex keep an approval or add a saved rule. Chat
-Permissions (Ctrl+Shift+H; File, Chat Settings) lists the approvals Allow for This Chat keeps, and removes them.
+Permissions (Ctrl+Shift+H; Chat, Chat Settings) lists the approvals Allow for This Chat keeps, and removes them.
 Requests The Chat Place cannot present safely, such as typing into a command that's
 already running or running a command somewhere other than this computer, are declined
 with a notice that says which kind and why; they do not disconnect the chat. Turn Status
@@ -803,7 +803,7 @@ press Stop again to check Codex's saved turn status without resending anything.
 **Automatic approval review.** In New Session or Continue Here, the
 Permission mode list offers read-only or folder editing with **automatic approval
 review**. For an existing owned Codex chat, finish or stop its turn, then use
-**Change Permission Mode**, or **Chat Permissions**, **Change** (both in File, Chat Settings).
+**Change Permission Mode**, or **Chat Permissions**, **Change** (both in Chat, Chat Settings).
 The new mode applies from the next turn in the same chat, including when you
 change it before sending the first message. The chat keeps its history.
 You hear "Checking the new permissions with Codex." If the change can't be saved or
@@ -831,7 +831,7 @@ locally for that chat and can be read again in Lists and Chat Permissions, newes
 including after restarting. Chat Permissions lists them under "Recent decisions made for you, by
 automatic review and by Allow for This Chat (newest first):".
 
-Connected tools start off in Codex chats started here. View, **Connected Tools (MCP)** lists
+Connected tools start off in Codex chats started here. Tools, **Connected Tools (MCP)** lists
 the servers set up in Codex for the chat's folder, and apps from ChatGPT. Its note starts: "In
 a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On or Off
 makes a new copy of the chat with that choice, and this chat stays as it is." **Copy with Tool
@@ -913,7 +913,7 @@ folder and your first message. **Model** lists the models Copilot offered your l
 here (it lists them only for a chat), each with the premium requests a message costs, such as
 "GPT-5 (1x)"; leave it on Copilot's configured model, or choose one, and the chat switches to it
 before your first message goes; if Copilot won't, the chat says so and uses Copilot's own.
-**Change Model** (File, Chat Settings: Alt+F, I, M) changes a Copilot chat's model later, from its next turn,
+**Change Model** (Chat, Chat Settings: Alt+C, N, M) changes a Copilot chat's model later, from its next turn,
 choosing from the models Copilot offers that chat; the chat must be open in Copilot first (select
 it and wait until it's ready). Once it is, the chat's heading says its model ("on GPT-5 (1x)").
 Effort and Copilot's other
@@ -1083,7 +1083,7 @@ Commands that only start another program don't count, so `git commit -m "fix(par
 its path counts only if it's there as named, with `.exe`, `.cmd` or `.bat`, and no `.ps1` of the
 same name beside it, since PowerShell could otherwise run a script.
 
-**Restart Copilot** (Alt+S), a button in File, Chat Settings, Chat Permissions (Ctrl+Shift+H) for a Copilot chat,
+**Restart Copilot** (Alt+S), a button in Chat, Chat Settings, Chat Permissions (Ctrl+Shift+H) for a Copilot chat,
 is the way out of all that without closing The Chat Place. It stops Copilot and what Copilot
 started, for every chat, as they share one Copilot, and commands stop asking because of a shell
 that may have moved or a program that never ended. If another Copilot chat is running a turn or a
@@ -1118,7 +1118,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Passing replies between chats
 
-- **Send a reply to another chat (File, Send Reply to Another Chat, Ctrl+Shift+E).** Pass
+- **Send a reply to another chat (Chat, Send Reply to Another Chat, Ctrl+Shift+E).** Pass
   what one agent said to another, for example so Codex can review what Claude built, or so
   Claude can answer Codex's review. It sends the selected reply in the messages list, or the
   latest one if a message of yours is selected. Choose the chat it goes to: any of The Chat
@@ -1143,7 +1143,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     (Alt+J) is chosen; **Start an agent conversation with both chats** (Alt+C)
     instead makes the two chats an agent conversation (below), titled in **Agent conversation
     title** (Alt+I, the chat's title to start with). The reply goes as its first hand-off, the
-    chat you sent it to answers first, and you approve each hand-off (change that with File,
+    chat you sent it to answers first, and you approve each hand-off (change that with Session,
     Agent Conversation Hand-offs). With a new chat, New Session comes first. It can't be done
     with a chat that isn't one of The Chat Place's own, one already in an agent conversation, or
     while either chat is still working: then the option's name ends with
@@ -1170,7 +1170,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   each agent is sent the replies it missed along with the one passed to it. Choose how
   replies go across, who answers first, and write the opening message. The conversation is
   one row in the session list (Provider "Claude + Codex", Kind "agent conversation"); its
-  member chats leave the list, and File, Agent Conversation Members goes to any of them.
+  member chats leave the list, and Session, Agent Conversation Members goes to any of them.
   Loaded, its messages list has every agent's messages in order, each starting with who said
   it ("Codex: ...", "You, to Claude: ...") and the relay's own lines ("Relay: Claude's reply
   passed to Codex.", with what went if you changed it on the way, and why the relay
@@ -1185,7 +1185,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     without adding anything, or reading and changing it first. The row says a reply is
     waiting.
   - **Automatic**, once turned on in Settings: replies go across by themselves, up to a turn
-    limit (6 exchanges unless you choose another, here or with File, Agent Conversation
+    limit (6 exchanges unless you choose another, here or with Session, Agent Conversation
     Hand-offs). Approving what an agent asks doesn't stop it; it pauses, with the last reply
     waiting for Ctrl+Shift+E, when you refused something or a request went unanswered. It
     stops when a turn fails, and you hear why; your next message goes back to that agent.
@@ -1204,7 +1204,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
     (Ctrl+Shift+T) says what each agent is doing, the count, and who your next message goes
     to. **Usage and Context** (Ctrl+Shift+U) lists each agent's context and each provider's
     limits, including Copilot account allowances and each Copilot chat's premium requests used.
-  - The relay also stops when the agents are only thanking each other. File, Agent
+  - The relay also stops when the agents are only thanking each other. Session, Agent
     Conversation Hand-offs can make automatic mode say only when it stops or needs you, and
     asks first if Claude or Codex is near a usage limit. Copilot's account allowance is shown
     in Usage and Context, but automatic hand-offs don't check it: check it before enabling
@@ -1228,7 +1228,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   every listed session is announced or just the open one, and the speech route; its Reading
   messages group chooses whether full messages open as a formatted page or plain text.
   Ctrl+Shift+R repeats the last announcement.
-- **Sounds.** Off until you turn them on, in File, **Sounds**. They let you hear what a chat is doing
+- **Sounds.** Off until you turn them on, in Tools, **Sounds**. They let you hear what a chat is doing
   without tool activity on: a soft tick for each tool that runs, a soft settling chord when a file
   changes, a faint hum after 20 quiet seconds of a turn still working, and sounds for a message sent,
   queued, steered into the turn, taken in, sent from the queue or removed from it, Ask Aside's
@@ -1246,9 +1246,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   and your answer to a chat that needed you always plays. Help, **Sound Tutorial** lists the events by name: Space or
   Enter on one plays its sound in the scheme you use, even with sounds off or muted, and says
   "No sound" for an event without one, or that its file is missing (and plays the built-in sound,
-  as the event would). The **Sound Tutorial** button in File, Sounds (Alt+U) opens it too, playing
+  as the event would). The **Sound Tutorial** button in Tools, Sounds (Alt+U) opens it too, playing
   the scheme and volume showing in Sounds, changes not yet kept included. **Mute All Sounds**
-  (Ctrl+Shift+X, or View; File, Sounds has no mute of its own) silences everything at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
+  (Ctrl+Shift+X, or View; Tools, Sounds has no mute of its own) silences everything at once. A sound adds to what's said or on the status bar, and never replaces it. Sounds that
   happen on their own hold back during a presentation or a full-screen program on Windows, but not
   under Do Not Disturb, which Windows doesn't let apps detect: use Mute for that. Windows plays its
   own sound with each notification, so you can hear two; **Disable Windows sound for The Chat Place's
@@ -1308,7 +1308,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Usage, Turn Status and Properties
 
-- **Usage and Context** (Ctrl+Shift+U, View menu) opens a list to read with the arrow keys: first
+- **Usage and Context** (Ctrl+Shift+U, Tools menu) opens a list to read with the arrow keys: first
   how full the loaded session's context is ("Quiet one: Context 62% full: 124,000 of 200,000
   tokens"), then each of your plan's usage limits on a line of its own. When something isn't known
   yet, the line says so. Copy (Alt+C), or Ctrl+C in the list, copies the selected line, and Copy
@@ -1343,7 +1343,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   request ("Claude is retrying: the service is overloaded, attempt 2 of 10."). There's no
   time limit on a turn; Stop (Ctrl+Period) ends it, along with anything it started, such as a
   build.
-- **Properties** (Alt+Enter, View menu, or the session's and the message's context menus; Option+Return
+- **Properties** (Alt+Enter, Session menu, or the session's and the message's context menus; Option+Return
   on a Mac) opens a list of "Property: value" lines, read and copied like Usage and Context. In the
   session list it's the selected session; in the messages, the selected message; anywhere else,
   the loaded session. A session's lines are its title, provider, kind, folder, status, when it started and
@@ -1361,16 +1361,16 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Organizing and exporting
 
-- **Rename a session** (F2, File, Rename Session, or the session's menu). One of The Chat
+- **Rename a session** (F2, Session, Rename Session, or the session's menu). One of The Chat
   Place's own sessions is renamed outright. A desktop app session's new name shows only in The
   Chat Place, since its files are never changed: it's kept in
   `%APPDATA%\TheChatPlace\titles.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/titles.json`), and the desktop app keeps its own
   name for it. Renaming
   it to nothing (clear the box) goes back to the desktop app's name.
-- **Hide or delete a session.** **Delete** (File, Hide Session) takes the selected session out of
-  the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and File, Bring
-  Back Session returns one. **Shift+Delete** (File, Delete Session Permanently) deletes one of The
+- **Hide or delete a session.** **Delete** (Session, Hide Session) takes the selected session out of
+  the list without changing it; View, Show Sessions, Hidden lists hidden sessions, and Session, Bring
+  Back Session returns one. **Shift+Delete** (Session, Delete Session Permanently) deletes one of The
   Chat Place's own sessions for good, from any view, hidden or not: after you confirm (No is the
   default), its conversation is deleted from the computer and it leaves the list, its groups and
   the hidden list. A Claude chat's transcript is deleted; a Codex chat is deleted through Codex
@@ -1384,8 +1384,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Desktop app sessions can only be hidden; delete those in the desktop app. A restored or kept chat
   can be deleted: that deletes only The Chat Place's copy.
   On a Mac laptop these are Fn+Delete and Fn+Shift+Delete (the forward-delete key).
-- **Groups**, like groups in Claude on the web: **Ctrl+G** (File, Add to Group) puts the
-  selected session in a group, or a new one; File, Remove from Group takes it out; File,
+- **Groups**, like groups in Claude on the web: **Ctrl+G** (Session, Add to Group) puts the
+  selected session in a group, or a new one; Session, Remove from Group takes it out; Session,
   Manage Groups lists your groups with how many sessions each has, to make, rename or delete
   them (deleting a group never touches its sessions). A session can be in several groups, and
   its row says which ("…, group Work"). The Chat Place's groups are kept in
@@ -1405,7 +1405,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   starts in Documents, named after the session and the date, works in the background (a long
   session never freezes the window), and says where it saved; the status bar keeps that to read
   back. Headings carry the time, and the date whenever the day changes.
-- **Export Chats** (File menu, the last item before Exit, #461) exports many chats at once. It
+- **Export Chats** (File menu, Alt+F, H, #461) exports many chats at once. It
   lists the chats in the session list's current view that have a history (found off the
   window's thread), newest first, hidden ones left out, each
   row "Export:" or "Skip:" in its own text (title, AI, folder, last active), none chosen to begin
@@ -1419,7 +1419,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   where, and any that couldn't be (one failing doesn't stop the rest; a failed write leaves no
   partial file). Quitting during one asks first, and stops it before the next chat. The format and
   folder are offered again until the app closes.
-- **Back up** (File, Back Up Now) saves your AI chats, memory and settings in one zip in a
+- **Back up** (File, Backup, Back Up Now) saves your AI chats, memory and settings in one zip in a
   folder you choose, preferably on another drive or a cloud folder: Claude Code's
   conversations, memory, instructions, settings, skills and plans, the desktop app's Code and
   Cowork session lists, Codex's conversations, databases (also where `sqlite_home` or
@@ -1440,10 +1440,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   background, taking no focus, with its progress in the status bar (Ctrl+9; Check Backup shows
   only that it's checking); choosing Back Up Now again offers to stop it. Back Up Now, Check
   Backup and Restore from Backup each end with a message box saying what happened; a scheduled
-  backup is announced (not when announcements are silent) and kept in the status bar. **Check Backup** (File menu) reads a
+  backup is announced (not when announcements are silent) and kept in the status bar. **Check Backup** (File, Backup) reads a
   backup back, asking for the passphrase of an encrypted one, and
   checks every file against its manifest. The last folder and backup are kept in
-  `backup.json` in The Chat Place's folder. **Backup Schedule** (File menu, #437) backs up every
+  `backup.json` in The Chat Place's folder. **Backup Schedule** (File, Backup, #437) backs up every
   day or week to a folder you choose, keeping the number of this computer's backups you set (5 by
   default). Older ones are pruned only after a complete backup checks out, and only unencrypted
   backups whose manifest names this computer's id (by hand or scheduled); a folder on the same
@@ -1473,7 +1473,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Links, Remote Control and other computers
 
-- **Copy Session Link** (Ctrl+Shift+L, File menu, or the session's menu) copies a link to the
+- **Copy Session Link** (Ctrl+Shift+L, Session menu, or the session's menu) copies a link to the
   selected Claude session (not yet for Codex or Copilot chats), to paste into a note, an email or another session. A list offers the links that
   apply, best first; Enter on the first copies a Markdown link, `[Title](thechatplace://session/…)`,
   that opens the session in The Chat Place. Below it are a desktop app session's Open in Claude link
@@ -1494,10 +1494,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   hands the link over (as a small file in its own data folder, `links`, taken within a second) and
   closes.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
-  **File, Remote Control** turns it on or off for one session (or back to the Settings
+  **Session, Remote Control** turns it on or off for one session (or back to the Settings
   default). A session on Remote Control can be reached from claude.ai and your other devices
   while one of its turns is running: each turn is its own Claude Code process, so between turns
-  it shows as offline. The same Remote Control session is joined every turn, and File, Remote
+  it shows as offline. The same Remote Control session is joined every turn, and Session, Remote
   Control copies its claude.ai address. Turning it on copies the conversation to claude.ai,
   where it stays (turning Remote Control off, or deleting the session, doesn't remove it;
   archive it on claude.ai). While a turn runs, anyone signed in to your account on claude.ai
@@ -1505,10 +1505,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   It's also on the session's menu (Applications key). A session on Remote Control says so in
   its row and heading, and View, Show Sessions, Remote Control Sessions lists it (with only the
   Settings default on, a Chat Place session's row says so once it has connected). For a Claude
-  desktop app session, File, Remote Control offers to open it in the desktop app, where its
+  desktop app session, Session, Remote Control offers to open it in the desktop app, where its
   Remote Control is turned on, or to continue it here as a copy with Remote Control on from the
   first turn; The Chat Place never changes the desktop app's session itself.
-- **Other machines (File, Other Machines, Ctrl+Shift+M).** Your Claude Code sessions on
+- **Other machines (Chat, Other Machines, Ctrl+Shift+M).** Your Claude Code sessions on
   your other computers, reached through Claude in the loaded Chat Place session, which needs
   Remote Control on (as do they). It lists them from Claude's latest look: their names and
   whether each is idle, busy or offline. "Offline" often only means between turns, and a
@@ -1529,7 +1529,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### What AI knows about you
 
-- **What AI knows about you** (Ctrl+Shift+K, View, What AI Knows About You). Choose **Claude**
+- **What AI knows about you** (Ctrl+Shift+K, Tools, What AI Knows About You). Choose **Claude**
   or **Codex** in the Provider list (Alt+V). This is an inventory of local customization files,
   not an account-wide memory report or a list of everything active in a particular turn. Pick a
   kind, arrow through its items (each with its description), and Enter reads the file in a box
@@ -1555,7 +1555,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Sign-in, the user guide and bug reports
 
-- **Claude Code Sign-in** (Help menu) says whether Claude Code is signed in, to which plan and
+- **Claude Code sign-in** (Tools, Sign In, Claude Code) says whether Claude Code is signed in, to which plan and
   as whom ("Claude Code is signed in to your Claude Max plan as …"). If it isn't, it offers to
   sign in: `claude auth login` opens in its own window (a Terminal window on a Mac) and your
   browser shows Claude's sign-in page; when you've finished, The Chat Place checks again and
@@ -1566,11 +1566,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   what it printed. The Chat Place also checks at start-up and says so only if there's a problem.
   Your sessions are listed whether or not Claude Code is signed in (they're read from disk);
   only sending a message needs a sign-in.
-- **Codex Sign-in** (Help menu) says whether Codex is signed in to ChatGPT. If it isn't, or is
+- **Codex sign-in** (Tools, Sign In, Codex) says whether Codex is signed in to ChatGPT. If it isn't, or is
   using another credential such as an API key, it offers to run `codex login` in its own window;
   your browser shows ChatGPT's sign-in page, and The Chat Place checks again when it finishes.
   If Codex isn't installed or its status can't be read, the same item explains what is needed.
-- **Copilot Sign-in** (Help menu) says whether GitHub Copilot CLI is installed and which GitHub
+- **Copilot sign-in** (Tools, Sign In, Copilot) says whether GitHub Copilot CLI is installed and which GitHub
   account it's signed in to, as Copilot CLI records it in its own settings file; it never starts
   Copilot or sends a message. If it isn't signed in, it offers to run `copilot login` in its own
   window, with the environment the app's own Copilot chats get (no `GH_TOKEN` or other token
@@ -1632,7 +1632,7 @@ isn't meant for other programs, so install the command as well, from a terminal:
 - Windows Command Prompt:
   `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd`
 
-Then run `claude` once to sign in. Help, Claude Code Sign-in can run the installer and the
+Then run `claude` once to sign in. Tools, Sign In, Claude Code can run the installer and the
 sign-in for you. Homebrew (`brew install --cask claude-code`) and WinGet
 (`winget install Anthropic.ClaudeCode`) installs work too.
 
@@ -1680,7 +1680,7 @@ Anthropic makes no Claude desktop app for Linux, so the Claude sessions listed t
 you started by typing `claude` in a terminal and The Chat Place's own. Codex and GitHub Copilot
 CLI chats are listed as on Windows and the Mac.
 
-Claude Code's sign-in (Help, Claude Code Sign-in) opens a web page. Without a web browser, which
+Claude Code's sign-in (Tools, Sign In, Claude Code) opens a web page. Without a web browser, which
 a server install often lacks, the terminal shows only the link: open it on another computer or
 phone, or install a browser (`sudo apt install firefox-esr` on Debian).
 
@@ -1789,16 +1789,16 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+D | Lists, on Changed Files: each change to read by line |
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
-| Anywhere | Alt+V, E | Session List Columns: choose what each session's line says, and in what order |
+| Anywhere | Alt+V, C | Session List Columns: choose what each session's line says, and in what order |
 | Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) chat from the desktop app, a terminal or another app here, as a copy |
 | Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access, approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session |
 | Anywhere | Ctrl+Shift+W | Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead |
 | Anywhere | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode and kept rules (for Copilot, the commands allowed for the chat and your rules), to read and remove |
-| Anywhere | Alt+F, I | Chat Settings: Change Model (M), Change Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat Options (O) |
+| Anywhere | Alt+C, N | Chat Settings: Change Model (M), Change Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat Options (O) |
 | Messages | Ctrl+Shift+Z | Retry from Here: a new chat from just before your selected message, with it ready to change; Files only puts files back instead (Put Files Back) |
-| Messages | Alt+F, F | Branch from Here: a new chat whose history ends with the selected message |
+| Messages | Alt+C, F | Branch from Here: a new chat whose history ends with the selected message |
 | Session list | F5 | Refresh the list now and put it in order |
-| Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; File, Bring Back Session returns it) |
+| Session list | Delete | Hide the selected session (View, Show Sessions, Hidden lists it; Session, Bring Back Session returns it) |
 | Session list | Shift+Delete | Delete a Claude or Codex chat started here permanently, conversation and all, after you confirm, or The Chat Place's copy of a restored or kept chat; on an agent conversation, delete the conversation and keep its chats |
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
@@ -1811,7 +1811,7 @@ shows it as plain text instead.
 | Reply box | Ctrl+Enter | Send (Chat Place sessions only); you stay in the reply box |
 | Reply box | Ctrl+Shift+Enter | Send, and save the message as a prompt (asks for its name first) |
 | Reply box | Ctrl+Alt+Enter | Steer: during a turn, send the message into it without stopping it |
-| Reply box | Ctrl+Period | Stop the running turn (View, Stop Background Task, just below it, ends one background task and keeps the turn) |
+| Reply box | Ctrl+Period | Stop the running turn (Chat, Stop Background Task, just below it, ends one background task and keeps the turn) |
 | Reply box | Ctrl+Shift+T | Turn status: how long it has been working, on what, what is still running in the background, and how far along the task list is |
 | Anywhere | Ctrl+Shift+A | Answer: a provider's permission request, a question or a supported plan |
 | Anywhere | Alt+Enter | Properties of the selected session, or in the messages the selected message |
@@ -1822,8 +1822,12 @@ shows it as plain text instead.
 | Anywhere | Ctrl+Shift+X | Mute All Sounds |
 | Anywhere | Alt+F4 | Quit |
 
-Menus are File (Alt+F), View (Alt+V) and Help (Alt+H). Controls have their own Alt letters
-(Alt+L the session list, Alt+M the messages, Alt+Y the reply box, Alt+D Send), and none of them
+Menus are File (Alt+F), Session (Alt+S), Chat (Alt+C), View (Alt+V), Tools (Alt+T) and Help
+(Alt+H). File holds new chats, exporting and backups; Session acts on the chat selected in the
+list; Chat on the chat you've loaded and replying to it; View on moving around, the list and
+reading; Tools holds Lists, your AI sign-ins, Sounds and Settings. Every item has its own Alt
+letter. Controls have their own too (Alt+L the session list, Alt+M the messages, Alt+Y the reply
+box, Alt+D Send, Alt+I Attach Files or Open in Claude, Alt+E Continue Here), and none of them
 takes a menu's letter.
 
 On a Mac, Ctrl is the Command key, the menus are in the menu bar (VO+M) rather than on Alt, and
@@ -1948,7 +1952,7 @@ under the same name, with `--mcp-config` (#165). The server is The Chat Place it
   `chatPlaceLink`). As in the desktop app, the session asking is always left out, and archived
   sessions unless `include_archived` is true; a hidden session counts as archived.
 - **archive_session** hides one of The Chat Place's own sessions, or a terminal session, exactly
-  as File, Hide Session does, and the list changes at once. It refuses a desktop app session (The
+  as Session, Hide Session does, and the list changes at once. It refuses a desktop app session (The
   Chat Place never changes the desktop app's files) and says to archive it in the desktop app's
   sidebar; another app's chat, in that app. It refuses a session with a turn running, including
   the one asking, and one open in the window, so nothing you're reading or typing disappears; the
@@ -1973,7 +1977,7 @@ thread, and a search reads transcripts off it.
 Steering sends a message into the turn that's running, without stopping it. The AI takes it in
 at its next step and carries on with it in mind: "also update the README", "use the other test
 file", "don't touch that folder". Type it in the reply box and press **Ctrl+Alt+Enter**
-(Cmd+Option+Return on a Mac), or choose File, Steer: Send into the Running Turn. On a queued
+(Cmd+Option+Return on a Mac), or choose Chat, Steer: Send into the Running Turn. On a queued
 message in the messages list, Ctrl+Alt+Enter (or Steer on its context menu) steers that message
 instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+Enter does.
 
@@ -2022,7 +2026,7 @@ queued unless you steer it (Ctrl+Alt+Enter). The answer to a steered message goe
 may not be read out until later.)
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
-**View, Stop Background Task** (just below Stop Running Turn) ends one of them and keeps the turn: it's available while the
+**Chat, Stop Background Task** (just below Stop Running Turn) ends one of them and keeps the turn: it's available while the
 loaded Claude chat has background work, lists each piece with how long it has run ("Windows
 build, running 3 minutes"), asks Yes or No (No first) naming the one chosen, and says "Stopped
 Windows build." If the work finishes while you're choosing or answering, nothing is sent and it

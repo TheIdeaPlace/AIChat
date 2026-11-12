@@ -337,11 +337,11 @@ def problems_text(servers: List[Tuple[str, str]], skip: Collection[str] = ()) ->
     # What you can do about it, not only where to go. No key: a sentence that
     # names Alt+V is wrong on a Mac, and every extra word is read every time.
     if needs and failed:
-        sentences.append("To fix this, or stop hearing it, use View, Connected Tools.")
+        sentences.append("To fix this, or stop hearing it, use Tools, Connected Tools.")
     elif needs:
-        sentences.append("To sign in, or stop hearing this, use View, Connected Tools.")
+        sentences.append("To sign in, or stop hearing this, use Tools, Connected Tools.")
     else:
-        sentences.append("To reconnect, or stop hearing this, use View, Connected Tools.")
+        sentences.append("To reconnect, or stop hearing this, use Tools, Connected Tools.")
     return " ".join(sentences)
 
 
@@ -350,7 +350,7 @@ def problems_short(servers: List[Tuple[str, str]], skip: Collection[str] = ()) -
     long text off at the end: the end is what says what you can do."""
     count = sum(status in PROBLEM_STATUSES and name not in skip for name, status in servers)
     tools = "a connected tool" if count == 1 else f"{count} connected tools"
-    return f"Claude can't use {tools}. To fix this, or stop hearing it, use View, Connected Tools."
+    return f"Claude can't use {tools}. To fix this, or stop hearing it, use Tools, Connected Tools."
 
 
 def _and(names: List[str]) -> str:

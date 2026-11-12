@@ -1,5 +1,5 @@
 """The commands Codex's own saved rule files allow, ask about or refuse, read
-only, for File, Chat Permissions (#307).
+only, for Chat, Chat Settings, Chat Permissions (#307).
 
 When you tell Codex to always allow a command, it adds a line such as
 ``prefix_rule(pattern=["git", "commit"], decision="allow")`` to a ``.rules``

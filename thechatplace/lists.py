@@ -1,4 +1,4 @@
-"""What View, Lists shows (#279): one dialog listing each kind of thing in a
+"""What Tools, Lists shows (#279): one dialog listing each kind of thing in a
 chat (code blocks, links, changed files, commands, decisions, and Claude's
 task list, #231, and the subagents Claude handed work to, #468), for the
 selected message or the whole chat.

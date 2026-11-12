@@ -1,4 +1,4 @@
-"""File, Send Reply to Another Chat (#248): the window's side of relay.py.
+"""Chat, Send Reply to Another Chat (#248): the window's side of relay.py.
 
 A reply in the loaded chat goes, labelled and after you've read it, to
 another of The Chat Place's own chats, of any provider, as an ordinary

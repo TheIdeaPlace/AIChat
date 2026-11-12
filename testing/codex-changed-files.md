@@ -6,7 +6,7 @@ keyboard focus and speech, which the screenshot probe cannot verify.
 1. Ask Codex to create a text file, change an existing file, delete another, and rename one
    using its patch tool. After the turn ends, at Full announcements, its reply should be
    followed by a summary of the files changed. Reopening the chat must not repeat old changes.
-2. With Show Tool Activity off, press Ctrl+Shift+D (Cmd+Shift+D on a Mac), or use View,
+2. With Show Tool Activity off, press Ctrl+Shift+D (Cmd+Shift+D on a Mac), or use Tools,
    Changed Files. Lists opens on Changed Files, scoped to the selected message's turn.
    Arrow through the files: hear the name, line counts, and created, deleted or renamed status.
 3. Press Enter to reach Details. Read by line: the location, then Added, Removed and Unchanged

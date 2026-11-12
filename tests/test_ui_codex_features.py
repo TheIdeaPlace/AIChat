@@ -620,7 +620,7 @@ def test_change_effort_on_a_model_codex_no_longer_lists_says_what_to_do(frame, e
     frame._change_codex_settings(record.to_info(), 'effort')
     assert not offered and not sent
     assert env['feedback'][-1] == ("retired isn't in Codex's list of models now, so its effort can't be "
-                                   'changed. Change Model, on the File menu, chooses another.')
+                                   'changed. Chat, Chat Settings, Change Model chooses another.')
 
 
 def test_codex_chat_options_stay_open_with_what_you_typed_during_a_turn(frame, env, monkeypatch):

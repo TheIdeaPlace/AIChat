@@ -329,14 +329,14 @@ def _plain_problem(returncode, detail: str) -> str:
 
 
 #: A turn's words for what a Fable or API-key check did, and an aside's. A chat
-#: from the desktop app or a terminal has no File, Change Model to go to.
+#: from the desktop app or a terminal has no Chat, Chat Settings, Change Model to go to.
 _ASIDE_WORDS = (
     ("didn't send your message", "didn't ask your question"),
     ("stopped the turn when it moved to Fable", "stopped answering when it moved to Fable"),
     ("stopped the turn as soon as it started", "stopped the question as soon as it started"),
     ("stopped the turn before anything was sent", "stopped the question before it was answered"),
-    ("Choose another model with File, Chat Settings, Change Model, then send again.",
-     "Choose another model with Claude Code's model setting, or with File, Chat Settings, Change Model for "
+    ("Choose another model with Chat, Chat Settings, Change Model, then send again.",
+     "Choose another model with Claude Code's model setting, or with Chat, Chat Settings, Change Model for "
      "a chat started here, then ask again."),
 )
 

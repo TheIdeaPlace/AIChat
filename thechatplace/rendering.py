@@ -41,7 +41,7 @@ _HTML_HEADING = re.compile(r"<(/?)h([1-6])(?=[\s>])")
 
 def opens_in_browser(href: str) -> bool:
     """Whether a link in a message may go to the default browser: http,
-    https and mailto only (View, Links uses the same rule, #190)."""
+    https and mailto only (Tools, Links uses the same rule, #190)."""
     return bool(_SAFE_LINK.match(href or ""))
 
 LANGUAGE_NAMES = {

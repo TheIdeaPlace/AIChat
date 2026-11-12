@@ -1,4 +1,4 @@
-"""What a chat may do without asking, in words, for File, Chat Permissions (#307, #329).
+"""What a chat may do without asking, in words, for Chat, Chat Settings, Chat Permissions (#307, #329).
 
 No wx here, so the rows, notes and confirmations can be tested on their own.
 Claude's kept rules are the ``--allowedTools`` rules stored with the chat.

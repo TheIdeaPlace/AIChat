@@ -19,7 +19,7 @@ class CodexFeatureError(CodexRpcError):
         # The delete went to Codex and no answer came back (#634). Deleting
         # again is safe: Codex deletes it, or says it's already gone.
         'delete_unconfirmed': ("Codex didn't answer the delete, so this chat may be gone. Delete it "
-                               'again (File, Delete Session Permanently) to finish.'),
+                               'again (Session, Delete Session Permanently) to finish.'),
         'settings_pending': 'Send a normal message with this chat\'s changed settings before compacting its context.',
         # A copy keeps the original's settings (#596, decision 3), so only
         # settings that are saved and confirmed, for the folders they were
@@ -40,7 +40,7 @@ READ_METHODS = frozenset({'thread/goal/get', 'thread/backgroundTerminals/list'})
 ACTION_METHODS = frozenset({'thread/compact/start', 'thread/goal/set',
     'thread/goal/clear', 'thread/memoryMode/set', 'thread/backgroundTerminals/terminate'})
 #: Deleting a Codex chat started here (#634). Not an ordinary action: it is
-#: sent only by File, Delete Session Permanently (CodexChatRuntime.delete,
+#: sent only by Session, Delete Session Permanently (CodexChatRuntime.delete,
 #: through CodexExecutionConnection.delete_owned_thread), never through
 #: feature() or a plain request. Codex deletes the chat's spawned subagent
 #: threads with it (codex-rs thread_delete.rs, 0.163).
