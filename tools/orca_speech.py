@@ -165,7 +165,7 @@ STEPS = [
     # Assign would do, and Escape twice changes nothing.
     Step("Customize Keyboard Shortcuts", ["alt+t", "k"],
          expect=["Customize Keyboard Shortcuts", "New Session, Ctrl+N, File menu"]),
-    Step("Change Key", ["Return"], expect=["Change Key: New Session", "Key"]),
+    Step("Change Key", ["Return"], expect=["Change Key: New Session", "press the keys you want"]),
     Step("a key pressed in Change Key", ["ctrl+shift+v"],
          expect=["Ctrl+Shift+V", "Nobody has it"]),
     Step("Change Key closed, back in the list", ["Escape"],

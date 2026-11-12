@@ -74,8 +74,8 @@ def test_ui_shortcut_literals_are_translated_except_native_menu_accelerators():
                     # or in a sentence: your key, translated (#635).
                     canonical = True
                 if (path.name == 'ui_text.py' and isinstance(ancestor, ast.FunctionDef)
-                        and ancestor.name == 'with_stop_key' and _in_your_key(node, parents)):
-                    canonical = True  # it puts the key through key_name itself
+                        and ancestor.name == 'with_stop_key'):
+                    canonical = True  # Stop's key: it puts it through key_name itself
                 if path.name == 'ui_text.py':
                     if isinstance(ancestor, ast.FunctionDef) and ancestor.name == 'key_name':
                         canonical = True
@@ -90,12 +90,8 @@ def test_ui_shortcut_literals_are_translated_except_native_menu_accelerators():
 #: Strings that may name a changeable default key outside your_key (#635),
 #: and why: each says what it is, so the list stays short and deliberate.
 KEPT_DEFAULTS = {
-    # Built once, at import: the no-sessions line in an empty list.
-    ("ui/main_frame.py", "NO_SESSIONS_YET"),
-    # The New Session dialog's note on permission modes, one long text.
-    ("ui/dialogs.py", "PERMISSION_NOTE"),
     # The subagent window's own check box, whose Ctrl+T is that window's.
-    ("ui/subagent_chat.py", "SubagentChatDialog"),
+    ("ui/subagent_chat.py", "SubagentChatDialog.__init__"),
 }
 
 
@@ -107,7 +103,9 @@ def test_what_the_app_says_names_your_key_not_the_default():
     names = set()
     for command in commands.commands():
         if command.key and keymap.customizable(command, 'win32'):
+            # Every way it's written: as said ("Ctrl+Period") and as typed ("Ctrl+.").
             names.add(keymap.spoken(keymap.normalize(command.key), 'win32'))
+            names.add(keymap.normalize(command.key))
     pattern = re.compile(r"(?<![\w+])(" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
                          + r")(?![\w+])")
     ui = Path(__file__).resolve().parents[1] / 'thechatplace'
@@ -125,14 +123,17 @@ def test_what_the_app_says_names_your_key_not_the_default():
                 continue
             if not pattern.search(node.value):
                 continue
-            # The outermost class, function or module-level name it's in.
-            ancestor, owner = node, None
+            # Where it is, innermost first: "Class.method", a function, or a
+            # module-level name, so an exception covers that one place only.
+            ancestor, names_in = node, []
             while ancestor in parents:
                 ancestor = parents[ancestor]
                 if isinstance(ancestor, (ast.ClassDef, ast.FunctionDef)):
-                    owner = ancestor.name
-                elif isinstance(ancestor, ast.Assign) and isinstance(ancestor.targets[0], ast.Name):
-                    owner = ancestor.targets[0].id
+                    names_in.append(ancestor.name)
+                elif (isinstance(ancestor, ast.Assign) and not names_in
+                      and isinstance(ancestor.targets[0], ast.Name)):
+                    names_in.append(ancestor.targets[0].id)
+            owner = ".".join(reversed(names_in[:2]))
             if (rel, owner) not in KEPT_DEFAULTS:
                 failures.append(f"{rel}:{node.lineno} {node.value[:60]!r}")
     assert failures == []

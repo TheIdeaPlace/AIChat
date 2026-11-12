@@ -134,6 +134,8 @@ def refusal(key: str, platform: Optional[str] = None) -> str:
     function_key = name.startswith("F") and name[1:].isdigit()
     if not mods and not function_key:
         return "A key on its own types or moves. Use it with Ctrl or Alt, or choose an F key."
+    if mods == {"Shift"} and name == "Enter":
+        return f"{spoken(key, platform)} starts a new line, so it can't be a shortcut."
     if mods == {"Shift"} and not function_key:
         return "Shift with it types a character. Use it with Ctrl or Alt, or choose an F key."
     if name == "F4" and "Alt" in mods:
@@ -141,6 +143,9 @@ def refusal(key: str, platform: Optional[str] = None) -> str:
     if name == "Delete":
         return f"{spoken(key, platform)} deletes text, so it can't be a shortcut."
     if "Alt" in mods and "Ctrl" not in mods and not function_key and name != "Enter":
+        if platform == "darwin":
+            return ("Option with a letter, number or mark types a character. "
+                    "Use Command with it too.")
         return ("Alt with a letter, number or mark opens a menu or presses a button. "
                 "Use Ctrl with it too.")
     if (platform == "win32" and {"Ctrl", "Alt"} <= mods and not function_key
@@ -315,6 +320,22 @@ class KeyMap:
 
     # -- changing ------------------------------------------------------------
 
+    def why_not(self, command_id: str, key: str) -> str:
+        """Why ``command_id`` can't have ``key`` (normalized), or "" if it
+        can. Its own default always can, even where that's not an
+        accelerator (Retry's Cmd+Shift+Z on a Mac). A key a command you
+        can't change keeps (Settings' Cmd+Comma on a Mac) can't be taken."""
+        if not key or key == self.default(command_id):
+            return ""
+        why = refusal(key)
+        if why:
+            return why
+        for command in command_list.commands():
+            if (command.key and command.id not in self._defaults
+                    and not command.shown_key and normalize(command.key) == key):
+                return f"{spoken(key)} is {command_list.plain_label(command)}'s, which can't change."
+        return ""
+
     def set(self, command_id: str, key: str) -> Optional[str]:
         """Give ``command_id`` the key ``key`` ("" removes its key). A
         command that had the key loses it, and its id is returned. Raises
@@ -322,9 +343,7 @@ class KeyMap:
         if command_id not in self._defaults:
             raise ValueError(f"{command_id} has no key you can change.")
         key = normalize(key) if key else ""
-        # A command's own default can always go back to it, even where it's
-        # not an accelerator (Retry's Cmd+Shift+Z on a Mac).
-        why = refusal(key) if key and key != self.default(command_id) else ""
+        why = self.why_not(command_id, key)
         if why:
             raise ValueError(why)
         taken = self.command_for(key) if key else None

@@ -566,8 +566,8 @@ narrow the list by name, key or menu.
   box. Press the keys you want. What you pressed is said and shown, with what would happen: that
   nobody has it, that another command has it now (it moves to this one, and that one has no key),
   or why it can't be used. **Assign** (Enter) gives it; **Try Another** clears it; Escape changes
-  nothing. In the Key box, Tab and Shift+Tab still move on, and Alt with a letter still presses a
-  button.
+  nothing. In the Key box, Tab and Shift+Tab still move on, and (not on a Mac) Alt with a letter
+  still presses a button. A key that can't be a shortcut at all is answered as such.
 - **Remove Key** (Alt+R, or Delete on a command) leaves a command with no key; it's still on its
   menu.
 - **Reset to Default** (Alt+D) gives a command its own key back, and **Reset All** (Alt+A) does it

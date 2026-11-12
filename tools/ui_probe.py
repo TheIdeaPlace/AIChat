@@ -2210,6 +2210,18 @@ def d_key_capture(frame, env):
     return show
 
 
+def d_key_capture_refused(frame, env):
+    """Change Key after Ctrl+Alt+Q (#640): on Windows the AltGr reason, the
+    longest, which must wrap inside the dialog, not be cut off."""
+    from thechatplace.ui.keys_dialog import KeyCaptureDialog
+
+    def show():
+        dialog = KeyCaptureDialog(frame, frame.keymap, "sounds", lambda text: None)
+        dialog.capture("Ctrl+Alt+Q")
+        return frame._modal(dialog)
+    return show
+
+
 def d_backup_schedule(frame, env):
     """File, Backup, Backup Schedule (#437), turned on, with a last backup and a
     failure to report, so the read-only box has its longest text."""
@@ -2497,6 +2509,8 @@ SURFACES = {
     "keyboard-shortcuts": ("dialog", d_keyboard_shortcuts,
                            "Tools, Customize Keyboard Shortcuts: one key changed, one removed"),
     "key-capture": ("dialog", d_key_capture, "Change Key: a key another command has"),
+    "key-capture-refused": ("dialog", d_key_capture_refused,
+                            "Change Key: the longest reason a key can't be used (AltGr)"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
     "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
@@ -2628,6 +2642,7 @@ DIALOG_CLASSES = {
     "prompts": "PromptsDialog",
     "keyboard-shortcuts": "KeyboardShortcutsDialog",
     "key-capture": "KeyCaptureDialog",
+    "key-capture-refused": "KeyCaptureDialog",
     "prompt-edit": "PromptEditDialog",
     "restore-chooser": "RestoreChooserDialog",
     "export-chats": "ExportChatsDialog",

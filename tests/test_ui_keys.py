@@ -1,5 +1,6 @@
 """Tools, Customize Keyboard Shortcuts and Change Key (#635)."""
 import json
+import sys
 
 import pytest
 
@@ -138,11 +139,47 @@ def test_enter_changes_and_delete_removes_in_the_list(dialog, monkeypatch):
     done = []
     monkeypatch.setattr(dialog, "on_change", lambda: done.append("change"))
     monkeypatch.setattr(dialog, "on_remove", lambda: done.append("remove"))
-    for code in (wx.WXK_RETURN, wx.WXK_DELETE):
+    deletes = [wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE]
+    if sys.platform == "darwin":
+        deletes.append(wx.WXK_BACK)  # a Mac's Delete key
+    for code in [wx.WXK_RETURN] + deletes:
         event = wx.KeyEvent(wx.wxEVT_KEY_DOWN)
         event.SetKeyCode(code)
         dialog._on_list_key(event)
-    assert done == ["change", "remove"]
+    assert done == ["change"] + ["remove"] * len(deletes)
+
+
+def test_a_command_changed_out_of_the_filter_stays_in_view(dialog, monkeypatch):
+    from thechatplace.ui import keys_dialog
+
+    class Pressed:
+        def __init__(self, *a):
+            self.key = "Ctrl+J"
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(keys_dialog, "KeyCaptureDialog", Pressed)
+    dialog.filter.SetValue("no key")
+    _select(dialog, "sounds")
+    dialog.on_change()
+    assert dialog._selected_id() == "sounds" and dialog.filter.GetValue() == ""
+
+
+def test_what_is_said_follows_your_keys(frame):
+    from thechatplace.ui.main_frame import no_sessions_yet
+    from thechatplace.ui.dialogs import permission_note
+    frame.keymap.set("new_session", "Ctrl+J")
+    frame.keymap.set("answer", "Ctrl+K")
+    frame.apply_keys()
+    assert f"File, New Session ({K('Ctrl+J')})" in no_sessions_yet()
+    assert f"{K('Ctrl+K')} answers" in permission_note()
+    frame.keymap.set("answer", "")
+    frame.apply_keys()
+    assert "Chat, Answer answers" in permission_note()
 
 
 # -- Change Key ----------------------------------------------------------------------------
@@ -182,7 +219,8 @@ def test_tab_escape_and_alt_letters_still_work_in_the_key_box(capture, monkeypat
     assert _press(capture, monkeypatch, wx.WXK_TAB)
     assert _press(capture, monkeypatch, wx.WXK_TAB, shift=True)
     assert _press(capture, monkeypatch, wx.WXK_ESCAPE)
-    assert _press(capture, monkeypatch, ord("A"), alt=True)  # Assign's access key
+    if sys.platform != "darwin":  # a Mac has no access keys
+        assert _press(capture, monkeypatch, ord("A"), alt=True)  # Assign's access key
     assert capture.key == ""
     # A modifier alone chooses nothing.
     _press(capture, monkeypatch, wx.WXK_CONTROL, ctrl=True)
@@ -190,6 +228,22 @@ def test_tab_escape_and_alt_letters_still_work_in_the_key_box(capture, monkeypat
     # Alt+Enter is a key a command can have.
     assert not _press(capture, monkeypatch, wx.WXK_RETURN, alt=True, shift=True)
     assert capture.key == "Alt+Shift+Enter"
+
+
+def test_a_key_it_cant_name_is_answered(capture, monkeypatch):
+    # The Applications key has no name here: it's answered, not ignored.
+    _press(capture, monkeypatch, wx.WXK_WINDOWS_MENU)
+    assert capture.said[-1] == "That key can't be used for a shortcut."
+    assert capture.key == ""
+
+
+def test_change_keys_answer_is_always_said_at_once(frame, monkeypatch):
+    said = []
+    monkeypatch.setattr(frame, "_say", lambda text, **k: said.append((text, k)))
+    frame.speech.enabled = False
+    frame._say_key_result("F7. Nobody has it.")
+    assert said[-1][0] == "F7. Nobody has it."
+    assert said[-1][1]["force"] and said[-1][1]["interrupt"]
 
 
 def test_assign_needs_a_usable_key(capture, monkeypatch):

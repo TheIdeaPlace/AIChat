@@ -236,9 +236,15 @@ LIST_MIN_WIDTH = 200
 #: The messages list's line when there are no sessions to choose (#182).
 #: Short enough to fit the list at the window's usual size, as a list's rows
 #: don't wrap.
-NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
-                   + key_name(your_key("Ctrl+N"))
-                   + "), in a supported desktop app or in a terminal.")
+def no_sessions_yet() -> str:
+    """The line, with New Session's key in effect (#635)."""
+    return ("No sessions yet. Start one with File, New Session ("
+            + key_name(your_key("Ctrl+N"))
+            + "), in a supported desktop app or in a terminal.")
+
+
+#: The line with the default key, as most tests have it.
+NO_SESSIONS_YET = no_sessions_yet()
 
 
 #: Keys of the rows after the conversation: queued and steered messages, and
@@ -670,14 +676,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.GetEventHandler().ProcessEvent(event)
 
     def _say_your_keys(self):
-        """What the window says names your keys (#635): each changed default,
-        as said, to yours, or to where the command is if you took its key."""
+        """What the window says names your keys (#635): each changed default
+        to yours (as said), or "" if you took its key, with where the
+        command is."""
         set_your_keys({
-            spoken_key(self.keymap.default(c), 'win32'):
-                (spoken_key(self.keymap.key(c), 'win32') if self.keymap.key(c)
-                 else find_command_path(c))
+            self.keymap.default(c): (spoken_key(self.keymap.key(c), 'win32'),
+                                     find_command_path(c))
             for c, _ in self.keymap.items()
             if self.keymap.default(c) and self.keymap.changed(c)})
+
+    def _say_key_result(self, text: str):
+        """The answer to a key pressed in Change Key (#640): said even with
+        announcements silent, and over the last one, as each press is a
+        question you just asked."""
+        self._say(text, force=True, interrupt=True, window=wx.GetActiveWindow())
 
     def apply_keys(self):
         """Show and use the keys in ``self.keymap`` at once (#635): the menu
@@ -1929,7 +1941,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Every session, not just those the view shows: a group with none in
         # it isn't a first run.
         if not self._first_snapshot and not self._snapshot.sessions:
-            return NO_SESSIONS_YET
+            return no_sessions_yet()
         return key_name("No session loaded. Choose one in the session list and press Enter.")
 
     def _sync_no_session_line(self):
@@ -7806,7 +7818,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def on_customize_keys(self):
         """Tools, Customize Keyboard Shortcuts (#635): changes are saved
         and shown in the window as they're made."""
-        self._modal(KeyboardShortcutsDialog(self, self.keymap, self._feedback, self.apply_keys))
+        self._modal(KeyboardShortcutsDialog(self, self.keymap, self._feedback, self.apply_keys,
+                                            say_key=self._say_key_result))
 
     def on_prompts(self):
         """Chat, Prompts (#131): look after your saved prompts, and Use one

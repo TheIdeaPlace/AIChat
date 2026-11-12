@@ -12,12 +12,13 @@ QuickMail; Close or Escape closes.
 """
 from __future__ import annotations
 
+import sys
 from typing import Callable, List, Optional
 
 import wx
 
 from .. import commands as command_list
-from ..keymap import KeyMap, customizable, normalize, refusal, spoken
+from ..keymap import KeyMap, customizable, normalize, spoken
 from . import gtk_a11y, mac_a11y
 from .a11y import set_accessible_name, set_list_items_accessible
 from .dialogs import _fit_width, press_focused_button_on_a_mac
@@ -34,7 +35,7 @@ _NAMED = {
 }
 #: Keys that are only part of a key: pressing one alone chooses nothing.
 _MODIFIERS = {wx.WXK_SHIFT, wx.WXK_CONTROL, wx.WXK_ALT, wx.WXK_RAW_CONTROL, wx.WXK_COMMAND,
-              wx.WXK_WINDOWS_LEFT, wx.WXK_WINDOWS_RIGHT, wx.WXK_WINDOWS_MENU, wx.WXK_MENU,
+              wx.WXK_WINDOWS_LEFT, wx.WXK_WINDOWS_RIGHT, wx.WXK_MENU,
               wx.WXK_CAPITAL, wx.WXK_NUMLOCK, wx.WXK_SCROLL}
 
 
@@ -63,21 +64,10 @@ def event_key(event) -> str:
         return ""
 
 
-def _menu_paths() -> dict:
-    """Each command's place, as said: "Chat menu", "Chat, Chat Settings"."""
-    paths = {}
-
-    def walk(items, trail):
-        for item in items:
-            if isinstance(item, command_list.Menu):
-                walk(item.items, trail + [command_list.plain_label(item)])
-            elif item is not None:
-                paths[item.id] = (f"{trail[0]} menu" if len(trail) == 1
-                                  else ", ".join(trail))
-
-    for top in command_list.MENU_BAR:
-        walk(top.items, [command_list.plain_label(top)])
-    return paths
+def _place(command_id: str) -> str:
+    """A command's place, as said: "Chat menu", "Chat, Chat Settings"."""
+    trail = command_list.menu_path(command_id).split(", ")[:-1]
+    return f"{trail[0]} menu" if len(trail) == 1 else ", ".join(trail)
 
 
 def _name(command_id: str) -> str:
@@ -147,19 +137,25 @@ class KeyCaptureDialog(wx.Dialog):
         if code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not (ctrl or alt or shift):
             self.on_assign()
             return
-        if alt and not ctrl and 32 < code < 127:
+        if (alt and not ctrl and 32 < code < 127 and chr(code).isalpha()
+                and sys.platform != "darwin"):
             event.Skip()  # this dialog's own access keys
+            return
+        if code in _MODIFIERS:
             return
         key = event_key(event)
         if key:
             self.capture(key)
+        else:
+            self.key = ""
+            self.box.ChangeValue("")
+            self._status("That key can't be used for a shortcut.")
 
     def capture(self, key: str):
         """``key`` was pressed: show it and say what Assign would do."""
         self.key = key
         name = _name(self.command_id)
-        default = self.keys.default(self.command_id)
-        why = "" if key == default else refusal(key)
+        why = self.keys.why_not(self.command_id, key)
         taken = self.keys.command_for(key)
         if why:
             status = why
@@ -171,14 +167,16 @@ class KeyCaptureDialog(wx.Dialog):
         else:
             status = f"Nobody has it. Assign gives it to {name}."
         self.box.ChangeValue(spoken(key))
+        self._status(status, f"{spoken(key)}. {status}")
+
+    def _status(self, status: str, said: str = ""):
         self.status.SetLabel(status)
         self.status.Wrap(self.GetClientSize().width - dip(self, 16, -1)[0])
         self.Layout()
-        self._say(f"{spoken(key)}. {status}")
+        self._say(said or status)
 
     def usable(self) -> bool:
-        key, default = self.key, self.keys.default(self.command_id)
-        return bool(key) and (key == default or not refusal(key))
+        return bool(self.key) and not self.keys.why_not(self.command_id, self.key)
 
     def on_assign(self):
         if not self.key:
@@ -186,7 +184,7 @@ class KeyCaptureDialog(wx.Dialog):
             self.box.SetFocus()
             return
         if not self.usable():
-            self._say(refusal(self.key))
+            self._say(self.keys.why_not(self.command_id, self.key))
             self.box.SetFocus()
             return
         self.EndModal(wx.ID_OK)
@@ -204,14 +202,16 @@ class KeyboardShortcutsDialog(wx.Dialog):
     what each action did, as the window's answers are said."""
 
     def __init__(self, parent, keys: KeyMap, say: Callable[[str], None],
-                 apply: Callable[[], None]):
+                 apply: Callable[[], None], say_key: Optional[Callable[[str], None]] = None):
         super().__init__(parent, title="Customize Keyboard Shortcuts",
                          size=dialog_size(parent, 680, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.keys = keys
         self._say = say
         self._apply = apply
-        self._paths = _menu_paths()
+        #: Says Change Key's answer to a key press: always, and at once.
+        self._say_key = say_key or say
+        self._save_warned = False
         #: Every command whose key can change, in menu order.
         self._all = [c.id for c in command_list.commands() if customizable(c)]
         #: The ids shown, by row.
@@ -259,7 +259,7 @@ class KeyboardShortcutsDialog(wx.Dialog):
         parts = [_name(command_id), spoken(key) if key else "no key"]
         if self.keys.changed(command_id):
             parts.append("changed")
-        parts.append(self._paths.get(command_id, ""))
+        parts.append(_place(command_id))
         return ", ".join(p for p in parts if p)
 
     def _list_name(self) -> str:
@@ -289,7 +289,8 @@ class KeyboardShortcutsDialog(wx.Dialog):
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers():
             self.on_change()
             return
-        if key == wx.WXK_DELETE and not event.HasAnyModifiers():
+        deletes = (wx.WXK_DELETE, wx.WXK_NUMPAD_DELETE) + ((wx.WXK_BACK,) if sys.platform == "darwin" else ())
+        if key in deletes and not event.HasAnyModifiers():
             self.on_remove()
             return
         event.Skip()
@@ -311,11 +312,16 @@ class KeyboardShortcutsDialog(wx.Dialog):
 
     def _saved(self, command_id: str, said: str):
         """Save, show it in the window and the list, and say it."""
-        if not self.keys.save():
-            wx.MessageBox(f"{self.keys.load_error}\n\nThe change works until The Chat Place "
+        if not self.keys.save() and not self._save_warned:
+            self._save_warned = True
+            wx.MessageBox(f"{self.keys.load_error}\n\nChanges work until The Chat Place "
                           "closes.", self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
         self._apply()
         self._fill(command_id)
+        if command_id is not None and self._selected_id() != command_id:
+            # It no longer matches the filter: show everything, on it.
+            self.filter.ChangeValue("")
+            self._fill(command_id)
         self._say(said)
         self.list.SetFocus()
 
@@ -326,7 +332,7 @@ class KeyboardShortcutsDialog(wx.Dialog):
         command_id = self._none()
         if command_id is None:
             return
-        dialog = KeyCaptureDialog(self, self.keys, command_id, self._say)
+        dialog = KeyCaptureDialog(self, self.keys, command_id, self._say_key)
         try:
             chosen = dialog.key if dialog.ShowModal() == wx.ID_OK else None
         finally:
