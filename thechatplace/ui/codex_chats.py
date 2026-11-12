@@ -85,7 +85,9 @@ class CodexChats(SoundHost, CodexExtras):
                            else f'Deleted {info.title} permanently.')
 
         if record.started is not True:
-            # Never sent to: there's no Codex chat to delete, only our entry.
+            # A guard, not a path any Codex chat this release makes takes (it
+            # saves them all as started, CodexOwnedThread.record): an older or
+            # hand-edited entry has no Codex thread to delete, only our entry.
             done('deleted', False)
             return
         self._feedback(f'Deleting {info.title}.')
@@ -94,8 +96,8 @@ class CodexChats(SoundHost, CodexExtras):
             try:
                 self.sessions.owned_action('delete', record)
             except CodexThreadGone:
-                # Codex says it has no such chat (already deleted, or never
-                # saved): nothing is left to keep the entry for.
+                # Codex says it has no such chat (deleted already): nothing
+                # is left to keep the entry for.
                 return 'gone'
             return 'deleted'
         self._codex_work(delete, done)

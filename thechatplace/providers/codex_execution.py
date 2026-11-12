@@ -42,39 +42,49 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                | ACTION_METHODS | READ_METHODS | {DELETE_METHOD})
 
     def request(self, method, params):
-        from .codex_features import DELETE_METHOD, CodexFeatureError
+        from .codex_features import ACTION_METHODS, READ_METHODS, DELETE_METHOD, validate_action, CodexFeatureError
         if method == DELETE_METHOD:
             # Only delete_owned_thread sends it (#634).
             raise CodexFeatureError('invalid')
-        return self._checked_request(method, params)
-
-    def delete_owned_thread(self, proof):
-        """Delete a chat started here and loaded on this connection: the one
-        way thread/delete is sent, with the same checks as any action."""
-        from .codex_features import DELETE_METHOD
-        return self._checked_request(DELETE_METHOD, {'threadId': proof.native_id}, deleting=proof)
-
-    def _checked_request(self, method, params, deleting=None):
-        """``deleting``: the proof of the chat being deleted, which must still
-        be the one this connection holds for it."""
-        from .codex_features import ACTION_METHODS, READ_METHODS, validate_action, CodexFeatureError
-        if deleting is not None or method in ACTION_METHODS | READ_METHODS:
-            validate_action(method, params, deleting=deleting is not None)
+        if method in ACTION_METHODS | READ_METHODS:
+            validate_action(method, params)
             with self._runtime_lock:
                 proof = self._runtime_threads.get(params['threadId'])
-            if (proof is None or not self.owns_runtime(proof)
-                    or (deleting is not None and proof is not deleting)):
+            if proof is None or not self.owns_runtime(proof):
                 raise CodexFeatureError('unavailable')
             proof.policy.verify_workspace(proof.cwd)
             from .codex_rpc import is_chatgpt_account, ReadOnlyCodexConnection
             if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
                 raise CodexTurnRejected('chatgpt_required')
             ReadOnlyCodexConnection._verify_turn_route(self, {'threadId': proof.native_id, 'cwd': proof.cwd})
-            if deleting is not None or (method in ACTION_METHODS and not (method.startswith('thread/goal/')
-                    or method == 'thread/backgroundTerminals/terminate')):
+            if method in ACTION_METHODS and not (method.startswith('thread/goal/')
+                    or method == 'thread/backgroundTerminals/terminate'):
                 thread = self.request('thread/read', {'threadId': proof.native_id, 'includeTurns': False}).get('thread')
                 check_startable(self, proof.native_id, thread, check_turns=False)
         return super().request(method, params)
+
+    def delete_owned_thread(self, native_id, proof=None):
+        """The one way thread/delete is sent (#634), for a chat The Chat Place
+        started (the runtime checks its record). ``proof``: the chat's proof if
+        it's loaded on this connection, which must be the one held for it; a
+        chat not loaded here has none, and this connection mustn't hold one.
+
+        Nothing is resumed or loaded first: Codex deletes a thread that isn't
+        loaded, or is archived, and shuts down one that is (codex-rs
+        thread_delete.rs, 0.163). Nor are the folder or turn route checked:
+        those guard turns, and deleting runs none, so a chat whose folder was
+        removed can still be deleted."""
+        from .codex_features import DELETE_METHOD, validate_action, CodexFeatureError
+        from .codex_rpc import is_chatgpt_account
+        params = {'threadId': native_id}
+        validate_action(DELETE_METHOD, params, deleting=True)
+        with self._runtime_lock:
+            held = self._runtime_threads.get(native_id)
+        if held is not proof or (proof is not None and not self.owns_runtime(proof)):
+            raise CodexFeatureError('unavailable')
+        if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
+            raise CodexTurnRejected('chatgpt_required')
+        return super().request(DELETE_METHOD, params)
 
     def __init__(self, *args, **kwargs):
         self.session_tools = kwargs.pop("session_tools", False)

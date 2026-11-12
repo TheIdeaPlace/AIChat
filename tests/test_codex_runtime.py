@@ -37,9 +37,12 @@ class Connection:
     def owns_runtime(self, proof):
         return not self.closed and self.proofs.get(proof.native_id) is proof
 
-    def delete_owned_thread(self, proof):
-        # As CodexExecutionConnection's: the only way thread/delete is sent.
-        return self.request('thread/delete', {'threadId': proof.native_id})
+    def delete_owned_thread(self, native_id, proof=None):
+        # As CodexExecutionConnection's: the only way thread/delete is sent,
+        # with the loaded chat's proof or, for one not loaded here, none.
+        assert self.proofs.get(native_id) is proof
+        self.request('account/read', {'refreshToken': True})
+        return self.request('thread/delete', {'threadId': native_id})
 
     def pop_event(self):
         if self.closed:
@@ -75,7 +78,7 @@ class Connection:
                 assert self.release.wait(5)
             self.turns += 1
             return {'turn': {'id': f'turn-{self.turns}', 'status': 'inProgress'}}
-        if method == 'turn/interrupt':
+        if method in ('turn/interrupt', 'thread/delete'):
             return {}
         raise AssertionError(method)
 

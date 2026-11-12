@@ -123,13 +123,13 @@ _ENDED_TURNS = ('completed', 'failed', 'interrupted')
 #: How a server says it doesn't know a method. App-server's own parser answers
 #: an unknown one with -32600 and serde's "unknown variant", not -32601.
 _UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found', re.IGNORECASE)
-#: How app-server says it has no such thread, each as an invalid request
-#: (-32600) naming the thread (Codex 0.163, codex-rs/app-server): thread/delete
-#: says "thread not found", thread/read of a thread neither saved nor loaded
-#: "thread not loaded", and thread/resume "no rollout found" (#634).
-_MISSING_THREAD = re.compile(
-    r'(?:thread not found: |thread not loaded: |no rollout found for (?:thread|conversation) id )'
-    r'([A-Za-z0-9_-]{1,128})')
+#: How thread/delete says it has no such thread: an invalid request (-32600),
+#: "thread not found: <id>" (Codex 0.163, codex-rs thread_delete.rs), said
+#: only when the thread is neither loaded, saved (archived included) nor in
+#: Codex's state database (#634). Other methods' "not loaded" or "no
+#: rollout" answers don't count: thread/resume refuses an archived chat, and
+#: a chat that exists mustn't be taken for gone.
+_MISSING_THREAD = re.compile(r'thread not found: ([A-Za-z0-9_-]{1,128})')
 
 
 def missing_thread(error, native_id) -> bool:
