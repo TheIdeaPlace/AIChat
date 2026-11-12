@@ -1896,6 +1896,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Retry from Here with Files only chosen: the Put Files Back button"
+  },
+  "keyboard-shortcuts": {
+   "kind": "dialog",
+   "png": "keyboard-shortcuts-hc-aquatic-100.png",
+   "json": "keyboard-shortcuts-hc-aquatic-100.json",
+   "title": "Customize Keyboard Shortcuts",
+   "class": "KeyboardShortcutsDialog",
+   "size": [
+    680,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, Customize Keyboard Shortcuts: one key changed, one removed"
+  },
+  "key-capture": {
+   "kind": "dialog",
+   "png": "key-capture-hc-aquatic-100.png",
+   "json": "key-capture-hc-aquatic-100.json",
+   "title": "Change Key: Sounds",
+   "class": "KeyCaptureDialog",
+   "size": [
+    520,
+    260
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Key: a key another command has"
+  },
+  "key-capture-refused": {
+   "kind": "dialog",
+   "png": "key-capture-refused-hc-aquatic-100.png",
+   "json": "key-capture-refused-hc-aquatic-100.json",
+   "title": "Change Key: Sounds",
+   "class": "KeyCaptureDialog",
+   "size": [
+    520,
+    260
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Key: the longest reason a key can't be used (AltGr)"
   }
  },
  "seconds": 280.2

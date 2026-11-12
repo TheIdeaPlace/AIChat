@@ -627,6 +627,24 @@ This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "
 
 **What looks off:** Nothing (#289).
 
+## keyboard-shortcuts: Tools, Customize Keyboard Shortcuts (#635)
+
+A dialog, 666 by 553 at 100%. "Filter:" (F underlined) over an empty box the dialog's width. "Commands:" (m underlined) over a list filling the middle, with a vertical scroll bar: the first row, "New Session, Ctrl+N, File menu", selected, then New Agent Conversation, Continue Here, Export Session, Export Chats, the four Backup items ("Back Up Now, no key, File, Backup"), Exit, then the Session menu's commands, and Answer to Turn Status of the Chat menu at the bottom edge. In one row along the bottom, "Change Key...", "Remove Key", "Reset to Default" and "Reset All..." (C, R, D, A underlined), and "Close" (l underlined) at the right. In High Contrast Aquatic the list is white on #202020 and the selected row light aqua with dark text.
+
+**What looks off:** Nothing.
+
+## key-capture: Change Key, a key another command has (#635)
+
+A dialog titled "Change Key: Sounds", 506 by 253 at 100%. "Press the keys you want for Sounds. Its key now: no key." on one line; "Key:" (K underlined) over a read-only box reading "Ctrl+Shift+P"; under it "Prompts has it now. Assign moves it to Sounds, and Prompts will have no key." on one line; then "Assign" (default, A underlined), "Try Another" (T underlined) and, at the right, "Cancel". In High Contrast Aquatic the text is white on #202020 and Assign is filled light aqua with dark text.
+
+**What looks off:** Nothing.
+
+## key-capture-refused: Change Key, the longest reason (#640)
+
+As key-capture, with "Ctrl+Alt+Q" in the box and the AltGr reason under it, wrapped to two lines inside the dialog: "On many keyboards, Ctrl and Alt together with a letter, number or mark type a character (AltGr). Use Ctrl and Shift, or an F key." The buttons sit below it, nothing cut off, with room to spare.
+
+**What looks off:** Nothing.
+
 ## prompts: Chat, Prompts
 
 This is a 680 by 560 dialog. "Prompts:" heads a white list 648 by 217 with "Review" (selected) and "Release notes". "Text:" heads a read-only text box of the same size showing "Review this change for bugs, then for accessibility." The two boxes split the dialog about evenly. Along the bottom are seven buttons: "Use" (default), "New...", "Edit...", "Delete...", "Move Up", "Move Down" and, at the far right, "Close".
