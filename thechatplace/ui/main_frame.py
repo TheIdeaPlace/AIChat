@@ -1749,8 +1749,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             selected = self.session_list.GetSelection()
             self.session_list.Delete(index)
             del self._list_keys[index]
-            if self._list_keys and selected == index:
-                self.session_list.SetSelection(min(index, len(self._list_keys) - 1))
+            # The selected row stays selected, set again explicitly: Windows
+            # moves the selection up with the rows after a deletion, but GTK
+            # and macOS drop it (#634). The deleted row's own selection goes
+            # to its neighbour, which moves into its place.
+            if self._list_keys and selected != wx.NOT_FOUND:
+                target = (min(index, len(self._list_keys) - 1) if selected == index
+                          else selected - 1 if selected > index else selected)
+                self.session_list.SetSelection(target)
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()

@@ -189,15 +189,25 @@ def test_external_codex_chat_can_only_be_hidden(frame, env, chat, monkeypatch):
     assert not work and frame.store.get(info.cli_session_id, provider='codex')
 
 
+@pytest.mark.parametrize('dropped', [False, True], ids=['native', 'selection-dropped'])
 @pytest.mark.parametrize('loaded', [False, True])
 def test_completion_preserves_other_selection_or_refocuses_unloaded_chat(
-        frame, env, chat, monkeypatch, loaded):
+        frame, env, chat, monkeypatch, loaded, dropped):
     info, work = chat
     other = frame._snapshot.sessions[0]
     frame.session_list.Set(['Deleted chat', 'Other chat'])
     frame._list_keys = [info.key, other.key]
     frame.session_list.SetSelection(0)
     monkeypatch.setattr(frame, 'refresh_sessions', lambda *a, **k: None)
+    if dropped:
+        # What GTK and macOS do (#634 CI): deleting a row above the selected
+        # one leaves no selection, where Windows moves it up. Every platform
+        # must end with the same row selected.
+        delete = frame.session_list.Delete
+        def drop(index):
+            delete(index)
+            frame.session_list.SetSelection(wx.NOT_FOUND)
+        monkeypatch.setattr(frame.session_list, 'Delete', drop)
     frame._open = info if loaded else other
     frame.on_delete_permanently()
     if not loaded:

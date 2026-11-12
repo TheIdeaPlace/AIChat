@@ -605,14 +605,24 @@ def _codex_dialog(name, frame, env) -> None:
 
 
 def codex_delete_confirmation(frame, env) -> None:
-    """A synthetic chat: exercise only the native confirmation's No path."""
+    """A synthetic chat: exercise only the native confirmation's No path.
+    Its message box is real while it's open, as Connected Tools' are: the
+    probe's stand-in answers Yes at once, so the confirmation was never shown
+    or read (#634 CI). Nothing is sent to Codex even if Yes were pressed."""
+    import wx
+    import wx._core
     from thechatplace.own_store import OwnSession
     record = OwnSession('orca-delete-preview', 'Codex deletion preview', str(env['tmp']),
                         provider='codex', started=True)
     frame.store.add(record)
+    stand_in, work = wx.MessageBox, frame._codex_work
+    wx.MessageBox = wx._core.MessageBox
+    frame._codex_work = lambda action, done: None
     try:
         frame._delete_codex(record.to_info())
     finally:
+        wx.MessageBox, frame._codex_work = stand_in, work
+        frame._codex_deleting.discard(record.to_info().key)
         frame.store.remove(record.cli_session_id, provider='codex')
 
 
