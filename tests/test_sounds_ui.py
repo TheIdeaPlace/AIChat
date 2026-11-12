@@ -850,7 +850,7 @@ def test_unmuting_with_sounds_off_says_how_to_turn_them_on(frame, env):
     frame.speech.sounds_on = False
     frame.speech.sounds_muted = True
     frame.on_toggle_mute_sounds()
-    assert any("File, Sounds turns them on" in text for text in env["feedback"])
+    assert any("Tools, Sounds turns them on" in text for text in env["feedback"])
 
 
 def test_mute_is_on_the_menu_and_in_the_shortcuts():
@@ -976,7 +976,7 @@ def test_get_settings_carries_everything_else_through(frame, dialog):
 
 @pytest.mark.parametrize("muted", [True, False])
 def test_mute_is_not_in_the_dialog_and_ok_keeps_it_as_it_was(frame, env, monkeypatch, muted):
-    """View, Mute All Sounds is the one place to mute (#596): Sounds has no check box for it,
+    """Tools, Mute All Sounds is the one place to mute (#596): Sounds has no check box for it,
     and OK leaves it as it was, in the saved settings and on the menu item too."""
     frame._sound_set_mute(muted)
     seen = []
@@ -993,7 +993,7 @@ def test_mute_is_not_in_the_dialog_and_ok_keeps_it_as_it_was(frame, env, monkeyp
 
 
 def test_sound_tutorial_button_plays_what_sounds_shows_and_comes_back(frame, env, monkeypatch):
-    """Sound Tutorial in File, Sounds (#596): the scheme and volume showing, a change not yet
+    """Sound Tutorial in Tools, Sounds (#596): the scheme and volume showing, a change not yet
     kept included, with nothing saved; its words come from its own window; then focus is back
     on the button."""
     said = []
@@ -1308,7 +1308,7 @@ def test_importing_another_apps_scheme_says_whose_it_is(dialog, env, tmp_path, m
 
 
 def _ok(frame, monkeypatch, act):
-    """File, Sounds with ``act(dialog)`` done in it, then OK."""
+    """Tools, Sounds with ``act(dialog)`` done in it, then OK."""
     def show(self):
         act(self)
         return wx.ID_OK

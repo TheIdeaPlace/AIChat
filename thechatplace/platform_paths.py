@@ -494,7 +494,7 @@ def scheme_sounds_dir(scheme_id: str) -> Path:
 
 def show_silent_balloon(hwnd: int, title: str, text: str) -> bool:
     """Windows: a tray balloon that makes no sound of its own, on wx's icon in the window
-    ``hwnd``, for someone who has chosen that in File, Sounds. wx's ShowBalloon can't ask for
+    ``hwnd``, for someone who has chosen that in Tools, Sounds. wx's ShowBalloon can't ask for
     this (it passes on only the icon flags). 99 is the id wx gives its one icon. False if it
     didn't work, so the caller can fall back on wx."""
     if sys.platform != "win32" or not hwnd:
@@ -1158,13 +1158,13 @@ class ClaudeLookup:
         the rest, which can't install Claude Code themselves."""
         if not self.reason:
             return ""
-        return f"{self.reason} To install it, choose Claude Code Sign-in on the Help menu."
+        return f"{self.reason} To install it, choose Tools, Sign In, Claude Code."
 
 
 _SCRIPT_SUFFIXES = (".cmd", ".bat", ".ps1")
 
 #: Claude Code's own install commands (https://code.claude.com/docs/en/setup),
-#: shown when it can't be found and run by Claude Code Sign-in.
+#: shown when it can't be found and run by Tools, Sign In, Claude Code.
 INSTALL_SH = "curl -fsSL https://claude.ai/install.sh | bash"
 INSTALL_PS1 = "irm https://claude.ai/install.ps1 | iex"
 INSTALL_CMD = ("curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd "
@@ -1181,7 +1181,7 @@ def claude_install_help() -> str:
     else:
         commands = f"In a terminal:\n    {INSTALL_SH}"
     return (f"To install it, run its native installer. {commands}\n"
-            "Then run claude once to sign in, or use Claude Code Sign-in here again.")
+            "Then run claude once to sign in, or choose Tools, Sign In, Claude Code again.")
 
 
 def _native_candidates() -> List[Path]:

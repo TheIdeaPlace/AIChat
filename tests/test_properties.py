@@ -1,4 +1,4 @@
-"""View, Properties (#214): the lines a session's and a message's
+"""Session, Properties (#214): the lines a session's and a message's
 properties are made of, from synthetic transcripts."""
 from datetime import datetime, timedelta
 

@@ -1,4 +1,4 @@
-"""Hidden sessions (File, Hide Session): the store."""
+"""Hidden sessions (Session, Hide Session): the store."""
 import pytest
 
 from thechatplace.hidden import HiddenStore

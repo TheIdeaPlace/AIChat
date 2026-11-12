@@ -204,7 +204,7 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "Open in &Claude",
+   "label": "Open &in Claude",
    "rect": [
     402,
     545,
@@ -223,7 +223,7 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "Con&tinue Here...",
+   "label": "Continue H&ere...",
    "rect": [
     511,
     545,

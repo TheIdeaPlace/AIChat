@@ -1305,7 +1305,7 @@ def run_scheduled(cancelled: Optional[Callable[[], bool]] = None,
         if not passphrase:
             # Never quietly unencrypted: the user chose encryption (#442).
             raise ValueError("The scheduled backups' passphrase isn't on this computer any more. "
-                             "Set it again in File, Backup Schedule.")
+                             "Set it again in File, Backup, Backup Schedule.")
     result = create(Path(schedule.folder), cancelled=cancelled, collectors=collectors, now=now,
                     progress=progress, passphrase=passphrase)
     record(result)

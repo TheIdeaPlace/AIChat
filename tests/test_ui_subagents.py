@@ -131,8 +131,8 @@ def test_the_messages_menu_offers_the_turns_subagents(frame, env, monkeypatch):
     assert len(seen["rows"]) == 1 and seen["rows"][0].startswith("code-reviewer:")
 
 
-def test_the_view_menu_has_subagents(frame):
-    view = frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("View"))
+def test_the_tools_menu_has_subagents(frame):
+    view = frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Tools"))
     labels = [item.GetItemLabel() for item in view.GetMenuItems()]
     assert "Suba&gents..." in labels
 

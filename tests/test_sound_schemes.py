@@ -278,13 +278,13 @@ def test_platform_paths_scheme_folder(data):
 def test_sound_tutorial_says_the_scheme_once():
     assert se.tutorial_intro(se.built_in_scheme("glass")) == (
         "Arrow to an event and press Space to hear it in the Glass scheme. "
-        "Change sounds in File, Sounds.")
+        "Change sounds in Tools, Sounds.")
     assert "in the Soft bell scheme." in se.tutorial_intro(se.built_in_scheme("softbell"))
     assert "in the Calm scheme." in se.tutorial_intro(se.Scheme(USER, "Calm Scheme", False))
     assert "in the Quiet evenings scheme." in se.tutorial_intro(se.Scheme(USER, "Quiet evenings", False))
     # "Scheme" alone isn't a word followed by " scheme", so it stays.
     assert "in the Scheme scheme." in se.tutorial_intro(se.Scheme(USER, "Scheme", False))
-    # Opened from File, Sounds (#596), it says it plays what Sounds shows, not where to go.
+    # Opened from Tools, Sounds (#596), it says it plays what Sounds shows, not where to go.
     assert se.tutorial_intro(se.built_in_scheme("wood"), from_sounds=True) == (
         "Arrow to an event and press Space to hear it in the Wood scheme. "
         "Changes you've made in Sounds play here, even before you choose OK.")

@@ -517,7 +517,7 @@ def _remove_unused(scheme: Scheme, only: Optional[Iterable[str]] = None) -> None
 
 @dataclass
 class FileChanges:
-    """What File, Sounds did that changes which files are kept, done to disk when it closes:
+    """What Tools, Sounds did that changes which files are kept, done to disk when it closes:
     files go only when you choose OK, so Cancel can take back a delete, a reset or Remove File.
     Files a scheme brings in, or Choose File copies, are written straight away; Cancel deletes
     them again (a scheme made in the dialog takes its whole folder with it)."""
@@ -536,7 +536,7 @@ class FileChanges:
 
 
 def apply_file_changes(changes: FileChanges, kept: Iterable[Scheme], ok: bool) -> None:
-    """Tidy the sound folders after File, Sounds closes. ``kept`` is the schemes now in
+    """Tidy the sound folders after Tools, Sounds closes. ``kept`` is the schemes now in
     settings: the dialog's after OK, what there was before after Cancel. A scheme that isn't
     kept loses its folder. After OK, a reset scheme loses the files it no longer plays, and a
     removed file goes unless another event in its scheme still plays it. After Cancel, a file
@@ -564,12 +564,12 @@ def apply_file_changes(changes: FileChanges, kept: Iterable[Scheme], ok: bool) -
 def tutorial_intro(scheme: Scheme, from_sounds: bool = False) -> str:
     """The Sound Tutorial's one line: what to press, and which scheme you'll hear. A scheme of
     your own called "Calm scheme" reads "the Calm scheme", not "the Calm scheme scheme".
-    Opened from File, Sounds (#596), it plays what Sounds shows, changes not yet kept included."""
+    Opened from Tools, Sounds (#596), it plays what Sounds shows, changes not yet kept included."""
     name = scheme.name.strip()
     if name.casefold().endswith(" scheme"):
         name = name[:-len(" scheme")].rstrip()
     after = ("Changes you've made in Sounds play here, even before you choose OK." if from_sounds
-             else "Change sounds in File, Sounds.")
+             else "Change sounds in Tools, Sounds.")
     return f"Arrow to an event and press Space to hear it in the {name} scheme. {after}"
 
 

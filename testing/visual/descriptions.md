@@ -18,7 +18,7 @@ Every light-100 picture was opened, along with the dark, High Contrast and scale
 
 The Chat Place looks like a plain, older-style Windows program built from standard Windows controls. The window background is light grey (#F0F0F0), lists and text boxes are white with thin grey borders, text is black, and buttons are small, near-white rectangles with a thin grey border and slightly rounded corners. Everything uses the standard Windows interface font (Segoe UI, about 9 point), so the text is small and the layout is dense, with 6 to 10 pixels between controls. There are no icons, toolbars, colours or pictures apart from the small blue speech-bubble icon in the main window's title bar. The selected row in every list is a solid blue bar (#0078D4) with white text (4.5:1). The list that has keyboard focus differs only by a thin dotted outline around its selected row, which shows as orange and blue dots (#FF872B on #0078D4, 1.9:1). The default button in a dialog has a blue outline. The three pages shown in a web view (Keyboard Shortcuts, User Guide and a formatted message) look quite different: larger text (about 12 point), bold black headings, tables with thin grey lines and a pale grey code box, like a simple web page.
 
-The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A menu bar with File, View and Help is at the top and a status bar is at the bottom. Dialogs range from 272 by 126 (Update Installed) to 860 by 640 (What Claude Knows About You); most are between 620 and 760 wide.
+The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A menu bar with File, Session, Chat, View, Tools and Help is at the top and a status bar is at the bottom. Dialogs range from 272 by 126 (Update Installed) to 860 by 640 (What Claude Knows About You); most are between 620 and 760 wide.
 
 ### Themes and scaling
 
@@ -32,6 +32,8 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 **Since #564, in every Lists picture:** Kinds has an eighth row, Auto Approvals (named Approvals until #596), last, so it is 126 tall (it was 111) and shows all eight rows with no scroll bar. Everything below it starts 15 pixels lower, and the chosen kind's list is 105 tall (it was 120), about six and a half rows. The dialog stays 820 by 660. A Claude chat's Kinds ends "Auto Approvals, not available"; a Codex chat started here ends "Auto Approvals" and a count. The Lists pictures in the baseline took this row only on 2026-11-09 (#596, #608): the ones before it still had seven rows.
 
 **Since #596 (2026-11-09, #608):** light-100 and hc-aquatic-100 pictures of every screen whose words changed: Retry from Here (was Rewind to Here) and its new Files only picture, codex-rewind, Chat Options ("Run as agent"), Settings' task-list check box ("from the next turn"), the About permissions notes of New Session (Claude, Codex and Copilot), which now name File, Chat Settings, Copilot's Chat Permissions note, the plain-text shortcuts, and every Lists picture. Contrast was measured from the pixels; nothing new fell below 4.5:1. The formatted shortcuts page's first screen didn't change (its High Contrast picture didn't draw in the VM twice, a WebView2 blank, so its baseline was kept).
+
+**Since #575 (2026-11-12, #638):** light-100 and hc-aquatic-100 pictures of the main window (main-start, main-own, main-desktop) and of every screen whose words name a menu. The menu bar reads File, Session, Chat, View, Tools and Help, each with its first letter underlined. The buttons' underlines moved: Attach Files has I, Open in Claude has I, Continue Here has E; their sizes and places didn't change. New Session's About permissions notes (Claude, Codex and Copilot) now name Chat, Chat Settings, and Copilot's still shows all seven lines; Copilot's Chat Permissions note names Chat, Chat Settings; the Sound Tutorial's first line ends "Change sounds in Tools, Sounds.", still two lines; the plain-text shortcuts name the new menus. Only text changed, so contrast is as before.
 
 ## main-start: Main window as it opens: session list, no session loaded
 
@@ -234,19 +236,19 @@ reported no clipping, overlaps or controls outside the window. No new visual def
 was found at the two captured 100% variants. Higher scaling was not recaptured for
 #438; its earlier descriptions should not be read as validation of the new controls.
 
-## sounds: File, Sounds
+## sounds: Tools, Sounds
 
-A dialog titled "Sounds", 546 by 633 at 100%. At the top, two check boxes, "Play sounds" and "Disable Windows sound for The Chat Place's notifications" (Mute all sounds left the dialog in #596: View, Mute All Sounds is the place for it). Below them, four labeled drop-down lists in a column: Volume (80%), Sound scheme (Glass), Tool sounds play for (The open chat only) and Other sounds play for (The open chat and every chat in the list). Then three buttons side by side, "Scheme Actions...", "Browse Gallery..." and "Sound Tutorial..." (U underlined). Then "Sound events (23 of 23 events have a sound):" over a list filling the middle, its first row "Tool ran: Tick" selected. The list shows about 18 rows ("Tool ran: Tick", "File changed: Write", "Still working: Hum", "Message sent: Send", "Message queued: Hold", "Message steered into the turn: Bend", "Steered message taken: Taken", "Queued message sent: Release", "Queued message removed: Withdraw", "You stopped a turn: Stop", "Reply finished: Rise", "Another chat finished: Low rise", "Agent reply handed on: Pass", "Ask Aside answered: Aside", "Needs you: Call", "Answer sent: Answer", "Turn failed: Fall", "Message not sent: Bump", with "Ask Aside not answered: Aside fall" half shown at the bottom edge) and a vertical scroll bar for the rest ("Ask Aside not answered: Aside fall", "Service trouble: Waver", "Usage or context warning: Alert", "Conversation compacted: Settle", "Message from another session: Knock"). Below it a row with "Sound:" and a drop-down (Tick), then Preview, Choose File... and Remove File..., the last greyed because Tick isn't a file of your own. OK and Cancel at the bottom right. (#250, sound schemes; the remade sounds, 2026-11-07, and Queued message deleted, #581, renamed Queued message removed in #599; Tool sounds play for, Write and Answer sent, #588; Agent reply handed on, #590; no mute check box and the Sound Tutorial button, #596)
+A dialog titled "Sounds", 546 by 633 at 100%. At the top, two check boxes, "Play sounds" and "Disable Windows sound for The Chat Place's notifications" (Mute all sounds left the dialog in #596: Tools, Mute All Sounds is the place for it). Below them, four labeled drop-down lists in a column: Volume (80%), Sound scheme (Glass), Tool sounds play for (The open chat only) and Other sounds play for (The open chat and every chat in the list). Then three buttons side by side, "Scheme Actions...", "Browse Gallery..." and "Sound Tutorial..." (U underlined). Then "Sound events (23 of 23 events have a sound):" over a list filling the middle, its first row "Tool ran: Tick" selected. The list shows about 18 rows ("Tool ran: Tick", "File changed: Write", "Still working: Hum", "Message sent: Send", "Message queued: Hold", "Message steered into the turn: Bend", "Steered message taken: Taken", "Queued message sent: Release", "Queued message removed: Withdraw", "You stopped a turn: Stop", "Reply finished: Rise", "Another chat finished: Low rise", "Agent reply handed on: Pass", "Ask Aside answered: Aside", "Needs you: Call", "Answer sent: Answer", "Turn failed: Fall", "Message not sent: Bump", with "Ask Aside not answered: Aside fall" half shown at the bottom edge) and a vertical scroll bar for the rest ("Ask Aside not answered: Aside fall", "Service trouble: Waver", "Usage or context warning: Alert", "Conversation compacted: Settle", "Message from another session: Knock"). Below it a row with "Sound:" and a drop-down (Tick), then Preview, Choose File... and Remove File..., the last greyed because Tick isn't a file of your own. OK and Cancel at the bottom right. (#250, sound schemes; the remade sounds, 2026-11-07, and Queued message deleted, #581, renamed Queued message removed in #599; Tool sounds play for, Write and Answer sent, #588; Agent reply handed on, #590; no mute check box and the Sound Tutorial button, #596)
 
 **What looks off:** Nothing at 100%: every row fits its width and no text is cut off, and "Tool sounds play for:" fits its column; the half-shown last row is the list scrolling, not clipping. The three buttons fit in a row at 100% and 175%, and "Sound Tutorial..." measures black on #FDFDFD (20.6:1), white on #202020 in High Contrast Aquatic (16.3:1), on the #596 run. The labels are black on #F0F0F0 (18.4:1), the drop-downs black on #FDFDFD (20.7:1), the selected row white on #0078D4 (4.5:1) and the other rows black on white (21:1), measured on the #588 run. At 175% (960 by 946) nothing is cut off; the events list shows about 13 rows and scrolls for the rest. High Contrast Aquatic keeps every control visible, the list white on #202020 (16.3:1), the selected row #202020 on aqua #8EE3F0 (11.2:1), the scroll bar drawn with arrows, and Remove File visibly greyed.
 
-## sounds-own-scheme: File, Sounds on a scheme of your own
+## sounds-own-scheme: Tools, Sounds on a scheme of your own
 
 The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 23 events have a sound):". Rows read "Tool ran: Tick (Soft bell)", "Reply finished: Rise (Wood)", "Needs you: Call (Glass)" and "Turn failed: Fall"; the other nineteen, "Queued message removed", "Agent reply handed on" and "Answer sent" among them, say "None". The third drop-down is labeled "Tool sounds play for". The list scrolls as in sounds. The Sound drop-down shows "Tick (Soft bell)".
 
 **What looks off:** Nothing. The longest row ("Message steered into the turn: None") and the drop-down's "Tick (Soft bell)" fit without cutting off. High Contrast Aquatic as in sounds.
 
-## sound-gallery: File, Sounds, Browse Gallery
+## sound-gallery: Tools, Sounds, Browse Gallery
 
 A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 23 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 23 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and license on two lines. Add, Reload and Close sit at the bottom right.
 
@@ -254,11 +256,11 @@ A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 
 
 ## sound-tutorial: Help, Sound Tutorial
 
-A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in File, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 23 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
+A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in Tools, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 23 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
 
-## sound-tutorial-from-sounds: File, Sounds, Sound Tutorial
+## sound-tutorial-from-sounds: Tools, Sounds, Sound Tutorial
 
-The same dialog, opened by File, Sounds' Sound Tutorial button, on the Wood scheme. The top text reads "Arrow to an event and press Space to hear it in the Wood scheme. Changes you've made in Sounds play here, even before you choose OK.", two lines at 100% and at 175% (750 by 946), wrapping after "Changes" at 100%. Everything else is as in sound-tutorial. (#596)
+The same dialog, opened by Tools, Sounds' Sound Tutorial button, on the Wood scheme. The top text reads "Arrow to an event and press Space to hear it in the Wood scheme. Changes you've made in Sounds play here, even before you choose OK.", two lines at 100% and at 175% (750 by 946), wrapping after "Changes" at 100%. Everything else is as in sound-tutorial. (#596)
 
 **What looks off:** Nothing. The longer second sentence fits on its line without cutting off at 100% and 175%. High Contrast Aquatic shows it white on the theme's dark background, the selected row dark on aqua, and Close drawn in the theme's colors.
 
@@ -334,7 +336,7 @@ This is a 760 by 600 dialog. "Plan:" heads a large read-only box (728 by 385, ab
 
 **What looks off:** The default button is Keep Planning, not Approve. There is a larger gap (18 pixels) between Read Formatted and Approve than between the others (6 pixels). The plan box is mostly empty.
 
-## manage-groups: File, Manage Groups
+## manage-groups: Session, Manage Groups
 
 This is a small 480 by 420 dialog. "Groups:" heads a white list (448 by 302, about three quarters of the dialog). It holds "Releases, 2 sessions" (selected) and "Website, 0 sessions". Along the bottom, "New...", "Rename..." and "Delete..." sit at the left and "Close" at the right, all the standard 75-wide buttons.
 
@@ -358,49 +360,49 @@ This is an 820 by 520 dialog titled 'The Chat Place: 6 results for "the", Find i
 
 **What looks off:** Long rows are cut at the list's right edge, with no horizontal scroll bar, as in the other lists (a screen reader reads the whole row). A heading and the text after it run together ("What changed The upload test…"). Nothing else.
 
-## code-blocks: View, Lists: a message's code blocks (#279)
+## code-blocks: Tools, Lists: a message's code blocks (#279)
 
-Code blocks, links and changed files are now kinds in one dialog, View, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 111) with seven rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)", "Decisions (0)", "Tasks (0)" (#231) and "Subagents (0)" (#468), all seven in view. Below that the chosen kind's page, lined up with Kinds at the same left and right edges: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 788 by 120 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 788 by 170 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" directly below it, the same width and right-aligned with it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
+Code blocks, links and changed files are now kinds in one dialog, Tools, Lists, 820 by 660 and titled "Lists: " and the session's name ("Lists: Fix the flaky upload test"). From the top: "Show items from:" beside a small dropdown, "This message"; then "Kinds:", a white list the full width (788 by 111) with seven rows, each with its count: "Code Blocks (1)" (selected in blue), "Links (1)", "Changed Files (0)", "Commands (1)", "Decisions (0)", "Tasks (0)" (#231) and "Subagents (0)" (#468), all seven in view. Below that the chosen kind's page, lined up with Kinds at the same left and right edges: "Filter:" over an empty one-line box, "List: Code Blocks (1):" over a white list 788 by 120 holding "Python, 4 lines: def finish(self):", selected, and "Details:" over a box 788 by 170 showing the four lines of code in a monospaced font with their indentation. "Copy" sits at the right under the page, and "Close" directly below it, the same width and right-aligned with it. In High Contrast Aquatic the dialog is near-black (#202020) with white text (16.3:1) and white outlines; the selected rows are light aqua (#8EE3F0) with dark text (#263B50 at the letters' cores, 7.9:1); the code is white.
 
 **What looks off:** Close is 14 pixels further right than the page's buttons above it (#288). Most of the list is empty with one item.
 
-## links: View, Lists: Links (#190, #279)
+## links: Tools, Lists: Links (#190, #279)
 
 The same Lists dialog, opened on Links with "Show items from" set to "The whole chat". "Links (1)" is selected in Kinds. "List: Links (1):" holds one row, "the issue, github.com/example/repo/issues/42. Claude, 1 message ago", selected, and Details shows "the issue" and the full address on the next line. Under the page are "Open", "Copy" and "Copy as Markdown", and "Close" below them. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; the page lines up with Kinds and Close lines up with the buttons above it (#288).
 
-## changes: View, Lists: Changed Files (#279)
+## changes: Tools, Lists: Changed Files (#279)
 
 The Lists dialog on "Changed Files (1)", for "Visual probe". The list holds "uploader.py, 2 lines added", selected. Details is in a monospaced font: the file's full path followed by ": 2 lines", with "added." wrapped onto the next line, a blank line, "A change:", two "Added:" lines and an "Unchanged:" line. "Copy" is under the page and "Close" below it. High Contrast Aquatic follows the theme as in code-blocks. Kinds' last row is "Subagents (0)" (#468).
 
 **What looks off:** The path's line wraps before "added.". Close now lines up with Copy (#288).
 
-## lists-commands: View, Lists: Commands (#279)
+## lists-commands: Tools, Lists: Commands (#279)
 
 The Lists dialog on "Commands (1)", for "Fix the flaky upload test", over the whole chat. "List: Commands (1):" holds "pytest tests/test_upload.py -q. done", selected, and Details, in a monospaced font, shows "Command:", the command, a blank line, "Output:" and "1 failed, 11 passed". Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; Close lines up with Copy (#288).
 
-## lists-decisions: View, Lists: Decisions (#279)
+## lists-decisions: Tools, Lists: Decisions (#279)
 
 The Lists dialog on "Decisions (2)", over the whole chat. The list holds two rows, newest first: "Run the slow tests too? Not answered" (selected) and "Which branch should the release use? You answered: release/0.2". Details shows "Run the slow tests too?", a blank line and "Not answered." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing; Close lines up with Copy (#288).
 
 
-## lists-tasks: View, Tasks: Claude's task list (#231)
+## lists-tasks: Tools, Tasks: Claude's task list (#231)
 
-The Lists dialog opened with View, Tasks, on "Tasks (3)" over the whole chat, for "Fix the flaky upload test"; Tasks is the sixth row of Kinds, selected. "List: Tasks (3):" holds the steps in Claude's order, each its name then its state: "Find why the upload test fails. Done" (selected), "Make the retry wait for the server. In progress" and "Run the whole test suite. To do". Details shows "Find why the upload test fails", a blank line and "Done. Task 1 of 3." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
+The Lists dialog opened with Tools, Tasks, on "Tasks (3)" over the whole chat, for "Fix the flaky upload test"; Tasks is the sixth row of Kinds, selected. "List: Tasks (3):" holds the steps in Claude's order, each its name then its state: "Find why the upload test fails. Done" (selected), "Make the retry wait for the server. In progress" and "Run the whole test suite. To do". Details shows "Find why the upload test fails", a blank line and "Done. Task 1 of 3." in the standard font. Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks. Over the whole chat, Kinds now also says "Changed Files (1)" (it was 0: the made-up session's code-reviewer subagent changed a file, #468) and "Subagents (2)".
 
 **What looks off:** Nothing.
-## usage: View, Usage and Context
+## usage: Tools, Usage and Context
 
 This is a 751 by 360 dialog, one of the smallest. "Usage and context:" heads a white list 722 by 258 with two rows. The first, selected, is "Visual probe: Context: 2 tokens used; the window's size isn't known until this session or another on the same model runs a turn here.", and it fits in full, ending a few pixels short of the list's right edge. The second is "Usage limits: not known until a Chat Place session runs a turn." "Copy", "Copy All" and "Close" are at the bottom right.
 
 **What looks off:** Most of the list is empty. The dialog is now wide enough for the first row, but only just.
 
-## about-you: View, What AI Knows About You (Claude)
+## about-you: Tools, What AI Knows About You (Claude)
 
 This is the largest dialog, 860 by 700, titled "What AI Knows About You" (#305). Two lines of black text run across the top: "Local customization files, not an account-wide memory or active-context report." and "Edit opens a file in your editor; Reload reads your changes." Neither reaches the right edge. "Provider:" heads a dropdown the full width of the dialog showing "Claude". "Kind:" heads a list (828 by 120) with seven rows, such as "Instructions, 1 item: What you've told Claude to do in every session (CLAUDE.md), and in each project" (selected, with the focus outline), "Memories, 0 items..." and "Skills, 1 item...". "Items:" heads a second list (80 tall, room for five rows) with one selected row. A "Location:" row has a read-only grey box with a path. "Contents:" heads a text box (233 tall) showing "# How I like to work" and "Test everything.". Five buttons sit at the bottom right: "Edit in Your Editor", "Show in Folder", "Copy Path", "Reload" and "Close". In High Contrast Aquatic the dialog is near-black with white text (16.3:1) and the selected rows dark blue-grey on light aqua (7.9:1); in Desert, near-black on cream (15.7:1) with cream on brown selected rows (7.0:1). dark-100 looks the same as light-100 (#177).
 
@@ -414,7 +416,7 @@ The same dialog with "Codex" in the Provider dropdown, reading a synthetic Codex
 
 **What looks off:** As in about-you.
 
-## properties: View, Properties of a session (#214)
+## properties: Session, Properties of a session (#214)
 
 This is a 976 by 360 dialog titled "Properties of Visual probe", laid out like Usage and Context. "Properties:" heads a white list 944 by 258 with one fact per row: "Title: Visual probe" (selected), "Provider: Claude" (#255), "Kind: Chat Place session", the folder's full path, "Status: Idle", "Started" and "Last activity" with a date and "(just now)", the model of the latest reply and the model chosen, effort, "Agent: none", "Output style: your setting" and "Instructions for this chat: none" (#468), permission mode, then counts: messages, your messages, Claude's replies, tool calls, links, code blocks and files changed. More rows than fit, so it has a vertical scroll bar. "Copy", "Copy All" and "Close" are at the bottom right. The probe shows a fixed date and time, so the picture is the same every run.
 
@@ -519,7 +521,7 @@ The same dialog, showing a file change: "Update: app.py", "@@ -1 +1 @@", "-print
 
 ## copilot-new: File, New Session with Copilot chosen as Provider
 
-The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372), before any Copilot chat here has listed its models. "Provider" shows "Copilot" with the focus outline. "Model" and "Effort" are greyed out and read "Copilot's configured model" and "Copilot's own setting" (#6D6D6D on #FAFAFA, 5.0:1); their labels and Branch's have no underlined letter (#515). Since #424 "Permission mode" is enabled and reads "Agent: asks before running commands or changing files", black on white (20.6:1); its other choice is Plan. "About permissions:" heads a read-only box, 644 by 117 since #424 (30 taller), that shows its whole seven-line paragraph, with a scroll bar: Copilot uses your GitHub Copilot sign-in and your plan's requests; Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs, with Copilot's own choice first, and Change Model, in File, Chat Settings, changes it later; effort is Copilot's own; Permission mode chooses agent mode, which can change your files, or plan mode, which plans first and doesn't edit them, and Change Permission Mode, in File, Chat Settings, switches it later (#596: the seven lines still all show); in both, Copilot asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny); and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph's text is black on white (21:1). "First message:" heads an empty box, 644 by 72 (30 shorter since #424), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic Permission mode is white on #202020 (16.3:1), the greyed text is #A6A6A6 on #202020 (6.7:1), the paragraph white on #202020 (16.3:1), and Start is filled light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
+The New Chat Place Session dialog, 680 by 620, laid out as in codex-new (#352, #372), before any Copilot chat here has listed its models. "Provider" shows "Copilot" with the focus outline. "Model" and "Effort" are greyed out and read "Copilot's configured model" and "Copilot's own setting" (#6D6D6D on #FAFAFA, 5.0:1); their labels and Branch's have no underlined letter (#515). Since #424 "Permission mode" is enabled and reads "Agent: asks before running commands or changing files", black on white (20.6:1); its other choice is Plan. "About permissions:" heads a read-only box, 644 by 117 since #424 (30 taller), that shows its whole seven-line paragraph, with a scroll bar: Copilot uses your GitHub Copilot sign-in and your plan's requests; Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs, with Copilot's own choice first, and Change Model, in Chat, Chat Settings, changes it later; effort is Copilot's own; Permission mode chooses agent mode, which can change your files, or plan mode, which plans first and doesn't edit them, and Change Permission Mode, in Chat, Chat Settings, switches it later (#596: the seven lines still all show); in both, Copilot asks before it runs a command or changes a file (each request appears in Answer, to allow once or deny); and The Chat Place won't send to Copilot in a folder whose Copilot hooks could act without asking. The paragraph's text is black on white (21:1). "First message:" heads an empty box, 644 by 72 (30 shorter since #424), and "Start" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic Permission mode is white on #202020 (16.3:1), the greyed text is #A6A6A6 on #202020 (6.7:1), the paragraph white on #202020 (16.3:1), and Start is filled light aqua with dark text (#202020 on #8EE3F0, 11.2:1).
 
 **What looks off:** Nothing.
 
@@ -547,7 +549,7 @@ The same 680 by 620 dialog as copilot-new, titled "Continue Here: Copilot still 
 
 **What looks off:** Nothing.
 
-## chat-permissions-copilot: File, Chat Permissions for a Copilot chat in Auto (#426)
+## chat-permissions-copilot: Chat, Chat Settings, Chat Permissions for a Copilot chat in Auto (#426)
 
 A 666 by 513 dialog titled "Chat Permissions: Copilot preview". "Permission mode:" with a read-only box, "Auto: reads and edits inside its folder without asking", and Change... to its right. "Allowed for this chat:" heads a list taking about a third of the height, with two rows ("Exactly this command: npm run build. Allowed 19 October 2026 at 03:53."), the first selected, white on blue. Below it, in a row, Remove..., Remove All... and Restart Copilot on the left, Close on the right. "About these permissions:" heads a read-only box filling the rest, scrolled to its top. At 150% everything is larger and the four buttons still fit in the row with room to spare. In High Contrast Aquatic the dialog is near-black with white text and the selected row cyan with dark text (#8EE3F0 and #061B4D, 11.3:1 measured).
 
@@ -555,7 +557,7 @@ A 666 by 513 dialog titled "Chat Permissions: Copilot preview". "Permission mode
 
 ## chat-permissions-copilot-moved: Chat Permissions while a chat's commands ask until Restart Copilot (#426)
 
-The same dialog, with "Commands in this chat ask until you use Restart Copilot, in File, Chat Settings, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you." as the first paragraph of the About box.
+The same dialog, with "Commands in this chat ask until you use Restart Copilot, in Chat, Chat Settings, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you." as the first paragraph of the About box.
 
 **What looks off:** Nothing.
 
@@ -595,13 +597,13 @@ A 700 by 414 dialog titled "Codex asks: Codex preview". The Question box (#415) 
 
 **What looks off:** The secret question shows its box under a lone "Other (type below)" choice, which looks like a choice question with one option. Nothing is cut off.
 
-## usage-copilot: View, Usage and Context for a Copilot chat
+## usage-copilot: Tools, Usage and Context for a Copilot chat
 
 A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with six rows: "Context 50% full: 64,000 of 128,000 tokens." (selected), "Premium requests used in this chat: 3.", "Copilot account usage is shared across your chats.", "Chat messages: 2% used (3 of 200); 98% remaining; reset time not reported." (rounded from 98.5), "Premium requests: 100% used (350 of 300); 0% remaining; 50 past the allowance; reset time not reported." and "Completions: unlimited.". "Copy", "Copy All" and "Close" are at the bottom right.
 
 **What looks off:** Nothing.
 
-## usage-codex: View, Usage and Context for a Codex chat
+## usage-codex: Tools, Usage and Context for a Codex chat
 
 A 640 by 360 dialog. "Usage and context:" heads a list that fills it, with seven rows: "Latest reported model request: 75,000 tokens (70,000 input, 5,000 output)." (selected), "Latest request uses 75% of the reported 100,000-token context window.", "Cumulative token usage: 250,000. This is not the current context size.", "Codex account usage is shared across your chats.", "Codex:", "5-hour limit: 25% used, 75% remaining; reset time not reported." and "168-hour limit: 40% used, 60% remaining; reset time not reported.". "Copy", "Copy All" and "Close" are at the bottom right.
 
@@ -625,7 +627,7 @@ This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "
 
 **What looks off:** Nothing (#289).
 
-## prompts: File, Prompts
+## prompts: Chat, Prompts
 
 This is a 680 by 560 dialog. "Prompts:" heads a white list 648 by 217 with "Review" (selected) and "Release notes". "Text:" heads a read-only text box of the same size showing "Review this change for bugs, then for accessibility." The two boxes split the dialog about evenly. Along the bottom are seven buttons: "Use" (default), "New...", "Edit...", "Delete...", "Move Up", "Move Down" and, at the far right, "Close".
 
@@ -704,7 +706,7 @@ Only surfaces where a variant differs in a way worth knowing are listed. Everywh
 - **Lists in every variant:** The focused list is marked only by the thin dotted outline. In High Contrast the selected rows of focused and unfocused lists are the same aqua or rust brown, just as they are the same blue in light mode (#181).
 
 
-## lists-codex-files: View, Changed Files in a Codex chat
+## lists-codex-files: Tools, Changed Files in a Codex chat
 
 Reviewed from light-100 and hc-aquatic-100 screenshots on 2026-10-27. The 820 by
 660 dialog is titled "Lists: Codex history preview". Show items from is set to
@@ -739,7 +741,7 @@ blue #0078D4 (4.53:1), High Contrast white on #202020 (16.29:1), and selected
 navy #202074 on aqua #8EE3F0 (9.47:1). The existing #181 focus-outline contrast
 issue remains in light mode; there are no new layout or theme problems.
 
-## lists-codex-tasks: View, Tasks: Codex's live plan (#318)
+## lists-codex-tasks: Tools, Tasks: Codex's live plan (#318)
 
 In the 2026-10-27 light and High Contrast Aquatic pictures, Kinds now says
 "Changed Files (0)" instead of "Changed Files, not available". The comparison
@@ -763,7 +765,7 @@ both Kinds and the task list keep selected rows, and the focused row has a thin
 dotted outline. In light mode its #FF872B dots against #0078D4 measure 1.89:1.
 There are no new clipping, overlap or theme problems in these pictures.
 
-## lists-codex-no-tasks: View, Tasks in an external Codex chat (#318)
+## lists-codex-no-tasks: Tools, Tasks in an external Codex chat (#318)
 
 The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The task's unavailable message, disabled Copy button and layout are unchanged.
@@ -806,7 +808,7 @@ same near-black, white and aqua colours as the Codex Tasks screenshots.
 pictures. The saved-command-rules check says it could not be checked because this
 is the synthetic probe connection, which does not supply that unrelated API.
 
-## lists-codex-owned-no-tasks: View, Tasks in an owned Codex chat without tasks (#323)
+## lists-codex-owned-no-tasks: Tools, Tasks in an owned Codex chat without tasks (#323)
 
 The 2026-10-27 pictures in both themes change the Kinds entry to "Changed Files
 (0)". The empty task list, details and button positions are unchanged.
@@ -820,19 +822,19 @@ same layout and colours described for lists-codex-tasks.
 
 **What looks off:** Only the existing list-focus distinction (#181), as above.
 
-## chat-permissions: File, Chat Permissions for a Claude chat (#332)
+## chat-permissions: Chat, Chat Settings, Chat Permissions for a Claude chat (#332)
 
 A 680 by 520 dialog titled "Chat Permissions: Visual probe". At the top, "Permission mode:" labels a grey read-only box showing "Auto: Claude decides what is safe to run without asking", with "Change..." to its right. "Allowed for this chat:" heads a white list that takes about half the dialog. It has three rows: "Run git push (any arguments). Bash(git push:*). Allowed: time not recorded." (selected, white on blue), "Fetch pages from docs.python.org. WebFetch(domain:docs.python.org). Allowed 19 October 2026 at 03:53." and a kept folder, "Work in the folder" and the probe's Scratch folder path with its time (#334). The folder row is wider than the list, so a horizontal scroll bar runs along the list's bottom. Below the list, "Remove..." and "Remove All..." sit at the left and "Close" at the right. "About these permissions:" heads a read-only box that now shares the height with the list (about 169 tall, the list 186; #307): "Removing a rule applies from this chat's next turn." After a blank line it lists Claude Code's own settings for the chat's folder (#336): "From Claude Code's own settings. These apply to every Claude session working in this folder, here, in the desktop app or a terminal. The Chat Place only reads them; change them in Claude Code, for example with /permissions." and, for the probe's made-up folder, "Claude Code's own settings allow nothing extra for this folder." Every line fits; the box scrolls when there are more. The selected row measures 4.53:1 (white on Windows' blue, #0078D4), and unselected rows are black on white. In High Contrast Aquatic the boxes and buttons are white-outlined on near-black (#202020, 16.3:1 for the text), and the selected row is dark text on light aqua (#8EE3F0, 7.9:1).
 
 **What looks off:** The list is mostly empty with two rules. Nothing else.
 
-## chat-permissions-empty: File, Chat Permissions with nothing kept (#332)
+## chat-permissions-empty: Chat, Chat Settings, Chat Permissions with nothing kept (#332)
 
 The same dialog with one row in the list, "Nothing is allowed beyond the permission mode.", selected. Everything else is as above.
 
 **What looks off:** Nothing.
 
-## chat-permissions-codex: File, Chat Permissions for a Codex chat (#332)
+## chat-permissions-codex: Chat, Chat Settings, Chat Permissions for a Codex chat (#332)
 
 The same 680 by 520 dialog, titled "Chat Permissions: Codex preview". The mode box reads "Can edit files in this folder; asks before anything else", with Change beside it. The selected list entry reads "No command approvals are remembered for this chat." Remove and Remove All now sit below the list on the left, with Close on the right. The About box shares the dialog's height with the list (list 186 tall, About box 169). Since #374 it opens with "Selected reviewer: human review. Can read files and edit the chat folder:" and the folder's path (wrapping after "tcp-"), then a four-line paragraph on automatic approval review and its boundaries, as in codex-change-mode. After a blank line comes the earlier text: when removal counts, that remembered commands may run outside the sandbox, and that only this chat in The Chat Place keeps the approval, ending "No Codex or Claude settings or rules are changed." at the box's bottom edge. The Codex saved-rules paragraph (#307) is now below the first view, so the scroll thumb is shorter. High Contrast Aquatic uses white outlines and text on near-black, and an aqua selected row. Control sizes and positions match the earlier dialog; only the two buttons and the text changed.
 
@@ -858,7 +860,7 @@ Text is black on white (21:1) and the selected row white on #0078D4 (4.5:1). In 
 
 **What looks off:** Nothing.
 
-## backup-schedule: File, Backup Schedule, daily, encrypted, after a failure (#437, #442)
+## backup-schedule: File, Backup, Backup Schedule, daily, encrypted, after a failure (#437, #442)
 
 The 606 by 493 Backup Schedule dialog. From the top: "Back up automatically:" over a full-width box reading "Every day". "Folder for the backups:" over the folder path, with Browse... beside it. "Backups to keep:" over a narrow spin box reading 5. Then a row with the checked box "Encrypt them with a passphrase kept on this computer" and, at the right, Change Passphrase.... Below is a read-only box filling the width and most of the remaining height, with three paragraphs: how scheduled backups run and are pruned; what the kept passphrase means; and the last backup and the last failure. All of it wraps inside the box, with about a third of it empty below. Save (the default) and Cancel are at the bottom right. Nothing is cut off or overlapping.
 
@@ -1003,7 +1005,7 @@ Text is black on white (21:1), the labels black on #F0F0F0 (18.4:1), and the sel
 
 **What looks off:** Nothing.
 
-## lists-subagents: View, Subagents: one still working, one finished (#468)
+## lists-subagents: Tools, Subagents: one still working, one finished (#468)
 
 The 820 by 660 Lists dialog, titled "Lists: Fix the flaky upload test", with "The whole chat" in Show items from. Kinds holds seven rows, 788 by 111, all in view, the last, "Subagents (2)", selected. Below an empty Filter box, "List: Subagents (2):" heads a list 788 by 120 with two rows: "Explore: Find where uploads signal done. Running, 1 message, 1 tool call, under a minute so far" (selected, with the focus outline) and "code-reviewer: Review the retry change. Done, 2 messages, 2 tool calls, 4 minutes". Details, 788 by 170, in the standard font, says "Explore: Find where uploads signal done", "Running, 1 message, 1 tool call, under a minute so far.", then "Prompt:" with the prompt and "Final report:" with "No report yet.", with blank lines between. Read Conversation (120 wide) and Copy sit at the right under the page, and Close below Copy, the same width and right-aligned with it.
 
@@ -1023,13 +1025,13 @@ The same 751 by 360 dialog as usage. "Usage and context:" heads a white list, 71
 
 **What looks off:** The probe's first row says 2 tokens used and that the window's size isn't known, right above a breakdown with 14,431 tokens of messages and a free space figure. That's the made-up data: the breakdown is added to a session that has run no turn here.
 
-## stop-background-task: View, Stop Background Task (#468; in File until #596)
+## stop-background-task: Chat, Stop Background Task (#468; in File until #596, then in View until #575)
 
 wx's standard single-choice dialog, 578 by 189. "Background work in Visual probe. Stop which?", then a list 532 by 49 with two rows: "Run the synthetic probe project's full Windows build and tests, running 3 minutes 10 seconds" (selected) and "Watch CI, running 1 minute 5 seconds". The long row fits, ending short of the scroll bar. A separator line, then OK (default) and Cancel at the bottom right. Selected row white on #0078D4 (4.5:1), the other black on white (21:1); in High Contrast Aquatic #263B50 on aqua (7.9:1) and white on #202020 (16.3:1), with OK filled aqua.
 
 **What looks off:** The list keeps a scroll bar though both rows fit, which is wx's own list, as in copilot-change-mode. The button that stops the task says OK.
 
-## chat-options: File, Chat Settings, Chat Options (#468, #596)
+## chat-options: Chat, Chat Settings, Chat Options (#468, #596)
 
 A 620 by 600 dialog titled "Chat Options: Visual probe". At the top two rows, label on the left: "Run as agent:" (was "Agent:" until #596) with a dropdown, focused, reading "code-reviewer (uses its own model, opus): Independent review of a change.", which fits with about 85 pixels to spare; and "Output style:" reading "Concise". Both are 504 wide, starting at x=90 (3 pixels right of before, for the longer label). The About box's first sentence now begins "Run as agent runs the chat as one of the agents Claude Code knows...", and it ends "Changes apply from the chat's next turn." "Instructions for this chat:" heads a text box, 584 by 187, the largest part of the dialog, with two lines. "More folders:" heads a list 584 by 70 with one selected row, a folder's full path. "Add Folder..." and "Remove" sit under it at the left. "About these options:" heads a read-only box, 584 by 90, whose four lines show whole. OK (default) and Cancel are at the bottom right. Labels are black on #F0F0F0 (18.4:1), boxes black on white, the selected row white on #0078D4 (4.5:1). In High Contrast Aquatic the text is white on #202020 (16.3:1), the selected row #263B50 on aqua (7.9:1), OK filled aqua, and the focused dropdown has a dotted outline, #DFDFDF on #202020 (12:1).
 
@@ -1099,7 +1101,7 @@ on the selected aqua #8EE3F0 row (7.8933:1), and a visible light caret (12.2263:
 No new layout or theme defect was observed. Higher display scales were not
 captured in this review.
 
-## lists-codex-approvals: View, Lists: Auto Approvals in a Codex chat (#564, #596)
+## lists-codex-approvals: Tools, Lists: Auto Approvals in a Codex chat (#564, #596)
 
 The Lists dialog for "Codex history preview", on "Auto Approvals (5)", the eighth and last row of Kinds, selected. Above it, Commands and Decisions say "not available", and Subagents reads "Subagents (0)" (#558). "List: Auto Approvals (5):" holds five rows, newest first: "Allowed: git diff. You allowed it for this chat." (selected; "Saved rule for this chat" until #596), "Allowed: rg -n "def build" thechatplace. Automatic review.", "Denied: curl https://example.com/install.sh. Automatic review.", "Allowed: python -m pytest -q tests/test_lists.py. Automatic review." and "Allowed: git status --short. Automatic review." All fit the 788 wide list without cutting off. Details shows the selected notice, "Allowed git diff, as you said for this chat." Copy is under the page and Close below it. High Contrast Aquatic follows the theme as in code-blocks.
 

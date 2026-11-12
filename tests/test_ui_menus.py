@@ -81,3 +81,23 @@ def test_each_item_reaches_its_handler(frame, monkeypatch):
         event.SetEventObject(frame)
         frame.GetEventHandler().ProcessEvent(event)
     assert called == list(frame.menu_items)
+
+
+def test_the_windows_own_access_keys_are_the_ones_the_menus_keep_clear_of(frame):
+    # #575: a visible control's key wins over the menu bar's, so the
+    # menus' letters avoid these. Every labelled control in the main window
+    # and its two reply areas, so a new one has to be added to the list.
+    from test_commands import WINDOW_ACCESS_KEYS
+
+    def labelled(window):
+        for child in window.GetChildren():
+            if isinstance(child, (wx.Button, wx.CheckBox, wx.StaticText)):
+                yield child
+            yield from labelled(child)
+
+    keys = {commands.access_key(control.GetLabel())
+            for control in labelled(frame)} - {""}
+    assert keys == WINDOW_ACCESS_KEYS
+    assert frame.attach_btn.GetLabel() == "Attach F&iles..."
+    assert frame.reply_claude_btn.GetLabel() == "Open &in Claude"
+    assert frame.continue_btn.GetLabel() == "Continue H&ere..."

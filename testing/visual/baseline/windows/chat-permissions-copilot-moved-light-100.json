@@ -229,7 +229,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Commands in this chat ask until you use Restart Copilot, in File, Chat Settings, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you.\n\nCommands allowed for this chat run without asking only when Copilot writes them exactly the same way, and only while every path in them stays inside the chat's folder. Removing one counts from"
+   "value": "Commands in this chat ask until you use Restart Copilot, in Chat, Chat Settings, Chat Permissions, since a command you allowed may have moved Copilot's shell. Auto's file changes are still answered for you.\n\nCommands allowed for this chat run without asking only when Copilot writes them exactly the same way, and only while every path in them stays inside the chat's folder. Removing one counts from"
   }
  ],
  "capture": "PrintWindow"

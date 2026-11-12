@@ -758,7 +758,7 @@ class AgentChats:
             conversation.paused, conversation.stop_reason = True, f"{name} didn't take the message."
             self._agent_note(conversation, f"{name} didn't take the message." if kept
                              else f"{name} didn't take the message; it's in {name}'s own chat's "
-                                  "reply box (File, Agent Conversation Members).")
+                                  "reply box (Session, Agent Conversation Members).")
             self._agent_after_change(conversation)
         return tuple(t for t in texts if t != sent) if kept else texts
 
@@ -962,7 +962,7 @@ class AgentChats:
         """Each reply is news, queued behind what you're hearing rather than
         cutting it off; the announcement level (Settings) applies as ever.
         An automatic conversation can say only stops and what needs you
-        (File, Agent Conversation Hand-offs); the rest goes to the status bar."""
+        (Session, Agent Conversation Hand-offs); the rest goes to the status bar."""
         if not text:
             return
         if (not always and conversation.mode == MODE_AUTO and not conversation.announce_each):
@@ -1189,7 +1189,7 @@ class AgentChats:
         return f"{conversation.title}: {' '.join(parts)} {relay} What you type goes to {nxt}."
 
     def on_agent_members(self):
-        """File, Agent Conversation Members: who's in it, their roles, and
+        """Session, Agent Conversation Members: who's in it, their roles, and
         going to one of their chats (they aren't in the list on their own)."""
         selected = self._selected_session()
         conversation = self._agent_conversation(selected) if selected is not None else None
@@ -1216,7 +1216,7 @@ class AgentChats:
         self.open_session(info)
 
     def on_agent_mode(self):
-        """File, Agent Conversation Hand-offs: approve each, or automatic up
+        """Session, Agent Conversation Hand-offs: approve each, or automatic up
         to a limit (automatic only once Settings allows it)."""
         selected = self._selected_session()
         conversation = self._agent_conversation(selected) if selected is not None else None

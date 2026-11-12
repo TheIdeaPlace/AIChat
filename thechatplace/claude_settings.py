@@ -1,5 +1,5 @@
 """The permission rules in Claude Code's own settings that apply to a chat's
-folder, read only, for File, Chat Permissions (#336).
+folder, read only, for Chat, Chat Settings, Chat Permissions (#336).
 
 The Chat Place never writes these files. Every turn it runs is Claude Code
 itself, so these rules apply to its chats as they do in the desktop app and a

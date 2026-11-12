@@ -73,7 +73,7 @@ class Notifier:
         self._messages: List = []  # the Mac notifications shown, newest last
 
     def show(self, title: str, message: str, key: str, silent: bool = False) -> bool:
-        """``silent``: you chose, in File, Sounds, to leave out Windows' sound (#250). Only
+        """``silent``: you chose, in Tools, Sounds, to leave out Windows' sound (#250). Only
         Windows' balloons need telling."""
         if self._mac:
             return self._show_mac(title, message, key)

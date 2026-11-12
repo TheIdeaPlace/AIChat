@@ -196,13 +196,13 @@ def test_problems_text_says_what_claude_cant_use():
     assert problems_text(servers) == (
         "Claude can't use claude.ai Travel and claude.ai Shop: they need sign-in. "
         "Claude can't use github: it failed to connect. "
-        "To fix this, or stop hearing it, use View, Connected Tools.")
+        "To fix this, or stop hearing it, use Tools, Connected Tools.")
     assert problems_text(servers, skip={"claude.ai Shop", "github"}) == (
         "Claude can't use claude.ai Travel: it needs sign-in. "
-        "To sign in, or stop hearing this, use View, Connected Tools.")
+        "To sign in, or stop hearing this, use Tools, Connected Tools.")
     assert problems_text([("github", "failed")]) == (
         "Claude can't use github: it failed to connect. "
-        "To reconnect, or stop hearing this, use View, Connected Tools.")
+        "To reconnect, or stop hearing this, use Tools, Connected Tools.")
     assert problems_text([("claude.ai Docs", "connected"), ("x", "pending")]) == ""
     assert problems_text(servers, skip={"claude.ai Travel", "claude.ai Shop", "github"}) == ""
 

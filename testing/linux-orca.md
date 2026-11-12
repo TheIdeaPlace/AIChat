@@ -43,9 +43,9 @@ Each test says what to do and what you should hear. Note anything else, with the
    Down didn't.
 8. **Status bar.** F6 until the status bar, or Ctrl+9. Left and Right move between its parts.
    Orca's read-status-bar command (Orca+KP_Divide, or Orca+/ in the laptop layout) reads it.
-9. **Menus.** Alt+F, Alt+V, Alt+H, and the Menu key (or Shift+F10) in each list. Every item is
+9. **Menus.** Alt+F, Alt+S, Alt+C, Alt+V, Alt+T, Alt+H, and the Menu key (or Shift+F10) in each list. Every item is
    read with its key.
-10. **Every dialog.** Ctrl+Comma (Settings), Ctrl+N (New Session), View, Usage and Context, Help,
+10. **Every dialog.** Ctrl+Comma (Settings), Ctrl+N (New Session), Tools, Usage and Context, Help,
     Report a Bug. Tab through each: every control has a name, nothing is read as "panel" or
     "unlabelled".
 
@@ -73,7 +73,7 @@ Each test says what to do and what you should hear. Note anything else, with the
 
 ## Claude Code
 
-15. **Help, Claude Code Sign-in.** It says whether Claude Code is signed in. If it offers to sign
+15. **Tools, Sign In, Claude Code.** It says whether Claude Code is signed in. If it offers to sign
     you in, a terminal window opens; say which terminal it chose and whether Orca reads it. The
     window waits for Enter before it closes.
 16. **New Session** (Ctrl+N). Pick a folder, type a first message, Start. The turn runs; the
@@ -84,10 +84,10 @@ Each test says what to do and what you should hear. Note anything else, with the
 
 ## Links and files
 
-19. **A link.** On a session, File, Copy Session Link (Ctrl+Shift+L), and choose the link only.
+19. **A link.** On a session, Session, Copy Session Link (Ctrl+Shift+L), and choose the link only.
     Open it from another program (`gio open '<link>'` in a terminal, or a link in a browser): The
     Chat Place comes forward with that session.
-20. **What Claude Knows About You** (View menu): Edit opens the file in your editor; Show in
+20. **What Claude Knows About You** (Tools menu): Edit opens the file in your editor; Show in
     Folder opens your file manager with the file selected.
 
 ## Updating

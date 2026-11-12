@@ -115,11 +115,11 @@ def codex_effort_plan(models, model):
         if chosen is not None:
             return chosen, False
         return (f"{model} isn't in Codex's list of models now, so its effort can't be changed. "
-                "Change Model, on the File menu, chooses another.")
+                "Chat, Chat Settings, Change Model chooses another.")
     chosen = next((m for m in models if m.is_default), None)
     if chosen is None:
         return ("Codex didn't say which model is its default, so its effort can't be changed. "
-                "Change Model, on the File menu, chooses a model.")
+                "Chat, Chat Settings, Change Model chooses a model.")
     return chosen, True
 
 
@@ -456,7 +456,7 @@ class CodexExtras:
         self._codex_work(lambda: self.sessions.owned_action('feature', record, method, args), done)
 
     def _codex_background(self, record, result, mark):
-        # "Background task" throughout, as File, Stop Background Task and a
+        # "Background task" throughout, as Chat, Stop Background Task and a
         # Claude chat say it: "terminal" sounded like a window (#596).
         rows = result.get('data', [])
         if not isinstance(rows, list) or not rows:

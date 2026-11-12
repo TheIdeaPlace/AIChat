@@ -929,7 +929,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Permissions: a Claude chat's kept rules"
+   "about": "Chat, Chat Settings, Chat Permissions: a Claude chat's kept rules"
   },
   "chat-permissions-empty": {
    "kind": "dialog",
@@ -1503,7 +1503,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Connected Tools: a Claude chat's MCP servers and connectors"
+   "about": "Tools, Connected Tools: a Claude chat's MCP servers and connectors"
   },
   "ask-aside": {
    "kind": "dialog",
@@ -1699,7 +1699,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Stop Background Task: two tasks running"
+   "about": "Chat, Stop Background Task: two tasks running"
   },
   "rewind": {
    "kind": "dialog",
@@ -1755,7 +1755,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds"
+   "about": "Tools, Sounds"
   },
   "new-session-worktree": {
    "kind": "dialog",
@@ -1867,7 +1867,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
+   "about": "Tools, Sounds, Sound Tutorial: the scheme Sounds shows"
   },
   "codex-change-mode-plan": {
    "kind": "dialog",

@@ -1,4 +1,4 @@
-"""View, Properties (Alt+Enter, #214): what can be known about a session or
+"""Session, Properties (Alt+Enter, #214): what can be known about a session or
 a message, as "Property: value" lines to arrow through.
 
 Plain data in, plain lines out, with no wx, so it can be tested on its own.

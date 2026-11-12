@@ -1,4 +1,4 @@
-"""View, Lists (#279): what each tab lists, for this message or the whole
+"""Tools, Lists (#279): what each tab lists, for this message or the whole
 chat. Synthetic records only; nothing here needs a window."""
 from thechatplace import lists
 from thechatplace import transcript as t

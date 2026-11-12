@@ -964,7 +964,7 @@ class CopilotProvider:
         self._remember_models()
 
     def set_model_owned(self, record, model: str) -> None:
-        """File, Change Model: from the chat's next turn. Opened again later,
+        """Chat, Chat Settings, Change Model: from the chat's next turn. Opened again later,
         the chat shows whichever model Copilot reports for it then."""
         self.runtime.set_model(record.cli_session_id, model)
         self._remember_models()

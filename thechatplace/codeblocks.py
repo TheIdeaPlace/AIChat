@@ -46,7 +46,7 @@ def find_code_blocks(text: str) -> List[CodeBlock]:
 
 def split_code_blocks(text: str) -> List[Union[str, CodeBlock]]:
     """The text's prose lines, with each code block as one CodeBlock in its
-    place (View, Links finds links in each differently, #190)."""
+    place (Tools, Links finds links in each differently, #190)."""
     return _parts(text)
 
 

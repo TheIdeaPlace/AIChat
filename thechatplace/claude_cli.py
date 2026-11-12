@@ -1070,7 +1070,7 @@ def fable_problem(actual: str, chosen: str, sent: bool = False,
             else "stopped the turn as soon as it started" if sent
             else "didn't send your message")
     return (f"Claude Code would have used Fable, {which}. Some plans bill Fable to usage "
-            f"credits, so The Chat Place {done}. Choose another model with File, "
+            f"credits, so The Chat Place {done}. Choose another model with Chat, "
             "Chat Settings, Change Model, then send again.")
 
 

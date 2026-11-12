@@ -1,7 +1,7 @@
-"""Sessions you've hidden from the list (File, Hide Session): The Chat Place's
+"""Sessions you've hidden from the list (Session, Hide Session): The Chat Place's
 own and the desktop app's alike. Nothing about the session itself changes;
 the list just leaves it out, except in View, Show Sessions, Hidden, where
-File, Bring Back Session shows it again. Kept in ``hidden.json``.
+Session, Bring Back Session shows it again. Kept in ``hidden.json``.
 
 ``ToolActivityStore`` is the same kind of file, ``tool_activity.json``: the
 sessions you've turned Show Tool Activity on for (#162). It's a setting of

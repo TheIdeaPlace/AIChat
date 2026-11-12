@@ -233,7 +233,7 @@ class SoundHost:
             player.close()
 
     def on_toggle_mute_sounds(self, _event=None) -> None:
-        """View, Mute All Sounds (Ctrl+Shift+X): silences everything at once, what's playing
+        """Tools, Mute All Sounds (Ctrl+Shift+X): silences everything at once, what's playing
         too, and is said even with announcements silent, because you asked."""
         muted = not self.speech.sounds_muted
         self._sound_set_mute(muted)
@@ -242,7 +242,7 @@ class SoundHost:
         elif self.speech.sounds_on:
             text = "Sounds on."
         else:
-            text = "Sounds not muted, but they're turned off. File, Sounds turns them on."
+            text = "Sounds not muted, but they're turned off. Tools, Sounds turns them on."
         self._say(text, force=True, interrupt=False)
 
     def _sound_set_mute(self, muted: bool) -> None:
@@ -269,7 +269,7 @@ class SoundHost:
             dialog.Destroy()  # which stops a sound still playing
 
     def on_sounds(self, _event=None) -> None:
-        """File, Sounds: whether there are sounds, which, and for which chats."""
+        """Tools, Sounds: whether there are sounds, which, and for which chats."""
         before = self.speech
         dialog = SoundsDialog(self, self.speech, self._sound_player, say=self._say)
         try:

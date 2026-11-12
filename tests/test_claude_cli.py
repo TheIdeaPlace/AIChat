@@ -194,7 +194,7 @@ def test_find_claude_missing():
     assert lookup.path is None and "isn't installed" in lookup.problem
     # Short enough to speak, pointing at where it can be installed; the
     # commands for this computer are kept for that dialog.
-    assert lookup.problem.endswith("choose Claude Code Sign-in on the Help menu.")
+    assert lookup.problem.endswith("choose Tools, Sign In, Claude Code.")
     assert "claude.ai/install" not in lookup.problem
     assert "claude.ai/install" in lookup.install_help
 
@@ -1020,7 +1020,7 @@ def test_a_turn_on_an_unchosen_fable_is_stopped():
     assert fable_problem("claude-fable-5-1", "") == (
         "Claude Code would have used Fable, Claude Code's default model. Some plans bill Fable "
         "to usage credits, so The Chat Place didn't send your message. Choose another model "
-        "with File, Chat Settings, Change Model, then send again.")
+        "with Chat, Chat Settings, Change Model, then send again.")
     assert "instead of Opus, the model this session chose" in fable_problem(
         "claude-fable-5-1", "opus")
     assert "as soon as it started" in fable_problem("claude-fable-5-1", "", sent=True)

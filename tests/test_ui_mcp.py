@@ -1,4 +1,4 @@
-"""View, Connected Tools and connected tools' questions in the window (#468),
+"""Tools, Connected Tools and connected tools' questions in the window (#468),
 on a hidden window with every outside thing faked (``fake_env``): no real
 claude, no browser, no speech."""
 import sys
@@ -57,7 +57,7 @@ def select(frame, title):
 
 
 def _connected_tools(frame, monkeypatch, drive):
-    """Open View, Connected Tools on the selected chat; ``drive(dialog)``
+    """Open Tools, Connected Tools on the selected chat; ``drive(dialog)``
     runs once its list has been read."""
     from thechatplace.ui import dialogs
     seen = {}
@@ -618,11 +618,11 @@ def test_a_turn_says_once_which_tools_claude_cant_use(frame, env):
     _start(frame, servers)
     said = ("Tools probe: Claude can't use claude.ai Morningstar: it needs sign-in. Claude "
             "can't use github: it failed to connect. To fix this, or stop hearing it, use "
-            "View, Connected Tools.")
+            "Tools, Connected Tools.")
     assert env["feedback"][-1] == said
     # Too long for the status bar, which would cut off what you can do.
     assert frame._status_latest == ("Claude can't use 2 connected tools. To fix this, or stop "
-                                    "hearing it, use View, Connected Tools.")
+                                    "hearing it, use Tools, Connected Tools.")
     count = len(env["feedback"])
     _start(frame, servers)  # not again this run
     assert len(env["feedback"]) == count
@@ -644,7 +644,7 @@ def test_below_the_full_level_its_only_on_the_status_bar(frame, env):
     _start(frame, [{"name": "github", "status": "failed"}])
     assert len(env["feedback"]) == count
     assert frame._status_latest == ("Tools probe: Claude can't use github: it failed to "
-                                    "connect. To reconnect, or stop hearing this, use View, "
+                                    "connect. To reconnect, or stop hearing this, use Tools, "
                                     "Connected Tools.")
 
 

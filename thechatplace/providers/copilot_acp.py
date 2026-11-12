@@ -55,11 +55,11 @@ class AcpNotSent(AcpError):
 #: never signed in (Kelly's clean VM, #391).
 AUTH_REQUIRED = -32000
 #: Said instead of "Copilot couldn't do that.", which gave no hint (#391).
-NOT_SIGNED_IN = ("GitHub Copilot CLI isn't signed in. Choose Help, Copilot Sign-in to sign in, "
+NOT_SIGNED_IN = ("GitHub Copilot CLI isn't signed in. Choose Tools, Sign In, Copilot to sign in, "
                  "then try again.")
 #: The same, when a message was refused: it isn't given back, so say so.
 NOT_SIGNED_IN_SENT = ("GitHub Copilot CLI isn't signed in. Your message may not have reached "
-                      "Copilot, and it wasn't sent again. Choose Help, Copilot Sign-in to sign "
+                      "Copilot, and it wasn't sent again. Choose Tools, Sign In, Copilot to sign "
                       "in, then send it again.")
 
 

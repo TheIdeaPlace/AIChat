@@ -4,7 +4,7 @@ These are the keyboard, focus and speech checks for Kelly after the automated te
 and VM visual probes. Use a Codex chat run through The Chat Place with enough work
 for Codex to report a task list; a short reply may have no task list.
 
-1. Press Ctrl+Shift+J (View, Tasks). Arrow through the steps and press Enter to read
+1. Press Ctrl+Shift+J (Tools, Tasks). Arrow through the steps and press Enter to read
    a step's details. Check that its name, state and position are spoken and that
    closing Lists returns focus to the control you used to open it.
 2. While work is running, press Ctrl+Shift+T. It should name the current step and
@@ -25,7 +25,7 @@ for Codex to report a task list; a short reply may have no task list.
    once the turn is idle. If a later turn completes a step, hear Done before the reply.
 8. Switch Show items from to This message. Only messages in the turn where the list
    was reported should show its steps, both before and after reopening the chat.
-9. Open an older Codex chat or one run elsewhere that has no captured list. View,
+9. Open an older Codex chat or one run elsewhere that has no captured list. Tools,
    Tasks should explain that task lists are kept for chats run here. An owned chat
    where Codex has never reported tasks should simply say "No tasks in this chat." Its proposed plan text,
    if any, should remain ordinary conversation content rather than a checklist.
