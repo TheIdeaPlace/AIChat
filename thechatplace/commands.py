@@ -228,15 +228,23 @@ def command(command_id: str) -> Command:
     raise KeyError(command_id)
 
 
+def plain_label(item) -> str:
+    """A command's or menu's name as said: no access key, no dots, no key."""
+    return item.label.replace("{key}", "").replace("&", "").replace("...", "").strip()
+
+
 def access_key(label: str) -> str:
     """The letter after a single "&", lower case, or "" for none."""
     match = re.search(r"(?<!&)&([^&])", label)
     return match.group(1).lower() if match else ""
 
 
-def menu_label(item: Command, platform: Optional[str] = None) -> str:
+def menu_label(item: Command, platform: Optional[str] = None,
+               key: Optional[str] = None) -> str:
     """The label wx is given: a shown key in brackets, or a tab and the
-    accelerator, which is what a screen reader reads as the item's shortcut."""
+    accelerator, which is what a screen reader reads as the item's shortcut.
+    ``key`` is the key in effect (#635), "" for none; None means the
+    default."""
     platform = platform or sys.platform
     label = item.label
     if item.shown_key:
@@ -244,6 +252,19 @@ def menu_label(item: Command, platform: Optional[str] = None) -> str:
         if "{key}" in label:
             return label.replace("{key}", shown)
         return f"{label} ({shown})"
-    if item.key and not (item.not_on_mac and platform == "darwin"):
-        return f"{label}\t{item.key}"
+    key = item.key if key is None else key
+    # The default that isn't an accelerator on a Mac stays off there; a key
+    # chosen in its place is an accelerator like any other.
+    if key and not (item.not_on_mac and platform == "darwin" and key == item.key):
+        return f"{label}\t{key}"
     return label.replace("{key}", "")
+
+
+def with_key(label: str, key: str, platform: Optional[str] = None,
+             default: str = "", not_on_mac: bool = False) -> str:
+    """A context menu's own label for a command (its access key can differ
+    from the menu bar's) with the command's key after a tab, or none."""
+    platform = platform or sys.platform
+    if not key or (not_on_mac and platform == "darwin" and key == default):
+        return label
+    return f"{label}\t{key}"

@@ -57,7 +57,8 @@ from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, backup, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
-from ..commands import MENU_BAR, Menu, command as find_command, menu_label
+from ..commands import MENU_BAR, Menu, command as find_command, menu_label, with_key
+from ..keymap import KeyMap, customizable, spoken as spoken_key
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_EDIT_TOOLS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
                           TurnRunner, allow_response, answer_questions_response,
@@ -124,7 +125,8 @@ from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
                           is_web_url, problems_short, problems_text)
 from ..rendering import html_page, message_page
-from ..ui_text import markdown_as_text, shortcuts_html, update_item_label, update_item_spoken, key_name
+from ..ui_text import (markdown_as_text, set_stop_key, shortcuts_html, update_item_label,
+                       update_item_spoken, key_name)
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
                       ConnectedToolsDialog, ElicitationDialog,
                       ExportChatsDialog, RestoreChooserDialog,
@@ -241,11 +243,10 @@ NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
 TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
-#: Retry from Here's key (#468, #596) as a menu accelerator, except on a Mac,
-#: where Cmd+Shift+Z is Redo: there the messages list takes it itself. From
-#: commands.py, so the message's menu shows the same key as the menu bar.
+#: Retry from Here's default key (#468, #596) is a menu accelerator, except
+#: on a Mac, where Cmd+Shift+Z is Redo: there the messages list takes it
+#: itself (_on_char_hook). A key you give it is an accelerator anywhere (#635).
 _RETRY = find_command("retry_from_here")
-REWIND_ACCEL = "" if sys.platform == "darwin" else "\t" + _RETRY.key
 
 
 class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
@@ -260,6 +261,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._provider_cleanup_failed = False
         self.groups = GroupStore()
         self.prompts = PromptStore()  # saved prompts (#131)
+        self.keymap = KeyMap()  # your keyboard shortcuts (#635), before the menus
         self.hidden = HiddenStore()
         # The sessions Show Tool Activity is on for: it's each session's own (#162).
         self.tool_activity = ToolActivityStore()
@@ -562,6 +564,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self.prompts.load_error:
             wx.CallAfter(wx.MessageBox, self.prompts.load_error, APP_NAME,
                          wx.OK | wx.ICON_WARNING, self)
+        if self.keymap.load_error:
+            wx.CallAfter(wx.MessageBox, self.keymap.load_error, APP_NAME,
+                         wx.OK | wx.ICON_WARNING, self)
         self.refresh_sessions()
         self._check_cli_versions()
         # After the session list has been read, like the update check.
@@ -590,6 +595,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         handlers = self._command_handlers()
         stock = {"preferences": wx.ID_PREFERENCES, "about": wx.ID_ABOUT, "exit": wx.ID_EXIT}
         self.menu_items = {}
+        #: The label each item was given, so apply_keys changes only those
+        #: whose key changed (a Mac names its stock items itself).
+        self._menu_labels = {}
 
         def fill(menu, items):
             for entry in items:
@@ -607,7 +615,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     if entry.id == "show_sessions":
                         self._build_show_menu()
                 else:
-                    label = menu_label(entry)
+                    label = menu_label(entry, key=self._key_of(entry))
+                    self._menu_labels[entry.id] = label
                     if entry.check:
                         item = menu.AppendCheckItem(wx.ID_ANY, label)
                     else:
@@ -630,6 +639,33 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.update_item = items["check_for_updates"]
         self.update_item.SetItemLabel(update_item_label(__version__))
         self.SetMenuBar(bar)
+        set_stop_key(spoken_key(self.keymap.key("stop_running_turn"), "win32"))
+
+    def _key_of(self, entry):
+        """The key in effect for a menu-bar command (#635), or None for one
+        whose key belongs to a part of the window and can't change."""
+        return self.keymap.key(entry.id) if customizable(entry) else None
+
+    def _keyed(self, label, command_id):
+        """A context menu's label for a menu-bar command, with the key in
+        effect (#635): its own access key, the same key as the menu bar."""
+        entry = find_command(command_id)
+        return with_key(label, self.keymap.key(command_id), default=entry.key,
+                        not_on_mac=entry.not_on_mac)
+
+    def apply_keys(self):
+        """Show and use the keys in ``self.keymap`` at once (#635): the menu
+        bar's labels carry the accelerators, which is also what a screen
+        reader reads as each item's shortcut."""
+        set_stop_key(spoken_key(self.keymap.key("stop_running_turn"), "win32"))
+        for command_id, item in self.menu_items.items():
+            entry = find_command(command_id)
+            if command_id == "check_for_updates" or not customizable(entry):
+                continue
+            label = menu_label(entry, key=self._key_of(entry))
+            if self._menu_labels.get(command_id) != label:
+                item.SetItemLabel(label)
+                self._menu_labels[command_id] = label
 
     def _fill_sort_menu(self, menu):
         # Radio items: a screen reader says which order is checked.
@@ -2535,9 +2571,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Deliberately not tied to the "formatted page" setting, which is about
         Claude's messages: the shortcuts read best as tables either way."""
         if self._show_page("Keyboard Shortcuts",
-                           html_page("Keyboard Shortcuts", shortcuts_html())):
+                           html_page("Keyboard Shortcuts", shortcuts_html(keys=self.keymap))):
             return
-        self._modal(ShortcutsDialog(self))
+        self._modal(ShortcutsDialog(self, keys=self.keymap))
 
     def on_read_whole_chat(self, _event=None):
         """View, Read Full Chat as a Web Page (Ctrl+Shift+W, #538): every message in
@@ -2651,7 +2687,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # On the Agent call and the reply of a turn that used subagents (#468).
             subs = menu.Append(wx.ID_ANY, "Suba&gents...")
             menu.Bind(wx.EVT_MENU, lambda e: self.on_message_subagents(), subs)
-        relay_item = menu.Append(wx.ID_ANY, "&Send Reply to Another Chat...\tCtrl+Shift+E")
+        relay_item = menu.Append(wx.ID_ANY, self._keyed("&Send Reply to Another Chat...",
+                                                       "send_reply_to_another_chat"))
         relay_item.Enable(message is not None and message.kind in relay.RELAYABLE)
         menu.Bind(wx.EVT_MENU, lambda e: self.on_send_reply_to(), relay_item)
         # Going back to this message (#468): Claude chats only; elsewhere
@@ -2661,7 +2698,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 can_branch = self.sessions.capabilities(self._open).branch
             except ValueError:
                 can_branch = False
-            rewind_item = menu.Append(wx.ID_ANY, "Retr&y from Here..." + REWIND_ACCEL)
+            rewind_item = menu.Append(wx.ID_ANY, self._keyed("Retr&y from Here...", "retry_from_here"))
             anchored = message is not None and bool(message.key if self._open.provider == 'codex' else message.uuid)
             rewind_item.Enable(can_branch and anchored and message.kind == USER)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
@@ -2671,7 +2708,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                and anchored)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
-        props = menu.Append(wx.ID_ANY, "&Properties...\tAlt+Enter")
+        props = menu.Append(wx.ID_ANY, self._keyed("&Properties...", "properties"))
         read.Enable(message is not None)
         copy.Enable(message is not None)
         props.Enable(message is not None)
@@ -3105,12 +3142,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             add("Agent Conversation &Members...", self.on_agent_members)
             add("&Hand-offs...", self.on_agent_mode)
         imported = info.provider == IMPORTED
-        add("Open in &Claude\tCtrl+O", self.on_open_in_claude, info.can_open_in_claude)
-        add("Copy Session Lin&k...\tCtrl+Shift+L", self.on_copy_session_link,
+        add(self._keyed("Open in &Claude", "open_in_claude"), self.on_open_in_claude, info.can_open_in_claude)
+        add(self._keyed("Copy Session Lin&k...", "copy_session_link"), self.on_copy_session_link,
             not conversation and not imported)
         if not info.is_own and not conversation and not imported:
             # Heard as unavailable for a Cowork session (#91), whose button is hidden.
-            add("Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here, not info.cowork)
+            add(self._keyed("Con&tinue Here...", "continue_here"), self.on_continue_here, not info.cowork)
         # By the session's own capability, so Codex's chats have it too (#468).
         # A Claude chat without it (Cowork) is listed, heard as unavailable.
         try:
@@ -3118,14 +3155,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except ValueError:
             aside = False
         if info.source != "kept" and (aside or info.provider == "claude"):
-            add("Ask &Aside...\tCtrl+Shift+Y", self.on_ask_aside, aside)
-        add("Re&name Session...\tF2", self.on_rename)
+            add(self._keyed("Ask &Aside...", "ask_aside"), self.on_ask_aside, aside)
+        add(self._keyed("Re&name Session...", "rename_session"), self.on_rename)
         add("&Remote Control...", self.on_remote_control, not conversation and not imported)
         menu.AppendSeparator()
-        add("Add to &Group...\tCtrl+G", self.on_add_to_group)
+        add(self._keyed("Add to &Group...", "add_to_group"), self.on_add_to_group)
         add("Remove from Gro&up...", self.on_remove_from_group,
             bool(self.groups.groups_of(info.key)))
-        add("&Export Session...\tCtrl+E", self.on_export)
+        add(self._keyed("&Export Session...", "export_session"), self.on_export)
         menu.AppendSeparator()
         if info.key in self.hidden:
             add("&Bring Back Session", self.on_unhide)
@@ -3134,7 +3171,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info.is_own or conversation or imported or info.source == "kept":
             add("Delete Session &Permanently...\tShift+Delete", self.on_delete_permanently)
         menu.AppendSeparator()
-        add("Pr&operties...\tAlt+Enter", self.on_properties)
+        add(self._keyed("Pr&operties...", "properties"), self.on_properties)
         return menu, actions
 
     def _on_session_menu(self, event=None):
@@ -8223,11 +8260,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if focus is self.chat_list and self._selected_queued() is not None:
                     self.steer_queued()
                     return
-            if event.AltDown() and not ctrl and not event.ShiftDown():
-                # Properties (#214). Here rather than left to the menu's
-                # accelerator: this hook runs first, and Enter in the
-                # messages list below would read the message instead.
-                self.on_properties()
+            # A command on an Enter key (Properties' Alt+Enter, #214, or one
+            # you chose, #635). Here rather than left to the menu's
+            # accelerator: this hook runs first, and Enter in the messages
+            # list below would read the message instead.
+            pressed = "+".join([name for name, down in (
+                ("Ctrl", ctrl), ("Alt", event.AltDown()), ("Shift", event.ShiftDown())) if down]
+                + ["Enter"])
+            command_id = self.keymap.command_for(pressed)
+            if command_id is not None:
+                self._command_handlers()[command_id](None)
                 return
             if ctrl and focus is self.reply_text:
                 if event.ShiftDown():
@@ -8247,9 +8289,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if press_focused_button_on_a_mac(event):
                 # Return did nothing on Send and the rest on a Mac.
                 return
-        if (not REWIND_ACCEL and key == ord("Z") and ctrl and event.ShiftDown()
+        if (sys.platform == "darwin" and self.keymap.key(_RETRY.id) == _RETRY.key
+                and key == ord("Z") and ctrl and event.ShiftDown()
                 and not event.AltDown() and focus is self.chat_list):
-            # Rewind to Here (#468) on a Mac, only from the messages list:
+            # Retry from Here (#468) on a Mac, only from the messages list:
             # Cmd+Shift+Z is Redo there, so it can't be a menu accelerator.
             wx.CallAfter(self.on_rewind_to_here)
             return

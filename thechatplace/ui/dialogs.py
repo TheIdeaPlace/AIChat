@@ -30,12 +30,12 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 
 
 class ShortcutsDialog(wx.Dialog):
-    def __init__(self, parent):
+    def __init__(self, parent, keys=None):
         super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Shortcuts:"), 0, wx.LEFT | wx.TOP, 8)
-        text = wx.TextCtrl(self, value=shortcuts_text(),
+        text = wx.TextCtrl(self, value=shortcuts_text(keys=keys),
                            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
         set_accessible_name(text, "Keyboard shortcuts")
         sizer.Add(text, 1, wx.EXPAND | wx.ALL, 8)
