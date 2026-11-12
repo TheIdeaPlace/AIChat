@@ -314,9 +314,11 @@ STEPS = [
          expect=["Backup Schedule"]),
     Step("Backup Schedule closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # GTK's file picker is announced by its file list, not its title.
+    # GTK's file picker is announced by its file list, not its title, and
+    # its access key chooses the item without Orca reading it (#575), so
+    # the Backup submenu it came from is what's checked.
     Step("Restore from Backup", ["alt+f", "b", "r"],
-         expect=["Restore from Backup", "Files"]),
+         expect=["Backup menu", "Files"]),
     Step("restore's file question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Lands on the chat list, none chosen: its first row starts "Skip".
