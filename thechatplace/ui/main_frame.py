@@ -278,6 +278,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._codex_policy_pending = set()
         self._codex_delayed_updates = {}
         self._codex_finished = set()
+        # Codex chats Delete Session Permanently is waiting on (#634): sends
+        # and a second delete are refused until Codex answers.
+        self._codex_deleting = set()
         # Send Reply to Another Chat (#248): which chat last sent a reply to
         # which (to offer sending back first), and a message waiting for a
         # Codex chat to be ready.
@@ -5132,7 +5135,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_send(self, _event=None):
         info = self._open
-        if info is not None and info.key in getattr(self, '_codex_deleting', ()):
+        if info is not None and info.key in self._codex_deleting:
             self._feedback('This chat is being deleted. Wait for it to finish first.')
             return
         if info is not None and info.provider == AGENTS:

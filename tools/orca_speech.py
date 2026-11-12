@@ -365,7 +365,7 @@ STEPS = [
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
     Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
-         expect=["Delete Session Permanently", "spawned subagent chats", "No"],
+         expect=["Delete Session Permanently", "subagent chats", "No"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Cancel Codex deletion", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote

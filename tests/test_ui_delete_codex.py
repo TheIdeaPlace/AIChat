@@ -34,7 +34,10 @@ def test_cancel_is_default_and_keeps_everything(frame, env, chat, monkeypatch):
     monkeypatch.setattr(wx, 'MessageBox', cancel)
     frame.on_delete_permanently()
     assert asked and asked[0][1] & wx.NO_DEFAULT
-    assert 'transcript' in asked[0][0] and 'subagent' in asked[0][0]
+    # Claude's wording, with what Codex deletes (#634).
+    text = asked[0][0]
+    assert text.startswith(f'Delete "{info.title}" permanently?')
+    assert 'conversation' in text and 'subagent chats' in text and "can't be brought back" in text
     assert not work and frame.store.get(info.cli_session_id, provider='codex')
 
 
@@ -50,13 +53,62 @@ def test_delete_keeps_record_until_codex_confirms(frame, env, chat, monkeypatch,
     frame.on_delete_permanently()
     assert len(work) == 1
     action, done = work[0]
-    assert action() == {}
+    assert action() == 'deleted'
     assert calls[0][0] == 'delete' and calls[0][1].provider == 'codex'
-    done('Deletion could not be confirmed.' if error else {}, error)
+    done('Wait for this Codex chat to finish.' if error else 'deleted', error)
     assert bool(frame.store.get(info.cli_session_id, provider='codex')) == error
     assert (info.key in frame._codex_drafts) == error
-    assert env['feedback'][-1] == ('Deletion could not be confirmed.' if error
-                                  else f'Deleted {info.title} permanently.')
+    assert env['feedback'][-1] == (f"Couldn't delete {info.title}. Wait for this Codex chat to finish."
+                                  if error else f'Deleted {info.title} permanently.')
+
+
+def test_a_chat_codex_no_longer_has_is_removed_and_said_to_be_gone(frame, env, chat, monkeypatch):
+    # Its reply lost, the app quit mid-delete, or never saved by Codex: the
+    # entry used to be stuck, since every try reopened the chat first (#634).
+    from thechatplace.providers.codex_runtime import CodexThreadGone
+    info, work = chat
+    def gone(*args):
+        raise CodexThreadGone()
+    monkeypatch.setattr(frame.sessions, 'owned_action', gone)
+    frame.on_delete_permanently()
+    action, done = work[0]
+    assert action() == 'gone'
+    done('gone', False)
+    assert not frame.store.get(info.cli_session_id, provider='codex')
+    assert env['feedback'][-1] == f'{info.title} was already gone.'
+
+
+def test_any_other_failure_keeps_the_chat(frame, env, chat, monkeypatch):
+    # A timeout or lost connection isn't Codex saying it's gone.
+    from thechatplace.providers.codex_rpc import CodexRpcError
+    info, work = chat
+    def lost(*args):
+        raise CodexRpcError('Synthetic timeout')
+    monkeypatch.setattr(frame.sessions, 'owned_action', lost)
+    frame.on_delete_permanently()
+    action, done = work[0]
+    with pytest.raises(CodexRpcError):
+        action()
+    done(None, True)
+    assert frame.store.get(info.cli_session_id, provider='codex')
+    assert env['feedback'][-1] == (f"Couldn't delete {info.title}. Codex didn't confirm it. "
+                                  'Check the chat before trying again.')
+    # Nothing is left waiting: it can be tried again.
+    frame.on_delete_permanently()
+    assert len(work) == 2
+
+
+def test_a_chat_never_sent_to_is_removed_after_confirming(frame, env, chat, monkeypatch):
+    # No Codex thread to delete, so no Codex call and no "could not confirm".
+    info, work = chat
+    frame.store.update(info.cli_session_id, provider='codex', started=False)
+    asked = []
+    monkeypatch.setattr(wx, 'MessageBox', lambda text, title, style, parent: asked.append(style) or wx.YES)
+    monkeypatch.setattr(frame.sessions, 'owned_action', lambda *a: pytest.fail('nothing to ask Codex'))
+    frame.on_delete_permanently()
+    assert asked and asked[0] & wx.NO_DEFAULT
+    assert not work and not frame.store.get(info.cli_session_id, provider='codex')
+    assert env['feedback'][-1] == f'Deleted {info.title} permanently.'
 
 
 def test_working_chat_is_not_offered_deletion(frame, env, chat, monkeypatch):

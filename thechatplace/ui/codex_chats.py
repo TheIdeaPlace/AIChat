@@ -12,7 +12,7 @@ import wx
 
 from ..providers.codex_requests import QUESTIONS, ELICITATION
 from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
-from ..providers.codex_runtime import STOP_TO_RECHECK
+from ..providers.codex_runtime import STOP_TO_RECHECK, CodexThreadGone
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce, sound_events
@@ -33,9 +33,7 @@ class CodexChats(SoundHost, CodexExtras):
         record = self._codex_record(info)
         if record is None:
             return
-        deleting = getattr(self, '_codex_deleting', None)
-        if deleting is None:
-            deleting = self._codex_deleting = set()
+        deleting = self._codex_deleting
         if info.key in deleting:
             self._feedback('This chat is already being deleted.')
             return
@@ -45,21 +43,30 @@ class CodexChats(SoundHost, CodexExtras):
                 or info.key in self._codex_preparation_running):
             self._feedback('A turn or another operation is running in that session. Stop it or wait for it to finish first.')
             return
+        # Worded as Claude's is (on_delete_permanently). Codex deletes the
+        # subagent chats a chat started along with it (codex-rs
+        # thread_delete.rs, 0.163).
         if wx.MessageBox(
-                f'Delete "{info.title}" permanently? Codex deletes its transcript and any '
-                'spawned subagent chats from this computer. They can\'t be brought back.',
+                f'Delete "{info.title}" permanently? Its conversation, and any subagent chats '
+                'it started, are deleted from Codex on this computer and can\'t be brought back.',
                 'Delete Session Permanently',
                 wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) != wx.YES:
             return
         deleting.add(info.key)
-        self._feedback(f'Deleting {info.title}.')
+
         def done(result, error):
             deleting.discard(info.key)
             if error:
-                self._feedback(result or f'Codex could not confirm deletion of {info.title}. Check the chat before trying again.')
+                # Kept: only Codex saying it has no such chat lets it go.
+                self._feedback(f"Couldn't delete {info.title}. " + (
+                    result or "Codex didn't confirm it. Check the chat before trying again."))
                 return
+            gone = result == 'gone'
             if not self._store_write(self.store.remove, info.cli_session_id, provider='codex'):
-                self._feedback(f'Codex deleted {info.title}, but The Chat Place could not remove its saved entry.')
+                self._feedback(f'{info.title} is gone from Codex, but The Chat Place could not '
+                               'remove its saved entry.' if record.started is True else
+                               f"Couldn't delete {info.title}: The Chat Place could not remove "
+                               'its saved entry.')
                 return
             for forget in (lambda: self.groups.forget(info.key),
                            lambda: self.hidden.show(info.key) if info.key in self.hidden else None,
@@ -74,8 +81,24 @@ class CodexChats(SoundHost, CodexExtras):
             self._aside_histories.pop(('codex', info.cli_session_id), None)
             self._attachments.pop(self._attachment_key(info), None)
             self._leave_list(info)
-            self._feedback(f'Deleted {info.title} permanently.')
-        self._codex_work(lambda: self.sessions.owned_action('delete', record), done)
+            self._feedback(f'{info.title} was already gone.' if gone
+                           else f'Deleted {info.title} permanently.')
+
+        if record.started is not True:
+            # Never sent to: there's no Codex chat to delete, only our entry.
+            done('deleted', False)
+            return
+        self._feedback(f'Deleting {info.title}.')
+
+        def delete():
+            try:
+                self.sessions.owned_action('delete', record)
+            except CodexThreadGone:
+                # Codex says it has no such chat (already deleted, or never
+                # saved): nothing is left to keep the entry for.
+                return 'gone'
+            return 'deleted'
+        self._codex_work(delete, done)
 
     def _codex_task_steps(self, state, turn, messages=None):
         # Live events can arrive before the new turn is readable in history.

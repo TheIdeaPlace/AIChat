@@ -991,6 +991,34 @@ def test_delete_permanently_works_from_the_list_without_hiding_first(frame, env)
     assert not any(s.startswith("Hub probe") for s in frame.session_list.GetStrings())
 
 
+@pytest.mark.parametrize("from_messages", [False, True])
+def test_claude_permanent_delete_leaves_the_right_row_selected(frame, env, monkeypatch,
+                                                              from_messages):
+    # _leave_list moves the selection only when the deleted row was the
+    # selected one (#634): from the list, the neighbour takes its place; from
+    # the messages, with another row selected, that row stays selected.
+    add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("hi")])
+    settle(frame)
+    # Only _leave_list's own reselection, not the refresh after it.
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **k: None)
+    index = select(frame, "Hub probe")
+    count = frame.session_list.GetCount()
+    if from_messages:
+        frame.on_open_session()
+        other = next(frame.session_list.GetString(i) for i in range(count) if i != index)
+        select(frame, other)
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    frame.on_delete_permanently()
+    assert env["feedback"][-1] == "Deleted Hub probe permanently."
+    assert frame.session_list.GetCount() == count - 1
+    selected = frame.session_list.GetStringSelection()
+    assert selected and not selected.startswith("Hub probe")
+    if from_messages:
+        assert selected == other
+    else:
+        assert frame.session_list.GetSelection() == min(index, count - 2)
+
+
 def test_delete_permanently_a_hidden_session(frame, env):
     path = add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("hi")])
     select(frame, "Hub probe")
