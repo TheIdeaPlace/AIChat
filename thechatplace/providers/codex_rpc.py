@@ -455,8 +455,10 @@ class ReadOnlyCodexConnection:
                 raise
             self._pending[request_id] = pending
             self._outgoing.put(payload)
-            if on_sent is not None:
-                on_sent()
+        # Outside the lock, so a callback can't deadlock on it or leave the
+        # request half-registered if it raises.
+        if on_sent is not None:
+            on_sent()
         if not pending.ready.wait(self._timeout):
             with self._lock:
                 expired = self._pending.pop(request_id, None) is pending

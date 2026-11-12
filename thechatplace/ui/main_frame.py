@@ -1756,7 +1756,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self._list_keys and selected != wx.NOT_FOUND:
                 target = (min(index, len(self._list_keys) - 1) if selected == index
                           else selected - 1 if selected > index else selected)
-                self.session_list.SetSelection(target)
+                # Only when it isn't already there: on Windows it usually is,
+                # and selecting it again can make a screen reader say it twice.
+                if self.session_list.GetSelection() != target:
+                    self.session_list.SetSelection(target)
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()
