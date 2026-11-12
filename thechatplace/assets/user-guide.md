@@ -551,9 +551,45 @@ any command.
   last announcement.
 - **Tools** (Alt+T): Lists, Links, Tasks, Subagents, Changed Files, Usage and Context, What AI
   Knows About You, Connected Tools, signing in to Claude Code, Codex and Copilot, Sounds, Mute All
-  Sounds and Settings.
+  Sounds, Customize Keyboard Shortcuts and Settings.
 - **Help** (Alt+H): the user guide, Keyboard Shortcuts, Sound Tutorial, Check for Updates, Report
   a Bug and About.
+
+### Changing keyboard shortcuts
+
+**Tools, Customize Keyboard Shortcuts** (Alt+T, K) lists every command whose key you can change,
+in menu order. Each row says the command, its key or "no key", "changed" if you changed it, and
+which menu it's on, such as "Prompts, Ctrl+Shift+P, Chat menu". Type in **Filter** (Alt+F) to
+narrow the list by name, key or menu.
+
+- **Change Key** (Alt+C, or Enter on a command) opens a small dialog with the focus in a **Key**
+  box. Press the keys you want. What you pressed is said and shown, with what would happen: that
+  nobody has it, that another command has it now (it moves to this one, and that one has no key),
+  or why it can't be used. **Assign** (Enter) gives it; **Try Another** clears it; Escape changes
+  nothing. In the Key box, Tab and Shift+Tab still move on, and Alt with a letter still presses a
+  button.
+- **Remove Key** (Alt+R, or Delete on a command) leaves a command with no key; it's still on its
+  menu.
+- **Reset to Default** (Alt+D) gives a command its own key back, and **Reset All** (Alt+A) does it
+  for every command, after asking.
+
+A change works at once: the menus show the new key, Help, Keyboard Shortcuts (F1) lists your
+keys and says which you changed, and what The Chat Place says, such as "Ctrl+Shift+A answers",
+names your key. Your keys are kept in `keys.json` in The Chat Place's folder, so Back Up Now
+includes them.
+
+Some keys can't be given to a command, and the dialog says why: keys the window keeps for itself
+(Enter, Ctrl+Enter, Delete, Ctrl+C, F6, Shift+F10, Alt+F4 and the like), Insert, the arrow and
+other moving keys, a letter on its own or with only Shift, Alt with a letter (the menus' and
+buttons' letters), Ctrl+X, Ctrl+V, Ctrl+A, Ctrl+Z and Ctrl+Y, and on Windows Ctrl+Alt with a
+letter, number or mark, which types a character on many keyboards (AltGr). On a Mac, Command+Q,
+H, M and W and Command+Shift+Q and Z belong to macOS, and Settings, About and Quit keep their
+keys in the app menu. A few commands keep their keys for one part of the window, and aren't in
+the list: Hide Session (Delete), Delete Session Permanently (Shift+Delete), Send and Save as
+Prompt (Ctrl+Shift+Enter) and Steer (Ctrl+Alt+Enter).
+
+A screen reader may take a key before The Chat Place sees it. To give a command a key your
+screen reader uses, tell it to pass the next key on first: Insert+3 in JAWS, Insert+F2 in NVDA.
 
 ### The status bar
 

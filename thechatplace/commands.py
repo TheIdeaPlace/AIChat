@@ -197,6 +197,8 @@ MENU_BAR: Tuple[Menu, ...] = (
         SEPARATOR,
         Command("sounds", "S&ounds..."),
         Command("mute_all_sounds", "&Mute All Sounds", "Ctrl+Shift+X", check=True),
+        # Your own keys for any of these commands (#635).
+        Command("customize_keyboard_shortcuts", "Customize &Keyboard Shortcuts..."),
         Command("settings", "&Settings...", "Ctrl+,", stock="preferences"),
     )),
     Menu("&Help", (
@@ -234,6 +236,24 @@ def command(command_id: str) -> Command:
 def plain_label(item) -> str:
     """A command's or menu's name as said: no access key, no dots, no key."""
     return item.label.replace("{key}", "").replace("&", "").replace("...", "").strip()
+
+
+def menu_path(command_id: str) -> str:
+    """Where a command is, as said: "Chat, Chat Settings, Change Model"."""
+    def find(items, trail):
+        for item in items:
+            if isinstance(item, Menu):
+                found = find(item.items, trail + [plain_label(item)])
+                if found:
+                    return found
+            elif item is not None and item.id == command_id:
+                return ", ".join(trail + [plain_label(item)])
+        return ""
+    for top in MENU_BAR:
+        found = find(top.items, [plain_label(top)])
+        if found:
+            return found
+    raise KeyError(command_id)
 
 
 def access_key(label: str) -> str:

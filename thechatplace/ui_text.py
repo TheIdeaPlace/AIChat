@@ -30,21 +30,31 @@ def key_name(shortcut: str, platform=None) -> str:
 CODEX_DEFAULT = "Codex's default"
 
 
-#: Stop Running Turn's key as said, set by the window from your keys (#635).
-_STOP_KEY = ["Ctrl+Period"]
+#: Your keys for the defaults you changed, as said: {"Ctrl+Shift+A":
+#: "Ctrl+K"}, or the command's place ("Chat, Answer") when you took its key
+#: away. Set by the window whenever its keys change (#635).
+_YOUR_KEYS: dict = {}
 
 
-def set_stop_key(key: str) -> None:
-    """The window's keys changed: Stop's is now ``key`` ("" for none)."""
-    _STOP_KEY[0] = key
+def set_your_keys(keys: dict) -> None:
+    """The window's keys changed: ``keys`` maps each changed default, as
+    said, to what to say instead."""
+    _YOUR_KEYS.clear()
+    _YOUR_KEYS.update(keys)
+
+
+def your_key(default: str) -> str:
+    """What to say for a command's default key (Windows names, as said:
+    "Ctrl+Period"): your key if you changed it, the command's place if you
+    took it away, else the default. Put it through key_name for a Mac."""
+    return _YOUR_KEYS.get(default, default)
 
 
 def with_stop_key(text: str, platform=None, key=None) -> str:
     """A provider's "Press Stop to ..." with Stop's key added, the first time
     it's named (#596): the provider says what Stop does, and the window,
-    which owns the keys, names the key: yours, if you changed it (#635), and
-    none if you removed it."""
-    key = _STOP_KEY[0] if key is None else key
+    which owns the keys, names the key: yours, if you changed it (#635)."""
+    key = your_key("Ctrl+Period") if key is None else key
     if not text or not key or "Press Stop (" in text:
         return text
     return text.replace("Press Stop ", f"Press Stop ({key_name(key, platform)}) ", 1)

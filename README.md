@@ -1758,6 +1758,12 @@ The same list is in the app under Help, Keyboard Shortcuts (F1), as a page with 
 table for each group, so you can move by heading and read each key with what it does. Alt+P
 shows it as plain text instead.
 
+These are the default keys. **Tools, Customize Keyboard Shortcuts** (Alt+T, K) changes them: give
+any command a key, move one, take one away, or put the defaults back. Press the keys you want and
+you hear what they are, and whether another command has them or why they can't be used. Changes
+work at once, in the menus, in the in-app list (which names your keys) and in what's said. They're
+kept in `keys.json`. The user guide's "Changing keyboard shortcuts" has the details.
+
 | Where | Key | What it does |
 |---|---|---|
 | Anywhere | Ctrl+Shift+S | Find in All Sessions: search every listed session's messages, then load one on the message found |

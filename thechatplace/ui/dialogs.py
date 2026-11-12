@@ -21,7 +21,8 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, mark_access_key,
+from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
+                       mark_access_key,
                        shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
@@ -4145,7 +4146,7 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(folder_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         outer.Add(wx.StaticText(body, label="&Hand-offs:"), 0, wx.LEFT | wx.TOP, 8)
-        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name('Ctrl+Shift+E')})"]
+        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name(your_key('Ctrl+Shift+E'))})"]
         if auto_allowed:
             modes.append("Automatic: replies go across by themselves, up to a limit")
         self.mode = wx.Choice(body, choices=modes)

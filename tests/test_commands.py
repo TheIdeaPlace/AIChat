@@ -183,6 +183,7 @@ GOLDEN = [
     ('Tools', '---'),
     ('Tools', 'S&ounds...'),
     ('Tools', '&Mute All Sounds\tCtrl+Shift+X'),
+    ('Tools', 'Customize &Keyboard Shortcuts...'),
     ('Tools', '&Settings...\tCtrl+,'),
     ('Help', 'User &Guide'),
     ('Help', '&Keyboard Shortcuts\tF1'),

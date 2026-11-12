@@ -5,7 +5,8 @@ import pytest
 
 from thechatplace import commands, keymap
 from thechatplace.keymap import KeyMap, normalize, refusal, spoken
-from thechatplace.ui_text import shortcuts_text, set_stop_key, with_stop_key
+from thechatplace.ui_text import (key_name, set_your_keys, shortcuts_text, with_stop_key,
+                                  your_key)
 
 
 @pytest.fixture
@@ -229,14 +230,15 @@ def test_the_shortcuts_list_shows_your_keys(keys):
     assert "Ctrl+Shift+P: Prompts" in shortcuts_text(platform="win32")
 
 
-def test_stop_is_named_by_the_key_in_effect():
+def test_what_is_said_names_your_keys():
     try:
-        set_stop_key("Ctrl+J")
+        set_your_keys({"Ctrl+Period": "Ctrl+J", "Ctrl+Shift+A": "Chat, Answer"})
         assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop (Ctrl+J) to end it."
-        set_stop_key("")
-        assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop to end it."
+        assert your_key("Ctrl+Shift+A") == "Chat, Answer"  # its key taken away
+        assert your_key("Ctrl+Shift+E") == "Ctrl+Shift+E"  # not changed
+        assert key_name(your_key("Ctrl+Period"), "darwin") == "Cmd+J"
     finally:
-        set_stop_key("Ctrl+Period")
+        set_your_keys({})
     assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop (Ctrl+Period) to end it."
 
 
