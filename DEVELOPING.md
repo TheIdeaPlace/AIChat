@@ -242,6 +242,7 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
+| `thechatplace/commands.py` | Every menu command once (#575): its id, label, access key, key, and which menu it's in. `MainFrame._build_menu` builds the menu bar from it, and `_command_handlers` says what each id does. Ids are kept once released: customizable keys (#635) will store them |
 | `thechatplace/sound_events.py`, `thechatplace/ui/sound_host.py`, `thechatplace/ui/sounds_dialog.py` | Sounds: each event's sound, sound schemes, what the window plays, and File, Sounds. `thechatplace/assets/sounds` holds copies of app-kit's WAVs; app-kit plays them. Schemes, scheme files and the gallery follow app-kit's `sounds/SCHEMES.md`, through its `soundschemes` and `soundgallery`; app-kit's `apps.json` is bundled with `--collect-data theideaplace_appkit` |
 | `thechatplace/sound_gallery.py`, `thechatplace/ui/sound_gallery_dialog.py` | File, Sounds, Browse Gallery: the signed gallery of sound schemes. `--sound-gallery <folder or address>` points it at a gallery of your own for testing |
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |

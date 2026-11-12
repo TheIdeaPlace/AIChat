@@ -56,6 +56,7 @@ from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, backup, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
+from ..commands import MENU_BAR, Command, Menu, menu_label
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_EDIT_TOOLS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
                           TurnRunner, allow_response, answer_questions_response,
@@ -581,202 +582,143 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     # ------------------------------------------------------------------ menus
 
     def _build_menu(self):
-        bar = wx.MenuBar()
-        session = wx.Menu()
-        # Enter is handled on the list itself (a menu accelerator for Enter
-        # would steal it from every button and text box in the window).
-        self._item(session, "&Load Session", self.on_open_session)
-        self._item(session, "Open in &Claude\tCtrl+O", self.on_open_in_claude)
-        self._item(session, "Cop&y Session Link...\tCtrl+Shift+L",
-                   lambda e: self.on_copy_session_link())
-        self._item(session, "&Answer...\tCtrl+Shift+A", lambda e: self.on_answer())
-        # A question about the chat that isn't added to it (#468). Every
-        # letter is another item's access key, so its shortcut is the way in.
-        self._item(session, "Ask Aside...\tCtrl+Shift+Y", lambda e: self.on_ask_aside())
-        self._item(session, "Con&tinue Here...\tCtrl+Shift+N", self.on_continue_here)
-        # Back to a message of the loaded chat (#468), named for what each is
-        # for (#596). Every letter of Retry's is another item's access key, so
-        # its shortcut is its way in; Branch from Here has F, freed when the
-        # chat's settings moved to their own submenu, and no shortcut.
-        self._item(session, "Retry from Here..." + REWIND_ACCEL, lambda e: self.on_rewind_to_here())
-        self._item(session, "Branch &from Here", lambda e: self.on_branch_from_here())
-        self._item(session, "&New Session...\tCtrl+N", self.on_new_session)
-        # The loaded chat's own settings, together (#596). Their shortcuts are
-        # still window-wide accelerators with the submenu shut, as any menu
-        # item's are. Every letter of "Chat Settings" but I was another item's
-        # access key; Hide Session moved to D to free it.
-        chat_settings = wx.Menu()
-        self._item(chat_settings, "Change &Model...", lambda e: self.on_change_model())
-        self._item(chat_settings, "Change &Effort...", lambda e: self.on_change_effort())
-        self._item(chat_settings, "Change &Permission Mode...\tCtrl+Shift+O",
-                   lambda e: self.on_change_permission_mode())
-        # What the chat may do without asking, and taking it back (#307).
-        self._item(chat_settings, "&Chat Permissions...\tCtrl+Shift+H",
-                   lambda e: self.on_chat_permissions())
-        # Agent, instructions, output style and more folders (#468).
-        self._item(chat_settings, "Chat &Options...", lambda e: self.on_chat_options())
-        session.AppendSubMenu(chat_settings, "Chat Sett&ings")
-        self._item(session, "Rem&ote Control...", lambda e: self.on_remote_control())
-        # As with Rename Session, every letter is taken, so the key is its shortcut.
-        self._item(session, "Other Machines...\tCtrl+Shift+M",
-                   lambda e: self.on_other_machines())
-        # A reply from the loaded chat to another of yours, Claude or Codex
-        # (#248). Every letter is taken, so its shortcut is the way in.
-        self._item(session, "Send Reply to Another Chat...\tCtrl+Shift+E",
-                   lambda e: self.on_send_reply_to())
-        # Agent conversations (#248). Every letter is taken: New has its
-        # shortcut, and the other two are on the conversation row's menu too.
-        self._item(session, "New Agent Conversation...\tCtrl+Shift+G",
-                   lambda e: self.on_new_agent_conversation())
-        self._item(session, "Agent Conversation Members...",
-                   lambda e: self.on_agent_members())
-        self._item(session, "Agent Conversation Hand-offs...",
-                   lambda e: self.on_agent_mode())
-        self._item(session, "&Refresh\tF5",
-                   lambda e: self.refresh_sessions(force=True, resort=True))
-        # Delete and Shift+Delete belong to the session list (its char hook):
-        # as menu accelerators they were window-wide, so Delete in the
-        # attachments list hid the loaded session instead of removing the file.
-        # The keys are in the labels, without a tab, so they're still read out.
-        # Every letter of "Rename Session" is another item's access key
-        # already, so F2 (as in Explorer) is its only shortcut (#93).
-        self._item(session, "Rename Session...\tF2", lambda e: self.on_rename())
-        # D, not I, since I went to Chat Settings (#596).
-        self._item(session, "Hi&de Session (Delete)", lambda e: self.on_hide())
-        self._item(session, "&Bring Back Session", lambda e: self.on_unhide())
-        self._item(session, "Delete Session &Permanently (Shift+Delete)...",
-                   lambda e: self.on_delete_permanently())
-        self._item(session, "&Export Session...\tCtrl+E", lambda e: self.on_export())
-        self._item(session, "Insert Command or S&kill...\tCtrl+/",
-                   lambda e: self.on_insert_command())
-        self._item(session, "Attac&h Files...\tCtrl+Shift+F", lambda e: self.on_attach_files())
-        # Saved prompts (#131). Every free letter would be an odd one, so,
-        # as with Other Machines, the keys are the way in. Ctrl+Shift+Enter
-        # belongs to the reply box (a menu accelerator for Enter would be
-        # window-wide), so it's in the label without a tab, still read out.
-        self._item(session, "Prompts...\tCtrl+Shift+P", lambda e: self.on_prompts())
-        # wx turns Ctrl into Cmd only in a tab accelerator, so say it here.
-        keys = key_name("Ctrl+Shift+Enter")
-        self._item(session, f"Send and Save as Prompt... ({keys})",
-                   lambda e: self.on_send_and_save())
-        # Steer (#238, #239): a reply-box key too, so in the label only.
-        self._item(session, f"Steer: Send into the Running Turn ({key_name('Ctrl+Alt+Enter')})",
-                   lambda e: self.on_steer())
-        session.AppendSeparator()
-        self._item(session, "Add to &Group...\tCtrl+G", lambda e: self.on_add_to_group())
-        self._item(session, "Remove from Gro&up...", lambda e: self.on_remove_from_group())
-        self._item(session, "&Manage Groups...", lambda e: self.on_manage_groups())
-        session.AppendSeparator()
-        self._item(session, "&Settings...\tCtrl+,", self.on_settings, wx.ID_PREFERENCES)
-        # Every letter of "Sounds" is another item's access key, so it's reached by arrowing.
-        self._item(session, "Sounds...", self.on_sounds)
-        session.AppendSeparator()
-        # Back up and check (#433). Every letter of "Check Backup" is another
-        # item's access key, so it's reached by arrowing.
-        self._item(session, "Back Up No&w...", lambda e: self.on_back_up_now())
-        self._item(session, "Check Backup...", lambda e: self.on_check_backup())
-        self._item(session, "Backup Schedule...", lambda e: self.on_backup_schedule())
-        # Every letter of "Restore from Backup" is another item's access key.
-        self._item(session, "Restore from Backup...", lambda e: self.on_restore_backup())
-        # Many chats as files (#461), with the other ways to get your chats
-        # out. Every letter of "Export Chats" is another item's access key,
-        # so it's here, last before Exit: Alt+F, Up, Up.
-        self._item(session, "Export Chats...", lambda e: self.on_export_chats())
-        session.AppendSeparator()
-        self._item(session, "E&xit", lambda e: self.Close(), wx.ID_EXIT)
-        bar.Append(session, "&File")
+        """The menu bar, from ``commands.MENU_BAR`` (#575): labels, access
+        keys and keys are there; what each command does is here."""
+        handlers = self._command_handlers()
+        stock = {"preferences": wx.ID_PREFERENCES, "about": wx.ID_ABOUT, "exit": wx.ID_EXIT}
+        self.menu_items = {}
 
-        view = wx.Menu()
-        self._item(view, "Go to &Sessions\tCtrl+1", lambda e: self.focus_sessions())
-        self._item(view, "Go to &Messages\tCtrl+2", lambda e: self.focus_messages())
-        self._item(view, "Go to &Reply\tCtrl+3", lambda e: self.focus_reply())
-        self._item(view, "Go to Status &Bar\tCtrl+9", lambda e: self.focus_status())
+        def fill(menu, items):
+            for entry in items:
+                if entry is None:
+                    menu.AppendSeparator()
+                elif isinstance(entry, Menu):
+                    submenu = wx.Menu()
+                    if entry.id == "show_sessions":
+                        self.show_menu = submenu
+                        self.view_items = {}
+                    elif entry.id == "sort_sessions":
+                        self._fill_sort_menu(submenu)
+                    fill(submenu, entry.items)
+                    menu.AppendSubMenu(submenu, entry.label)
+                    if entry.id == "show_sessions":
+                        self._build_show_menu()
+                else:
+                    label = menu_label(entry)
+                    if entry.check:
+                        item = menu.AppendCheckItem(wx.ID_ANY, label)
+                    else:
+                        item = menu.Append(stock.get(entry.stock, wx.ID_ANY), label)
+                    self.Bind(wx.EVT_MENU, handlers[entry.id], item)
+                    self.menu_items[entry.id] = item
+
+        bar = wx.MenuBar()
+        for top in MENU_BAR:
+            menu = wx.Menu()
+            fill(menu, top.items)
+            bar.Append(menu, top.label)
+        items = self.menu_items
+        self.activity_item = items["show_tool_activity"]
+        self.mute_item = items["mute_all_sounds"]
+        self.mute_item.Check(self.speech.sounds_muted)
+        self.stop_background_item = items["stop_background_task"]
+        self.stop_background_item.Enable(False)
+        # Its label says the version running, or the update a check found (#141).
+        self.update_item = items["check_for_updates"]
+        self.update_item.SetItemLabel(update_item_label(__version__))
+        self.SetMenuBar(bar)
+
+    def _fill_sort_menu(self, menu):
         # Radio items: a screen reader says which order is checked.
-        sort_menu = wx.Menu()
         self.sort_items = {}
         for order, label in SORT_ORDERS:
-            item = sort_menu.AppendRadioItem(wx.ID_ANY, label)
+            item = menu.AppendRadioItem(wx.ID_ANY, label)
             item.Check(order == self.speech.session_order)
             self.Bind(wx.EVT_MENU, lambda e, o=order: self.on_sort(o), item)
             self.sort_items[order] = item
-        view.AppendSubMenu(sort_menu, "S&ort Sessions")
-        # Which sessions to list (#32): radio items, groups at the end (#31).
-        self.show_menu = wx.Menu()
-        self.view_items = {}
-        view.AppendSubMenu(self.show_menu, "S&how Sessions")
-        self._build_show_menu()
-        # What each row says, and in what order (#134).
-        self._item(view, "S&ession List Columns...", lambda e: self.on_session_columns())
-        view.AppendSeparator()
-        self._item(view, "Read &Full Message", lambda e: self.on_read_message())
-        self._item(view, "Read Full Chat as a &Web Page\tCtrl+Shift+W",
-                   lambda e: self.on_read_whole_chat())
-        self._item(view, "F&ind...\tCtrl+F", lambda e: self.on_find())
-        self._item(view, "Find &Next\tF3", lambda e: self.find_again(True))
-        self._item(view, "Find Pre&vious\tShift+F3", lambda e: self.find_again(False))
-        # Every letter of "Links" is another item's access key already, so
-        # its shortcut is the way in (#190).
-        self._item(view, "Links...\tCtrl+L", lambda e: self.on_links())
-        # One dialog, a tab per kind of thing in the chat (#279). As with
-        # Links, every letter is taken, so its shortcut is the way in.
-        self._item(view, "Lists...\tCtrl+Shift+I", lambda e: self.on_lists())
-        # Claude's task list (#231), on its own tab in Lists. Every letter of
-        # "Tasks" is another item's access key, so its shortcut is the way in.
-        self._item(view, "Tasks...\tCtrl+Shift+J", lambda e: self.on_tasks())
-        # The work Claude handed to subagents (#468), on its own kind in Lists.
-        self._item(view, "Suba&gents...", lambda e: self.on_subagents())
-        self._item(view, "Find in &All Sessions...\tCtrl+Shift+S", lambda e: self.on_find_all())
-        # Every letter of "Properties" is another item's access key already,
-        # so, as with Links, its shortcut is the way in (#214). Alt+Enter as
-        # in Explorer: the focused session, or the focused message.
-        self._item(view, "Properties...\tAlt+Enter", lambda e: self.on_properties())
-        self.activity_item = view.AppendCheckItem(wx.ID_ANY, "Show &Tool Activity\tCtrl+T")
-        self.Bind(wx.EVT_MENU, self.on_toggle_activity_menu, self.activity_item)
-        # Every letter of "Mute All Sounds" is another item's access key, so its key is the way in.
-        self.mute_item = view.AppendCheckItem(wx.ID_ANY, "Mute All Sounds\tCtrl+Shift+X")
-        self.mute_item.Check(self.speech.sounds_muted)
-        self.Bind(wx.EVT_MENU, self.on_toggle_mute_sounds, self.mute_item)
-        self._item(view, "Sto&p Running Turn\tCtrl+.", self.on_stop)
-        # One background task ended, the turn kept (#468), beside the other
-        # Stop (#596). Every letter is another item's access key, so it's
-        # one Down Arrow from Stop Running Turn; enabled while there's work
-        # to stop.
-        self.stop_background_item = self._item(view, "Stop Background Task...",
-                                               lambda e: self.on_stop_background_task())
-        self.stop_background_item.Enable(False)
-        self._item(view, "T&urn Status\tCtrl+Shift+T", self.on_turn_status)
-        self._item(view, "Usage and &Context...\tCtrl+Shift+U", lambda e: self.on_usage())
-        self._item(view, "Change&d Files...\tCtrl+Shift+D", lambda e: self.on_changes())
-        self._item(view, "Repeat &Last Announcement\tCtrl+Shift+R",
-                   lambda e: self._say(self._last_announcement, force=True))
-        view.AppendSeparator()
-        self._item(view, "What AI &Knows About You...\tCtrl+Shift+K",
-                   lambda e: self.on_about_you())
-        # A Claude chat's MCP servers and claude.ai connectors (#468). Every
-        # letter is another item's access key already; it's last, so Alt+V
-        # then Up reaches it.
-        self._item(view, "Connected Tools (MCP)...", lambda e: self.on_connected_tools())
-        bar.Append(view, "&View")
 
-        help_menu = wx.Menu()
-        self._item(help_menu, "User &Guide", self.on_user_guide)
-        self._item(help_menu, "&Keyboard Shortcuts\tF1", self.on_shortcuts)
-        self._item(help_menu, "Sound &Tutorial...", self.on_sound_tutorial)
-        # Its label says the version running, or the update a check found (#141).
-        self.update_item = self._item(help_menu, update_item_label(__version__),
-                                      lambda e: self.check_for_updates(True))
-        self._item(help_menu, "Claude Code &Sign-in...", lambda e: self.on_sign_in())
-        self._item(help_menu, "Codex S&ign-in...", lambda e: self.on_codex_sign_in())
-        self._item(help_menu, "C&opilot Sign-in...", lambda e: self.on_copilot_sign_in())
-        self._item(help_menu, "Report a &Bug...", lambda e: self.on_report_bug())
-        self._item(help_menu, "&About", self.on_about, wx.ID_ABOUT)
-        bar.Append(help_menu, "&Help")
-        self.SetMenuBar(bar)
-
-    def _item(self, menu, label, handler, item_id=wx.ID_ANY):
-        item = menu.Append(item_id, label)
-        self.Bind(wx.EVT_MENU, handler, item)
-        return item
+    def _command_handlers(self):
+        """What each command in ``commands.MENU_BAR`` does, by id. A test
+        checks that the two name the same commands."""
+        return {
+            "load_session": self.on_open_session,
+            "open_in_claude": self.on_open_in_claude,
+            "copy_session_link": lambda e: self.on_copy_session_link(),
+            "answer": lambda e: self.on_answer(),
+            "ask_aside": lambda e: self.on_ask_aside(),
+            "continue_here": self.on_continue_here,
+            "retry_from_here": lambda e: self.on_rewind_to_here(),
+            "branch_from_here": lambda e: self.on_branch_from_here(),
+            "new_session": self.on_new_session,
+            "change_model": lambda e: self.on_change_model(),
+            "change_effort": lambda e: self.on_change_effort(),
+            "change_permission_mode": lambda e: self.on_change_permission_mode(),
+            "chat_permissions": lambda e: self.on_chat_permissions(),
+            "chat_options": lambda e: self.on_chat_options(),
+            "remote_control": lambda e: self.on_remote_control(),
+            "other_machines": lambda e: self.on_other_machines(),
+            "send_reply_to_another_chat": lambda e: self.on_send_reply_to(),
+            "new_agent_conversation": lambda e: self.on_new_agent_conversation(),
+            "agent_conversation_members": lambda e: self.on_agent_members(),
+            "agent_conversation_handoffs": lambda e: self.on_agent_mode(),
+            "refresh": lambda e: self.refresh_sessions(force=True, resort=True),
+            "rename_session": lambda e: self.on_rename(),
+            "hide_session": lambda e: self.on_hide(),
+            "bring_back_session": lambda e: self.on_unhide(),
+            "delete_session_permanently": lambda e: self.on_delete_permanently(),
+            "export_session": lambda e: self.on_export(),
+            "insert_command": lambda e: self.on_insert_command(),
+            "attach_files": lambda e: self.on_attach_files(),
+            "prompts": lambda e: self.on_prompts(),
+            "send_and_save_prompt": lambda e: self.on_send_and_save(),
+            "steer": lambda e: self.on_steer(),
+            "add_to_group": lambda e: self.on_add_to_group(),
+            "remove_from_group": lambda e: self.on_remove_from_group(),
+            "manage_groups": lambda e: self.on_manage_groups(),
+            "settings": self.on_settings,
+            "sounds": self.on_sounds,
+            "back_up_now": lambda e: self.on_back_up_now(),
+            "check_backup": lambda e: self.on_check_backup(),
+            "backup_schedule": lambda e: self.on_backup_schedule(),
+            "restore_from_backup": lambda e: self.on_restore_backup(),
+            "export_chats": lambda e: self.on_export_chats(),
+            "exit": lambda e: self.Close(),
+            "go_to_sessions": lambda e: self.focus_sessions(),
+            "go_to_messages": lambda e: self.focus_messages(),
+            "go_to_reply": lambda e: self.focus_reply(),
+            "go_to_status_bar": lambda e: self.focus_status(),
+            "session_list_columns": lambda e: self.on_session_columns(),
+            "read_full_message": lambda e: self.on_read_message(),
+            "read_whole_chat": lambda e: self.on_read_whole_chat(),
+            "find": lambda e: self.on_find(),
+            "find_next": lambda e: self.find_again(True),
+            "find_previous": lambda e: self.find_again(False),
+            "links": lambda e: self.on_links(),
+            "lists": lambda e: self.on_lists(),
+            "tasks": lambda e: self.on_tasks(),
+            "subagents": lambda e: self.on_subagents(),
+            "find_in_all_sessions": lambda e: self.on_find_all(),
+            "properties": lambda e: self.on_properties(),
+            "show_tool_activity": self.on_toggle_activity_menu,
+            "mute_all_sounds": self.on_toggle_mute_sounds,
+            "stop_running_turn": self.on_stop,
+            "stop_background_task": lambda e: self.on_stop_background_task(),
+            "turn_status": self.on_turn_status,
+            "usage_and_context": lambda e: self.on_usage(),
+            "changed_files": lambda e: self.on_changes(),
+            "repeat_last_announcement": lambda e: self._say(self._last_announcement, force=True),
+            "what_ai_knows": lambda e: self.on_about_you(),
+            "connected_tools": lambda e: self.on_connected_tools(),
+            "user_guide": self.on_user_guide,
+            "keyboard_shortcuts": self.on_shortcuts,
+            "sound_tutorial": self.on_sound_tutorial,
+            "check_for_updates": lambda e: self.check_for_updates(True),
+            "claude_sign_in": lambda e: self.on_sign_in(),
+            "codex_sign_in": lambda e: self.on_codex_sign_in(),
+            "copilot_sign_in": lambda e: self.on_copilot_sign_in(),
+            "report_bug": lambda e: self.on_report_bug(),
+            "about": self.on_about,
+        }
 
     # --------------------------------------------------------------------- UI
 

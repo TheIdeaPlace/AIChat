@@ -168,7 +168,9 @@ native GTK widget (`GetGtkWidget()`), and announcements as ATK notifications fro
 through the screen reader or a system voice. On Windows `screen_readers.py` reaches JAWS and NVDA
 from the app's process; on Linux `orca.py` reaches Orca (D-Bus `PresentMessage` on 49+, else the
 active window's ATK notification), and `speak-engine-linux.sh` is speech-dispatcher. See
-`dev-notes/linux-port.md`. `ui_text.py` holds UI text that can be tested without wx
+`dev-notes/linux-port.md`. `commands.py` lists every menu command (id, label, key, menu); a new
+menu item goes there, with its handler in `MainFrame._command_handlers`, never straight into
+`_build_menu`. `ui_text.py` holds UI text that can be tested without wx
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
 **Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
