@@ -18,7 +18,7 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Arrow to an event and press Space to hear it in the Glass scheme. Change\nsounds in File, Sounds.",
+   "label": "Arrow to an event and press Space to hear it in the Glass scheme. Change\nsounds in Tools, Sounds.",
    "rect": [
     10,
     10,

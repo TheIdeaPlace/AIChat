@@ -462,7 +462,7 @@
   {
    "class": "TextCtrl",
    "name": "About permissions",
-   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. Change Permission Mode and Change Effort, in File, Chat Settings, change them later.",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. Change Permission Mode and Change Effort, in Chat, Chat Settings, change them later.",
    "rect": [
     12,
     371,

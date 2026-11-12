@@ -424,7 +424,7 @@
   {
    "class": "TextCtrl",
    "name": "About permissions",
-   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. File, Change Permission Mode and Change Effort change them later.",
+   "label": "The permission mode decides what Claude may do without asking. When Claude asks for permission, asks you a question or has a plan for you to approve, the turn waits: The Chat Place announces it, the session shows as needing you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that don't support effort levels ignore it. Change Permission Mode and Change Effort, in Chat, Chat Settings, change them later.",
    "rect": [
     12,
     340,
@@ -439,7 +439,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs; Copilot's own choice is first. File, Change Model changes it later. Effort is Copilot's own. Permission mode chooses agent mode, which can change your files, or plan mode, which plans fir"
+   "value": "Copilot uses your GitHub Copilot sign-in, and each message uses requests from your Copilot plan. Model lists the models Copilot offered your last Copilot chat here, each with the premium requests a message costs; Copilot's own choice is first. Change Model, in Chat, Chat Settings, changes it later. Effort is Copilot's own. Permission mode chooses agent mode, which can change your files, or plan mo"
   },
   {
    "class": "StaticText",
