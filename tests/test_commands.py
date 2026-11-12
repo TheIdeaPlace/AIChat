@@ -89,3 +89,123 @@ def test_command_lookup_fails_loudly():
 def test_every_command_is_a_command():
     for item in commands.walk():
         assert item is None or isinstance(item, (Command, Menu))
+
+
+#: Every menu entry as people hear it: (menu, Windows label[, Mac label]).
+#: Written out, not computed, so a label, access key or key that changes by
+#: accident fails here, and one that changes on purpose shows in the diff
+#: (#575). "---" is a separator.
+GOLDEN = [
+    ('File', '&Load Session'),
+    ('File', 'Open in &Claude\tCtrl+O'),
+    ('File', 'Cop&y Session Link...\tCtrl+Shift+L'),
+    ('File', '&Answer...\tCtrl+Shift+A'),
+    ('File', 'Ask Aside...\tCtrl+Shift+Y'),
+    ('File', 'Con&tinue Here...\tCtrl+Shift+N'),
+    ('File', 'Retry from Here...\tCtrl+Shift+Z', 'Retry from Here...'),
+    ('File', 'Branch &from Here'),
+    ('File', '&New Session...\tCtrl+N'),
+    ('File', 'Chat Sett&ings'),
+    ('File > Chat Settings', 'Change &Model...'),
+    ('File > Chat Settings', 'Change &Effort...'),
+    ('File > Chat Settings', 'Change &Permission Mode...\tCtrl+Shift+O'),
+    ('File > Chat Settings', '&Chat Permissions...\tCtrl+Shift+H'),
+    ('File > Chat Settings', 'Chat &Options...'),
+    ('File', 'Rem&ote Control...'),
+    ('File', 'Other Machines...\tCtrl+Shift+M'),
+    ('File', 'Send Reply to Another Chat...\tCtrl+Shift+E'),
+    ('File', 'New Agent Conversation...\tCtrl+Shift+G'),
+    ('File', 'Agent Conversation Members...'),
+    ('File', 'Agent Conversation Hand-offs...'),
+    ('File', '&Refresh\tF5'),
+    ('File', 'Rename Session...\tF2'),
+    ('File', 'Hi&de Session (Delete)'),
+    ('File', '&Bring Back Session'),
+    ('File', 'Delete Session &Permanently (Shift+Delete)...'),
+    ('File', '&Export Session...\tCtrl+E'),
+    ('File', 'Insert Command or S&kill...\tCtrl+/'),
+    ('File', 'Attac&h Files...\tCtrl+Shift+F'),
+    ('File', 'Prompts...\tCtrl+Shift+P'),
+    ('File', 'Send and Save as Prompt... (Ctrl+Shift+Enter)',
+     'Send and Save as Prompt... (Cmd+Shift+Return)'),
+    ('File', 'Steer: Send into the Running Turn (Ctrl+Alt+Enter)',
+     'Steer: Send into the Running Turn (Cmd+Option+Return)'),
+    ('File', '---'),
+    ('File', 'Add to &Group...\tCtrl+G'),
+    ('File', 'Remove from Gro&up...'),
+    ('File', '&Manage Groups...'),
+    ('File', '---'),
+    ('File', '&Settings...\tCtrl+,'),
+    ('File', 'Sounds...'),
+    ('File', '---'),
+    ('File', 'Back Up No&w...'),
+    ('File', 'Check Backup...'),
+    ('File', 'Backup Schedule...'),
+    ('File', 'Restore from Backup...'),
+    ('File', 'Export Chats...'),
+    ('File', '---'),
+    ('File', 'E&xit'),
+    ('View', 'Go to &Sessions\tCtrl+1'),
+    ('View', 'Go to &Messages\tCtrl+2'),
+    ('View', 'Go to &Reply\tCtrl+3'),
+    ('View', 'Go to Status &Bar\tCtrl+9'),
+    ('View', 'S&ort Sessions'),
+    ('View', 'S&how Sessions'),
+    ('View', 'S&ession List Columns...'),
+    ('View', '---'),
+    ('View', 'Read &Full Message'),
+    ('View', 'Read Full Chat as a &Web Page\tCtrl+Shift+W'),
+    ('View', 'F&ind...\tCtrl+F'),
+    ('View', 'Find &Next\tF3'),
+    ('View', 'Find Pre&vious\tShift+F3'),
+    ('View', 'Links...\tCtrl+L'),
+    ('View', 'Lists...\tCtrl+Shift+I'),
+    ('View', 'Tasks...\tCtrl+Shift+J'),
+    ('View', 'Suba&gents...'),
+    ('View', 'Find in &All Sessions...\tCtrl+Shift+S'),
+    ('View', 'Properties...\tAlt+Enter'),
+    ('View', 'Show &Tool Activity\tCtrl+T'),
+    ('View', 'Mute All Sounds\tCtrl+Shift+X'),
+    ('View', 'Sto&p Running Turn\tCtrl+.'),
+    ('View', 'Stop Background Task...'),
+    ('View', 'T&urn Status\tCtrl+Shift+T'),
+    ('View', 'Usage and &Context...\tCtrl+Shift+U'),
+    ('View', 'Change&d Files...\tCtrl+Shift+D'),
+    ('View', 'Repeat &Last Announcement\tCtrl+Shift+R'),
+    ('View', '---'),
+    ('View', 'What AI &Knows About You...\tCtrl+Shift+K'),
+    ('View', 'Connected Tools (MCP)...'),
+    ('Help', 'User &Guide'),
+    ('Help', '&Keyboard Shortcuts\tF1'),
+    ('Help', 'Sound &Tutorial...'),
+    ('Help', 'Check for &Updates...'),
+    ('Help', 'Claude Code &Sign-in...'),
+    ('Help', 'Codex S&ign-in...'),
+    ('Help', 'C&opilot Sign-in...'),
+    ('Help', 'Report a &Bug...'),
+    ('Help', '&About'),
+]
+
+
+def _entries(platform):
+    rows = []
+
+    def walk(items, path):
+        for item in items:
+            if item is None:
+                rows.append((path, "---"))
+            elif isinstance(item, Menu):
+                rows.append((path, item.label))
+                walk(item.items, path + " > " + item.label.replace("&", ""))
+            else:
+                rows.append((path, menu_label(item, platform)))
+
+    for top in commands.MENU_BAR:
+        walk(top.items, top.label.replace("&", ""))
+    return rows
+
+
+def test_every_menu_entry_reads_as_written_down():
+    assert _entries("win32") == [(row[0], row[1]) for row in GOLDEN]
+    assert _entries("darwin") == [(row[0], row[-1]) for row in GOLDEN]
+    assert [m.label for m in commands.MENU_BAR] == ["&File", "&View", "&Help"]

@@ -56,7 +56,7 @@ from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, backup, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
-from ..commands import MENU_BAR, Command, Menu, menu_label
+from ..commands import MENU_BAR, Menu, command as find_command, menu_label
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_EDIT_TOOLS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
                           TurnRunner, allow_response, answer_questions_response,
@@ -241,8 +241,10 @@ TAIL_PREFIXES = ("queued:", "steering:", "notice:")
 
 
 #: Retry from Here's key (#468, #596) as a menu accelerator, except on a Mac,
-#: where Cmd+Shift+Z is Redo: there the messages list takes it itself.
-REWIND_ACCEL = "" if sys.platform == "darwin" else "\tCtrl+Shift+Z"
+#: where Cmd+Shift+Z is Redo: there the messages list takes it itself. From
+#: commands.py, so the message's menu shows the same key as the menu bar.
+_RETRY = find_command("retry_from_here")
+REWIND_ACCEL = "" if sys.platform == "darwin" else "\t" + _RETRY.key
 
 
 class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,

@@ -21,8 +21,12 @@ def frame(env):
     window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"),
                        check_updates_at_start=False)
     yield window
+    window._runners.clear()
     window.stop_timers()
     window._pool.shutdown(wait=True)
+    wx.GetApp().ProcessPendingEvents()
+    window.Destroy()
+    wx.GetApp().ProcessPendingEvents()
 
 
 def test_every_command_has_a_handler_and_every_handler_a_command(frame):
@@ -32,8 +36,8 @@ def test_every_command_has_a_handler_and_every_handler_a_command(frame):
 
 def test_the_menu_bar_is_the_list(frame):
     bar = frame.GetMenuBar()
-    assert [bar.GetMenuLabel(i) for i in range(bar.GetMenuCount())] == [
-        m.label for m in commands.MENU_BAR]
+    assert [bar.GetMenuLabelText(i) for i in range(bar.GetMenuCount())] == [
+        m.label.replace("&", "") for m in commands.MENU_BAR]
 
     def check(menu, spec):
         items = list(menu.GetMenuItems())
