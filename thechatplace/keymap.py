@@ -136,23 +136,38 @@ def refusal(key: str, platform: Optional[str] = None) -> str:
         return "A key on its own types or moves. Use it with Ctrl or Alt, or choose an F key."
     if mods == {"Shift"} and not function_key:
         return "Shift with it types a character. Use it with Ctrl or Alt, or choose an F key."
+    if name == "F4" and "Alt" in mods:
+        return f"{spoken(key, platform)} closes the window, so it can't be a shortcut."
+    if name == "Delete":
+        return f"{spoken(key, platform)} deletes text, so it can't be a shortcut."
     if "Alt" in mods and "Ctrl" not in mods and not function_key and name != "Enter":
         return ("Alt with a letter, number or mark opens a menu or presses a button. "
                 "Use Ctrl with it too.")
+    if (platform == "win32" and {"Ctrl", "Alt"} <= mods and not function_key
+            and name != "Enter"):
+        # Windows reads AltGr as Ctrl+Alt: on many keyboards it types @, €,
+        # braces and letters, which a window-wide shortcut would take (#639).
+        return ("On many keyboards, Ctrl and Alt together with a letter, number or mark "
+                "type a character (AltGr). Use Ctrl and Shift, or an F key.")
     if mods == {"Ctrl"} and name in ("X", "V", "A", "Z", "Y"):
         return f"{spoken(key, platform)} edits text, so it can't be a shortcut."
     if platform == "darwin" and mods == {"Ctrl"} and name in ("Q", "H", "M", "W"):
         return f"{spoken(key, platform)} belongs to macOS."
-    if platform == "darwin" and mods == {"Ctrl", "Shift"} and name == "Z":
-        return f"{spoken(key, platform)} is Redo on a Mac."
+    if platform == "darwin" and mods == {"Ctrl", "Shift"} and name in ("Q", "Z"):
+        return f"{spoken(key, platform)} belongs to macOS."
     return ""
 
 
-def customizable(command: command_list.Command) -> bool:
-    """A command whose key you can change: not one whose key belongs to a
-    part of the window (Delete in the session list, Ctrl+Shift+Enter in
-    the reply box), which stays as it is."""
-    return not command.shown_key
+def customizable(command: command_list.Command, platform: Optional[str] = None) -> bool:
+    """A command whose key you can change. Not one whose key belongs to a
+    part of the window (Delete in the session list, Ctrl+Shift+Enter in the
+    reply box), one whose label the window writes (Check for Updates), nor,
+    on a Mac, Settings, About and Quit, which macOS keeps in its app menu
+    with its own keys."""
+    platform = platform or sys.platform
+    if command.shown_key or command.fixed_key:
+        return False
+    return not (command.stock and platform == "darwin")
 
 
 class KeyMap:
@@ -198,18 +213,49 @@ class KeyMap:
             if command_id not in self._defaults:
                 self._unknown[command_id] = key
                 continue
+            if not isinstance(key, str):
+                bad += 1
+                continue
             try:
                 key = normalize(key) if key else ""
-            except (ValueError, AttributeError):
+            except ValueError:
                 bad += 1
                 continue
             if key and refusal(key):
                 bad += 1
                 continue
             self._changes[command_id] = key
+        bad += self._settle()
         if bad:
             self.load_error = (f"{bad} of your keyboard shortcuts in {self.path} couldn't be "
                                "used, so those commands have their default keys.")
+
+    def _settle(self) -> int:
+        """No two commands on one key after reading a file written by hand
+        or by another release (#639). A key you chose wins over a default:
+        the command with it by default loses it, as when you choose it
+        here. Two of your own on one key: the first keeps it, and the other
+        goes back to its default (or none, if that's taken too). Returns how
+        many of yours couldn't be kept."""
+        dropped = 0
+        owner: Dict[str, str] = {}
+        for command_id, key in list(self._changes.items()):
+            if not key:
+                continue
+            if key in owner:
+                del self._changes[command_id]
+                dropped += 1
+            else:
+                owner[key] = command_id
+        for command_id in self._defaults:
+            if command_id in self._changes:
+                continue
+            default = self.default(command_id)
+            if default and owner.get(default, command_id) != command_id:
+                self._changes[command_id] = ""  # yours took its key
+            elif default:
+                owner[default] = command_id
+        return dropped
 
     def _set_aside(self, why: str) -> None:
         stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -276,7 +322,9 @@ class KeyMap:
         if command_id not in self._defaults:
             raise ValueError(f"{command_id} has no key you can change.")
         key = normalize(key) if key else ""
-        why = refusal(key) if key else ""
+        # A command's own default can always go back to it, even where it's
+        # not an accelerator (Retry's Cmd+Shift+Z on a Mac).
+        why = refusal(key) if key and key != self.default(command_id) else ""
         if why:
             raise ValueError(why)
         taken = self.command_for(key) if key else None

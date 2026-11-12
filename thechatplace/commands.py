@@ -42,6 +42,9 @@ class Command:
     #: No accelerator on a Mac, where the key means something else
     #: (Cmd+Shift+Z is Redo); the window's key hook handles it there.
     not_on_mac: bool = False
+    #: Its key can't be changed (#635): the window writes its label itself,
+    #: so a key in it would never be an accelerator.
+    fixed_key: bool = False
 
 
 @dataclass(frozen=True)
@@ -202,7 +205,7 @@ MENU_BAR: Tuple[Menu, ...] = (
         Command("sound_tutorial", "Sound &Tutorial..."),
         # Its label says the version running, or the update a check found
         # (#141); the window sets it (``ui_text.update_item_label``).
-        Command("check_for_updates", "Check for &Updates..."),
+        Command("check_for_updates", "Check for &Updates...", fixed_key=True),
         Command("report_bug", "Report a &Bug..."),
         Command("about", "&About", stock="about"),
     )),

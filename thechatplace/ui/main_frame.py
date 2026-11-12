@@ -653,6 +653,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return with_key(label, self.keymap.key(command_id), default=entry.key,
                         not_on_mac=entry.not_on_mac)
 
+    def _run_command(self, command_id):
+        """Run a menu-bar command as its accelerator would (#639): not while
+        it's unavailable, and a check item changes its check first, which
+        is what its handler reads."""
+        item = self.menu_items[command_id]
+        if not item.IsEnabled():
+            return
+        if item.IsCheckable():
+            item.Check(not item.IsChecked())
+        event = wx.CommandEvent(wx.wxEVT_MENU, item.GetId())
+        event.SetEventObject(self)
+        self.GetEventHandler().ProcessEvent(event)
+
     def apply_keys(self):
         """Show and use the keys in ``self.keymap`` at once (#635): the menu
         bar's labels carry the accelerators, which is also what a screen
@@ -8269,7 +8282,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 + ["Enter"])
             command_id = self.keymap.command_for(pressed)
             if command_id is not None:
-                self._command_handlers()[command_id](None)
+                self._run_command(command_id)
                 return
             if ctrl and focus is self.reply_text:
                 if event.ShiftDown():
