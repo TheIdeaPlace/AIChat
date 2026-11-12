@@ -120,6 +120,9 @@ class CodexChatRuntime:
         self._connection = self._executor = None
         self._proofs = {}
         self._deleted = set()
+        #: Chats whose delete went to Codex with no answer (#634): until
+        #: deleted again, nothing reopens them, and Stop says so.
+        self._delete_unconfirmed = set()
         self._new_threads = set()
         self._settings_pending = set()
         self._queues = {}
@@ -307,6 +310,12 @@ class CodexChatRuntime:
         with self._lock:
             if record.cli_session_id in self._deleted:
                 raise CodexRpcError('This Codex chat was deleted')
+            if record.cli_session_id in self._delete_unconfirmed:
+                # Opening or Stop's recheck would ask about a thread that may
+                # be gone, which says nothing useful: deleting again settles
+                # it either way (#634).
+                from .codex_features import CodexFeatureError
+                raise CodexFeatureError('delete_unconfirmed')
             proof = self._proofs.get(record.cli_session_id)
             recovery = self._policy_recovery(record.cli_session_id, proof)
             # A thread still loaded here keeps the settings it was resumed
@@ -615,10 +624,16 @@ class CodexChatRuntime:
             proof = self._proofs.get(native_id)
             if proof is not None and not connection.owns_runtime(proof):
                 proof = None  # loaded on an earlier connection: not loaded on this one
+            # As _reopen refuses: anything under way here, or a loaded chat
+            # whose turn isn't known to have ended (waiting on an approval,
+            # say). Local state only; nothing is asked of Codex first. A chat
+            # working in the Codex app or a terminal can't be seen from here.
+            state = executor.snapshot(proof) if proof is not None else None
             if (native_id in self._reopening or self._stop.is_set() or native_id in self._sending
                     or native_id in self._stopping or native_id in self._pending_dispatch
                     or self._queues.get(native_id)
-                    or (proof is not None and executor.snapshot(proof).status == 'inProgress')):
+                    or (proof is not None and (state is None or state.status not in
+                                               ('idle', 'completed', 'failed', 'interrupted')))):
                 raise CodexFeatureError('busy')
             # Reserved like any action: Send, Stop and Answer wait.
             self._reopening.add(native_id)
@@ -632,26 +647,44 @@ class CodexChatRuntime:
             if missing_thread(error, native_id):
                 self._forget_deleted(native_id)
                 raise CodexThreadGone() from None
-            if getattr(error, 'rpc_code', None) is not None:  # Codex answered: nothing was done
+            if getattr(error, 'rpc_code', None) is not None:
+                # Codex answered and deleted nothing, so the chat is there,
+                # whatever an earlier unanswered delete did.
+                self._delete_settled(native_id)
                 unknown = error.rpc_code == -32601 or getattr(error, 'unknown_method', False)
                 raise CodexFeatureError('unsupported' if unknown else 'refused') from None
-            if proof is not None and not isinstance(error, CodexTurnRejected) and not (
-                    isinstance(error, CodexFeatureError) and error.code not in ('failed', 'unavailable')):
-                # It may have been deleted: no sending until it's deleted
-                # again, which is safe to repeat, or Stop rechecks it.
+            if getattr(error, 'delete_sent', False) or isinstance(error, CodexFeatureError) and error.code == 'failed':
+                # Sent, with no answer: it may be gone. Nothing reopens it
+                # (to send, or Stop's recheck) until it's deleted again,
+                # which is safe to repeat and settles it either way.
                 with self._lock:
-                    self._problems[native_id] = 'Codex could not confirm the operation. ' + STOP_TO_RECHECK
+                    self._delete_unconfirmed.add(native_id)
+                    if native_id in self._proofs:
+                        self._problems[native_id] = CodexFeatureError.REASONS['delete_unconfirmed']
+                raise CodexFeatureError('delete_unconfirmed') from None
+            # Not sent (the account check failed, say): nothing changed.
             raise
         finally:
             with self._lock:
                 self._reopening.discard(native_id)
             self._notify(native_id)
 
+    def _delete_settled(self, native_id):
+        """Codex answered a delete without deleting: the chat is still there,
+        so an earlier unanswered delete no longer blocks it."""
+        from .codex_features import CodexFeatureError
+        with self._lock:
+            if native_id in self._delete_unconfirmed:
+                self._delete_unconfirmed.discard(native_id)
+                if self._problems.get(native_id) == CodexFeatureError.REASONS['delete_unconfirmed']:
+                    self._problems.pop(native_id, None)
+
     def _forget_deleted(self, native_id, proof=None):
         """A deleted thread can authorize nothing more, here or on its connection."""
         with self._lock:
             proof = proof or self._proofs.get(native_id)
             self._deleted.add(native_id)
+            self._delete_unconfirmed.discard(native_id)
             self._proofs.pop(native_id, None)
             self._new_threads.discard(native_id)
             self._settings_pending.discard(native_id)

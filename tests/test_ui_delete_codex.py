@@ -92,6 +92,24 @@ def test_what_was_saved_for_the_chat_goes_with_it(frame, env, chat, monkeypatch,
     assert bool(frame.store.get(info.cli_session_id, provider='codex')) == kept
 
 
+@pytest.mark.parametrize('code', ['refused', 'unsupported', 'delete_unconfirmed', 'busy'])
+def test_codexs_reason_reaches_the_window(frame, env, chat, monkeypatch, code):
+    # Through the real worker path, run at once: what's said is the reason.
+    from thechatplace.providers.codex_features import CodexFeatureError
+    from thechatplace.ui import codex_chats
+    info, _work = chat
+    monkeypatch.setattr(frame, '_codex_work', codex_chats.CodexChats._codex_work.__get__(frame))
+    monkeypatch.setattr(frame._pool, 'submit', lambda job: job())
+    monkeypatch.setattr(codex_chats.wx, 'CallAfter', lambda job, *args: job(*args))
+    def refuse(*args):
+        raise CodexFeatureError(code)
+    monkeypatch.setattr(frame.sessions, 'owned_action', refuse)
+    frame.on_delete_permanently()
+    assert env['feedback'][-1] == f"Couldn't delete {info.title}. " + CodexFeatureError.REASONS[code]
+    assert frame.store.get(info.cli_session_id, provider='codex')
+    assert info.key not in frame._codex_deleting
+
+
 def test_cancelling_keeps_what_was_saved_for_the_chat(frame, env, chat, monkeypatch):
     info, work = chat
     files = _saved_for_later(frame, info.cli_session_id)

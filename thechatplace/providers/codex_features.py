@@ -16,6 +16,10 @@ class CodexFeatureError(CodexRpcError):
         'refused': 'Codex refused this, so nothing changed.',
         'unavailable': 'This Codex chat is not ready. Use Stop to recheck its connection first.',
         'failed': 'Codex could not confirm this operation. Check the chat before trying again.',
+        # The delete went to Codex and no answer came back (#634). Deleting
+        # again is safe: Codex deletes it, or says it's already gone.
+        'delete_unconfirmed': ("Codex didn't answer the delete, so this chat may be gone. Delete it "
+                               'again (File, Delete Session Permanently) to finish.'),
         'settings_pending': 'Send a normal message with this chat\'s changed settings before compacting its context.',
         # A copy keeps the original's settings (#596, decision 3), so only
         # settings that are saved and confirmed, for the folders they were

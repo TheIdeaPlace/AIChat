@@ -84,7 +84,13 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             raise CodexFeatureError('unavailable')
         if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
             raise CodexTurnRejected('chatgpt_required')
-        return super().request(DELETE_METHOD, params)
+        try:
+            return super().request(DELETE_METHOD, params)
+        except CodexRpcError as error:
+            # Only from here on may Codex have deleted it: a failure before
+            # (the account check, say) left the chat as it was.
+            error.delete_sent = True
+            raise
 
     def __init__(self, *args, **kwargs):
         self.session_tools = kwargs.pop("session_tools", False)

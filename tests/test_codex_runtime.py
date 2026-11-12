@@ -42,7 +42,11 @@ class Connection:
         # with the loaded chat's proof or, for one not loaded here, none.
         assert self.proofs.get(native_id) is proof
         self.request('account/read', {'refreshToken': True})
-        return self.request('thread/delete', {'threadId': native_id})
+        try:
+            return self.request('thread/delete', {'threadId': native_id})
+        except CodexRpcError as error:
+            error.delete_sent = True
+            raise
 
     def pop_event(self):
         if self.closed:
