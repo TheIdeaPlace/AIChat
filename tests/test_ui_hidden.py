@@ -7506,7 +7506,7 @@ def test_ctrl_shift_enter_when_the_reply_changes_meanwhile(
 
 def test_prompts_are_on_the_chat_menu(frame):
     labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Chat")).GetMenuItems()]
-    assert "&Prompts...\tCtrl+Shift+P" in labels
+    assert "&Prompts..." in labels  # no key since #637
     keys = "Cmd+Shift+Return" if wx.Platform == "__WXMAC__" else "Ctrl+Shift+Enter"
     assert f"Send and Sa&ve as Prompt... ({keys})" in labels
 

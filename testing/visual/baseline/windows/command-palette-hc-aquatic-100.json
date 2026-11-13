@@ -1,0 +1,150 @@
+{
+ "title": "Command Palette",
+ "class": "CommandPaletteDialog",
+ "size": [
+  560,
+  460
+ ],
+ "client": [
+  544,
+  421
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Search:",
+   "rect": [
+    8,
+    8,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Search commands",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    528,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "chat"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Commands:",
+   "rect": [
+    8,
+    55,
+    66,
+    16
+   ],
+   "best": [
+    66,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Commands, 21",
+   "label": "",
+   "rect": [
+    10,
+    73,
+    528,
+    311
+   ],
+   "best": [
+    359,
+    240
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Chat Permissions, Ctrl+Shift+H, Chat, Chat Settings",
+    "Chat Options, Chat, Chat Settings",
+    "Export Chats, File menu",
+    "Answer, Ctrl+Shift+A, Chat menu",
+    "Ask Aside, Ctrl+Shift+Y, Chat menu",
+    "Stop Running Turn, Ctrl+Period, Chat menu",
+    "Stop Background Task, Chat menu, unavailable",
+    "Turn Status, Ctrl+Shift+T, Chat menu",
+    "Insert Command or Skill, Ctrl+Slash, Chat menu",
+    "Attach Files, Ctrl+Shift+F, Chat menu",
+    "Prompts, Chat menu",
+    "Send and Save as Prompt, Chat menu"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Run",
+   "rect": [
+    8,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    461,
+    390,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

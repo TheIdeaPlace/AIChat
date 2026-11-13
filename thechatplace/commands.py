@@ -125,7 +125,9 @@ MENU_BAR: Tuple[Menu, ...] = (
         Command("insert_command", "Insert Command or S&kill...", "Ctrl+/"),
         Command("attach_files", "Attac&h Files...", "Ctrl+Shift+F"),
         # Saved prompts (#131). Ctrl+Shift+Enter belongs to the reply box.
-        Command("prompts", "&Prompts...", "Ctrl+Shift+P"),
+        # No key since #637: Ctrl+Shift+P is the command palette, as in
+        # Kelly's other apps. Anyone can give it one (#635).
+        Command("prompts", "&Prompts..."),
         Command("send_and_save_prompt", "Send and Sa&ve as Prompt...",
                 shown_key="Ctrl+Shift+Enter"),
         # Steer (#238, #239): a reply-box key too.
@@ -174,6 +176,8 @@ MENU_BAR: Tuple[Menu, ...] = (
         Command("find_previous", "Find Pre&vious", "Shift+F3"),
         Command("find_in_all_sessions", "Find in &All Sessions...", "Ctrl+Shift+S"),
         Command("repeat_last_announcement", "Repeat &Last Announcement", "Ctrl+Shift+R"),
+        # Any command by typing part of its name (#637).
+        Command("command_palette", "Command &Palette...", "Ctrl+Shift+P"),
     )),
     # Lists and details about the chat, your AI accounts, and the app's
     # settings (#575).

@@ -144,24 +144,24 @@ def test_keys_owned_by_a_part_of_the_window_cant_be_changed(keys):
 # -- the map ----------------------------------------------------------------------------------
 
 def test_defaults_until_you_change_one(keys):
-    assert keys.key("prompts") == "Ctrl+Shift+P"
+    assert keys.key("command_palette") == "Ctrl+Shift+P"
     assert keys.key("sounds") == ""
-    assert keys.command_for("Ctrl+Shift+P") == "prompts"
+    assert keys.command_for("Ctrl+Shift+P") == "command_palette"
     assert keys.command_for("Ctrl+Period") == "stop_running_turn"
-    assert not keys.changed("prompts")
+    assert not keys.changed("command_palette")
 
 
 def test_a_new_key_moves_and_the_old_one_is_free(keys):
-    assert keys.set("prompts", "Ctrl+K") is None
-    assert keys.key("prompts") == "Ctrl+K" and keys.changed("prompts")
+    assert keys.set("command_palette", "Ctrl+K") is None
+    assert keys.key("command_palette") == "Ctrl+K" and keys.changed("command_palette")
     assert keys.command_for("Ctrl+Shift+P") is None
-    assert keys.command_for("ctrl+k") == "prompts"
+    assert keys.command_for("ctrl+k") == "command_palette"
 
 
 def test_taking_a_key_another_command_has_takes_it_from_that_command(keys):
     taken = keys.set("sounds", "Ctrl+Shift+P")
-    assert taken == "prompts"
-    assert keys.key("sounds") == "Ctrl+Shift+P" and keys.key("prompts") == ""
+    assert taken == "command_palette"
+    assert keys.key("sounds") == "Ctrl+Shift+P" and keys.key("command_palette") == ""
     assert keys.command_for("Ctrl+Shift+P") == "sounds"
 
 
@@ -177,27 +177,27 @@ def test_removing_and_resetting(keys):
     keys.set("sounds", "Ctrl+F")  # its old key, now free
     assert keys.reset("find") == "sounds"  # find takes it back; sounds loses it
     assert keys.key("find") == "Ctrl+F" and keys.key("sounds") == ""
-    keys.set("prompts", "Ctrl+K")
+    keys.set("command_palette", "Ctrl+K")
     keys.reset_all()
-    assert keys.key("prompts") == "Ctrl+Shift+P"
+    assert keys.key("command_palette") == "Ctrl+Shift+P"
 
 
 def test_setting_a_command_back_to_its_default_isnt_a_change(keys):
-    keys.set("prompts", "Ctrl+K")
-    keys.set("prompts", "Ctrl+Shift+P")
-    assert not keys.changed("prompts")
+    keys.set("command_palette", "Ctrl+K")
+    keys.set("command_palette", "Ctrl+Shift+P")
+    assert not keys.changed("command_palette")
 
 
 # -- keys.json ----------------------------------------------------------------------------------
 
 def test_saved_and_read_back(tmp_path, keys):
-    keys.set("prompts", "Ctrl+K")
+    keys.set("command_palette", "Ctrl+K")
     keys.set("find", "")
     assert keys.save()
     data = json.loads((tmp_path / "keys.json").read_text(encoding="utf-8"))
-    assert data == {"version": 1, "keys": {"prompts": "Ctrl+K", "find": ""}}
+    assert data == {"version": 1, "keys": {"command_palette": "Ctrl+K", "find": ""}}
     again = KeyMap(tmp_path / "keys.json")
-    assert again.key("prompts") == "Ctrl+K" and again.key("find") == ""
+    assert again.key("command_palette") == "Ctrl+K" and again.key("find") == ""
     assert again.load_error == ""
 
 
@@ -214,10 +214,10 @@ def test_ids_this_release_doesnt_know_are_kept(tmp_path):
 
 def test_a_hand_edited_file_is_read_in_any_spelling_and_bad_entries_are_said(tmp_path):
     path = tmp_path / "keys.json"
-    path.write_text(json.dumps({"keys": {"prompts": "shift+ctrl+v", "sounds": "Ctrl+V",
+    path.write_text(json.dumps({"keys": {"command_palette": "shift+ctrl+v", "sounds": "Ctrl+V",
                                          "find": "nonsense+key"}}), encoding="utf-8")
     keys = KeyMap(path)
-    assert keys.key("prompts") == "Ctrl+Shift+V"
+    assert keys.key("command_palette") == "Ctrl+Shift+V"
     assert keys.key("sounds") == "" and keys.key("find") == "Ctrl+F"
     assert "2 of your keyboard shortcuts" in keys.load_error
 
@@ -226,7 +226,7 @@ def test_a_damaged_file_is_set_aside_and_the_defaults_used(tmp_path):
     path = tmp_path / "keys.json"
     path.write_text("{not json", encoding="utf-8")
     keys = KeyMap(path)
-    assert keys.key("prompts") == "Ctrl+Shift+P"
+    assert keys.key("command_palette") == "Ctrl+Shift+P"
     assert "isn't valid JSON" in keys.load_error
     assert not path.exists() and list(tmp_path.glob("keys.json.bad-*"))
 
@@ -234,16 +234,16 @@ def test_a_damaged_file_is_set_aside_and_the_defaults_used(tmp_path):
 # -- what the window says ---------------------------------------------------------------------
 
 def test_the_shortcuts_list_shows_your_keys(keys):
-    keys.set("prompts", "Ctrl+K")
+    keys.set("command_palette", "Ctrl+K")
     keys.set("find_in_all_sessions", "")
     keys.set("sounds", "Ctrl+J")
     text = shortcuts_text(platform="win32", keys=keys)
-    assert "Ctrl+K: Prompts:" in text and "(changed from Ctrl+Shift+P)" in text
+    assert "Ctrl+K: Command palette:" in text and "(changed from Ctrl+Shift+P)" in text
     assert "No key: Find in All Sessions" in text
     assert "Keys you added:\n  Ctrl+J: Sounds" in text
-    assert "Ctrl+Shift+P: Prompts" not in text
+    assert "Ctrl+Shift+P: Command palette" not in text
     # The published list is the defaults.
-    assert "Ctrl+Shift+P: Prompts" in shortcuts_text(platform="win32")
+    assert "Ctrl+Shift+P: Command palette" in shortcuts_text(platform="win32")
 
 
 def test_what_is_said_names_your_keys():
@@ -315,4 +315,4 @@ def test_menu_labels_use_the_key_in_effect():
     assert commands.menu_label(retry, "win32", key="Ctrl+Alt+R") == "Retr&y from Here...\tCtrl+Alt+R"
     assert commands.menu_label(retry, "darwin", key="Ctrl+Alt+R") == "Retr&y from Here...\tCtrl+Alt+R"
     assert commands.menu_label(retry, "darwin", key="Ctrl+Shift+Z") == "Retr&y from Here..."
-    assert commands.menu_label(commands.command("prompts"), "win32", key="") == "&Prompts..."
+    assert commands.menu_label(commands.command("command_palette"), "win32", key="") == "Command &Palette..."

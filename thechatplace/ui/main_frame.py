@@ -117,6 +117,7 @@ from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from .subagent_host import SubagentsHost
 from .keys_dialog import KeyboardShortcutsDialog
+from .palette_dialog import CommandPaletteDialog
 from .live_turns import LiveTurns
 from .claude_extras import ClaudeExtras
 from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
@@ -779,6 +780,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "show_tool_activity": self.on_toggle_activity_menu,
             "mute_all_sounds": self.on_toggle_mute_sounds,
             "customize_keyboard_shortcuts": lambda e: self.on_customize_keys(),
+            "command_palette": lambda e: self.on_command_palette(),
             "stop_running_turn": self.on_stop,
             "stop_background_task": lambda e: self.on_stop_background_task(),
             "turn_status": self.on_turn_status,
@@ -7814,6 +7816,39 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     "Load one of The Chat Place's own sessions to use a prompt in its reply "
                     "box.")
         return ""
+
+    def on_command_palette(self):
+        """View, Command Palette (Ctrl+Shift+P, #637): find a command by
+        typing, and run it as its menu item would, once the palette has
+        closed and focus is back where it was."""
+        recent = getattr(self, "_recent_commands", [])
+        # Commands read where focus is (Find in the session list, say), and
+        # on GTK focus comes back after the dialog late: put it back first
+        # (#641).
+        returning_to = wx.Window.FindFocus()
+        dialog = CommandPaletteDialog(
+            self, self.keymap, recent,
+            lambda command_id: self.menu_items[command_id].IsEnabled(),
+            self._say_row)
+        try:
+            chosen = dialog.chosen if dialog.ShowModal() == wx.ID_OK else None
+        finally:
+            dialog.Destroy()
+        if returning_to is not None and not self._gone():
+            try:
+                returning_to.SetFocus()
+            except RuntimeError:
+                pass  # it went while the palette was open
+        if chosen:
+            self._recent_commands = [chosen] + [c for c in recent if c != chosen][:9]
+            wx.CallAfter(self._run_command, chosen)
+
+    def _say_row(self, text: str):
+        """A row arrived on in a list whose focus is elsewhere (the palette's
+        Search box, #641): said at once, always, but not kept as the last
+        announcement nor put in the status bar, which are for news."""
+        if text:
+            self._speak_announcement(text, interrupt=True, window=wx.GetActiveWindow())
 
     def on_customize_keys(self):
         """Tools, Customize Keyboard Shortcuts (#635): changes are saved

@@ -277,8 +277,9 @@ SHORTCUTS = [
         ("Ctrl+Shift+K", "What AI knows about you: choose Claude or Codex, then read "
                          "local instructions, memories, skills and settings, or open "
                          "them in your editor"),
-        ("Ctrl+Shift+P", "Prompts: your saved prompts, to use (Enter puts one in the reply "
-                         "box), add, edit, reorder or delete"),
+        ("Ctrl+Shift+P", "Command palette: type part of a command's name, menu or key, "
+                         "arrow to it and press Enter to run it; Escape closes. Chat, "
+                         "Prompts has your saved prompts"),
         ("Alt+Enter", "Properties: what can be known about the selected session (or, in the "
                       "messages, the selected message), one line each; Ctrl+C copies a line. "
                       "Option+Return on a Mac"),

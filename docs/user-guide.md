@@ -143,7 +143,7 @@ failing test that reproduces it, then fix it".
 - **When words won't do it,** show it: **Ctrl+Shift+F** (Chat, Attach Files) adds files and pictures
   to your next message, and **Ctrl+V** in the reply box attaches a picture on the clipboard or
   files you copied.
-- **When you keep typing the same message,** save it: **Ctrl+Shift+P** (Chat, Prompts) lists saved
+- **When you keep typing the same message,** save it: **Chat, Prompts** (Alt+C, P) lists saved
   messages, and **Ctrl+Shift+Enter** in the reply box saves what you've typed and sends it.
 - **When you've corrected the same thing twice and it's still wrong,** start again. A new chat
   (**Ctrl+N**) with a better first message usually beats a third correction, because the old chat
@@ -559,7 +559,7 @@ any command.
 
 **Tools, Customize Keyboard Shortcuts** (Alt+T, K) lists every command whose key you can change,
 in menu order. Each row says the command, its key or "no key", "changed" if you changed it, and
-which menu it's on, such as "Prompts, Ctrl+Shift+P, Chat menu". Type in **Filter** (Alt+F) to
+which menu it's on, such as "Find, Ctrl+F, View menu". Type in **Filter** (Alt+F) to
 narrow the list by name, key or menu.
 
 - **Change Key** (Alt+C, or Enter on a command) opens a small dialog with the focus in a **Key**
@@ -590,6 +590,19 @@ Prompt (Ctrl+Shift+Enter) and Steer (Ctrl+Alt+Enter).
 
 A screen reader may take a key before The Chat Place sees it. To give a command a key your
 screen reader uses, tell it to pass the next key on first: Insert+3 in JAWS, Insert+F2 in NVDA.
+
+### Command palette
+
+**Ctrl+Shift+P** (View, Command Palette) runs any of The Chat Place's commands by typing part of
+its name. Focus starts in **Search**; type a few letters or words, in any order, of the command's
+name, its menu or its key ("perm mode" finds Change Permission Mode). Up and Down, and Page Up
+and Page Down, move in the list without leaving Search, and each command arrived on is said:
+its name, its key, and where it is, such as "Change Model, Chat, Chat Settings". **Enter** (or
+Run) runs it, as its menu item does; **Escape** closes. Commands that can't run now are listed
+as unavailable. With Search empty, the commands you used this session come first.
+
+Ctrl+Shift+P was Prompts' key before 0.6; Prompts is still on the Chat menu and in the palette,
+and Customize Keyboard Shortcuts can give it a key again.
 
 ### The status bar
 
@@ -2039,7 +2052,7 @@ These are for Claude and Codex chats started here:
 Keep messages you send often as prompts, each with a name, and put one in the reply box when you
 need it:
 
-- **Ctrl+Shift+P** (Chat, Prompts) lists your prompts by name, with the selected one's text below
+- **Chat, Prompts** (Alt+C, P) lists your prompts by name, with the selected one's text below
   it (Alt+X to read it). **Enter**, or Use, puts the prompt in the reply box of the loaded chat,
   at the cursor, ready to change and send.
 - In the same dialog, **New** and **Edit** ask for a name and the text (Enter starts a new line in

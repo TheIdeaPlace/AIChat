@@ -174,6 +174,14 @@ STEPS = [
          expect=["New Session, Ctrl+N, File menu"]),
     Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Command palette (#637): Search has focus; Down from it says the row
+    # arrived on; Escape closes.
+    Step("Command Palette", ["ctrl+shift+p"], expect=["Command Palette", "Search"]),
+    Step("Command Palette, typed and Down", ["p", "e", "r", "m", "Down"],
+         expect=["Delete Session Permanently"]),
+    Step("Command Palette, Down again", ["Down"], expect=["Change Permission Mode"]),
+    Step("Command Palette closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
