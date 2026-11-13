@@ -30,21 +30,47 @@ def key_name(shortcut: str, platform=None) -> str:
 CODEX_DEFAULT = "Codex's default"
 
 
-#: Stop Running Turn's key as said, set by the window from your keys (#635).
-_STOP_KEY = ["Ctrl+Period"]
+#: Your keys for the defaults you changed, by the default's normalized name
+#: ("Ctrl+/"): (your key as said, or "" if you took it away; the command's
+#: place, "Chat, Answer"). Set by the window whenever its keys change (#635).
+_YOUR_KEYS: dict = {}
 
 
-def set_stop_key(key: str) -> None:
-    """The window's keys changed: Stop's is now ``key`` ("" for none)."""
-    _STOP_KEY[0] = key
+def set_your_keys(keys: dict) -> None:
+    """The window's keys changed: ``keys`` maps each changed default
+    (normalized) to (your key as said, or ""; the command's place)."""
+    _YOUR_KEYS.clear()
+    _YOUR_KEYS.update(keys)
+
+
+def _changed(default: str):
+    from .keymap import normalize  # keymap needs this module first
+    try:
+        return _YOUR_KEYS.get(normalize(default))
+    except ValueError:
+        return None
+
+
+def your_key(default: str) -> str:
+    """What to say for a command's default key, written any way ("Ctrl+/",
+    "Ctrl+Slash"): your key if you changed it, the command's place if you
+    took it away, else the default as given. Put it through key_name for a
+    Mac."""
+    changed = _changed(default)
+    if changed is None:
+        return default
+    now, place = changed
+    return now or place
 
 
 def with_stop_key(text: str, platform=None, key=None) -> str:
     """A provider's "Press Stop to ..." with Stop's key added, the first time
     it's named (#596): the provider says what Stop does, and the window,
     which owns the keys, names the key: yours, if you changed it (#635), and
-    none if you removed it."""
-    key = _STOP_KEY[0] if key is None else key
+    none if you took it away."""
+    if key is None:
+        changed = _changed("Ctrl+Period")
+        key = "Ctrl+Period" if changed is None else changed[0]
     if not text or not key or "Press Stop (" in text:
         return text
     return text.replace("Press Stop ", f"Press Stop ({key_name(key, platform)}) ", 1)

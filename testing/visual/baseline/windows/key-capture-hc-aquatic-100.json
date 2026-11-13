@@ -1,0 +1,154 @@
+{
+ "title": "Change Key: Sounds",
+ "class": "KeyCaptureDialog",
+ "size": [
+  520,
+  260
+ ],
+ "client": [
+  504,
+  221
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Press the keys you want for Sounds. Its key now: no key.",
+   "rect": [
+    8,
+    8,
+    295,
+    16
+   ],
+   "best": [
+    295,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Key:",
+   "rect": [
+    8,
+    32,
+    23,
+    16
+   ],
+   "best": [
+    23,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Key, press the keys you want",
+   "label": "",
+   "rect": [
+    10,
+    50,
+    488,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Ctrl+Shift+P"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Prompts has it now. Assign moves it to Sounds, and Prompts will have no key.",
+   "rect": [
+    8,
+    79,
+    488,
+    16
+   ],
+   "best": [
+    412,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Assign",
+   "rect": [
+    8,
+    111,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Try Another",
+   "rect": [
+    89,
+    111,
+    84,
+    23
+   ],
+   "best": [
+    84,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    421,
+    111,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

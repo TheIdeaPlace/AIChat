@@ -5,7 +5,8 @@ import pytest
 
 from thechatplace import commands, keymap
 from thechatplace.keymap import KeyMap, normalize, refusal, spoken
-from thechatplace.ui_text import shortcuts_text, set_stop_key, with_stop_key
+from thechatplace.ui_text import (key_name, set_your_keys, shortcuts_text, with_stop_key,
+                                  your_key)
 
 
 @pytest.fixture
@@ -59,6 +60,22 @@ def test_ctrl_alt_with_a_character_is_altgr_on_windows(key):
     # AltGr types @, € and braces with these on many keyboards (#639).
     assert "AltGr" in refusal(key, "win32")
     assert refusal(key, "darwin") == ""  # Cmd+Option on a Mac
+
+
+def test_shift_enter_and_option_letters_say_what_they_do():
+    assert "new line" in refusal("Shift+Enter", "win32")
+    assert "types a character" in refusal("Alt+Q", "darwin")
+    assert "opens a menu" in refusal("Alt+Q", "win32")
+
+
+def test_a_key_a_fixed_command_keeps_cant_be_taken(keys):
+    # On a Mac, Settings keeps Cmd+Comma in the app menu (#640).
+    keys._defaults.pop("settings", None)  # as on a Mac, where it can't change
+    why = keys.why_not("sounds", "Ctrl+,")
+    assert "Settings" in why and "can't change" in why
+    with pytest.raises(ValueError, match="Settings"):
+        keys.set("sounds", "Ctrl+,")
+    assert keys.why_not("sounds", "F7") == ""
 
 
 def test_ctrl_delete_and_alt_f4_with_anything_are_refused():
@@ -229,14 +246,22 @@ def test_the_shortcuts_list_shows_your_keys(keys):
     assert "Ctrl+Shift+P: Prompts" in shortcuts_text(platform="win32")
 
 
-def test_stop_is_named_by_the_key_in_effect():
+def test_what_is_said_names_your_keys():
     try:
-        set_stop_key("Ctrl+J")
+        set_your_keys({"Ctrl+.": ("Ctrl+J", "Chat, Stop Running Turn"),
+                       "Ctrl+Shift+A": ("", "Chat, Answer"),
+                       "Ctrl+/": ("Ctrl+K", "Chat, Insert Command or Skill")})
         assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop (Ctrl+J) to end it."
-        set_stop_key("")
+        assert your_key("Ctrl+Shift+A") == "Chat, Answer"  # its key taken away
+        assert your_key("Ctrl+Shift+E") == "Ctrl+Shift+E"  # not changed
+        assert key_name(your_key("Ctrl+Period"), "darwin") == "Cmd+J"
+        # Any spelling of the default (#640).
+        assert your_key("Ctrl+/") == your_key("Ctrl+Slash") == "Ctrl+K"
+        set_your_keys({"Ctrl+.": ("", "Chat, Stop Running Turn")})
+        # Stop with no key: no key named, as before (#640).
         assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop to end it."
     finally:
-        set_stop_key("Ctrl+Period")
+        set_your_keys({})
     assert with_stop_key("Press Stop to end it.", "win32") == "Press Stop (Ctrl+Period) to end it."
 
 

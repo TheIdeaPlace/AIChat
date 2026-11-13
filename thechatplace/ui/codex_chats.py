@@ -18,7 +18,7 @@ from ..agents import provider_name
 from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name, with_stop_key
+from ..ui_text import key_name, with_stop_key, your_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
@@ -118,9 +118,9 @@ class CodexChats(SoundHost, CodexExtras):
         if state.problem:
             return with_stop_key(state.problem)
         if state.state == STATUS_UNAVAILABLE:
-            return f'{name} status is unavailable. Use Stop ({key_name("Ctrl+Period")}) to recheck this chat.'
+            return f'{name} status is unavailable. Use Stop ({key_name(your_key("Ctrl+Period"))}) to recheck this chat.'
         if state.requests:
-            text = f'{name} is waiting for you. {key_name("Ctrl+Shift+A")} answers.'
+            text = f'{name} is waiting for you. {key_name(your_key("Ctrl+Shift+A"))} answers.'
             if state.activity:
                 text += ' Latest activity: ' + state.activity
         elif state.outcome == 'inProgress':
@@ -501,7 +501,7 @@ class CodexChats(SoundHost, CodexExtras):
         def prepared(change, error):
             if error:
                 failure(change or 'Could not change Codex permissions. Wait for an idle chat, or use Stop '
-                        f'({key_name("Ctrl+Period")}) to check its status.')
+                        f'({key_name(your_key("Ctrl+Period"))}) to check its status.')
                 after()
                 return
             proposed = change.record()
@@ -567,7 +567,7 @@ class CodexChats(SoundHost, CodexExtras):
                     # A saved chat whose sandbox or automatic review could
                     # not be confirmed: once that is fixed, Stop opens it
                     # again without sending anything (#257) (#390).
-                    _result += f' Once that\'s fixed, use Stop ({key_name("Ctrl+Period")}) to open this chat again.'
+                    _result += f' Once that\'s fixed, use Stop ({key_name(your_key("Ctrl+Period"))}) to open this chat again.'
                 name = provider_name(provider)
                 self._feedback(relayed + (_result or f'Could not prepare this {name} chat. Automatic resume is disabled while its turn status is uncertain. Check the chat in {name} before restarting The Chat Place.'))
             self._update_send_state()
@@ -949,7 +949,7 @@ class CodexChats(SoundHost, CodexExtras):
             request = state.requests[0]
             summary = ' '.join(request.summary().split())[:200]
             self._sound(sound_events.NEEDS_YOU, key)
-            self._say(f'{record.title}: {name} needs your answer. {summary} {key_name("Ctrl+Shift+A")} answers.', interrupt=False)
+            self._say(f'{record.title}: {name} needs your answer. {summary} {key_name(your_key("Ctrl+Shift+A"))} answers.', interrupt=False)
             self._notify(key, f'{record.title} needs you', summary, needs_you=True)
         if loaded and state.plan_received and provider == 'codex':  # plans are Codex's own
             self._apply_tasks(self._codex_task_steps(state, self._chat_turns),

@@ -21,7 +21,8 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, mark_access_key,
+from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
+                       mark_access_key,
                        shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
@@ -47,13 +48,19 @@ class ShortcutsDialog(wx.Dialog):
         wx.CallAfter(text.SetFocus)
 
 
-PERMISSION_NOTE = (
-    key_name("The permission mode decides what Claude may do without asking. When Claude "
-    "asks for permission, asks you a question or has a plan for you to approve, "
-    "the turn waits: The Chat Place announces it, the session shows as needing "
-    "you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that "
-    "don't support effort levels ignore it. Change Permission Mode and Change Effort, "
-    "in Chat, Chat Settings, change them later."))
+def permission_note() -> str:
+    """New Session's note on permissions, with Answer's key in effect (#635)."""
+    return key_name(
+        "The permission mode decides what Claude may do without asking. When Claude "
+        "asks for permission, asks you a question or has a plan for you to approve, "
+        "the turn waits: The Chat Place announces it, the session shows as needing "
+        f"you, and {your_key('Ctrl+Shift+A')} answers. Effort is how hard Claude thinks; models "
+        "that don't support effort levels ignore it. Change Permission Mode and Change "
+        "Effort, in Chat, Chat Settings, change them later.")
+
+
+#: The note with the default keys, as tests have it.
+PERMISSION_NOTE = permission_note()
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -383,8 +390,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
         note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-                           value=(CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if continue_from
-                           else PERMISSION_NOTE)
+                           value=(CONTINUE_NOTE + "\n\n" + permission_note()) if continue_from
+                           else permission_note())
         set_accessible_name(note, about)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -1042,7 +1049,8 @@ class NewSessionDialog(wx.Dialog):
                 control.Set(choices)
                 control.SetSelection(selected)
                 control.Enable()
-            self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
+            self.note.SetValue((CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing
+                               else permission_note())
         self._control_provider = provider
         self._sync_access_keys()
         if not self.continuing:
@@ -4145,7 +4153,7 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(folder_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         outer.Add(wx.StaticText(body, label="&Hand-offs:"), 0, wx.LEFT | wx.TOP, 8)
-        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name('Ctrl+Shift+E')})"]
+        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name(your_key('Ctrl+Shift+E'))})"]
         if auto_allowed:
             modes.append("Automatic: replies go across by themselves, up to a limit")
         self.mode = wx.Choice(body, choices=modes)

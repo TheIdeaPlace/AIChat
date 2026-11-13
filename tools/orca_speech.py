@@ -160,6 +160,20 @@ STEPS = [
     Step("Tools menu", ["alt+t"], expect=["Lists"]),
     Step("Tools closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"], refuse=["Session list"]),
+    # Customize Keyboard Shortcuts (#635): the list starts on New Session;
+    # Change Key starts in the Key box, a pressed key is said with what
+    # Assign would do, and Escape twice changes nothing.
+    Step("Customize Keyboard Shortcuts", ["alt+t", "k"],
+         expect=["Customize Keyboard Shortcuts", "New Session, Ctrl+N, File menu"]),
+    # Orca names the box by its visible label (GTK's labelled-by), so "Key:"
+    # then the text role is what shows focus reached the box, not the title.
+    Step("Change Key", ["Return"], expect=["Change Key: New Session", "Key: text"]),
+    Step("a key pressed in Change Key", ["ctrl+shift+v"],
+         expect=["Ctrl+Shift+V", "Nobody has it"]),
+    Step("Change Key closed, back in the list", ["Escape"],
+         expect=["New Session, Ctrl+N, File menu"]),
+    Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),

@@ -21,9 +21,11 @@ WX_DIALOGS = {"TextEntryDialog", "SingleChoiceDialog"}
 
 
 def test_every_dialog_is_photographed_or_says_why_not():
-    from thechatplace.ui import dialogs, sound_gallery_dialog, sounds_dialog, subagent_chat
+    from thechatplace.ui import (dialogs, keys_dialog, sound_gallery_dialog, sounds_dialog,
+                                 subagent_chat)
     # Dialogs live in dialogs.py, and a few in modules of their own (#468).
-    classes = {name for module in (dialogs, sound_gallery_dialog, sounds_dialog, subagent_chat)
+    classes = {name for module in (dialogs, keys_dialog, sound_gallery_dialog, sounds_dialog,
+                                   subagent_chat)
                for name, cls in inspect.getmembers(module, inspect.isclass)
                if issubclass(cls, wx.Dialog) and cls.__module__ == module.__name__}
     covered = set(ui_probe.DIALOG_CLASSES.values()) | set(ui_probe.NOT_PHOTOGRAPHED)

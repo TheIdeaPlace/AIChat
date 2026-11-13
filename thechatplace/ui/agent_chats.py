@@ -24,7 +24,7 @@ from ..agents import AGENTS, MODE_APPROVE, MODE_AUTO, AgentConversation, Member,
 from ..claude_cli import describe_elapsed, new_session_id
 from ..own_store import OwnSession
 from ..sessions import NEEDS_YOU, RUNTIME_PROVIDERS, WORKING
-from ..ui_text import key_name
+from ..ui_text import key_name, your_key
 from .dialogs import AgentConversationDialog, RelayDialog
 
 
@@ -126,14 +126,14 @@ class AgentChats:
         if pending is not None and not pending.finished:
             frm = conversation.members[pending.from_index].name
             to = conversation.members[pending.to_index].name
-            return f"{frm}'s reply is waiting to go to {to}. {key_name('Ctrl+Shift+E')} hands it on."
+            return f"{frm}'s reply is waiting to go to {to}. {key_name(your_key('Ctrl+Shift+E'))} hands it on."
         for member in conversation.members:
             state = (self._codex_states.get(member.key)
                      if member.provider in RUNTIME_PROVIDERS else None)
             if (member.provider == "claude" and self._pending.get(member.native_id)) or (
                     state is not None and state.requests):
                 return (f"{member.name} is waiting for you. "
-                        f"{key_name('Ctrl+Shift+A')} answers.")
+                        f"{key_name(your_key('Ctrl+Shift+A'))} answers.")
         working = []
         for member in conversation.members:
             if member.provider == "claude" and member.native_id in self._runners:
@@ -152,7 +152,7 @@ class AgentChats:
             frm = conversation.members[pending.from_index].name
             to = conversation.members[pending.to_index].name
             reason = f"{conversation.stop_reason} " if conversation.stop_reason else ""
-            return f"{reason}{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}."
+            return f"{reason}{key_name(your_key('Ctrl+Shift+E'))} hands {frm}'s last reply to {to}."
         if conversation.paused and conversation.stop_reason:
             return conversation.stop_reason
         return f"Ready. What you type goes to {conversation.members[conversation.next_index].name}."
@@ -904,7 +904,7 @@ class AgentChats:
             conversation.pending = Pending(index, to, reply, finished=True, files=files)
             self._agent_note(conversation, stop)
             self._agent_after_change(conversation)
-            hint = f"{key_name('Ctrl+Shift+E')} hands {member.name}'s last reply to {target}."
+            hint = f"{key_name(your_key('Ctrl+Shift+E'))} hands {member.name}'s last reply to {target}."
             self._agent_reply_sound(identity)
             self._agent_say(conversation, " ".join(p for p in (said, refused.strip(), stop, hint)
                                                    if p), always=True)
@@ -951,7 +951,7 @@ class AgentChats:
             conversation.paused, conversation.stop_reason = True, stop
             self._agent_note(conversation, stop)
         self._agent_after_change(conversation)
-        hint = f"{key_name('Ctrl+Shift+E')} hands it to {target}."
+        hint = f"{key_name(your_key('Ctrl+Shift+E'))} hands it to {target}."
         spoken = " ".join(part for part in (said, refused.strip(), stop, hint) if part)
         self._agent_reply_sound(identity)
         self._agent_say(conversation, spoken, always=True)
@@ -1009,7 +1009,7 @@ class AgentChats:
             if missed:  # not sent, so still missed
                 self._agent_unseen[unseen_key] = missed + self._agent_unseen.get(unseen_key, [])
             self._feedback("The waiting reply changed while the dialog was open. Nothing was "
-                           f"sent; press {key_name('Ctrl+Shift+E')} again for the new one."
+                           f"sent; press {key_name(your_key('Ctrl+Shift+E'))} again for the new one."
                            if conversation is not None and conversation.pending is not None
                            else "Nothing was sent: the reply is no longer waiting.")
             return
@@ -1179,12 +1179,12 @@ class AgentChats:
             to = conversation.members[conversation.pending.to_index].name
             if not conversation.pending.finished:
                 parts.append(f"{frm}'s reply is waiting to go to {to}; "
-                             f"{key_name('Ctrl+Shift+E')} hands it on.")
+                             f"{key_name(your_key('Ctrl+Shift+E'))} hands it on.")
         if conversation.paused and conversation.stop_reason:
             parts.append(conversation.stop_reason)
         if conversation.pending is not None and conversation.pending.finished:
             # After the reason: "Codex said the work is done. Ctrl+Shift+E ..."
-            parts.append(f"{key_name('Ctrl+Shift+E')} hands {frm}'s last reply to {to}.")
+            parts.append(f"{key_name(your_key('Ctrl+Shift+E'))} hands {frm}'s last reply to {to}.")
         nxt = conversation.members[conversation.next_index].name
         return f"{conversation.title}: {' '.join(parts)} {relay} What you type goes to {nxt}."
 
@@ -1225,7 +1225,7 @@ class AgentChats:
         if conversation is None:
             self._feedback("Load an agent conversation first.")
             return
-        choices = [f"Approve each hand-off ({key_name('Ctrl+Shift+E')} passes each reply on)"]
+        choices = [f"Approve each hand-off ({key_name(your_key('Ctrl+Shift+E'))} passes each reply on)"]
         if self.speech.agent_auto_mode:
             choices += ["Automatic, saying every reply",
                         "Automatic, saying only when it stops or needs you"]

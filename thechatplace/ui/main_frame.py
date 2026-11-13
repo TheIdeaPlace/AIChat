@@ -57,7 +57,8 @@ from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, backup, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
-from ..commands import MENU_BAR, Menu, command as find_command, menu_label, with_key
+from ..commands import (MENU_BAR, Menu, command as find_command, menu_label,
+                        menu_path as find_command_path, with_key)
 from ..keymap import KeyMap, customizable, spoken as spoken_key
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_EDIT_TOOLS, MODELS,
                           PERMISSION_MODES, PermissionRequest, ResumeRefused, TurnEvent,
@@ -115,6 +116,7 @@ from .. import rewind
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
 from .subagent_host import SubagentsHost
+from .keys_dialog import KeyboardShortcutsDialog
 from .live_turns import LiveTurns
 from .claude_extras import ClaudeExtras
 from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
@@ -125,7 +127,8 @@ from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
                           is_web_url, problems_short, problems_text)
 from ..rendering import html_page, message_page
-from ..ui_text import (markdown_as_text, set_stop_key, shortcuts_html, update_item_label,
+from ..ui_text import (markdown_as_text, set_your_keys, shortcuts_html, update_item_label,
+                       your_key,
                        update_item_spoken, key_name)
 from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
                       ConnectedToolsDialog, ElicitationDialog,
@@ -233,9 +236,15 @@ LIST_MIN_WIDTH = 200
 #: The messages list's line when there are no sessions to choose (#182).
 #: Short enough to fit the list at the window's usual size, as a list's rows
 #: don't wrap.
-NO_SESSIONS_YET = ("No sessions yet. Start one with File, New Session ("
-                   + key_name("Ctrl+N")
-                   + "), in a supported desktop app or in a terminal.")
+def no_sessions_yet() -> str:
+    """The line, with New Session's key in effect (#635)."""
+    return ("No sessions yet. Start one with File, New Session ("
+            + key_name(your_key("Ctrl+N"))
+            + "), in a supported desktop app or in a terminal.")
+
+
+#: The line with the default key, as most tests have it.
+NO_SESSIONS_YET = no_sessions_yet()
 
 
 #: Keys of the rows after the conversation: queued and steered messages, and
@@ -639,7 +648,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.update_item = items["check_for_updates"]
         self.update_item.SetItemLabel(update_item_label(__version__))
         self.SetMenuBar(bar)
-        set_stop_key(spoken_key(self.keymap.key("stop_running_turn"), "win32"))
+        self._say_your_keys()
 
     def _key_of(self, entry):
         """The key in effect for a menu-bar command (#635), or None for one
@@ -666,11 +675,27 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         event.SetEventObject(self)
         self.GetEventHandler().ProcessEvent(event)
 
+    def _say_your_keys(self):
+        """What the window says names your keys (#635): each changed default
+        to yours (as said), or "" if you took its key, with where the
+        command is."""
+        set_your_keys({
+            self.keymap.default(c): (spoken_key(self.keymap.key(c), 'win32'),
+                                     find_command_path(c))
+            for c, _ in self.keymap.items()
+            if self.keymap.default(c) and self.keymap.changed(c)})
+
+    def _say_key_result(self, text: str):
+        """The answer to a key pressed in Change Key (#640): said even with
+        announcements silent, and over the last one, as each press is a
+        question you just asked."""
+        self._say(text, force=True, interrupt=True, window=wx.GetActiveWindow())
+
     def apply_keys(self):
         """Show and use the keys in ``self.keymap`` at once (#635): the menu
         bar's labels carry the accelerators, which is also what a screen
         reader reads as each item's shortcut."""
-        set_stop_key(spoken_key(self.keymap.key("stop_running_turn"), "win32"))
+        self._say_your_keys()
         for command_id, item in self.menu_items.items():
             entry = find_command(command_id)
             if command_id == "check_for_updates" or not customizable(entry):
@@ -753,6 +778,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "properties": lambda e: self.on_properties(),
             "show_tool_activity": self.on_toggle_activity_menu,
             "mute_all_sounds": self.on_toggle_mute_sounds,
+            "customize_keyboard_shortcuts": lambda e: self.on_customize_keys(),
             "stop_running_turn": self.on_stop,
             "stop_background_task": lambda e: self.on_stop_background_task(),
             "turn_status": self.on_turn_status,
@@ -1915,7 +1941,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Every session, not just those the view shows: a group with none in
         # it isn't a first run.
         if not self._first_snapshot and not self._snapshot.sessions:
-            return NO_SESSIONS_YET
+            return no_sessions_yet()
         return key_name("No session loaded. Choose one in the session list and press Enter.")
 
     def _sync_no_session_line(self):
@@ -2971,7 +2997,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # Another dialog opened while the transcript was read: don't
             # stack this one on it and send focus behind it.
             self._feedback(key_name("Properties: another window is open. Close it and press "
-                           "Alt+Enter again."))
+                           f"{your_key('Alt+Enter')} again."))
             return
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         if transcript is not None and info.provider == 'codex':
@@ -3537,7 +3563,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             name = provider_name(info.provider)
             label = (f"Getting {name} ready." if self._still_preparing(info) else
                      state.problem if state is not None and state.problem else
-                     f"{name} is waiting for you. {key_name('Ctrl+Shift+A')} answers." if state is not None and state.requests else
+                     f"{name} is waiting for you. {key_name(your_key('Ctrl+Shift+A'))} answers." if state is not None and state.requests else
                      f"{name} is working." if state is not None and state.state == WORKING else "Ready.")
             if state is not None and state.queued:
                 label += " " + self._queued_words(len(state.queued))
@@ -3573,7 +3599,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             waiting = self._pending.get(info.cli_session_id)
             runner = self._runners.get(info.cli_session_id)
             if running and waiting:
-                label = f"{end_sentence('Waiting for you: ' + waiting[0].summary())} {key_name('Ctrl+Shift+A')} answers."
+                label = f"{end_sentence('Waiting for you: ' + waiting[0].summary())} {key_name(your_key('Ctrl+Shift+A'))} answers."
             elif running and getattr(runner, "waiting_on_background", False):
                 # Answered; kept open only so the work can finish (#161).
                 label = (f"Claude answered. {announce.background_text(runner.background_tasks)} "
@@ -3707,7 +3733,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         summary = summary_text(fresh)
         if not summary:
             return
-        text = f"{self._open.title}: {summary} {key_name('Ctrl+Shift+D')} shows the changes."
+        text = f"{self._open.title}: {summary} {key_name(your_key('Ctrl+Shift+D'))} shows the changes."
         if self.speech.announce == ANNOUNCE_FULL:
             self._feedback(text)  # queued behind the reply, not cutting it off
         else:
@@ -4080,7 +4106,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         if index == len(sessions):
             self._send_generated(info, remote.LIST_PROMPT,
-                                 f"Asking Claude in {info.title} for your other computers' sessions. {key_name('Ctrl+Shift+M')} again once it has answered.")
+                                 f"Asking Claude in {info.title} for your other computers' sessions. {key_name(your_key('Ctrl+Shift+M'))} again once it has answered.")
             return
         target = sessions[index]
         address = remote.addresses(sessions)[index]
@@ -4502,7 +4528,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if runner is not None and self._pending.get(info.cli_session_id):
             request = self._pending[info.cli_session_id][0]
             self._feedback(f"{info.title} is waiting for you: {request.summary()}. "
-                           f"{key_name('Ctrl+Shift+A')} answers.{tasks}")
+                           f"{key_name(your_key('Ctrl+Shift+A'))} answers.{tasks}")
             return
         if runner is not None and getattr(runner, "waiting_on_background", False):
             self._feedback(f"{info.title}: Claude answered. "
@@ -4588,7 +4614,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         title = own.title if own else "A session"
         decision = self._ask(title, request, own)
         if decision is None:
-            self._feedback(key_name("Not answered yet. Claude is still waiting; Ctrl+Shift+A answers."))
+            self._feedback(key_name(f"Not answered yet. Claude is still waiting; {your_key('Ctrl+Shift+A')} answers."))
             return
         response, said, changes = decision
         self._apply_answer(session_id, request, response, said, changes)
@@ -4732,7 +4758,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()
         if queue:
-            said += f" Next: {queue[0].summary()}. {key_name('Ctrl+Shift+A')} answers."
+            said += f" Next: {queue[0].summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers."
         self._feedback(said)
         self._update_send_state()
         self.refresh_sessions()
@@ -5545,9 +5571,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             queue.append(event.request)
             if len(queue) == 1:
                 self._sound(sound_events.NEEDS_YOU, self._own_key(session_id))
-                self._say(f"{title} needs you. {event.request.summary()}. {key_name('Ctrl+Shift+A')} answers.")
+                self._say(f"{title} needs you. {event.request.summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers.")
                 self._notify(self._own_key(session_id), f"{title} needs you",
-                             f"{event.request.summary()}. {key_name('Ctrl+Shift+A')} answers.",
+                             f"{event.request.summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers.",
                              needs_you=True)
             else:
                 self._status(f"{title}: {len(queue)} things are waiting for you.")
@@ -6490,7 +6516,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _find_in_messages(self):
         if self._open is None:
-            self._feedback(key_name("No session loaded. In the session list, Ctrl+F finds sessions."))
+            self._feedback(key_name(f"No session loaded. In the session list, {your_key('Ctrl+F')} finds sessions."))
             return
         returning_to = wx.Window.FindFocus()
         text = self._ask_text("Find in Messages", "Find messages containing:", self._find_text)
@@ -6547,7 +6573,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._find_all_focus = returning_to
         count = len(targets)
         self._feedback(f'Searching {count} session{"s" if count != 1 else ""} for "{text}". '
-                       f'{key_name("Ctrl+Shift+S")} again stops.')
+                       f'{key_name(your_key("Ctrl+Shift+S"))} again stops.')
         self._stop_find_all_timer()
         self._find_all_timer = wx.CallLater(FIND_ALL_PROGRESS_MS, self._say_find_all_progress,
                                             run, count)
@@ -6610,7 +6636,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._open_find_results(results)
             return
         self._find_all_waiting = (time.monotonic(), results)
-        self._say(f"{results.summary()} Press {key_name('Ctrl+Shift+S')} to see them.")
+        self._say(f"{results.summary()} Press {key_name(your_key('Ctrl+Shift+S'))} to see them.")
 
     def _open_find_results(self, results):
         returning_to = wx.Window.FindFocus()
@@ -6656,7 +6682,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         where = f"Loaded {match.title}. " if loaded else ""
         if row is None or row >= self.chat_list.GetCount():
             count = sum(1 for m in visible if m.kind not in TAIL_KINDS)
-            self._feedback(f"{where}{count} message{('s' if count != 1 else '')}. The message found isn't in the list now; if it was a tool call, {key_name('Ctrl+T')} shows them.")
+            self._feedback(f"{where}{count} message{('s' if count != 1 else '')}. The message found isn't in the list now; if it was a tool call, {key_name(your_key('Ctrl+T'))} shows them.")
             return False
         self.chat_list.SetSelection(row)
         self.chat_list.SetFocus()
@@ -7742,7 +7768,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # Said, never opened by itself: a dialog appearing a moment
                 # later would take keys you were typing elsewhere.
                 if _folder_key(info.cwd) in self._commands:
-                    self._feedback(key_name("Commands are ready: press Ctrl+/ or Commands."))
+                    self._feedback(key_name(f"Commands are ready: press {your_key('Ctrl+/')} or Commands."))
                 else:
                     self._feedback("Couldn't get the commands from Claude Code.")
             self._fetch_commands(info.cwd, then=when_ready)
@@ -7788,6 +7814,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     "Load one of The Chat Place's own sessions to use a prompt in its reply "
                     "box.")
         return ""
+
+    def on_customize_keys(self):
+        """Tools, Customize Keyboard Shortcuts (#635): changes are saved
+        and shown in the window as they're made."""
+        self._modal(KeyboardShortcutsDialog(self, self.keymap, self._feedback, self.apply_keys,
+                                            say_key=self._say_key_result))
 
     def on_prompts(self):
         """Chat, Prompts (#131): look after your saved prompts, and Use one

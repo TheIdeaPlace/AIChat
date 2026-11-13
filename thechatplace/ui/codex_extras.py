@@ -88,8 +88,8 @@ def copy_note(*, short=False, tools=True, own=True):
     question asked before; ``tools=False`` leaves connected tools out of it,
     for a tools copy, which has the ones you chose."""
     if not own:
-        from ..ui_text import key_name
-        key = key_name('Ctrl+Shift+O')
+        from ..ui_text import key_name, your_key
+        key = key_name(your_key('Ctrl+Shift+O'))
         if short:
             return f"It asks before changing files; Change Permission Mode ({key}) lets it edit."
         return ("The new chat asks before changing files, and uses Codex's default model and effort. "
