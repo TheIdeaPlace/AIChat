@@ -437,7 +437,7 @@ too).
   folder, asked for in the background when the session loads (no turn, no cost) and kept
   current by each turn. If it isn't there yet, you hear "Commands are ready" when it is; the list
   never opens by itself.
-- **Prompts** (Chat, Prompts, or the command palette): a library of messages you send often, each with a
+- **Prompts** (Ctrl+Shift+P, Chat, Prompts): a library of messages you send often, each with a
   name. The dialog lists them by name, with the selected one's text below to read (Alt+X). **Use**
   (or Enter on a prompt) closes it and puts the prompt in the reply box of the loaded Chat Place
   session: in place of an empty reply, or at the cursor in what you've typed (replacing any text
@@ -1758,9 +1758,6 @@ The same list is in the app under Help, Keyboard Shortcuts (F1), as a page with 
 table for each group, so you can move by heading and read each key with what it does. Alt+P
 shows it as plain text instead.
 
-**View, Command Palette** (Ctrl+Shift+P) runs any command by typing part of its name, menu or key:
-arrow to it and press Enter. Commands you used this session come first.
-
 These are the default keys. **Tools, Customize Keyboard Shortcuts** (Alt+T, K) changes them: give
 any command a key, move one, take one away, or put the defaults back. Press the keys you want and
 you hear what they are, and whether another command has them or why they can't be used. Changes
@@ -1789,7 +1786,7 @@ kept in `keys.json`. The user guide's "Changing keyboard shortcuts" has the deta
 | Messages | Ctrl+F, F3, Shift+F3 | Find a message by its text; next; previous |
 | Anywhere | Ctrl+E | Export the session to a file |
 | Reply box | Ctrl+/ | Insert a slash command or skill |
-| Anywhere | Ctrl+Shift+P | Command palette: type part of a command's name and press Enter to run it |
+| Anywhere | Ctrl+Shift+P | Prompts: use, add, edit, reorder or delete your saved prompts |
 | Anywhere | Ctrl+Shift+F | Attach files or images to the next message |
 | Anywhere | Ctrl+Shift+M | Other machines: list your sessions on other computers and message one |
 | Anywhere | Ctrl+Shift+E | Send Reply to Another Chat: pass the selected (or latest) reply to another Chat Place chat, Claude, Codex or Copilot, or a new one; in an agent conversation, hand the waiting reply on |

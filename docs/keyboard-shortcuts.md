@@ -88,7 +88,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+A | Answer: approve or deny a tool, answer the provider's questions, or approve its plan (the loaded session first, then another chat waiting for an answer). Escape in the dialog answers later. In your own answer, What to Change, or a reason for Deny, Shift+Enter starts a new line |
 | Ctrl+Shift+Y | Ask Aside (Claude and Codex chats): a quick question about the selected (or loaded) chat, answered without the question or answer being added to it; Ctrl+Enter asks, and the answer is read and goes in the Answer box |
 | Ctrl+Shift+K | What AI knows about you: choose Claude or Codex, then read local instructions, memories, skills and settings, or open them in your editor |
-| Ctrl+Shift+P | Command palette: type part of a command's name, menu or key, arrow to it and press Enter to run it; Escape closes. Chat, Prompts has your saved prompts |
+| Ctrl+Shift+P | Prompts: your saved prompts, to use (Enter puts one in the reply box), add, edit, reorder or delete |
 | Alt+Enter | Properties: what can be known about the selected session (or, in the messages, the selected message), one line each; Ctrl+C copies a line. Option+Return on a Mac |
 | F1 | This list of shortcuts |
 | Alt+H, G | The user guide, read by heading |

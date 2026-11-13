@@ -76,16 +76,16 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Command Palette has it now. Assign moves it to Sounds, and Command Palette will have\nno key.",
+   "label": "Prompts has it now. Assign moves it to Sounds, and Prompts will have no key.",
    "rect": [
     8,
     79,
     488,
-    31
+    16
    ],
    "best": [
-    473,
-    31
+    412,
+    16
    ],
    "depth": 0,
    "parent": -1,
@@ -98,7 +98,7 @@
    "label": "&Assign",
    "rect": [
     8,
-    126,
+    111,
     75,
     23
    ],
@@ -117,7 +117,7 @@
    "label": "&Try Another",
    "rect": [
     89,
-    126,
+    111,
     84,
     23
    ],
@@ -136,7 +136,7 @@
    "label": "Cancel",
    "rect": [
     421,
-    126,
+    111,
     75,
     23
    ],
