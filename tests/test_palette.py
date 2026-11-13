@@ -55,6 +55,16 @@ def test_a_key_finds_its_command():
     assert found == ["find_in_all_sessions"]
 
 
+def test_a_key_is_found_however_it_is_written():
+    # As keymap names it, and as said on Windows; a Mac says Cmd (#641).
+    keys = {"insert_command": "Cmd+Slash Ctrl+Slash", "settings": "Cmd+Comma Ctrl+Comma"}
+    for typed in ("ctrl+/", "ctrl+slash", "cmd+slash", "Cmd+/", "cmd+sl"):
+        assert _ids(matches(typed, entries(), lambda i: keys.get(i, ""))) == ["insert_command"], typed
+    assert _ids(matches("cmd+comma", entries(), lambda i: keys.get(i, ""))) == ["settings"]
+    # Part of a key is still words to match.
+    assert "insert_command" in _ids(matches("ctrl+sl", entries(), lambda i: keys.get(i, "")))
+
+
 def test_nothing_typed_lists_recent_first_then_menu_order():
     found = _ids(matches("", entries(), recent=["sounds", "find"]))
     assert found[:2] == ["sounds", "find"]

@@ -57,10 +57,26 @@ def _words(text: str) -> List[str]:
     return re.findall(r"[\w+./-]+", text.lower())
 
 
+def _as_key(word: str) -> str:
+    """A typed word that's a key, as Windows names it aloud ("cmd+/",
+    "ctrl+/" and "ctrl+slash" are all "ctrl+slash"), so it's found however
+    it's written and on any platform; any other word as it is. The spoken
+    name, as a key's marks ("," in Ctrl+,) aren't kept in words."""
+    if "+" not in word:
+        return word
+    from .keymap import normalize, spoken
+    try:
+        return spoken(normalize(word), "win32").lower()
+    except ValueError:
+        return word
+
+
 def matches(query: str, items: Sequence[Entry], key_of: Callable[[str], str] = lambda i: "",
             recent: Iterable[str] = ()) -> List[Entry]:
-    """``items`` that match ``query``, best first (see the module's note)."""
-    wanted = _words(query)
+    """``items`` that match ``query``, best first (see the module's note).
+    ``key_of`` gives a command's key as Windows says it ("Ctrl+Slash"), and
+    may add it as this platform says it ("Cmd+Slash")."""
+    wanted = [_as_key(w) for w in _words(query)]
     if not wanted:
         order = {command_id: n for n, command_id in enumerate(recent)}
         return sorted(items, key=lambda e: (order.get(e.id, len(order)), items.index(e)))

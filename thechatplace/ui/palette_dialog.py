@@ -77,9 +77,10 @@ class CommandPaletteDialog(wx.Dialog):
         return spoken(key) if key else ""
 
     def _match_key(self, command_id: str) -> str:
-        """The key as said and as written ("Ctrl+Slash Ctrl+/"), to match."""
+        """The key as said here and as Windows says it ("Cmd+Slash
+        Ctrl+Slash" on a Mac), to match what's typed (palette._as_key)."""
         key = self.keys.key(command_id)
-        return f"{spoken(key)} {key}" if key else ""
+        return f"{spoken(key)} {spoken(key, 'win32')}" if key else ""
 
     def row(self, entry: palette.Entry) -> str:
         return palette.row(entry, self._key(entry.id), self._available(entry.id))
