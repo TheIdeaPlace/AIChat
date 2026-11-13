@@ -67,7 +67,7 @@ def test_the_menu_item_opens_it(frame, monkeypatch):
 
 def test_each_row_says_the_command_its_key_and_where_it_is(dialog):
     rows = dialog.list.GetStrings()
-    assert f"Command Palette, {K('Ctrl+Shift+P')}, View menu" in rows
+    assert f"Prompts, {K('Ctrl+Shift+P')}, Chat menu" in rows
     assert "Sounds, no key, Tools menu" in rows
     assert "Change Model, no key, Chat, Chat Settings" in rows
     assert f"Stop Running Turn, {K('Ctrl+Period')}, Chat menu" in rows
@@ -80,7 +80,7 @@ def test_the_filter_narrows_by_name_key_or_menu(dialog):
     dialog.filter.SetValue("chat settings")
     assert all("Chat Settings" in row for row in dialog.list.GetStrings())
     dialog.filter.SetValue(K('Ctrl+Shift+P').lower())
-    assert dialog.list.GetStrings() == [f"Command Palette, {K('Ctrl+Shift+P')}, View menu"]
+    assert dialog.list.GetStrings() == [f"Prompts, {K('Ctrl+Shift+P')}, Chat menu"]
     dialog.filter.SetValue("no such thing")
     assert dialog.list.GetStrings() == ["No command matches the filter."]
     assert dialog._selected_id() is None
@@ -102,13 +102,13 @@ def test_changing_a_key_saves_shows_and_says_it(dialog, frame, monkeypatch):
     monkeypatch.setattr(keys_dialog, "KeyCaptureDialog", Pressed)
     _select(dialog, "sounds")
     dialog.on_change()
-    assert dialog.said[-1] == f"Sounds: {K('Ctrl+Shift+P')}. Command Palette has no key now."
+    assert dialog.said[-1] == f"Sounds: {K('Ctrl+Shift+P')}. Prompts has no key now."
     assert dialog._selected_id() == "sounds"
     assert dialog.list.GetStringSelection() == f"Sounds, {K('Ctrl+Shift+P')}, changed, Tools menu"
     assert frame.menu_items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+Shift+P"
-    assert frame.menu_items["command_palette"].GetItemLabel() == "Command &Palette..."
+    assert frame.menu_items["prompts"].GetItemLabel() == "&Prompts..."
     saved = json.loads((platform_paths.app_data_dir() / "keys.json").read_text(encoding="utf-8"))
-    assert saved["keys"] == {"sounds": "Ctrl+Shift+P", "command_palette": ""}
+    assert saved["keys"] == {"sounds": "Ctrl+Shift+P", "prompts": ""}
 
 
 def test_remove_reset_and_reset_all(dialog, frame, monkeypatch):
@@ -213,8 +213,8 @@ def test_a_pressed_key_is_shown_and_said_with_what_assign_would_do(capture, monk
     assert capture.GetTitle() == "Change Key: Sounds"
     _press(capture, monkeypatch, ord("P"), ctrl=True, shift=True)
     assert capture.key == "Ctrl+Shift+P" and capture.box.GetValue() == K("Ctrl+Shift+P")
-    assert capture.said[-1] == (f"{K('Ctrl+Shift+P')}. Command Palette has it now. Assign moves it to "
-                                "Sounds, and Command Palette will have no key.")
+    assert capture.said[-1] == (f"{K('Ctrl+Shift+P')}. Prompts has it now. Assign moves it to "
+                                "Sounds, and Prompts will have no key.")
     _press(capture, monkeypatch, wx.WXK_F7)
     assert capture.said[-1] == "F7. Nobody has it. Assign gives it to Sounds."
     _press(capture, monkeypatch, ord("V"), ctrl=True)

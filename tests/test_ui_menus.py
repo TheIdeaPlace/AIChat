@@ -119,13 +119,13 @@ def test_the_menus_start_with_the_keys_in_keys_json(env):
     from thechatplace.ui.main_frame import MainFrame
     path = platform_paths.app_data_dir() / "keys.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"version": 1, "keys": {"command_palette": "Ctrl+K", "sounds": "Ctrl+J",
+    path.write_text(json.dumps({"version": 1, "keys": {"prompts": "Ctrl+K", "sounds": "Ctrl+J",
                                                          "find": ""}}), encoding="utf-8")
     window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"), check_updates_at_start=False)
     try:
         items = window.menu_items
-        assert items["command_palette"].GetItemLabel() == "Command &Palette...\tCtrl+K"
-        assert _accel(items["command_palette"]) == "Ctrl+K"
+        assert items["prompts"].GetItemLabel() == "&Prompts...\tCtrl+K"
+        assert _accel(items["prompts"]) == "Ctrl+K"
         assert items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+J"
         assert items["find"].GetItemLabel() == "F&ind..." and items["find"].GetAccel() is None
     finally:
@@ -138,13 +138,13 @@ def test_the_menus_start_with_the_keys_in_keys_json(env):
 
 def test_a_changed_key_shows_at_once_in_the_menus(frame):
     taken = frame.keymap.set("sounds", "Ctrl+Shift+P")
-    assert taken == "command_palette"
+    assert taken == "prompts"
     frame.apply_keys()
     items = frame.menu_items
     assert items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+Shift+P"
     assert _accel(items["sounds"]) == "Ctrl+Shift+P"
-    assert items["command_palette"].GetItemLabel() == "Command &Palette..."
-    assert items["command_palette"].GetAccel() is None
+    assert items["prompts"].GetItemLabel() == "&Prompts..."
+    assert items["prompts"].GetAccel() is None
     # The context menus follow the menu bar.
     frame.keymap.set("properties", "Ctrl+B")
     frame.apply_keys()

@@ -1938,20 +1938,6 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Key: the longest reason a key can't be used (AltGr)"
-  },
-  "command-palette": {
-   "kind": "dialog",
-   "png": "command-palette-hc-aquatic-100.png",
-   "json": "command-palette-hc-aquatic-100.json",
-   "title": "Command Palette",
-   "class": "CommandPaletteDialog",
-   "size": [
-    560,
-    460
-   ],
-   "capture": "PrintWindow",
-   "problems": [],
-   "about": "View, Command Palette, after typing chat"
   }
  },
  "seconds": 280.2
