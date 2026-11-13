@@ -2189,11 +2189,25 @@ def d_prompts(frame, env):
     return frame.on_prompts
 
 
+def d_command_palette(frame, env):
+    """View, Command Palette (#637) after typing "chat", with one command
+    used before (it comes first only with nothing typed)."""
+    from thechatplace.ui.palette_dialog import CommandPaletteDialog
+
+    def show():
+        dialog = CommandPaletteDialog(frame, frame.keymap, ["sounds"],
+                                      lambda i: frame.menu_items[i].IsEnabled(),
+                                      lambda text: None)
+        dialog.search.SetValue("chat")
+        return frame._modal(dialog)
+    return show
+
+
 def d_keyboard_shortcuts(frame, env):
     """Tools, Customize Keyboard Shortcuts (#635), with Sounds given a key
-    (so a row reads "changed") and Prompts' taken away."""
+    (so a row reads "changed") and Find's taken away."""
     frame.keymap.set("sounds", "Ctrl+J")
-    frame.keymap.set("prompts", "")
+    frame.keymap.set("find", "")
     frame.apply_keys()
     return frame.on_customize_keys
 
@@ -2506,6 +2520,7 @@ SURFACES = {
     "about-you-codex": ("dialog", d_about_you_codex, "What AI Knows About You: Codex"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
     "prompts": ("dialog", d_prompts, "Chat, Prompts"),
+    "command-palette": ("dialog", d_command_palette, "View, Command Palette, after typing chat"),
     "keyboard-shortcuts": ("dialog", d_keyboard_shortcuts,
                            "Tools, Customize Keyboard Shortcuts: one key changed, one removed"),
     "key-capture": ("dialog", d_key_capture, "Change Key: a key another command has"),
@@ -2640,6 +2655,7 @@ DIALOG_CLASSES = {
     "about-you-codex": "AboutYouDialog",
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
+    "command-palette": "CommandPaletteDialog",
     "keyboard-shortcuts": "KeyboardShortcutsDialog",
     "key-capture": "KeyCaptureDialog",
     "key-capture-refused": "KeyCaptureDialog",
