@@ -2213,7 +2213,7 @@ def d_keyboard_shortcuts(frame, env):
 
 
 def d_key_capture(frame, env):
-    """Change Key for Sounds (#635) after pressing a key Prompts has, so
+    """Change Key for Sounds (#635) after pressing a key Command Palette has, so
     the status line is at its longest."""
     from thechatplace.ui.keys_dialog import KeyCaptureDialog
 

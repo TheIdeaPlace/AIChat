@@ -76,6 +76,11 @@ class CommandPaletteDialog(wx.Dialog):
         key = self.keys.key(command_id)
         return spoken(key) if key else ""
 
+    def _match_key(self, command_id: str) -> str:
+        """The key as said and as written ("Ctrl+Slash Ctrl+/"), to match."""
+        key = self.keys.key(command_id)
+        return f"{spoken(key)} {key}" if key else ""
+
     def row(self, entry: palette.Entry) -> str:
         return palette.row(entry, self._key(entry.id), self._available(entry.id))
 
@@ -83,7 +88,12 @@ class CommandPaletteDialog(wx.Dialog):
         return f"Commands, {len(self._shown)}"
 
     def _fill(self):
-        self._shown = palette.matches(self.search.GetValue(), self._all, self._key, self._recent)
+        self._shown = palette.matches(self.search.GetValue(), self._all, self._match_key,
+                                      self._recent)
+        #: Whether a move has said a row since the list last changed: the
+        #: first Down (or Up) after typing says the top match, unheard so
+        #: far, rather than skipping it (#641).
+        self._heard = False
         if self._shown:
             self.list.Set([self.row(e) for e in self._shown])
             self.list.SetSelection(0)
@@ -104,6 +114,12 @@ class CommandPaletteDialog(wx.Dialog):
                 and not event.HasAnyModifiers()):
             self.move(_MOVES[code])
             return
+        if (wx.Window.FindFocus() is self.list and code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and not event.HasAnyModifiers()):
+            # Here, not left to the default button, which a Mac's list may
+            # not pass Return to (as #640's Enter in a list taught).
+            self.on_run()
+            return
         if press_focused_button_on_a_mac(event):
             return
         event.Skip()
@@ -113,7 +129,10 @@ class CommandPaletteDialog(wx.Dialog):
         if not self._shown:
             self._say("No command matches.")
             return
-        index = max(0, min(len(self._shown) - 1, self.list.GetSelection() + step))
+        index = self.list.GetSelection()
+        if self._heard:
+            index = max(0, min(len(self._shown) - 1, index + step))
+        self._heard = True
         self.list.SetSelection(index)
         self._say(self.row(self._shown[index]))
 

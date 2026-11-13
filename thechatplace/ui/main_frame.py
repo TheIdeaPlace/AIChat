@@ -7822,17 +7822,33 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         typing, and run it as its menu item would, once the palette has
         closed and focus is back where it was."""
         recent = getattr(self, "_recent_commands", [])
+        # Commands read where focus is (Find in the session list, say), and
+        # on GTK focus comes back after the dialog late: put it back first
+        # (#641).
+        returning_to = wx.Window.FindFocus()
         dialog = CommandPaletteDialog(
             self, self.keymap, recent,
             lambda command_id: self.menu_items[command_id].IsEnabled(),
-            self._say_key_result)
+            self._say_row)
         try:
             chosen = dialog.chosen if dialog.ShowModal() == wx.ID_OK else None
         finally:
             dialog.Destroy()
+        if returning_to is not None and not self._gone():
+            try:
+                returning_to.SetFocus()
+            except RuntimeError:
+                pass  # it went while the palette was open
         if chosen:
             self._recent_commands = [chosen] + [c for c in recent if c != chosen][:9]
             wx.CallAfter(self._run_command, chosen)
+
+    def _say_row(self, text: str):
+        """A row arrived on in a list whose focus is elsewhere (the palette's
+        Search box, #641): said at once, always, but not kept as the last
+        announcement nor put in the status bar, which are for news."""
+        if text:
+            self._speak_announcement(text, interrupt=True, window=wx.GetActiveWindow())
 
     def on_customize_keys(self):
         """Tools, Customize Keyboard Shortcuts (#635): changes are saved

@@ -52,7 +52,9 @@ def row(entry: Entry, key: str = "", available: bool = True) -> str:
 
 
 def _words(text: str) -> List[str]:
-    return re.findall(r"[\w+./,-]+", text.lower())
+    # Not the comma: rows read "Chat, Chat Settings", and a key's comma is
+    # said ("Ctrl+Comma").
+    return re.findall(r"[\w+./-]+", text.lower())
 
 
 def matches(query: str, items: Sequence[Entry], key_of: Callable[[str], str] = lambda i: "",

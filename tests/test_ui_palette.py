@@ -67,11 +67,20 @@ def test_typing_narrows_and_arrows_move_from_the_search_box(palette, monkeypatch
         f"Change Permission Mode, {K('Ctrl+Shift+O')}, Chat, Chat Settings"
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: palette.search))
     palette.search.SetValue("chat")
+    # The first Down after typing says the top match, unheard so far (#641).
+    palette._on_key(_key(wx.WXK_DOWN))
+    assert palette.list.GetSelection() == 0
+    assert palette.said[-1] == f"Chat Permissions, {K('Ctrl+Shift+H')}, Chat, Chat Settings"
     palette._on_key(_key(wx.WXK_DOWN))
     assert palette.said[-1] == palette.list.GetStringSelection() == "Chat Options, Chat, Chat Settings"
     palette._on_key(_key(wx.WXK_UP))
     palette._on_key(_key(wx.WXK_UP))  # stays on the first
     assert palette.list.GetSelection() == 0
+    # A key, as written or as said, finds its command.
+    palette.search.SetValue("ctrl+/")
+    assert palette.selected().id == "insert_command"
+    palette.search.SetValue("ctrl+slash")
+    assert palette.selected().id == "insert_command"
     palette.search.SetValue("zzzz")
     assert palette.list.GetStrings() == ["No command matches."]
     palette._on_key(_key(wx.WXK_DOWN))

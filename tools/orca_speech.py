@@ -178,7 +178,8 @@ STEPS = [
     # arrived on; Escape closes.
     Step("Command Palette", ["ctrl+shift+p"], expect=["Command Palette", "Search"]),
     Step("Command Palette, typed and Down", ["p", "e", "r", "m", "Down"],
-         expect=["Change Permission Mode"]),
+         expect=["Delete Session Permanently"]),
+    Step("Command Palette, Down again", ["Down"], expect=["Change Permission Mode"]),
     Step("Command Palette closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
