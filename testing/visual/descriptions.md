@@ -631,11 +631,17 @@ This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "
 
 A dialog, 666 by 553 at 100%. "Filter:" (F underlined) over an empty box the dialog's width. "Commands:" (m underlined) over a list filling the middle, with a vertical scroll bar: the first row, "New Session, Ctrl+N, File menu", selected, then New Agent Conversation, Continue Here, Export Session, Export Chats, the four Backup items ("Back Up Now, no key, File, Backup"), Exit, then the Session menu's commands, and Answer to Turn Status of the Chat menu at the bottom edge. In one row along the bottom, "Change Key...", "Remove Key", "Reset to Default" and "Reset All..." (C, R, D, A underlined), and "Close" (l underlined) at the right. In High Contrast Aquatic the list is white on #202020 and the selected row light aqua with dark text.
 
+**What looks off:** Nothing. (The list is named "Commands, 74" since the command palette was added, #637.)
+
+## command-palette: View, Command Palette, after typing "chat" (#637)
+
+A dialog titled "Command Palette", about 546 by 453 at 100%. "Search:" (S underlined) over a box with "chat" in it, selected; "Commands:" (C underlined) over a list filling the middle with a vertical scroll bar, its first row "Chat Permissions, Ctrl+Shift+H, Chat, Chat Settings" selected, then Chat Options, Export Chats, the Chat menu's commands (Answer, Ask Aside, Stop Running Turn, "Stop Background Task, Chat menu, unavailable", Turn Status, Insert Command or Skill with "Ctrl+Slash", and on), Chat Settings' commands, Other Machines, and a View row half shown at the bottom edge. "Run" (default, R underlined) at the bottom left, "Close" (l underlined) at the right. In High Contrast Aquatic the list is white on #202020 with the selected row light aqua and dark text, and Run is filled light aqua.
+
 **What looks off:** Nothing.
 
 ## key-capture: Change Key, a key another command has (#635)
 
-A dialog titled "Change Key: Sounds", 506 by 253 at 100%. "Press the keys you want for Sounds. Its key now: no key." on one line; "Key:" (K underlined) over a read-only box reading "Ctrl+Shift+P"; under it "Prompts has it now. Assign moves it to Sounds, and Prompts will have no key." on one line; then "Assign" (default, A underlined), "Try Another" (T underlined) and, at the right, "Cancel". In High Contrast Aquatic the text is white on #202020 and Assign is filled light aqua with dark text.
+A dialog titled "Change Key: Sounds", 506 by 253 at 100%. "Press the keys you want for Sounds. Its key now: no key." on one line; "Key:" (K underlined) over a box reading "Ctrl+Shift+P" (selected, as the box has focus; it takes no typing since #640); under it, since Ctrl+Shift+P became the command palette's (#637), "Command Palette has it now. Assign moves it to Sounds, and Command Palette will have no key." on two lines, wrapping before "no key", nothing cut off; then "Assign" (default, A underlined), "Try Another" (T underlined) and, at the right, "Cancel". In High Contrast Aquatic the text is white on #202020 and Assign is filled light aqua with dark text.
 
 **What looks off:** Nothing.
 
