@@ -147,7 +147,7 @@ class RewindChats:
     # -- Rewind to Here --------------------------------------------------------
 
     def on_rewind_to_here(self):
-        """File, Rewind to Here (Ctrl+Shift+Z), and the messages list's menu:
+        """Chat, Retry from Here (Ctrl+Shift+Z), and the messages list's menu:
         back to just before one of your messages."""
         if self._open is not None and self._open.provider == 'codex':
             if not self._require_capability('branch', self._open):
@@ -352,7 +352,7 @@ class RewindChats:
     # -- Branch from Here --------------------------------------------------------
 
     def on_branch_from_here(self):
-        """File, Branch from Here, and the messages list's menu: a new chat
+        """Chat, Branch from Here, and the messages list's menu: a new chat
         whose history ends with the chosen message, to try another way."""
         if self._open is not None and self._open.provider == 'codex':
             if not self._require_capability('branch', self._open):

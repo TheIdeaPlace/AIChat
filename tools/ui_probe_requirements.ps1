@@ -7,7 +7,7 @@ A saved VM checkpoint keeps the packages it had. pip install -r leaves a
 package alone when its version number hasn't changed, and app-kit is pinned
 to a commit archive whose version number stays the same from commit to
 commit: #581 moved the pin to add a sound, the VM kept the old copy, and
-File, Sounds failed there. So the probe stamps the venv with a hash of the
+Tools, Sounds failed there. So the probe stamps the venv with a hash of the
 requirements files after installing, and when the hash differs it installs
 again, reinstalling by force each package pinned to an archive (a direct
 URL) rather than to a version number.

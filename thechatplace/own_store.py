@@ -52,8 +52,8 @@ class OwnSession:
     #: Permission rules chosen with "Allow for This Chat" (#187, #329), given
     #: to every later turn as ``--allowedTools``.
     allowed_tools: List[str] = field(default_factory=list)
-    #: When each of those rules was allowed, in ms (#329), for File, Chat
-    #: Permissions. Older releases don't write it, so a rule may have no time;
+    #: When each of those rules was allowed, in ms (#329), for Chat,
+    #: Chat Settings, Chat Permissions. Older releases don't write it, so a rule may have no time;
     #: none is ever made up for it.
     allowed_tools_at: Dict[str, int] = field(default_factory=dict)
     #: Folders kept with "Allow for This Chat" beside a rule (#332), given to
@@ -598,7 +598,7 @@ class OwnSessionStore:
         self.save()
 
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
-        """Remove a session (File, Delete Session Permanently) (its transcript is left alone)."""
+        """Remove a session (Session, Delete Session Permanently) (its transcript is left alone)."""
         session = self._sessions.pop((provider, cli_session_id), None)
         extras = self._extras.pop((provider, cli_session_id), None)
         if session is not None:
@@ -610,7 +610,13 @@ class OwnSessionStore:
                     self._extras[session.identity] = extras
                 raise
         if provider == 'codex':
+            # What The Chat Place saved for the chat goes with its entry: its
+            # task list, its Allow for This Chat rules and its automatic
+            # review history (#634). Delete Session Permanently comes here
+            # whether Codex deleted the chat or no longer had it.
             # Repeating removal also retries cleanup after a sharing violation.
             CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
-            from .providers.codex_permissions import CodexPermissionStore
-            CodexPermissionStore(self.path.parent / 'provider-permissions' / 'codex').remove(cli_session_id)
+            from .providers.codex_permissions import CodexPermissionStore, CodexReviewStore
+            permissions = self.path.parent / 'provider-permissions' / 'codex'
+            CodexPermissionStore(permissions).remove(cli_session_id)
+            CodexReviewStore(permissions).remove(cli_session_id)

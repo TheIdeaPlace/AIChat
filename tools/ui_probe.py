@@ -1120,7 +1120,7 @@ def d_sounds(frame, env):
 
 
 def d_sounds_own_scheme(frame, env):
-    """File, Sounds on a scheme of your own (#250): some events silent, others in other tones."""
+    """Tools, Sounds on a scheme of your own (#250): some events silent, others in other tones."""
     frame.speech.sound_scheme = "user-" + "a" * 32
     frame.speech.sound_schemes = {frame.speech.sound_scheme: {"name": "Quiet evenings", "events": {
         "ToolRan": "builtin:softbell/tool", "ReplyFinished": "builtin:wood/reply",
@@ -1134,7 +1134,7 @@ def d_sound_tutorial(frame, env):
 
 
 def d_sound_tutorial_from_sounds(frame, env):
-    """File, Sounds, Sound Tutorial (#596): its longer intro, for the scheme Sounds shows."""
+    """Tools, Sounds, Sound Tutorial (#596): its longer intro, for the scheme Sounds shows."""
     from thechatplace.ui.sounds_dialog import SoundTutorialDialog
     frame.speech.sound_scheme = "wood"
 
@@ -1159,7 +1159,7 @@ class _ProbeGallery:
 
 
 def d_sound_gallery(frame, env):
-    """File, Sounds, Browse Gallery (#250): two made-up schemes, the second already added."""
+    """Tools, Sounds, Browse Gallery (#250): two made-up schemes, the second already added."""
     from theideaplace_appkit import soundgallery
     from thechatplace import sound_events
     from thechatplace.ui.sound_gallery_dialog import SoundGalleryDialog
@@ -1389,7 +1389,7 @@ def d_copilot_permission_keep(frame, env):
 
 
 def d_chat_permissions_copilot(frame, env, *, moved=False):
-    """File, Chat Permissions for a Copilot chat in Auto, with two commands
+    """Chat, Chat Settings, Chat Permissions for a Copilot chat in Auto, with two commands
     allowed for it and your rules listed (#426). ``moved``: a command allowed
     by hand may have moved Copilot's shell, so its commands ask."""
     from thechatplace.own_store import OwnSession
@@ -1429,7 +1429,7 @@ def d_copilot_files(frame, env):
 
 
 def d_codex_mode(frame, env, plan=False):
-    """File, Change Permission Mode for an owned Codex chat, as
+    """Chat, Chat Settings, Change Permission Mode for an owned Codex chat, as
     codex_chats._change_codex_permissions builds it: the four file access
     rows and Plan (#596, decision 17), the chat's own marked "(now)". With
     ``plan`` the chat is in Plan, and the text above the list says with what
@@ -1455,7 +1455,7 @@ def d_codex_mode_plan(frame, env):
 
 
 def d_copilot_change_mode(frame, env):
-    """File, Change Permission Mode for an owned Copilot chat in Auto (#426):
+    """Chat, Chat Settings, Change Permission Mode for an owned Copilot chat in Auto (#426):
     agent, plan or Auto, the current one marked "(now)" and selected, as
     codex_chats._change_copilot_mode and main_frame._change_setting build it
     where no organisation manages Copilot. Auto's, with "(now)", is the
@@ -1591,7 +1591,7 @@ def d_codex_chat_options(frame, env):
 
 
 def d_chat_options(frame, env):
-    """File, Chat Options on a Claude chat with an agent, instructions, an
+    """Chat, Chat Settings, Chat Options on a Claude chat with an agent, instructions, an
     output style and a more folder (#468), the folder's choices known."""
     _open(frame, "Visual probe")
     other = str(env["folders"]["Website"])
@@ -1632,7 +1632,7 @@ def d_ask_aside(frame, env, provider='Claude'):
 
 
 def d_chat_permissions(frame, env):
-    """File, Chat Permissions on a Claude chat with two kept rules (one from
+    """Chat, Chat Settings, Chat Permissions on a Claude chat with two kept rules (one from
     before times were kept, one with its time, #329) and a kept folder (#334)."""
     _open(frame, "Visual probe")
     folder = str(env["folders"]["Scratch"])
@@ -1643,7 +1643,7 @@ def d_chat_permissions(frame, env):
 
 
 def d_connected_tools(frame, env):
-    """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
+    """Tools, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
     connectors (made up), one turned off for the chat, the list read."""
     _open(frame, "Visual probe")
     frame.store.update("own-1", disabled_mcp=["plugin:probe-tools:notes"])
@@ -1898,7 +1898,7 @@ def d_lists_codex_deleted_file(frame, env):
 
 
 def d_lists_commands(frame, env):
-    """View, Lists on Commands (#279)."""
+    """Tools, Lists on Commands (#279)."""
     from thechatplace import lists
     # The session that ran a command, so the picture shows a row and its
     # details rather than the empty "No commands" line.
@@ -1907,7 +1907,7 @@ def d_lists_commands(frame, env):
 
 
 def d_lists_decisions(frame, env):
-    """View, Lists on Decisions (#279): one answered question and one not."""
+    """Tools, Lists on Decisions (#279): one answered question and one not."""
     from thechatplace import lists
     from thechatplace.transcript import ANSWER, QUESTION, ChatMessage
     _open(frame, "Fix the flaky upload test")
@@ -1924,7 +1924,7 @@ def d_lists_decisions(frame, env):
 
 
 def d_lists_tasks(frame, env):
-    """View, Tasks (#231): Claude's task list, one step of each state."""
+    """Tools, Tasks (#231): Claude's task list, one step of each state."""
     from thechatplace import lists
     from thechatplace.tasklist import TaskStep
     _open(frame, "Fix the flaky upload test")
@@ -1991,7 +1991,7 @@ def _probe_subagents(frame, env):
 
 
 def d_lists_subagents(frame, env):
-    """View, Subagents (#468): one finished, one at work."""
+    """Tools, Subagents (#468): one finished, one at work."""
     from thechatplace import lists
     _probe_subagents(frame, env)
     return lambda: frame.on_lists(lists.SUBAGENTS, lists.SCOPE_CHAT)
@@ -2098,7 +2098,7 @@ def d_usage_breakdown(frame, env):
 
 
 def d_stop_background_task(frame, env):
-    """View, Stop Background Task (#468): the running background work of a
+    """Chat, Stop Background Task (#468): the running background work of a
     turn, as main_frame builds the list, the longer description first."""
     from thechatplace import live_turn
     from thechatplace.ui.dialogs import single_choice_dialog
@@ -2189,8 +2189,41 @@ def d_prompts(frame, env):
     return frame.on_prompts
 
 
+def d_keyboard_shortcuts(frame, env):
+    """Tools, Customize Keyboard Shortcuts (#635), with Sounds given a key
+    (so a row reads "changed") and Prompts' taken away."""
+    frame.keymap.set("sounds", "Ctrl+J")
+    frame.keymap.set("prompts", "")
+    frame.apply_keys()
+    return frame.on_customize_keys
+
+
+def d_key_capture(frame, env):
+    """Change Key for Sounds (#635) after pressing a key Prompts has, so
+    the status line is at its longest."""
+    from thechatplace.ui.keys_dialog import KeyCaptureDialog
+
+    def show():
+        dialog = KeyCaptureDialog(frame, frame.keymap, "sounds", lambda text: None)
+        dialog.capture("Ctrl+Shift+P")
+        return frame._modal(dialog)
+    return show
+
+
+def d_key_capture_refused(frame, env):
+    """Change Key after Ctrl+Alt+Q (#640): on Windows the AltGr reason, the
+    longest, which must wrap inside the dialog, not be cut off."""
+    from thechatplace.ui.keys_dialog import KeyCaptureDialog
+
+    def show():
+        dialog = KeyCaptureDialog(frame, frame.keymap, "sounds", lambda text: None)
+        dialog.capture("Ctrl+Alt+Q")
+        return frame._modal(dialog)
+    return show
+
+
 def d_backup_schedule(frame, env):
-    """File, Backup Schedule (#437), turned on, with a last backup and a
+    """File, Backup, Backup Schedule (#437), turned on, with a last backup and a
     failure to report, so the read-only box has its longest text."""
     from thechatplace import backup
     from thechatplace.ui.dialogs import BackupScheduleDialog
@@ -2365,12 +2398,12 @@ SURFACES = {
     "message-plain": ("dialog", d_message_plain, "The same message as plain text"),
     "settings": ("dialog", d_settings, "Settings with no Codex installation"),
     "settings-codex": ("dialog", d_settings_codex, "Settings with Codex automatically included"),
-    "sounds": ("dialog", d_sounds, "File, Sounds"),
-    "sounds-own-scheme": ("dialog", d_sounds_own_scheme, "File, Sounds on a scheme of your own"),
-    "sound-gallery": ("dialog", d_sound_gallery, "File, Sounds, Browse Gallery: two schemes, one added"),
+    "sounds": ("dialog", d_sounds, "Tools, Sounds"),
+    "sounds-own-scheme": ("dialog", d_sounds_own_scheme, "Tools, Sounds on a scheme of your own"),
+    "sound-gallery": ("dialog", d_sound_gallery, "Tools, Sounds, Browse Gallery: two schemes, one added"),
     "sound-tutorial": ("dialog", d_sound_tutorial, "Help, Sound Tutorial"),
     "sound-tutorial-from-sounds": ("dialog", d_sound_tutorial_from_sounds,
-                                   "File, Sounds, Sound Tutorial: the scheme Sounds shows"),
+                                   "Tools, Sounds, Sound Tutorial: the scheme Sounds shows"),
     "settings-copilot": ("dialog", d_settings_copilot,
                          "Settings once Copilot CLI has a session: its check box shows"),
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
@@ -2411,10 +2444,10 @@ SURFACES = {
                                        "Chat Permissions: commands ask until Restart Copilot"),
     "chat-permissions-copilot": ("dialog", d_chat_permissions_copilot,
                                  "Chat Permissions: a Copilot chat in Auto, with commands kept"),
-    "chat-permissions": ("dialog", d_chat_permissions, "File, Chat Permissions: a Claude chat's kept rules"),
+    "chat-permissions": ("dialog", d_chat_permissions, "Chat, Chat Settings, Chat Permissions: a Claude chat's kept rules"),
     "codex-chat-options": ("dialog", d_codex_chat_options, "Codex chat instructions and additional folders"),
     "chat-options": ("dialog", d_chat_options,
-                     "File, Chat Options: a Claude chat's agent, instructions, style and folders"),
+                     "Chat, Chat Settings, Chat Options: a Claude chat's agent, instructions, style and folders"),
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
     "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
@@ -2423,14 +2456,14 @@ SURFACES = {
     "codex-rewind": ("dialog", d_codex_rewind, "Codex Retry from Here with files left unchanged"),
     "codex-attachments": ("window", s_codex_attachments, "Codex reply with image and document attachments"),
     "chat-permissions-empty": ("dialog", d_chat_permissions_empty,
-                               "File, Chat Permissions with nothing kept"),
+                               "Chat, Chat Settings, Chat Permissions with nothing kept"),
     "chat-permissions-codex": ("dialog", d_chat_permissions_codex,
-                               "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"),
+                               "Chat, Chat Settings, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"),
     "codex-files": ("dialog", d_codex_files, "Codex file changes to review before allowing"),
     "codex-question": ("dialog", d_codex_question, "Codex choices and a masked secret answer"),
     "question": ("dialog", d_question, "Claude asks questions (one choice and several choices)"),
     "connected-tools": ("dialog", d_connected_tools,
-                        "View, Connected Tools: a Claude chat's MCP servers and connectors"),
+                        "Tools, Connected Tools: a Claude chat's MCP servers and connectors"),
     "elicitation-form": ("dialog", d_elicitation_form, "A connected tool asks for input: a form"),
     "elicitation-url": ("dialog", d_elicitation_url,
                         "A connected tool asks you to open a web page"),
@@ -2439,40 +2472,45 @@ SURFACES = {
     "question-preview": ("dialog", d_question_preview,
                          "Claude asks about text it wrote just before, with an option's preview"),
     "plan": ("dialog", d_plan, "Claude's plan to approve"),
-    "manage-groups": ("dialog", d_manage_groups, "File, Manage Groups"),
+    "manage-groups": ("dialog", d_manage_groups, "Session, Manage Groups"),
     "command-picker": ("dialog", d_command_picker, "Insert Command or Skill"),
     "bug-report": ("dialog", d_bug_report, "Help, Report a Bug"),
-    "code-blocks": ("dialog", d_code_blocks, "View, Lists: a message's code blocks"),
-    "links": ("dialog", d_links, "View, Lists: Links"),
+    "code-blocks": ("dialog", d_code_blocks, "Tools, Lists: a message's code blocks"),
+    "links": ("dialog", d_links, "Tools, Lists: Links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
-    "changes": ("dialog", d_changes, "View, Lists: Changed Files"),
+    "changes": ("dialog", d_changes, "Tools, Lists: Changed Files"),
     "lists-codex-files": ("dialog", d_lists_codex_files, "Codex Changed Files: updates, additions, deletions and renames"),
     "lists-codex-deleted-file": ("dialog", d_lists_codex_deleted_file, "Codex Changed Files: a deleted file's old line range"),
-    "lists-commands": ("dialog", d_lists_commands, "View, Lists: Commands"),
-    "lists-decisions": ("dialog", d_lists_decisions, "View, Lists: Decisions"),
-    "lists-tasks": ("dialog", d_lists_tasks, "View, Tasks: Claude's task list"),
+    "lists-commands": ("dialog", d_lists_commands, "Tools, Lists: Commands"),
+    "lists-decisions": ("dialog", d_lists_decisions, "Tools, Lists: Decisions"),
+    "lists-tasks": ("dialog", d_lists_tasks, "Tools, Tasks: Claude's task list"),
     "lists-subagents": ("dialog", d_lists_subagents,
-                        "View, Subagents: one finished subagent and one at work"),
+                        "Tools, Subagents: one finished subagent and one at work"),
     "subagent-chat": ("dialog", d_subagent_chat, "A subagent's conversation, read like a chat"),
-    "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "View, Tasks: Codex's live plan"),
-    "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "View, Tasks: no task list from an external Codex chat"),
-    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "View, Lists: Auto Approvals in a Codex chat"),
-    "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "View, Tasks: owned Codex chat with no tasks"),
+    "lists-codex-tasks": ("dialog", d_lists_codex_tasks, "Tools, Tasks: Codex's live plan"),
+    "lists-codex-no-tasks": ("dialog", d_lists_codex_no_tasks, "Tools, Tasks: no task list from an external Codex chat"),
+    "lists-codex-approvals": ("dialog", d_lists_codex_approvals, "Tools, Lists: Auto Approvals in a Codex chat"),
+    "lists-codex-owned-no-tasks": ("dialog", d_lists_codex_owned_no_tasks, "Tools, Tasks: owned Codex chat with no tasks"),
     "properties-codex-tasks": ("dialog", d_properties_codex_tasks, "Codex Properties with live task progress"),
-    "usage": ("dialog", d_usage, "View, Usage and Context"),
+    "usage": ("dialog", d_usage, "Tools, Usage and Context"),
     "usage-breakdown": ("dialog", d_usage_breakdown,
                         "Usage and Context with what fills a Claude chat's context"),
     "stop-background-task": ("dialog", d_stop_background_task,
-                             "View, Stop Background Task: two tasks running"),
+                             "Chat, Stop Background Task: two tasks running"),
     "usage-codex": ("dialog", d_usage_codex, "Codex account usage and reset reports"),
     "usage-copilot": ("dialog", d_usage_copilot, "Copilot account allowances and reset reports"),
-    "properties": ("dialog", d_properties, "View, Properties of a session"),
+    "properties": ("dialog", d_properties, "Session, Properties of a session"),
     "properties-codex": ("dialog", d_properties_codex,
                          "Properties of a synthetic Codex chat with provider-specific history labels"),
-    "about-you": ("dialog", d_about_you, "View, What AI Knows About You: Claude"),
+    "about-you": ("dialog", d_about_you, "Tools, What AI Knows About You: Claude"),
     "about-you-codex": ("dialog", d_about_you_codex, "What AI Knows About You: Codex"),
     "session-columns": ("dialog", d_session_columns, "View, Session List Columns"),
-    "prompts": ("dialog", d_prompts, "File, Prompts"),
+    "prompts": ("dialog", d_prompts, "Chat, Prompts"),
+    "keyboard-shortcuts": ("dialog", d_keyboard_shortcuts,
+                           "Tools, Customize Keyboard Shortcuts: one key changed, one removed"),
+    "key-capture": ("dialog", d_key_capture, "Change Key: a key another command has"),
+    "key-capture-refused": ("dialog", d_key_capture_refused,
+                            "Change Key: the longest reason a key can't be used (AltGr)"),
     "prompt-edit": ("dialog", d_prompt_edit, "Editing a saved prompt"),
     "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
@@ -2602,6 +2640,9 @@ DIALOG_CLASSES = {
     "about-you-codex": "AboutYouDialog",
     "session-columns": "SessionColumnsDialog",
     "prompts": "PromptsDialog",
+    "keyboard-shortcuts": "KeyboardShortcutsDialog",
+    "key-capture": "KeyCaptureDialog",
+    "key-capture-refused": "KeyCaptureDialog",
     "prompt-edit": "PromptEditDialog",
     "restore-chooser": "RestoreChooserDialog",
     "export-chats": "ExportChatsDialog",

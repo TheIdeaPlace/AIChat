@@ -21,7 +21,8 @@ from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, fi
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
                       SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
-from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, mark_access_key,
+from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
+                       mark_access_key,
                        shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
@@ -30,12 +31,12 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 
 
 class ShortcutsDialog(wx.Dialog):
-    def __init__(self, parent):
+    def __init__(self, parent, keys=None):
         super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Shortcuts:"), 0, wx.LEFT | wx.TOP, 8)
-        text = wx.TextCtrl(self, value=shortcuts_text(),
+        text = wx.TextCtrl(self, value=shortcuts_text(keys=keys),
                            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
         set_accessible_name(text, "Keyboard shortcuts")
         sizer.Add(text, 1, wx.EXPAND | wx.ALL, 8)
@@ -47,13 +48,19 @@ class ShortcutsDialog(wx.Dialog):
         wx.CallAfter(text.SetFocus)
 
 
-PERMISSION_NOTE = (
-    key_name("The permission mode decides what Claude may do without asking. When Claude "
-    "asks for permission, asks you a question or has a plan for you to approve, "
-    "the turn waits: The Chat Place announces it, the session shows as needing "
-    "you, and Ctrl+Shift+A answers. Effort is how hard Claude thinks; models that "
-    "don't support effort levels ignore it. Change Permission Mode and Change Effort, "
-    "in File, Chat Settings, change them later."))
+def permission_note() -> str:
+    """New Session's note on permissions, with Answer's key in effect (#635)."""
+    return key_name(
+        "The permission mode decides what Claude may do without asking. When Claude "
+        "asks for permission, asks you a question or has a plan for you to approve, "
+        "the turn waits: The Chat Place announces it, the session shows as needing "
+        f"you, and {your_key('Ctrl+Shift+A')} answers. Effort is how hard Claude thinks; models "
+        "that don't support effort levels ignore it. Change Permission Mode and Change "
+        "Effort, in Chat, Chat Settings, change them later.")
+
+
+#: The note with the default keys, as tests have it.
+PERMISSION_NOTE = permission_note()
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -162,11 +169,11 @@ def copilot_auto_warning(folder: str) -> str:
 COPILOT_NOTE = ("Copilot uses your GitHub Copilot sign-in, and each message uses requests from "
                 "your Copilot plan. Model lists the models Copilot offered your last Copilot "
                 "chat here, each with the premium requests a message costs; Copilot's own "
-                "choice is first. Change Model, in File, Chat Settings, changes it later. "
+                "choice is first. Change Model, in Chat, Chat Settings, changes it later. "
                 "Effort is Copilot's "
                 "own. Permission mode chooses agent mode, which can change your files, or "
                 "plan mode, which plans first and doesn't edit them; Change Permission "
-                "Mode, in File, Chat Settings, switches it later. In both, Copilot asks before it runs a command or "
+                "Mode, in Chat, Chat Settings, switches it later. In both, Copilot asks before it runs a command or "
                 "changes a file: "
                 "each request appears in Answer, where you can allow it once or deny it. "
                 "The Chat Place won't send to Copilot in a folder whose Copilot hooks could act "
@@ -383,8 +390,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
         note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-                           value=(CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if continue_from
-                           else PERMISSION_NOTE)
+                           value=(CONTINUE_NOTE + "\n\n" + permission_note()) if continue_from
+                           else permission_note())
         set_accessible_name(note, about)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -1042,7 +1049,8 @@ class NewSessionDialog(wx.Dialog):
                 control.Set(choices)
                 control.SetSelection(selected)
                 control.Enable()
-            self.note.SetValue((CONTINUE_NOTE + "\n\n" + PERMISSION_NOTE) if self.continuing else PERMISSION_NOTE)
+            self.note.SetValue((CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing
+                               else permission_note())
         self._control_provider = provider
         self._sync_access_keys()
         if not self.continuing:
@@ -1487,7 +1495,7 @@ class SettingsDialog(wx.Dialog):
         self.remote_control = wx.CheckBox(body, label=_wrapped(
             self, "T&urn on Remote Control for The Chat Place's sessions, so you can reach "
                   "them from claude.ai and other devices. Their conversations are copied to "
-                  "claude.ai and kept there. (File, Remote Control changes one session.)",
+                  "claude.ai and kept there. (Session, Remote Control changes one session.)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.remote_control.SetValue(speech.remote_control)
         outer.Add(self.remote_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -1495,7 +1503,7 @@ class SettingsDialog(wx.Dialog):
         # #231: Claude Code gives newer models no task list unless asked.
         self.task_list = wx.CheckBox(body, label=_wrapped(
             self, "Let Claude &keep a task list in The Chat Place's sessions, as it does in "
-                  "the desktop app, so View, Tasks shows how far along it is "
+                  "the desktop app, so Tools, Tasks shows how far along it is "
                   "(from the next turn)",
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.task_list.SetValue(speech.task_list)
@@ -2275,7 +2283,7 @@ class CodexPermissionDialog(wx.Dialog):
             detail += ('\n\nAllow for This Chat runs ' + chat_rule.description
                        + ', again without asking, in this chat only, while every path in it '
                        "stays inside the folder. It can run what's in the folder, which Copilot "
-                       "may change first. File, Chat Settings, Chat Permissions lists it, to remove.")
+                       "may change first. Chat, Chat Settings, Chat Permissions lists it, to remove.")
         elif chat_rule is not None:
             from ..providers.codex_permissions import NOTICE
             from ..providers.codex_requests import SAVED_RULE_NOTE
@@ -2325,7 +2333,7 @@ class CodexPermissionDialog(wx.Dialog):
 
 
 class ChatPermissionsDialog(wx.Dialog):
-    """File, Chat Permissions (#307, #329): what this chat may do without
+    """Chat, Chat Settings, Chat Permissions (#307, #329): what this chat may do without
     asking. The permission mode in words with Change, then one row per kept
     rule, read in full, with Remove (or Delete) and Remove All, each after one
     confirmation that names what goes.
@@ -3017,7 +3025,7 @@ class PlanDialog(wx.Dialog):
 
 
 class ManageGroupsDialog(wx.Dialog):
-    """File, Manage Groups (#31): the groups, each with how many sessions
+    """Session, Manage Groups (#31): the groups, each with how many sessions
     it has, and New, Rename, Delete. Changes are saved as they're made;
     Close (or Escape) closes. Deleting a group asks first, and never touches
     its sessions."""
@@ -3125,7 +3133,7 @@ class ManageGroupsDialog(wx.Dialog):
 
 
 class CommandPickerDialog(wx.Dialog):
-    """File, Insert Command or Skill (#23): Claude Code's slash commands
+    """Chat, Insert Command or Skill (#23): Claude Code's slash commands
     and your skills for this folder, yours first. Type to filter by name or
     description; Down moves into the list; Enter (or Insert) chooses."""
 
@@ -3349,7 +3357,7 @@ class LinesDialog(wx.Dialog):
 
 
 class UsageDialog(LinesDialog):
-    """View, Usage and Context (Ctrl+Shift+U, #130): the loaded session's
+    """Tools, Usage and Context (Ctrl+Shift+U, #130): the loaded session's
     context and each usage limit as a line of a list."""
 
     def __init__(self, parent, lines, copy):
@@ -3357,7 +3365,7 @@ class UsageDialog(LinesDialog):
 
 
 class PropertiesDialog(LinesDialog):
-    """View, Properties (Alt+Enter, #214): a session's or a message's
+    """Session, Properties (Alt+Enter, #214): a session's or a message's
     properties, one "Property: value" line each. The title says whose."""
 
     def __init__(self, parent, title, lines, copy):
@@ -3906,7 +3914,7 @@ def press_focused_button_on_a_mac(event) -> bool:
 
 
 class RelayDialog(wx.Dialog):
-    """File, Send Reply to Another Chat (#248): which chat to send a reply
+    """Chat, Send Reply to Another Chat (#248): which chat to send a reply
     to, and the message, labelled with who wrote it, to read and change
     first. Enter in the list sends; in the message, Enter starts a new line
     and Ctrl+Enter sends, as in the reply box. ``check(index, text)`` says
@@ -4145,7 +4153,7 @@ class AgentConversationDialog(wx.Dialog):
         outer.Add(folder_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         outer.Add(wx.StaticText(body, label="&Hand-offs:"), 0, wx.LEFT | wx.TOP, 8)
-        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name('Ctrl+Shift+E')})"]
+        modes = [f"Approve each hand-off: you pass each reply on (type, or {key_name(your_key('Ctrl+Shift+E'))})"]
         if auto_allowed:
             modes.append("Automatic: replies go across by themselves, up to a limit")
         self.mode = wx.Choice(body, choices=modes)
@@ -4382,7 +4390,7 @@ class AgentConversationDialog(wx.Dialog):
 
 
 class PromptsDialog(wx.Dialog):
-    """File, Prompts (#131): your saved prompts by name, the selected one's
+    """Chat, Prompts (#131): your saved prompts by name, the selected one's
     text to read, and Use, New, Edit, Delete, Move Up and Move Down. Use
     (or Enter on a prompt) closes the dialog and puts the prompt in the
     reply box. Changes are saved as they're made; Close or Escape closes.
@@ -4595,7 +4603,7 @@ class PromptsDialog(wx.Dialog):
 
 
 class ListsPage(wx.Panel):
-    """One kind in View, Lists (#279): a filter, the list, the selected item
+    """One kind in Tools, Lists (#279): a filter, the list, the selected item
     to read in full, and what can be done with it. The items come from
     ``lists.build``."""
 
@@ -4801,7 +4809,7 @@ class ListsPage(wx.Panel):
 
 
 class ListsDialog(wx.Dialog):
-    """View, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat:
+    """Tools, Lists (Ctrl+Shift+I, #279): everything of one kind in a chat:
     Code Blocks, Links, Changed Files, Commands, Decisions, Tasks and
     Subagents (#468).
 
@@ -5056,7 +5064,7 @@ class FindResultsDialog(wx.Dialog):
 
 
 class BackupScheduleDialog(wx.Dialog):
-    """File, Backup Schedule (#437): back up by itself every day or week to
+    """File, Backup, Backup Schedule (#437): back up by itself every day or week to
     a folder, keeping so many, encrypted if you like with a passphrase the
     system keeps for it (#442). Says plainly that it runs only while The
     Chat Place is open."""
@@ -5526,7 +5534,7 @@ class RewindDialog(wx.Dialog):
 
 
 class ConnectedToolsDialog(wx.Dialog):
-    """View, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
+    """Tools, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
     connectors, one per row, read in full ("claude.ai Microsoft Learn:
     connected, claude.ai connector, 3 tools"), with Sign In, Reconnect, Turn
     Off (or On) for This Chat and Refresh. The Details box below says more
@@ -6218,7 +6226,7 @@ CODEX_CHAT_OPTIONS_LATER_NOTE = ("A folder you remove is left out of the next tu
 class ChatOptionsDialog(wx.Dialog):
     """A Claude chat's agent, instructions, output style and more folders
     (#468): from New Session and Continue Here before the chat starts, and
-    File, Chat Options for a chat of The Chat Place's own.
+    Chat, Chat Settings, Chat Options for a chat of The Chat Place's own.
 
     The agents and styles are the folder's, from Claude Code (``choices``, a
     ``chat_options.ChatChoices``); when they aren't known yet,
@@ -6488,7 +6496,7 @@ ASIDE_NONE_YET = "No questions yet."
 
 
 class AskAsideDialog(wx.Dialog):
-    """File, Ask Aside (Ctrl+Shift+Y, #468): a question about a chat,
+    """Chat, Ask Aside (Ctrl+Shift+Y, #468): a question about a chat,
     answered without joining it.
 
     ``ask(question, on_event)`` starts one question and returns something

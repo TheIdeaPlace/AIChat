@@ -991,6 +991,34 @@ def test_delete_permanently_works_from_the_list_without_hiding_first(frame, env)
     assert not any(s.startswith("Hub probe") for s in frame.session_list.GetStrings())
 
 
+@pytest.mark.parametrize("from_messages", [False, True])
+def test_claude_permanent_delete_leaves_the_right_row_selected(frame, env, monkeypatch,
+                                                              from_messages):
+    # _leave_list moves the selection only when the deleted row was the
+    # selected one (#634): from the list, the neighbour takes its place; from
+    # the messages, with another row selected, that row stays selected.
+    add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("hi")])
+    settle(frame)
+    # Only _leave_list's own reselection, not the refresh after it.
+    monkeypatch.setattr(frame, "refresh_sessions", lambda *a, **k: None)
+    index = select(frame, "Hub probe")
+    count = frame.session_list.GetCount()
+    if from_messages:
+        frame.on_open_session()
+        other = next(frame.session_list.GetString(i) for i in range(count) if i != index)
+        select(frame, other)
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    frame.on_delete_permanently()
+    assert env["feedback"][-1] == "Deleted Hub probe permanently."
+    assert frame.session_list.GetCount() == count - 1
+    selected = frame.session_list.GetStringSelection()
+    assert selected and not selected.startswith("Hub probe")
+    if from_messages:
+        assert selected == other
+    else:
+        assert frame.session_list.GetSelection() == min(index, count - 2)
+
+
 def test_delete_permanently_a_hidden_session(frame, env):
     path = add_transcript(env, "C:\\G\\Scratch", "own-1", [user_text("hi")])
     select(frame, "Hub probe")
@@ -1677,8 +1705,8 @@ def test_queued_message_refused_at_send_time_is_spoken_and_goes_to_its_draft(
     assert len(fake_runner.instances) == 1
     assert env["boxes"] == []  # no dialog he didn't ask for
     assert env["feedback"][-1] == ("Your queued message for Hub probe wasn't sent: Claude "
-                                   "Code isn't installed. To install it, choose Claude Code "
-                                   "Sign-in on the Help menu. It's back in the message box.")
+                                   "Code isn't installed. To install it, choose Tools, Sign In, "
+                                   "Claude Code. It's back in the message box.")
     assert frame._drafts["own-1"] == "later\n\ntyped elsewhere"
     assert frame._last_announcement == env["feedback"][-1]  # Ctrl+Shift+R repeats it
 
@@ -2100,7 +2128,7 @@ def test_allow_for_this_chat_keeps_a_read_rule_for_a_folder_outside_the_chat(fra
 
 
 def _chat_permissions(frame, monkeypatch, drive, answers=()):
-    """Open File, Chat Permissions on the selected chat; ``drive(dialog)``
+    """Open Chat, Chat Settings, Chat Permissions on the selected chat; ``drive(dialog)``
     runs while it's open. Confirmations answer from ``answers`` in turn."""
     from thechatplace.ui import dialogs
     asked, replies = [], list(answers)
@@ -3220,7 +3248,7 @@ def test_a_menu_is_still_open_after_its_submenu_closes_on_linux(frame, monkeypat
 def test_ctrl_9_goes_to_the_status_bar(frame, monkeypatch):
     focused = []
     monkeypatch.setattr(frame.status_text, "SetFocus", lambda: focused.append(True))
-    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(1).GetMenuItems()]
+    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("View")).GetMenuItems()]
     assert "Go to Status &Bar\tCtrl+9" in labels
     frame.focus_status()
     assert focused == [True]
@@ -3824,8 +3852,8 @@ def test_picker_with_nothing_matching_chooses_nothing(frame):
         dialog.Destroy()
 
 
-def test_ctrl_slash_is_on_the_session_menu(frame):
-    items = frame.GetMenuBar().GetMenu(0).GetMenuItems()
+def test_ctrl_slash_is_on_the_chat_menu(frame):
+    items = frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Chat")).GetMenuItems()
     item = [i for i in items if i.GetItemLabelText().startswith("Insert Command")][0]
     assert item.GetAccel() is not None and item.GetAccel().GetKeyCode() == ord("/")
 
@@ -4292,7 +4320,7 @@ def test_code_blocks_are_described_listed_and_copied(frame, env, monkeypatch):
     frame.copy_last_code_block()  # Ctrl+Shift+C: the last block
     assert env["copied"][-1] == "echo hi\necho there"
     assert env["feedback"][-1] == "Copied: Code block, Bash, 2 lines."
-    # Ctrl+Shift+B: View, Lists on its Code Blocks tab, for this message (#279).
+    # Ctrl+Shift+B: Tools, Lists on its Code Blocks tab, for this message (#279).
     seen = _lists_dialog(frame, monkeypatch, lambda page: page.copy_selected())
     frame.on_code_blocks()
     assert (seen["category"], seen["scope"]) == ("code", "message")
@@ -4867,7 +4895,7 @@ def test_sign_in_is_checked_and_offered(frame, env, monkeypatch):
     assert len(env["feedback"]) == count
     frame._on_sign_in_result(signin.SignIn(True, signed_in=False), manual=False)
     assert env["feedback"][-1].endswith(
-        "To sign in, choose Claude Code Sign-in on the Help menu.")
+        "To sign in, choose Tools, Sign In, Claude Code.")
     # Asked from the menu meanwhile: the start-up answer isn't said as well.
     frame._sign_in_asked = True
     count = len(env["feedback"])
@@ -4915,7 +4943,7 @@ def test_codex_sign_in_is_checked_and_offered(frame, env, monkeypatch):
 
 
 def test_copilot_sign_in_is_checked_and_offered(frame, env, monkeypatch):
-    """Help, Copilot Sign-in (#391), as Codex's: said when signed in, missing
+    """Tools, Sign In, Copilot (#391), as Codex's: said when signed in, missing
     or unknown, and offered when not, with the app's own chats' environment."""
     from thechatplace import copilot_signin
     from thechatplace.ui import main_frame
@@ -4966,8 +4994,8 @@ def test_install_is_offered_when_claude_is_missing(frame, env, monkeypatch):
     frame._sign_in_asked = False
     frame._on_sign_in_result(missing, manual=False)
     # Spoken short: the first sentence, without the commands.
-    assert env["feedback"][-1] == ("Claude Code isn't installed. To install it, choose Claude "
-                                   "Code Sign-in on the Help menu.")
+    assert env["feedback"][-1] == ("Claude Code isn't installed. To install it, choose Tools, "
+                                   "Sign In, Claude Code.")
     shown, answers = [], [wx.NO, wx.YES]
     monkeypatch.setattr(wx, "MessageBox", lambda text, title, style, parent=None: (
         shown.append(text), answers.pop(0))[1])
@@ -5589,9 +5617,9 @@ def test_steer_on_a_queued_message_takes_it_into_the_turn(frame, env, fake_runne
     assert env["feedback"][-1].startswith("The turn is already ending")
 
 
-def test_steer_is_on_the_file_menu_with_its_key(frame):
+def test_steer_is_on_the_chat_menu_with_its_key(frame):
     bar = frame.GetMenuBar()
-    labels = [item.GetItemLabelText() for item in bar.GetMenu(bar.FindMenu("File")).GetMenuItems()]
+    labels = [item.GetItemLabelText() for item in bar.GetMenu(bar.FindMenu("Chat")).GetMenuItems()]
     assert any(label.startswith("Steer: Send into the Running Turn (") for label in labels)
 
 
@@ -5942,9 +5970,9 @@ def test_rename_asks_for_the_name_with_the_old_one_filled_in(frame, env, monkeyp
     assert frame.titles.get("local_a") == "Calm one"
 
 
-def test_f2_is_rename_on_the_file_menu(frame):
-    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(0).GetMenuItems()]
-    assert "Rename Session...\tF2" in labels
+def test_f2_is_rename_on_the_session_menu(frame):
+    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Session")).GetMenuItems()]
+    assert "Re&name Session...\tF2" in labels
 
 
 # -- the session menu and Shift+F10 (#89) ---------------------------------------------------
@@ -6224,8 +6252,8 @@ def test_about_you_reads_in_the_background_with_the_sessions_folders(frame, env,
     assert seen["cwds"] == ["C:\\G\\Repo", "C:\\G\\Scratch"]
     assert shown[0].startswith("Instructions, 1 item")
     assert env["feedback"][-1].startswith("Claude: Found: Instructions 1")
-    labels = [i.GetItemLabel() for i in frame.GetMenuBar().GetMenu(1).GetMenuItems()]
-    assert "What AI &Knows About You...\tCtrl+Shift+K" in labels
+    labels = [i.GetItemLabel() for i in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Tools")).GetMenuItems()]
+    assert "What AI Knows &About You...\tCtrl+Shift+K" in labels
 
 
 def test_about_you_says_so_when_reading_fails(frame, env, monkeypatch):
@@ -7476,11 +7504,11 @@ def test_ctrl_shift_enter_when_the_reply_changes_meanwhile(
     assert "changed" in env["boxes"][-1]
 
 
-def test_prompts_are_on_the_file_menu(frame):
-    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(0).GetMenuItems()]
-    assert "Prompts...\tCtrl+Shift+P" in labels
+def test_prompts_are_on_the_chat_menu(frame):
+    labels = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Chat")).GetMenuItems()]
+    assert "&Prompts...\tCtrl+Shift+P" in labels
     keys = "Cmd+Shift+Return" if wx.Platform == "__WXMAC__" else "Ctrl+Shift+Enter"
-    assert f"Send and Save as Prompt... ({keys})" in labels
+    assert f"Send and Sa&ve as Prompt... ({keys})" in labels
 
 
 # -- screen reader can't be reached (issue #98) -------------------------------------------
@@ -9645,7 +9673,7 @@ def test_continue_here_keeps_the_chosen_effort(frame, env, fake_runner, monkeypa
     assert "--fork-session" in again and again[again.index("--effort") + 1] == "max"
 
 
-# -- View, Links (#190) --------------------------------------------------------------------------
+# -- Tools, Links (#190) --------------------------------------------------------------------------
 
 
 def _links_session(frame, env, records=None):
@@ -9660,7 +9688,7 @@ def _links_session(frame, env, records=None):
 
 
 def _lists_dialog(frame, monkeypatch, act):
-    """View, Lists (#279), shown modally by doing ``act(page)`` on its
+    """Tools, Lists (#279), shown modally by doing ``act(page)`` on its
     current tab instead."""
     seen = {}
 
@@ -10071,7 +10099,7 @@ def test_remote_control_wraps_but_says_all_it_says(frame):
         assert " ".join(label.split()) == (
             "T&urn on Remote Control for The Chat Place's sessions, so you can reach them "
             "from claude.ai and other devices. Their conversations are copied to claude.ai "
-            "and kept there. (File, Remote Control changes one session.)")
+            "and kept there. (Session, Remote Control changes one session.)")
         box = dialog.remote_control
         assert box.GetBestSize().width <= box.GetSize().width + 1
         assert box.GetRect().GetRight() <= dialog.GetClientSize().width
@@ -10299,7 +10327,7 @@ def test_the_turn_status_is_one_line_and_keeps_its_ampersands(frame):
     assert "\n" not in session_part and "npm i && npm test" in session_part
 
 
-# -- View, Properties (#214) ---------------------------------------------------------------
+# -- Session, Properties (#214) ---------------------------------------------------------------
 
 
 def _properties(frame, monkeypatch, act=None):
@@ -10509,8 +10537,8 @@ def test_properties_copies_lines_and_is_on_the_menus(frame, env, monkeypatch):
     assert env["copied"][-2] == seen[0]["rows"][1]
     assert env["copied"][-1] == "\n".join(seen[0]["rows"])
     assert env["feedback"][-2:] == ["Copied the line.", "Copied the properties."]
-    view = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(1).GetMenuItems()]
-    assert "Properties...\tAlt+Enter" in view
+    view = [item.GetItemLabel() for item in frame.GetMenuBar().GetMenu(frame.GetMenuBar().FindMenu("Session")).GetMenuItems()]
+    assert "&Properties...\tAlt+Enter" in view
     menu, actions = frame._session_menu()
     try:
         labels = [i.GetItemLabel() for i in menu.GetMenuItems()]
@@ -12062,7 +12090,7 @@ def test_read_only_command_rows_repeat_even_without_an_owned_sdk_turn(frame, env
     assert sum('Command output.' in text for text in env['feedback']) == 2
 
 
-# -- View, Lists (#279) -----------------------------------------------------------------------
+# -- Tools, Lists (#279) -----------------------------------------------------------------------
 
 
 def _lists_for_test(frame):
@@ -12331,10 +12359,10 @@ def _append(path, records):
         handle.write("\n".join(lines(*records)) + "\n")
 
 
-def test_view_tasks_is_ctrl_shift_j_and_opens_lists_on_tasks(frame, env, monkeypatch):
+def test_tools_tasks_is_ctrl_shift_j_and_opens_lists_on_tasks(frame, env, monkeypatch):
     bar = frame.GetMenuBar()
-    labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("View")).GetMenuItems()]
-    assert "Tasks...\tCtrl+Shift+J" in labels
+    labels = [item.GetItemLabel() for item in bar.GetMenu(bar.FindMenu("Tools")).GetMenuItems()]
+    assert "&Tasks...\tCtrl+Shift+J" in labels
     _tasks_session(frame, env)
     seen = _lists_dialog(frame, monkeypatch, lambda page: None)
     frame.on_tasks()
@@ -14811,7 +14839,7 @@ def test_a_model_copilot_wont_switch_a_new_chat_to_is_said_once(frame, env, monk
         pump(lambda: False, timeout=1)  # let any later updates arrive
         notices = [text for text in said if "couldn't switch this chat" in text]
         assert notices == ["Refused Model: Copilot couldn't switch this chat to the model "
-                           "chosen, so it uses Copilot's own. File, Chat Settings, Change Model "
+                           "chosen, so it uses Copilot's own. Chat, Chat Settings, Change Model "
                            "chooses another."]
         assert _copilot_state(frame).model == "auto"
     finally:
@@ -15648,7 +15676,7 @@ def test_archiving_from_a_session_hides_it_in_the_window(frame, env):
                                      {"session_id": "own:own-2", "reason": "PR merged"},
                                      view, frame._session_tools_hide)
     assert not result.is_error, result.text
-    # As File, Hide Session: kept in hidden.json, and out of the list now.
+    # As Session, Hide Session: kept in hidden.json, and out of the list now.
     assert "own:own-2" in frame.hidden
     assert "own:own-2" in HiddenStore(env["tmp"] / "appdata" / "hidden.json")
     assert pump(lambda: frame.session_list.GetCount() == 3)
@@ -15731,7 +15759,7 @@ def test_self_follows_an_id_claude_changed(frame):
     assert frame._session_tools_view("asked-for").current.key == "own:own-1"
 
 
-# File, Back Up Now and Check Backup (#433) ----------------------------------
+# File, Backup, Back Up Now and Check Backup (#433) ----------------------------------
 
 from thechatplace import backup  # noqa: E402
 import zipfile  # noqa: E402

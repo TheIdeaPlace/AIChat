@@ -51,6 +51,15 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _no_keys_left_from_another_test():
+    """What's said names the default keys, whatever a window before set (#635)."""
+    from thechatplace.ui_text import set_your_keys
+    set_your_keys({})
+    yield
+    set_your_keys({})
+
+
+@pytest.fixture(autouse=True)
 def _fresh_last_messages(monkeypatch):
     """Each test starts with nothing remembered for the Last message column
     (#146): no cached transcript ends, no sessions known to have none."""

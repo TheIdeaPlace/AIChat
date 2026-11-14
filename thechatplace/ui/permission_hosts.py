@@ -1,4 +1,4 @@
-"""What File, Chat Permissions does for each provider (#307, #329).
+"""What Chat, Chat Settings, Chat Permissions does for each provider (#307, #329).
 
 ``ChatPermissionsDialog`` shows; these do the work. Claude's kept rules are in
 The Chat Place's session store and given to each later turn as
@@ -84,7 +84,7 @@ class ClaudePermissions:
 
     def can_change_mode(self):
         # A Claude chat's mode counts from its next turn, so it can change
-        # at any time, as File, Change Permission Mode already allows.
+        # at any time, as Chat, Chat Settings, Change Permission Mode already allows.
         return True, ""
 
     def change_mode(self, done):

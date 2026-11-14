@@ -98,6 +98,7 @@ def _runtime(tmp_path):
     from thechatplace.providers.codex_runtime import CodexChatRuntime
     runtime = object.__new__(CodexChatRuntime)  # only the history-saving part is used
     runtime.review_store, runtime._saved_reviews = CodexReviewStore(tmp_path), {}
+    runtime._deleted = set()  # chats deleted permanently save nothing more (#634)
     return runtime, lambda notices: runtime._save_for_later(
         'owned', SimpleNamespace(permission_notices=tuple(notices), plan_received=False))
 

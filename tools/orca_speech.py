@@ -149,6 +149,31 @@ STEPS = [
     Step("back to View", ["Left"], expect=["Sort Sessions"]),
     Step("View closed, back in the messages", ["Escape"], expect=["Messages in Visual probe"],
          refuse=["Session list"]),
+    # The three menus #575 added, each by its own letter: none is taken by a
+    # control in the window, so each opens on its first item.
+    Step("Session menu", ["alt+s"], expect=["Load Session"]),
+    Step("Session closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"], refuse=["Session list"]),
+    Step("Chat menu", ["alt+c"], expect=["Answer"]),
+    Step("Chat closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"], refuse=["Session list"]),
+    Step("Tools menu", ["alt+t"], expect=["Lists"]),
+    Step("Tools closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"], refuse=["Session list"]),
+    # Customize Keyboard Shortcuts (#635): the list starts on New Session;
+    # Change Key starts in the Key box, a pressed key is said with what
+    # Assign would do, and Escape twice changes nothing.
+    Step("Customize Keyboard Shortcuts", ["alt+t", "k"],
+         expect=["Customize Keyboard Shortcuts", "New Session, Ctrl+N, File menu"]),
+    # Orca names the box by its visible label (GTK's labelled-by), so "Key:"
+    # then the text role is what shows focus reached the box, not the title.
+    Step("Change Key", ["Return"], expect=["Change Key: New Session", "Key: text"]),
+    Step("a key pressed in Change Key", ["ctrl+shift+v"],
+         expect=["Ctrl+Shift+V", "Nobody has it"]),
+    Step("Change Key closed, back in the list", ["Escape"],
+         expect=["New Session, Ctrl+N, File menu"]),
+    Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -206,8 +231,8 @@ STEPS = [
     # Not answered, so it still needs you (#596).
     Step("tool answered later, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"], refuse=["working"]),
-    # View, Connected Tools (#468), the View menu's last item: Up from the top.
-    Step("Connected Tools", ["alt+v", "Up", "Return"], expect=["Connected tools"],
+    # Tools, Connected Tools (#468).
+    Step("Connected Tools", ["alt+t", "c"], expect=["Connected tools"],
          refuse=["unlabeled", "unlabelled"]),
     # Sign In, Reconnect, Turn Off for This Chat, then this one (#626).
     Step("Connected Tools, Turn Off for New Chats", ["Tab", "Tab", "Tab", "Tab"],
@@ -218,9 +243,9 @@ STEPS = [
     Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # File, Chat Settings (#596), by its access key: the submenu opens on
-    # Change Model. On GTK one Escape closes it and the File menu together.
-    Step("File, Chat Settings", ["alt+f", "i"], expect=["Chat Settings", "Change Model"]),
+    # Chat, Chat Settings (#596), by its access key: the submenu opens on
+    # Change Model. On GTK one Escape closes it and the Chat menu together.
+    Step("Chat, Chat Settings", ["alt+c", "n"], expect=["Chat Settings", "Change Model"]),
     Step("Chat Settings closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"], refuse=["Session list"]),
     # Change Permission Mode for a Codex chat (#596, decision 17): Plan is its
@@ -258,8 +283,8 @@ STEPS = [
     Step("picker closed, back on Add Folder", ["Escape"], expect=["Add Folder"]),
     Step("Chat Options closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Mute All Sounds (#250), said whatever the announcements level, and File, Sounds, by the
-    # trigger as the item has no access key: Tab through every control, then Escape back out.
+    # Mute All Sounds (#250), said whatever the announcements level, and Tools, Sounds, by the
+    # trigger: Tab through every control, then Escape back out.
     Step("Mute All Sounds", ["ctrl+shift+x"], expect=["Sounds muted"]),
     Step("Mute All Sounds again", ["ctrl+shift+x"], expect=["Sounds not muted"]),
     Step("Sounds", [], trigger="sounds", expect=["Sounds", "Play sounds"],
@@ -291,31 +316,33 @@ STEPS = [
     Step("Sounds closed, back in the messages", ["Escape"],
          expect=["Visual probe — The Chat Place"]),
     # Back Up Now (#433, #435): the folder question, and Escape back out.
-    Step("Back Up Now", ["alt+f", "w"], expect=["Back up to which folder"]),
+    Step("Back Up Now", ["alt+f", "b", "n"], expect=["Back up to which folder"]),
     Step("folder question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Backup Schedule (#437), Restore from Backup (#436) and Export Chats
-    # (#461), the last items before Exit: Up from the top goes to Exit first.
+    # Backup Schedule (#437) and Restore from Backup (#436), in File, Backup,
+    # and Export Chats (#461), each by its access key (#575).
     # Lands on the schedule's choice box, which Orca reads with or without
     # its name depending on timing (#454): until that's fixed, only that the
     # menu reached Backup Schedule is checked.
-    Step("Backup Schedule", ["alt+f", "Up", "Up", "Up", "Up", "Return"],
+    Step("Backup Schedule", ["alt+f", "b", "s"],
          expect=["Backup Schedule"]),
     Step("Backup Schedule closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # GTK's file picker is announced by its file list, not its title.
-    Step("Restore from Backup", ["alt+f", "Up", "Up", "Up", "Return"],
-         expect=["Restore from Backup", "Files"]),
+    # GTK's file picker is announced by its file list, not its title, and
+    # its access key chooses the item without Orca reading it (#575), so
+    # the Backup submenu it came from is what's checked.
+    Step("Restore from Backup", ["alt+f", "b", "r"],
+         expect=["Backup menu", "Files"]),
     Step("restore's file question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Lands on the chat list, none chosen: its first row starts "Skip".
-    Step("Export Chats", ["alt+f", "Up", "Up", "Return"],
+    Step("Export Chats", ["alt+f", "h"],
          expect=["Export Chats", "Skip"]),
     Step("Space chooses the chat", ["space"], expect=["Export", "1 of"]),
     Step("Export Chats closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # View, Stop Background Task (#468, #596), opened by the trigger once the
-    # open chat's turn has background work: the item has no access key.
+    # Chat, Stop Background Task (#468, #596), opened by the trigger once the
+    # open chat's turn has background work, which only the trigger can make.
     Step("Stop Background Task", [], trigger="background",
          expect=["Stop Background Task", "Windows build, running"]),
     Step("the next task", ["Down"], expect=["Watch CI"]),
@@ -326,7 +353,7 @@ STEPS = [
     Step("full chat closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Subagents (#468): "Fix the flaky upload test" has two, a code-reviewer
-    # that finished and an Explore at work. View, Subagents opens Lists on
+    # that finished and an Explore at work. Tools, Subagents opens Lists on
     # them, newest first; Enter reads one's conversation, and Escape goes
     # back a step at a time.
     # Sorted by title, so where it is doesn't depend on which sessions the
@@ -337,7 +364,7 @@ STEPS = [
     Step("the session with subagents", ["Home", "Down"], expect=["Fix the flaky upload test"]),
     Step("open the session with subagents", ["Return"],
          expect=["Messages in Fix the flaky upload test"]),
-    Step("View, Subagents", ["alt+v", "g"], expect=["Subagents (2)", "Explore", "Running"]),
+    Step("Tools, Subagents", ["alt+t", "g"], expect=["Subagents (2)", "Explore", "Running"]),
     Step("a subagent's conversation", ["Down", "Return"],
          expect=["Subagent code-reviewer", "The retry waits too little"]),
     Step("conversation closed, back in Lists", ["Escape"],
@@ -364,6 +391,12 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # A GTK message box is read as "alert Warning" and its text, not its title
+    # (CI on #634), so the question is checked, and No, the default, focused.
+    Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
+         expect=["permanently?", "subagent chats", "No push button"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Cancel Codex deletion", ["Escape"], expect=["Fix the flaky upload test"]),
     # New Session's Start from (#561), on a made-up repository whose remote
     # has a main branch, with A new worktree chosen and a new branch typed.
     Step("New Session, a new branch in a new worktree", [], trigger="start-from",
@@ -529,7 +562,7 @@ def ask_elicitation(frame) -> None:
 
 def stop_background_task(frame) -> None:
     """The probe's own session's turn, with two background tasks running,
-    and File, Stop Background Task opened on it (#468)."""
+    and Chat, Stop Background Task opened on it (#468)."""
     import wx
     import fake_env
     frame._pending.clear()
@@ -543,7 +576,7 @@ def stop_background_task(frame) -> None:
 
 
 def chat_options(frame) -> None:
-    """File, Chat Settings, Chat Options on the probe's own session, open by
+    """Chat, Chat Settings, Chat Options on the probe's own session, open by
     then (#468, #596). After the timer's call, as the dialog is modal."""
     import wx
     wx.CallAfter(frame.on_chat_options)
@@ -598,6 +631,28 @@ def _codex_dialog(name, frame, env) -> None:
     """Opens one of the probe's Codex dialogs (#467)."""
     import ui_probe
     getattr(ui_probe, name)(frame, env)()
+
+
+def codex_delete_confirmation(frame, env) -> None:
+    """A synthetic chat: exercise only the native confirmation's No path.
+    Its message box is real while it's open, as Connected Tools' are: the
+    probe's stand-in answers Yes at once, so the confirmation was never shown
+    or read (#634 CI). Nothing is sent to Codex even if Yes were pressed."""
+    import wx
+    import wx._core
+    from thechatplace.own_store import OwnSession
+    record = OwnSession('orca-delete-preview', 'Codex deletion preview', str(env['tmp']),
+                        provider='codex', started=True)
+    frame.store.add(record)
+    stand_in, work = wx.MessageBox, frame._codex_work
+    wx.MessageBox = wx._core.MessageBox
+    frame._codex_work = lambda action, done: None
+    try:
+        frame._delete_codex(record.to_info())
+    finally:
+        wx.MessageBox, frame._codex_work = stand_in, work
+        frame._codex_deleting.discard(record.to_info().key)
+        frame.store.remove(record.cli_session_id, provider='codex')
 
 
 def codex_tools(frame, env) -> None:
@@ -688,7 +743,7 @@ def copilot_chat(frame, env) -> None:
     fake_env.pump(lambda: frame._chat_loaded and not frame._reader_busy
                   and not frame._codex_preparing, timeout=10)
     # The row is the app's own from the next refresh (as
-    # ui_probe.s_main_copilot_owned), which the File menu's items go by.
+    # ui_probe.s_main_copilot_owned), which the Session and Chat menus' items go by.
     frame.refresh_sessions(force=True)
     fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None,
                   timeout=10)
@@ -733,6 +788,7 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
     "refresh": lambda frame, env: refresh(frame),

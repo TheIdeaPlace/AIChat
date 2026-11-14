@@ -1,0 +1,207 @@
+{
+ "title": "Customize Keyboard Shortcuts",
+ "class": "KeyboardShortcutsDialog",
+ "size": [
+  680,
+  560
+ ],
+ "client": [
+  664,
+  521
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Filter:",
+   "rect": [
+    8,
+    8,
+    30,
+    16
+   ],
+   "best": [
+    30,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Filter",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    648,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Co&mmands:",
+   "rect": [
+    8,
+    55,
+    66,
+    16
+   ],
+   "best": [
+    66,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Commands, 73",
+   "label": "",
+   "rect": [
+    10,
+    73,
+    648,
+    411
+   ],
+   "best": [
+    359,
+    260
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "New Session, Ctrl+N, File menu",
+    "New Agent Conversation, Ctrl+Shift+G, File menu",
+    "Continue Here, Ctrl+Shift+N, File menu",
+    "Export Session, Ctrl+E, File menu",
+    "Export Chats, no key, File menu",
+    "Back Up Now, no key, File, Backup",
+    "Check Backup, no key, File, Backup",
+    "Backup Schedule, no key, File, Backup",
+    "Restore from Backup, no key, File, Backup",
+    "Exit, no key, File menu",
+    "Load Session, no key, Session menu",
+    "Open in Claude, Ctrl+O, Session menu"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Change Key...",
+   "rect": [
+    8,
+    490,
+    93,
+    23
+   ],
+   "best": [
+    93,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Remove Key",
+   "rect": [
+    107,
+    490,
+    86,
+    23
+   ],
+   "best": [
+    86,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Reset to &Default",
+   "rect": [
+    199,
+    490,
+    104,
+    23
+   ],
+   "best": [
+    104,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Reset &All...",
+   "rect": [
+    309,
+    490,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    581,
+    490,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

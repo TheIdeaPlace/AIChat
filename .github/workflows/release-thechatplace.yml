@@ -308,7 +308,7 @@ jobs:
 
       # The runner's dotnet can install a tool but has no runtime for vpk (net10.0) to run on;
       # setup-dotnet adds it and sets DOTNET_ROOT (GHManage found this). setup-dotnet v6.0.0.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: '10.0.x'
 
@@ -435,7 +435,7 @@ jobs:
           echo "VERSION=$(/usr/bin/python3 tools/check_version.py)" >> "$GITHUB_ENV"
 
       # setup-dotnet v6.0.0, for vpk (net10.0), as on the Mac.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: '10.0.x'
 

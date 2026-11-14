@@ -1,4 +1,4 @@
-"""File, Sounds (#250). One list and one detail area rather than a row of controls per event,
+"""Tools, Sounds (#250). One list and one detail area rather than a row of controls per event,
 which would be some 45 tab stops. Choices rather than radio buttons, so Tab can't skip a group
 that has nothing chosen (#428).
 
@@ -63,7 +63,7 @@ def keep_custom_sound(source: str, scheme: sound_events.Scheme,
 def preview_event(player: Callable, event_id: str, scheme: sound_events.Scheme, volume: int) -> bool:
     """Play ``event_id``'s sound in ``scheme`` at ``volume`` percent, even with sounds off or
     muted: someone asked to hear it. ``player()`` gives the window's player, made only when
-    there's something to play. False when the scheme gives the event no sound. File, Sounds and
+    there's something to play. False when the scheme gives the event no sound. Tools, Sounds and
     Help, Sound Tutorial both play through this, so they sound the same."""
     chosen = sound_events.resolve(event_id, scheme)
     if chosen is None:
@@ -103,7 +103,7 @@ class SoundsDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         self.play_sounds = wx.CheckBox(self, label="&Play sounds")
         self.play_sounds.SetValue(speech.sounds_on)
-        # Mute isn't here: View, Mute All Sounds (Ctrl+Shift+X) is the one place for it (#596),
+        # Mute isn't here: Tools, Mute All Sounds (Ctrl+Shift+X) is the one place for it (#596),
         # and get_settings carries its state through untouched.
         outer.Add(self.play_sounds, 0, wx.ALL, 10)
         # Windows' notifications only. Off unless chosen: it's a change to what Windows does.
@@ -628,7 +628,7 @@ class SoundsDialog(wx.Dialog):
 class SoundTutorialDialog(wx.Dialog):
     """Help, Sound Tutorial: every event by name, and Space (or Enter) plays its sound in the
     scheme you're using, at your volume, to learn what each means. Nothing here changes a
-    setting: sound names, files and other schemes are File, Sounds, which opens it too
+    setting: sound names, files and other schemes are Tools, Sounds, which opens it too
     (``from_sounds``), with the settings it's showing."""
 
     def __init__(self, parent, speech: SpeechSettings, player: Callable,
@@ -658,7 +658,7 @@ class SoundTutorialDialog(wx.Dialog):
         self.SetSizer(outer)
         self.SetEscapeId(wx.ID_CANCEL)
 
-        # Space as in File, Sounds' list, which works on a Mac too (#574). Enter is caught before
+        # Space as in Tools, Sounds' list, which works on a Mac too (#574). Enter is caught before
         # the dialog would take it as pressing a button, so it plays and the dialog stays open.
         self.events.Bind(wx.EVT_KEY_DOWN, self._on_events_key)
         self.events.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.play())

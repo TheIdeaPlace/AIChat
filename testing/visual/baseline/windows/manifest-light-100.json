@@ -929,7 +929,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Permissions: a Claude chat's kept rules"
+   "about": "Chat, Chat Settings, Chat Permissions: a Claude chat's kept rules"
   },
   "chat-permissions-empty": {
    "kind": "dialog",
@@ -1503,7 +1503,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Connected Tools: a Claude chat's MCP servers and connectors"
+   "about": "Tools, Connected Tools: a Claude chat's MCP servers and connectors"
   },
   "ask-aside": {
    "kind": "dialog",
@@ -1699,7 +1699,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Stop Background Task: two tasks running"
+   "about": "Chat, Stop Background Task: two tasks running"
   },
   "rewind": {
    "kind": "dialog",
@@ -1755,7 +1755,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds"
+   "about": "Tools, Sounds"
   },
   "new-session-worktree": {
    "kind": "dialog",
@@ -1867,7 +1867,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds, Sound Tutorial: the scheme Sounds shows"
+   "about": "Tools, Sounds, Sound Tutorial: the scheme Sounds shows"
   },
   "codex-change-mode-plan": {
    "kind": "dialog",
@@ -1896,6 +1896,48 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Retry from Here with Files only chosen: the Put Files Back button"
+  },
+  "keyboard-shortcuts": {
+   "kind": "dialog",
+   "png": "keyboard-shortcuts-light-100.png",
+   "json": "keyboard-shortcuts-light-100.json",
+   "title": "Customize Keyboard Shortcuts",
+   "class": "KeyboardShortcutsDialog",
+   "size": [
+    680,
+    560
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, Customize Keyboard Shortcuts: one key changed, one removed"
+  },
+  "key-capture": {
+   "kind": "dialog",
+   "png": "key-capture-light-100.png",
+   "json": "key-capture-light-100.json",
+   "title": "Change Key: Sounds",
+   "class": "KeyCaptureDialog",
+   "size": [
+    520,
+    260
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Key: a key another command has"
+  },
+  "key-capture-refused": {
+   "kind": "dialog",
+   "png": "key-capture-refused-light-100.png",
+   "json": "key-capture-refused-light-100.json",
+   "title": "Change Key: Sounds",
+   "class": "KeyCaptureDialog",
+   "size": [
+    520,
+    260
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Change Key: the longest reason a key can't be used (AltGr)"
   }
  },
  "seconds": 278.6

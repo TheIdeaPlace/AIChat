@@ -177,7 +177,7 @@ class LiveTurns:
         return list(getattr(runner, "background_entries", None) or [])
 
     def _can_stop_background(self, info=None) -> bool:
-        """Whether File, Stop Background Task is on. A Claude turn reports its
+        """Whether Chat, Stop Background Task is on. A Claude turn reports its
         background work as it goes. Codex is asked only when you choose it,
         and it says if none are running, so it's on for its own chats."""
         info = info if info is not None else self._open
@@ -185,7 +185,7 @@ class LiveTurns:
             info is not None and info.provider == 'codex' and info.is_own)
 
     def on_stop_background_task(self):
-        """File, Stop Background Task: end one shell command or agent Claude
+        """Chat, Stop Background Task: end one shell command or agent Claude
         left running in the background, keeping the turn and the rest."""
         info = self._open
         if info is not None and info.provider == 'codex' and info.is_own:

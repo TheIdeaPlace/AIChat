@@ -1,4 +1,4 @@
-"""Names you've given the desktop app's sessions (File, Rename Session, #93).
+"""Names you've given the desktop app's sessions (Session, Rename Session, #93).
 
 The desktop app's session files are never written, so a desktop session's new
 name lives here, in ``titles.json``, and shows only in The Chat Place; the

@@ -28,9 +28,9 @@ private folder elsewhere) that needs a random key. The address and key go in
 the server reads them from there, so neither is ever on a command line. Each
 tool call is one JSON request over that connection, never pickle.
 
-Archiving one of The Chat Place's own sessions does what File, Hide Session
+Archiving one of The Chat Place's own sessions does what Session, Hide Session
 does, through the same store, so the window's list changes at once and View,
-Show Sessions, Hidden and File, Bring Back Session work on it as usual. A
+Show Sessions, Hidden and Session, Bring Back Session work on it as usual. A
 desktop app session is never changed (The Chat Place never writes the
 desktop app's files): the answer says so and where to archive it instead.
 
@@ -110,7 +110,7 @@ TOOLS: List[dict] = [
         "name": "archive_session",
         "description": (
             "Archive a session. In The Chat Place this hides one of its own sessions (or a "
-            "terminal session) from the list, as File, Hide Session does; File, Bring Back "
+            "terminal session) from the list, as Session, Hide Session does; Session, Bring Back "
             "Session undoes it. Claude desktop app sessions can't be archived from here, and "
             "the result says where to do it. A session with a turn running, or open in The "
             "Chat Place's window, is left alone."),
@@ -161,7 +161,7 @@ SNIPPET_WARNING = (
 class View:
     """What the window knows, gathered on its thread for one tool call."""
     sessions: List[SessionInfo]
-    #: Keys of sessions hidden with File, Hide Session.
+    #: Keys of sessions hidden with Session, Hide Session.
     hidden: Set[str] = field(default_factory=set)
     #: Keys of sessions with a turn The Chat Place is running now.
     running: Set[str] = field(default_factory=set)
@@ -283,7 +283,7 @@ def get_session(view: View, arguments: dict) -> Result:
 
 def archive_session(view: View, arguments: dict,
                     hide: Callable[[SessionInfo], Optional[str]]) -> Result:
-    """``hide(info)`` hides it as File, Hide Session does, and returns why it
+    """``hide(info)`` hides it as Session, Hide Session does, and returns why it
     couldn't, or None once it has."""
     session_id = str(arguments.get("session_id") or "")
     info = find(view, session_id)
@@ -296,22 +296,22 @@ def archive_session(view: View, arguments: dict,
             f"Session {name} was not archived: it's a Claude desktop app "
             f"{'Cowork ' if info.cowork else ''}session, and The Chat Place never changes the "
             "desktop app's sessions. Archive it from the sidebar in the Claude desktop app. To "
-            "take it out of The Chat Place's list only, select it there and choose File, "
+            "take it out of The Chat Place's list only, select it there and choose Session, "
             "Hide Session.", True)
     if not (info.is_own or info.source in (TERMINAL, AGENTS)):
         app = home_app(info.provider)
         return Result(
             f"Session {name} was not archived: it belongs to {app}, and The Chat Place "
             f"doesn't change its sessions. Archive it in {app}. To take it out of The Chat "
-            "Place's list only, select it there and choose File, Hide Session.", True)
+            "Place's list only, select it there and choose Session, Hide Session.", True)
     if view.current is not None and info.key == view.current.key:
         return Result(
             f"Session {name} was not archived: it's this session, and its turn is still "
             "running. Once the turn has finished, select it in The Chat Place and choose "
-            "File, Hide Session.", True)
+            "Session, Hide Session.", True)
     if is_hidden(info, view):
         return Result(f"Session {name} is already archived (hidden in The Chat Place). "
-                      "File, Bring Back Session returns it to the list.")
+                      "Session, Bring Back Session returns it to the list.")
     if info.key in view.running or info.state == WORKING:
         return Result(
             f"Session {name} was not archived: a turn is running in it. Wait for it to "
@@ -320,8 +320,8 @@ def archive_session(view: View, arguments: dict,
     if problem:
         return Result(f"Session {name} was not archived: {problem}", True)
     return Result(
-        f"Archived session {name}: The Chat Place has hidden it, as File, Hide Session "
-        "does. View, Show Sessions, Hidden lists it, and File, Bring Back Session returns "
+        f"Archived session {name}: The Chat Place has hidden it, as Session, Hide Session "
+        "does. View, Show Sessions, Hidden lists it, and Session, Bring Back Session returns "
         "it to the list.")
 
 

@@ -6,14 +6,19 @@ import sys
 from typing import List
 
 
+#: The menu bar's menus by access key (#575), for naming a menu on a Mac.
+MENU_NAMES = {"F": "File", "S": "Session", "C": "Chat", "V": "View", "T": "Tools", "H": "Help"}
+
+
 def key_name(shortcut: str, platform=None) -> str:
     """Translate app-authored key names, before inserting any chat/user text."""
     if (platform or sys.platform) != "darwin":
         return shortcut
-    shortcut = shortcut.replace(", Alt+T)", ")")
+    # A Mac has no access keys: "(Attach Files button, Alt+I)" names the button.
+    shortcut = shortcut.replace(", Alt+I)", ")")
     shortcut = shortcut.replace("Alt+F4", "Cmd+Q").replace("Alt+Tab", "Cmd+Tab").replace("Applications key / ", "")
-    shortcut = re.sub(r"Alt\+([FVH]),\s*[A-Za-z]",
-                      lambda match: {"F": "File", "V": "View", "H": "Help"}[match.group(1)] + " menu (VO+M)", shortcut)
+    shortcut = re.sub(r"Alt\+([FSCVTH]),\s*[A-Za-z]",
+                      lambda match: MENU_NAMES[match.group(1)] + " menu (VO+M)", shortcut)
     text = re.sub(r"\bEnter\b", "Return", shortcut.replace("Ctrl+", "Cmd+").replace("Alt+", "Option+"))
     return (text.replace("Win+Shift+S", "Control+Cmd+Shift+4")
             .replace(" Option+Return on a Mac", ""))
@@ -25,13 +30,50 @@ def key_name(shortcut: str, platform=None) -> str:
 CODEX_DEFAULT = "Codex's default"
 
 
-def with_stop_key(text: str, platform=None) -> str:
+#: Your keys for the defaults you changed, by the default's normalized name
+#: ("Ctrl+/"): (your key as said, or "" if you took it away; the command's
+#: place, "Chat, Answer"). Set by the window whenever its keys change (#635).
+_YOUR_KEYS: dict = {}
+
+
+def set_your_keys(keys: dict) -> None:
+    """The window's keys changed: ``keys`` maps each changed default
+    (normalized) to (your key as said, or ""; the command's place)."""
+    _YOUR_KEYS.clear()
+    _YOUR_KEYS.update(keys)
+
+
+def _changed(default: str):
+    from .keymap import normalize  # keymap needs this module first
+    try:
+        return _YOUR_KEYS.get(normalize(default))
+    except ValueError:
+        return None
+
+
+def your_key(default: str) -> str:
+    """What to say for a command's default key, written any way ("Ctrl+/",
+    "Ctrl+Slash"): your key if you changed it, the command's place if you
+    took it away, else the default as given. Put it through key_name for a
+    Mac."""
+    changed = _changed(default)
+    if changed is None:
+        return default
+    now, place = changed
+    return now or place
+
+
+def with_stop_key(text: str, platform=None, key=None) -> str:
     """A provider's "Press Stop to ..." with Stop's key added, the first time
     it's named (#596): the provider says what Stop does, and the window,
-    which owns the keys, names the key."""
-    if not text or "Press Stop (" in text:
+    which owns the keys, names the key: yours, if you changed it (#635), and
+    none if you took it away."""
+    if key is None:
+        changed = _changed("Ctrl+Period")
+        key = "Ctrl+Period" if changed is None else changed[0]
+    if not text or not key or "Press Stop (" in text:
         return text
-    return text.replace("Press Stop ", f"Press Stop ({key_name('Ctrl+Period', platform)}) ", 1)
+    return text.replace("Press Stop ", f"Press Stop ({key_name(key, platform)}) ", 1)
 
 
 SHORTCUTS_PLATFORM_NOTE = (
@@ -91,7 +133,7 @@ SHORTCUTS = [
                          "changed)"),
         ("Ctrl+Shift+O", "Change Permission Mode: Claude permission modes, Codex file access, "
                          "approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the "
-                         "selected (or loaded) Chat Place session (in File, Chat Settings, with "
+                         "selected (or loaded) Chat Place session (in Chat, Chat Settings, with "
                          "Change Model and Change Effort)"),
         ("Ctrl+Shift+W", "Read the loaded chat as one page, starting at the selected message: 2 "
                          "moves from message to message; Alt+P reads it as plain text instead"),
@@ -109,7 +151,7 @@ SHORTCUTS = [
                      "new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote "
                      "Control, ungrouped (in no group), Claude chats, Codex chats, GitHub "
                      "Copilot chats, archived, hidden, or one of your groups"),
-        ("Alt+V, E", "Session List Columns: choose what each session's line says and in "
+        ("Alt+V, C", "Session List Columns: choose what each session's line says and in "
                      "what order, such as status first; in the dialog, Enter adds, Delete "
                      "removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move"),
         ("Ctrl+E", "Export the selected (or loaded) session as Markdown, a web page or "
@@ -119,17 +161,17 @@ SHORTCUTS = [
         ("Applications key / Shift+F10", "The session's menu: load, provider-specific actions, copy "
                                          "its link, rename, Remote Control, groups, export, "
                                          "hide or delete"),
-        ("Alt+F, I", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
+        ("Alt+C, N", "Chat Settings: the selected (or loaded) chat's Change Model (M), Change "
                      "Effort (E), Change Permission Mode (P), Chat Permissions (C) and Chat "
                      "Options (O)"),
-        ("Alt+F, O", "Remote Control (Claude chats): reach the selected session from "
+        ("Alt+S, C", "Remote Control (Claude chats): reach the selected session from "
                      "claude.ai and your phone (a desktop app session can be continued here "
                      "with it on)"),
-        ("Ctrl+G", "Add the selected session to a group (or a new one); File, Remove "
-                   "from Group and Manage Groups are on the File menu"),
+        ("Ctrl+G", "Add the selected session to a group (or a new one); Remove from "
+                   "Group and Manage Groups are on the Session menu"),
         ("Delete", "Hide the selected session; View, Show Sessions, Hidden lists hidden "
-                   "sessions, and File, Bring Back Session returns one"),
-        ("Shift+Delete", "Delete a Claude chat started here permanently, transcript and "
+                   "sessions, and Session, Bring Back Session returns one"),
+        ("Shift+Delete", "Delete a Claude or Codex chat started here permanently, conversation and "
                          "all, after you confirm, or The Chat Place's copy of a restored or kept chat "
                          "(other chats can only be hidden); on an agent "
                          "conversation, delete the conversation and keep its chats"),
@@ -151,7 +193,7 @@ SHORTCUTS = [
                                                  "and send. Claude can also restore files changed with "
                                                  "its edit tools in chats started here; Codex doesn't. "
                                                  "The new chat keeps the original's settings, and the "
-                                                 "original chat is kept. Branch from Here (Alt+F, F, or on "
+                                                 "original chat is kept. Branch from Here (Alt+C, F, or on "
                                                  "a message's menu) "
                                                  "starts a new chat from that point; in Codex it includes "
                                                  "the whole turn containing that message"),
@@ -187,12 +229,12 @@ SHORTCUTS = [
                            "it; the AI takes it in at its next step and carries on. With no "
                            "turn running, it sends as Ctrl+Enter does"),
         ("Ctrl+Period", "Stop the running turn; a queued message goes back in the reply box. "
-                        "View, Stop Background Task, just below it, ends one background task "
+                        "Chat, Stop Background Task, just below it, ends one background task "
                         "and lets the turn carry on"),
         ("Ctrl+/", "Insert a command or skill (Claude and Codex chats; type to search); it goes at "
                    "the start of the reply box. Codex offers enabled skills and chat controls "
                    "such as /plan and /compact"),
-        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+T); "
+        ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+I); "
                          "Delete in the attachments list removes one"),
         ("Ctrl+V with a picture or files copied", "Attach the picture (a screenshot from Win+Shift+S, say), "
                                                   "or files copied in File Explorer or the Finder, to a "
@@ -245,7 +287,7 @@ SHORTCUTS = [
         ("Ctrl+Comma", "Settings: announcements, speech, notifications and more"),
         ("Ctrl+Shift+R", "Repeat the last announcement"),
         ("Ctrl+Shift+X", "Mute All Sounds: silence every sound at once, or bring them back "
-                         "(File, Sounds chooses them)"),
+                         "(Tools, Sounds chooses them)"),
         ("Alt+F4", "Quit"),
     ]),
 ]
@@ -377,7 +419,51 @@ def last_message_line(label: str, text: str) -> str:
     return f"{label}: {plain}" if plain else ""
 
 
-def shortcuts_html(*, platform=None) -> str:
+#: A key named in the shortcuts list's key column: modifiers, then an F key,
+#: a named key or one letter, digit or mark.
+_KEY_IN_TEXT = re.compile(r"(?<![\w+])(?:(?:Ctrl|Alt|Shift)\+)*"
+                          r"(?:F\d{1,2}|Period|Comma|Slash|Enter|Delete|[A-Z0-9/.,])(?![\w+])")
+
+
+def shortcuts_with_yours(keys=None):
+    """SHORTCUTS with your keys (#635): a key you changed is shown in place
+    of the default, which is named after what it does; one you removed reads
+    "No key"; keys you gave commands that had none are a group of their own.
+    ``keys`` is a keymap.KeyMap, or None for the defaults (the README)."""
+    if keys is None:
+        return SHORTCUTS
+    from .keymap import normalize, spoken  # keymap needs this module first
+    remapped = keys.remapped()
+    groups = []
+    for group, items in SHORTCUTS:
+        rows = []
+        for key, action in items:
+            # Each key the row names ("Ctrl+F, then F3 and Shift+F3", "Ctrl+Shift+Z
+            # on one of your messages"), in place, with what it was (#639).
+            was = []
+
+            def yours(match):
+                try:
+                    default = normalize(match.group(0))
+                except ValueError:
+                    return match.group(0)
+                if default not in remapped:
+                    return match.group(0)
+                was.append(spoken(default, "win32"))
+                return spoken(remapped[default], "win32") if remapped[default] else "No key"
+
+            key = _KEY_IN_TEXT.sub(yours, key)
+            if was:
+                action = f"{action} (changed from {', '.join(was)})"
+            rows.append((key, action))
+        groups.append((group, rows))
+    added = keys.added()
+    if added:
+        groups.append(("Keys you added", [(spoken(key, "win32"), name) for key, name in added]))
+    return groups
+
+
+def shortcuts_html(*, platform=None, keys=None) -> str:
     """The same list as a page body: a heading and a table per group, with
     the keys as row headers, so a screen reader moves by heading (H) and
     reads each key with what it does as it moves through a table."""
@@ -386,7 +472,7 @@ def shortcuts_html(*, platform=None) -> str:
     parts = ["<h1>Keyboard shortcuts</h1>", f"<p>{html.escape(LAYOUT)}</p>"]
     if platform == "all":
         parts.append(f"<p>{html.escape(SHORTCUTS_PLATFORM_NOTE)}</p>")
-    for number, (group, items) in enumerate(SHORTCUTS, start=1):
+    for number, (group, items) in enumerate(shortcuts_with_yours(keys), start=1):
         # The table takes its name from the heading above it, so the group
         # is named once, not as a heading and again as a separate label.
         parts.append(f'<h2 id="group{number}">{html.escape(group)}</h2>')
@@ -402,11 +488,11 @@ def shortcuts_html(*, platform=None) -> str:
     return "\n".join(parts)
 
 
-def shortcuts_text(*, platform=None) -> str:
+def shortcuts_text(*, platform=None, keys=None) -> str:
     lines: List[str] = [LAYOUT, ""]
     if platform == "all":
         lines += [SHORTCUTS_PLATFORM_NOTE, ""]
-    for group, items in SHORTCUTS:
+    for group, items in shortcuts_with_yours(keys):
         lines.append(f"{group}:")
         for key, action in items:
             if platform != "all":

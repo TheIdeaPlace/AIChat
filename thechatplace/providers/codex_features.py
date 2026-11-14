@@ -16,6 +16,10 @@ class CodexFeatureError(CodexRpcError):
         'refused': 'Codex refused this, so nothing changed.',
         'unavailable': 'This Codex chat is not ready. Use Stop to recheck its connection first.',
         'failed': 'Codex could not confirm this operation. Check the chat before trying again.',
+        # The delete went to Codex and no answer came back (#634). Deleting
+        # again is safe: Codex deletes it, or says it's already gone.
+        'delete_unconfirmed': ("Codex didn't answer the delete, so this chat may be gone. Delete it "
+                               'again (Session, Delete Session Permanently) to finish.'),
         'settings_pending': 'Send a normal message with this chat\'s changed settings before compacting its context.',
         # A copy keeps the original's settings (#596, decision 3), so only
         # settings that are saved and confirmed, for the folders they were
@@ -35,15 +39,24 @@ class CodexFeatureError(CodexRpcError):
 READ_METHODS = frozenset({'thread/goal/get', 'thread/backgroundTerminals/list'})
 ACTION_METHODS = frozenset({'thread/compact/start', 'thread/goal/set',
     'thread/goal/clear', 'thread/memoryMode/set', 'thread/backgroundTerminals/terminate'})
+#: Deleting a Codex chat started here (#634). Not an ordinary action: it is
+#: sent only by Session, Delete Session Permanently (CodexChatRuntime.delete,
+#: through CodexExecutionConnection.delete_owned_thread), never through
+#: feature() or a plain request. Codex deletes the chat's spawned subagent
+#: threads with it (codex-rs thread_delete.rs, 0.163).
+DELETE_METHOD = 'thread/delete'
 #: Safe beside a running turn: Stop Background Task is meant for one. These
 #: never hold the chat, so Stop, Send and Answer aren't kept waiting on them.
 ACTIVE_SAFE_METHODS = READ_METHODS | {'thread/goal/set', 'thread/goal/clear',
                                       'thread/backgroundTerminals/terminate'}
 
 
-def validate_action(method, params):
+def validate_action(method, params, *, deleting=False):
+    """``deleting``: the delete path, the only one that may name DELETE_METHOD,
+    and then only that, with nothing but the thread."""
     from ..platform_paths import is_safe_id
-    if method not in READ_METHODS | ACTION_METHODS or not isinstance(params, dict):
+    allowed = {DELETE_METHOD} if deleting else READ_METHODS | ACTION_METHODS
+    if method not in allowed or not isinstance(params, dict):
         raise CodexFeatureError('invalid')
     if not is_safe_id(params.get('threadId')):
         raise CodexFeatureError('invalid')

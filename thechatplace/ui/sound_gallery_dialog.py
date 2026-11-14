@@ -1,4 +1,4 @@
-"""File, Sounds, Browse Gallery: sound schemes others have made, checked before they're shown,
+"""Tools, Sounds, Browse Gallery: sound schemes others have made, checked before they're shown,
 with Add to take one. Laid out and keyed like QuickMail's gallery, so the apps work alike
 (app-kit's sounds/SCHEMES.md). The list and the downloads come in on a thread; the window never
 waits on the network."""

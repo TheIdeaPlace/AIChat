@@ -1,4 +1,4 @@
-"""What View, Connected Tools does for a Claude chat (#468).
+"""What Tools, Connected Tools does for a Claude chat (#468).
 
 ``ConnectedToolsDialog`` shows; this does the work. Claude Code is asked in an
 idle ``claude -p`` in the chat's folder (``claude_mcp.McpSession``), on the
