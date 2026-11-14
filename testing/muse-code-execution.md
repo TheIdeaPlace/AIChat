@@ -23,7 +23,8 @@ decision, but not the command's effect.
 2. Start the chat with a first message. It opens, shows the message, and
    streams Muse Code's reply into the conversation. When the turn ends you
    hear "*title*: Muse Code finished." The reply box stays editable, and Send
-   is available only while no turn runs.
+   is available only while no turn runs. Chat, Turn Status (Ctrl+Shift+T)
+   during the turn says "Muse Code is working.", and "Ready." after it.
 3. Make Muse Code ask permission. A network command works, for example asking
    it to run `curl.exe -s https://example.com/`; a file write outside the
    chat's folder does not ask, because Muse refuses it outright. The request
@@ -42,14 +43,20 @@ decision, but not the command's effect.
 5. Press Stop mid-turn. Send stays unavailable until Muse confirms the
    cancellation, then you hear "*title*: Muse Code stopped." (not "finished").
    Sending straight after a finished or stopped turn starts a new turn;
-   nothing is sent twice.
+   nothing is sent twice. Stop with nothing running says "Nothing is running
+   in *title*." Steer (Ctrl+Alt+Enter) during a turn says Muse Code can't take
+   a message during its turn, and nothing is sent. Chat, Stop Background Task
+   says Muse Code chats have no background tasks to stop.
 6. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
    own mode, no kept rules, and the same answering instructions. Change
    Permission Mode says Muse Code chats always use Muse Code's own mode.
 7. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become
-   available for them, and no permission dialog may open for them.
+   available for them, and no permission dialog may open for them. Chat menu
+   commands that would change one say "*title* was started in Muse Code, so
+   it's read-only here. Do that in Muse Code." Chat Permissions says Muse Code
+   decides what it may do.
 8. Restart The Chat Place and open the owned chat again. Its identity and
    history are stable; it remains a Chat Place session and can send again.
 9. Make Muse Code unavailable (rename or remove its executable) and restart.

@@ -294,7 +294,7 @@ class MuseProvider:
             self._owned.settle(record)
 
     def stop_owned(self, record):
-        self._owned_chats().stop(record)
+        return self._owned_chats().stop(record)
 
     def pending_approvals_owned(self, record):
         return self._owned_chats().pending_approvals(record)
@@ -681,14 +681,16 @@ class MuseOwnedChats:
         with self._lock:
             return native_id in self._in_flight
 
-    def stop(self, record: OwnSession) -> None:
+    def stop(self, record: OwnSession) -> str:
+        """"idle" when Muse says nothing is running (nothing is sent), else
+        "cancelling" once Muse accepts the cancel."""
         with self._lock:
             self._check(record)
             self._require_available()
             self.prepare(record)
             result = self._read(record)
             if self._reconcile(record, result) == "idle":
-                return
+                return "idle"
             command = self._in_flight.get(record.cli_session_id) or self._saved(record)
             turn_id = command.get("turn_id")
             if not _identity(turn_id):
@@ -706,6 +708,7 @@ class MuseOwnedChats:
             command = {**command, "state": "cancelling"}
             self._in_flight[record.cli_session_id] = command
             self._remember(record, command)
+            return "cancelling"
 
     def pending_approvals(self, record: OwnSession) -> tuple:
         with self._lock:

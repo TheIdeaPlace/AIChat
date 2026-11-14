@@ -191,6 +191,13 @@ class LiveTurns:
         if info is not None and info.provider == 'codex' and info.is_own:
             self._codex_control(info, '/background')
             return
+        if info is not None and info.provider == "muse":
+            if info.is_own:
+                self._feedback("Muse Code chats have no background tasks to stop. "
+                               "Stop Running Turn stops the whole turn.")
+            else:
+                self._require_capability("send", info)  # says it's Muse Code's, read-only
+            return
         if info is None or info.provider != "claude" or not info.is_own:
             self._feedback("Load one of your Claude chats with background work running first.")
             return

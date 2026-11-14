@@ -180,45 +180,59 @@ def every(outcome):
     return {case: outcome for case in CASES}
 
 
-#: What each Chat menu command does for each Muse case, pinned from the
-#: 2026-11-14 sweep. Change it only with the behaviour.
+#: What a chat started in Muse Code itself is told: true for every command,
+#: where "not available yet" would suggest it might be one day.
+READ_ONLY = "was started in Muse Code, so it's read-only here. Do that in Muse Code."
+
+
+def owned(outcome, foreign=None):
+    """``outcome`` for the three chats started here, the read-only refusal
+    (or ``foreign``) for the chat started in Muse Code."""
+    return {"idle": outcome, "running": outcome, "waiting": outcome,
+            "foreign": foreign or said(READ_ONLY)}
+
+
+#: What each Chat menu command does for each Muse case. Change it only with
+#: the behaviour (dev-notes/muse-code-chat-menu.md).
 EXPECTED = {
     "answer": {**every(said("No session is waiting for an answer.")),
                "waiting": dialog("MuseApprovalDialog")},
-    "ask_aside": every(said(NOT_YET)),
+    "ask_aside": owned(said(NOT_YET)),
     "stop_running_turn": {
-        "idle": not_said("Stop requested", "nothing is running, yet Stop says it was requested"),
+        "idle": said("Nothing is running in Muse chat here."),
         "running": sent("turn/cancel"), "waiting": sent("turn/cancel"),
-        "foreign": said(NOT_YET)},
-    "stop_background_task": every(not_said("Claude", "names Claude for a Muse chat")),
+        "foreign": said(READ_ONLY)},
+    "stop_background_task": owned(said("Muse Code chats have no background tasks to stop.")),
     "turn_status": {
-        "idle": said("No Muse Code turn is running"),
-        "running": not_said("No Muse Code turn is running", "reads Codex's state, not Muse's"),
-        "waiting": not_said("No Muse Code turn is running", "reads Codex's state, not Muse's"),
-        "foreign": said(NOT_YET)},
-    "insert_command": every(said("command and skill picker isn't available for Muse Code chats")),
-    "attach_files": every(said(NOT_YET)),
+        "idle": said("Muse chat here: Ready."),
+        "running": said("Muse chat here: Muse Code is working."),
+        "waiting": said("Muse chat here: Muse Code is waiting for you."),
+        "foreign": said(READ_ONLY)},
+    "insert_command": owned(said("command and skill picker isn't available for Muse Code chats")),
+    "attach_files": owned(said(NOT_YET)),
     "prompts": every(dialog("PromptsDialog")),
-    "send_and_save_prompt": {**every(said("Type a message first.")),
-                             "foreign": said("read-only here. Reply in Muse Code.")},
-    "steer": {**every(said("Type a message first.")), "foreign": said(NOT_YET)},
+    "send_and_save_prompt": owned(said("Type a message first."),
+                                  said("read-only here. Reply in Muse Code.")),
+    # During a turn, whether Muse can be steered comes before any text, as for Codex.
+    "steer": {**owned(said("Muse Code can't take a message during its turn.")),
+              "idle": said("Type a message first.")},
     "send_reply_to_another_chat": every(dialog("RelayDialog")),
-    "retry_from_here": every(said(NOT_YET)),
-    "branch_from_here": every(said(NOT_YET)),
-    "change_model": every(said(NOT_YET)),
-    "change_effort": every(said(NOT_YET)),
-    "change_permission_mode": every(said("Muse Code chats always use Muse Code's own mode")),
-    "chat_permissions": {**every(dialog("ChatPermissionsDialog")),
-                         "foreign": not_said("desktop app", "a Muse chat's rules are Muse Code's, not a desktop app's")},
-    "chat_options": every(said(NOT_YET)),
-    "other_machines": every(said(NOT_YET)),
+    "retry_from_here": owned(said(NOT_YET)),
+    "branch_from_here": owned(said(NOT_YET)),
+    "change_model": owned(said(NOT_YET)),
+    "change_effort": owned(said(NOT_YET)),
+    "change_permission_mode": owned(said("Muse Code chats always use Muse Code's own mode")),
+    "chat_permissions": owned(dialog("ChatPermissionsDialog"),
+                              said("was started in Muse Code, so it's read-only here. "
+                                   "Muse Code decides what it may do.")),
+    "chat_options": owned(said(NOT_YET)),
+    "other_machines": owned(said(NOT_YET)),
 }
 
 #: The same commands with text in the reply box, where it changes the outcome.
 EXPECTED_WITH_TEXT = {
     ("steer", "idle"): sent("turn/start"),
-    ("steer", "running"): not_said("could not confirm this send",
-                                   "nothing was sent: Muse already has a turn running"),
+    ("steer", "running"): said("Muse Code can't take a message during its turn."),
 }
 
 PAIRS = [(command_id, case) for command_id in chat_menu_ids() for case in CASES]

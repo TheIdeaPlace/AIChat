@@ -887,6 +887,9 @@ class CodexChats(SoundHost, CodexExtras):
                 if error:
                     self._feedback(result or f'Could not stop this {name} chat. '
                                             f'Check its state in {name}.')
+                elif result == 'idle':
+                    # Muse said nothing was running, so nothing was sent.
+                    self._feedback(f'Nothing is running in {record.title}.')
                 else:
                     self._feedback(f'Stop requested for {record.title}. Send again once it has stopped.')
                 self._poll_muse_owned(record)
@@ -959,6 +962,8 @@ class CodexChats(SoundHost, CodexExtras):
                 return recover()
             if record.provider == 'codex':
                 return False, (), None
+            if record.provider == 'muse':
+                return stopped  # "idle" or "cancelling": done's Muse branch words it
             if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
                 return False, tuple(stopped.waiting), stopped
             # A provider that gives back only the waiting messages, or

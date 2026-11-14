@@ -1184,6 +1184,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback(f"{info.title} is a kept copy (Claude Code removed the "
                                "original): it's read-only.")
                 return supported
+            if info.provider == "muse" and not info.is_own:
+                # True for every action, where "not available yet" would
+                # suggest it might be one day: this chat is Muse Code's.
+                self._feedback(f"{info.title} was started in Muse Code, so it's read-only "
+                               "here. Do that in Muse Code.")
+                return supported
             kind = ("agent conversations" if info.provider == AGENTS
                     else f"{provider_label(info.provider)} chats")
             self._feedback(f"This action isn't available for {kind} yet.")
@@ -3656,16 +3662,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
             if info.provider == "muse":
-                update = self._muse_runtime.get(info.cli_session_id, {})
-                state = update.get("state", "idle")
-                labels = {
-                    "waiting": f"Muse Code is waiting for you. {key_name(your_key('Ctrl+Shift+A'))} answers.",
-                    "cancelling": "Muse Code is cancelling the turn.",
-                    "running": "Muse Code is working.",
-                    "submitting": "Sending to Muse Code.",
-                    "unknown": "Muse Code's running state is unknown. Check the chat before sending again.",
-                }
-                label = update.get("notice") or labels.get(state, "Ready.")
+                label = self._muse_state_text(info)
                 if self.turn_status.GetLabelText() != label:
                     self.turn_status.SetLabelText(label)
                 self._update_status_session()
@@ -4420,6 +4417,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider == 'copilot':
             self._change_copilot_mode(selected)
             return
+        if (selected is not None and selected.provider == 'muse' and not selected.is_own
+                and not self._require_capability("options", selected)):
+            return  # Muse Code's own chat: read-only here
         if selected is not None and selected.provider == 'muse':
             self._feedback("Muse Code chats always use Muse Code's own mode. "
                            "Answer each request as it comes.")
@@ -4456,6 +4456,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._selected_session()
         if info is None:
             self._feedback("No session selected.")
+            return
+        if info.provider == "muse" and not info.is_own:
+            self._feedback(f"{info.title} was started in Muse Code, so it's read-only here. "
+                           "Muse Code decides what it may do.")
             return
         if not info.is_own or info.provider not in ("claude", "codex", "copilot", "muse"):
             where = "terminal" if info.is_terminal else "desktop app"
@@ -4622,11 +4626,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._say(f"{info.title}: {usage.context_text(tokens, window)} Claude Code will "
                   "compact the conversation when it's full; /compact does it now.")
 
+    def _muse_state_text(self, info) -> str:
+        """What a Muse chat started here is doing, from Muse's own state as
+        last read: the turn-status line and Turn Status both say this."""
+        update = self._muse_runtime.get(info.cli_session_id, {})
+        labels = {
+            "waiting": f"Muse Code is waiting for you. {key_name(your_key('Ctrl+Shift+A'))} answers.",
+            "cancelling": "Muse Code is cancelling the turn.",
+            "running": "Muse Code is working.",
+            "submitting": "Sending to Muse Code.",
+            "unknown": "Muse Code's running state is unknown. Check the chat before sending again.",
+        }
+        return update.get("notice") or labels.get(update.get("state", "idle"), "Ready.")
+
     def on_turn_status(self, _event=None):
         """How long the running turn has taken, and what it is doing."""
         info = self._open
         if info is not None and info.provider == AGENTS:
             self._feedback(self._agent_status_text(info))
+            return
+        if info is not None and info.provider == "muse" and self._can_edit(info):
+            # Muse's state is its own (_muse_runtime), not Codex's.
+            self._feedback(f"{info.title}: {self._muse_state_text(info)}")
             return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
@@ -6267,6 +6288,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is None or info.provider == AGENTS or not info.is_own:
             self.on_send()
             return
+        if info.provider == "muse" and self._can_edit(info):
+            # Muse's state is its own (_muse_runtime), and Muse can't be
+            # steered: say so during a turn, rather than try to send.
+            state = self._muse_runtime.get(info.cli_session_id, {}).get("state", "idle")
+            if state not in ("running", "waiting", "cancelling", "submitting"):
+                self.on_send()  # nothing running to steer (unknown: Send explains)
+                return
+            self._feedback("Muse Code can't take a message during its turn. Wait for it to "
+                           f"finish, or press {key_name(your_key('Ctrl+.'))} to stop it.")
+            return
         if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
             if state is None or state.outcome != 'inProgress':
@@ -7890,6 +7921,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self._require_capability('send', info):
                 self._codex_commands(info)
             return
+        if (info is not None and info.provider == "muse" and not info.is_own
+                and not self._require_capability("send", info)):
+            return  # Muse Code's own chat: read-only here
         if info is not None and info.provider in RUNTIME_PROVIDERS:
             self._feedback("The command and skill picker isn't available for "
                            f"{provider_name(info.provider)} chats yet.")

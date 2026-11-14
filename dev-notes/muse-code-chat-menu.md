@@ -96,3 +96,26 @@ What the sweep found (replacing the "to check" rows above):
 Worth deciding in step 2 as well as the bugs: the generic refusal says "yet"
 even for a chat started elsewhere, where Stop and Steer will never be
 available here; "It's read-only here; do that in Muse Code" would be truer.
+
+### Step 2 done (2026-11-14)
+
+Each fix started as a failing row in `EXPECTED`; the sweep now has no xfails.
+
+- **Turn Status** says Muse's own state (`_muse_state_text`, shared with the
+  turn-status line): "Muse Code is working.", "Muse Code is waiting for you.
+  Ctrl+Shift+A answers.", "Ready."
+- **Stop with nothing running:** `MuseOwnedChats.stop()` returns "idle" or
+  "cancelling", passed through `stop_or_recover` unchanged (it used to be
+  folded into Codex's tuple), and the window says "Nothing is running in
+  *title*."
+- **Stop Background Task:** "Muse Code chats have no background tasks to stop.
+  Stop Running Turn stops the whole turn."
+- **Steer during a turn:** reads `_muse_runtime`, and says "Muse Code can't
+  take a message during its turn. Wait for it to finish, or press Ctrl+. to
+  stop it." Nothing is sent. Idle Steer still sends.
+- **Chats started in Muse Code:** every capability refusal (and Insert
+  Command, Change Permission Mode and Stop Background Task) says "*title* was
+  started in Muse Code, so it's read-only here. Do that in Muse Code." Chat
+  Permissions says "Muse Code decides what it may do." Limited to Muse; the
+  same wording could serve Codex and Copilot chats started elsewhere
+  (`HOME_APPS`), which `tests/test_ui_rewind.py` pins today.

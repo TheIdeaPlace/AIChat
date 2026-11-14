@@ -450,3 +450,12 @@ def test_a_failed_save_says_so_instead_of_execution_unavailable(owned):
     polled = owned.poll(own)
     assert polled["state"] == "unknown"
     assert "couldn't save" in polled["notice"] and "unavailable" not in polled["notice"]
+
+
+def test_stop_says_whether_anything_was_running(owned):
+    """The window words Stop from Muse's answer, not its own guess."""
+    own = record(owned)
+    assert owned.stop(own) == "idle"
+    assert not any(m == "turn/cancel" for m, _ in owned.execution.messages)
+    owned.send(own, "Synthetic question")
+    assert owned.stop(own) == "cancelling"
