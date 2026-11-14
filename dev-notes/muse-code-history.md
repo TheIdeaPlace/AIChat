@@ -40,7 +40,8 @@ history. New chats and execution remain a later milestone.
    selectors, filters, labels and settings for hard-coded provider lists.
    Enable reading only: send, create, stop, fork, delete, approvals and other
    unsupported operations stay unavailable. Do not add Muse to
-   `RUNTIME_PROVIDERS` as a shortcut. Reuse the session list and conversation
+   `RUNTIME_PROVIDERS` as a shortcut (the execution milestone later added it,
+   behind ownership checks). Reuse the session list and conversation
    controls, preserving selection and focus during background refresh.
    Name the provider Muse Code and provide a keyboard-readable explanation
    that replies must be made in Muse Code. Preserve the existing Enter-to-open
@@ -88,9 +89,10 @@ The later conversion of status notices to native OK dialogs also still needs
 live screen-reader confirmation. Existing manual menu-flow passes remain valid
 for the paths actually tested.
 
-Owned Muse chat creation, streaming replies, cancellation, permissions, model
-selection, attachments and file changes are deferred to the execution milestone.
-That milestone must verify native permission enforcement before enabling sends.
+Owned Muse chat creation, streaming replies, cancellation and permissions were
+deferred to the execution milestone, which has since implemented and natively
+checked them ([muse-code-execution.md](muse-code-execution.md)). Model
+selection, attachments and file changes remain deferred.
 
 ## Starting implementation locations
 
@@ -160,8 +162,10 @@ Tool output is the transcript-visible output Muse supplies; truncated or unknown
 content is identified, rather than fetching arbitrary output references.
 
 The window registers the lazy provider when Muse is found, offers a Muse Code
-Chats filter, and reuses the normal read-only conversation view. Muse is a listed
-provider, never a runtime provider. The first history-read failure is announced
+Chats filter, and reuses the normal read-only conversation view. For this
+milestone Muse was a listed provider only; the execution milestone later added
+it to `RUNTIME_PROVIDERS` for chats started here, and `capabilities()` still
+keeps every externally created chat read-only. The first history-read failure is announced
 with a persistent safe status; repeated failures do not repeat the announcement.
 Loaded messages and focus are preserved. Probe surfaces and Orca steps use
 synthetic data. The four packaging entry points include Muse modules explicitly,

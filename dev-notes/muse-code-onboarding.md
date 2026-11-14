@@ -114,6 +114,8 @@ repository's Mac validation and Linux Orca CI requirements to changed paths.
 Update README behavior, any affected bundled guide text and the open release
 notes when the feature is implemented. Keep controls for creating Muse chats
 unavailable until a later milestone implements and verifies owned execution.
+(That milestone has since enabled New Session for Muse Code; see
+[muse-code-execution.md](muse-code-execution.md).)
 
 ## Sources and local precedents
 
@@ -150,7 +152,8 @@ documentation and Orca-tooling tests passed. The full merged suite passed
 with 6,726 passed, 61 skipped and one non-failing warning in a Claude test
 double's cleanup. A read-only native check still recognizes Muse 1.4.18 and
 reports `loggedOut`. The pre-merge work is retained in a recovery stash;
-the restored feature changes remain uncommitted.
+the restored feature changes were committed on the `Muse_Code` branch on
+2026-11-14 (`52843ed`).
 
 `platform_paths` discovers a native binary on PATH and the documented Unix
 `~/.local/bin/muse` fallback. On Windows it follows the installed launcher's
@@ -209,3 +212,8 @@ Verification on 2026-11-13 after installing Muse Code:
 - The real host rejected `account/read` before `initialized` with error -32600.
   The corrected handshake succeeds and reports `loggedOut` with a credential
   required. No sign-in flow, session or model prompt was started.
+
+Observed on 2026-11-14 with Muse Code 1.4.20 (1.4.20-R8619.1): the account
+was signed in, and owned chats ran on the `meta` provider. How that sign-in
+was done (the app's device-code flow or Muse's own) wasn't recorded, so
+browser sign-in through the app is still not claimed as verified.

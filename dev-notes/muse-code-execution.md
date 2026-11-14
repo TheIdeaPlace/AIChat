@@ -13,30 +13,52 @@ create, send, stream, answer requests, stop and reopen after restarting.
 Existing terminal conversations remain read-only. This plan supersedes the
 original approach and progress claims retained below as historical context.
 
-### Progress against this plan (2026-11-14, later)
+### Status by stage (2026-11-14, end of day)
 
-- Stage 1 (partly): the installed 1.4.20 schema was exported
-  (`msp.schema.json`, experimental, schemaVersion 1). Every method in
-  `ExecutionConnection.METHODS` and the three server requests exist there,
-  case-sensitively, and each request `muse.py` sends carries every required
-  top-level field and no unknown one. A native check found that
-  `approvalMode: promptUnmatched` alone left a session on Auto-review; passing
-  `permissionProfile: ":ask-me"` returned a human reviewer. Nested shapes
-  (`input` items, `answers`, `requirementId`) and responses/events are not
-  yet compared, and no native create/send/approve run is recorded.
-- Stage 2 (code, synthetic tests only): `ExecutionConnection` queues events
-  and accepts only the three server requests; `ManagedMuseExecution` uses the
-  execution allowlist. `MuseOwnedChats` reconciles from `session/read`
-  (idle/running/waiting/cancelling/unknown); silence is no longer completion.
-- Stage 4 (code): `prepare()` refuses to send unless the session reports
-  `promptUnmatched` with a human reviewer attached on `:ask-me`. Questions
-  submit `freeText`/`selectedLabel(s)` from the dialog, checked against the
-  question's options; one-time decisions only.
-- Stage 5 (code): command identity is a UUIDv7 `commandId` saved before
-  `turn/start`; a transport failure marks the turn unknown, not idle, and a
-  failed Stop keeps the turn.
-- Full suite with wx: 6887 passed, 61 skipped; the two failures were Muse
-  strings naming fixed keys after #635, now said through `your_key`.
+Committed on the `Muse_Code` branch (`52843ed`, `fdc5eb8`, `058382e`).
+
+- **Stage 1, contract: done except nested shapes.** The installed 1.4.20
+  schema was exported (`msp.schema.json`, experimental, schemaVersion 1).
+  Every method in `ExecutionConnection.METHODS` and both server requests
+  (`approval/request`, `userInput/request`) exist there, case-sensitively,
+  and each request `muse.py` sends carries every required top-level field
+  and no unknown one. Native runs (tables below) recorded create, send,
+  completion, approval, deny, question, Stop and reopen. Nested shapes
+  (`input` items, `answers`, `requirementId`) are confirmed only by those
+  runs being accepted, not by a schema comparison.
+- **Stage 2, transport and state: done.** `ManagedMuseExecution` uses the
+  execution allowlist; `ExecutionConnection` queues events and accepts only
+  the two server requests. `MuseOwnedChats` reconciles from `session/read`
+  (idle/running/waiting/cancelling/unknown); silence is not completion, and
+  the window's monitor outlives switching chats.
+- **Stage 3, create/send/stream: done natively.** One app-created chat was
+  created, sent, completed and sent again through `MuseOwnedChats`. The
+  window's own path (`provider-sessions-muse.json`) is exercised by tests
+  with the real `OwnSessionStore`; in the real app a completed turn first
+  reported "execution unavailable" because the store refused the saved
+  `terminal` field (fixed in `058382e`).
+- **Stage 4, permissions and questions: done, except an allowed command
+  running.** `prepare()` refuses to send unless the session reports
+  `promptUnmatched` with a human reviewer attached on `:ask-me`. Decisions
+  act on a choice's `decision`, never its id: allow is the once-only
+  `approved` choice; deny prefers once-only `denied`, else `abort` (what
+  1.4.20 offers as Reject; it ends the turn). Saved-rule and session choices
+  are never sent. Questions submit `freeText`/`selectedLabel(s)` checked
+  against the question's options. Admissions are out of scope: they are
+  `peerMessaging` (another chat asking to message this one), which the app
+  never requests. An allowed command can't run yet because of the `serve`
+  sandbox problem (meta-models/muse-code-sdk#149).
+- **Stage 5, Stop and recovery: partly.** A UUIDv7 `commandId` is saved
+  before `turn/start`; a transport failure marks the turn unknown, not
+  idle; a failed Stop keeps the turn. Stop waits for `lastTurn.terminal`,
+  which is saved, so the window says "Muse Code stopped." rather than
+  "finished". A save failure says so (`MuseSaveError`) instead of blaming
+  Muse. Reopen after a host restart works natively. Not yet run natively:
+  a host dying mid-turn or mid-approval, and a lost acknowledgement.
+- **Stage 6, validation: automated only.** Full suite with wx: 6908
+  passed, 61 skipped. Not yet done: VM light-100 and High Contrast pictures
+  for the Muse dialogs, a real keyboard walk, and NVDA/JAWS passes on the
+  execution flow.
 
 ### Native run, installed 1.4.20 (2026-11-14)
 
@@ -54,7 +76,7 @@ signed-in profile and synthetic prompts only.
 | Write outside workspace | No approval: `write_file` refuses ("absolute path is outside the workspace"). A sandbox boundary, not an approvable action. |
 | Network shell command | `approval/listPending` returned a `shell` approval with choices Allow once (`approved`/once), Always allow in this workspace (`approvedPolicyAmendment`/localPersistent), Reject (`abort`/once). |
 | Deny | Was impossible: the generic deny looked only for `denied`. Now prefers `denied`, else `abort`. Accepted; tool call `rejected`, "approval aborted"; nothing ran. |
-| Allow once | Accepted, but Muse refused to start the command: "sandbox enforcement unavailable: windows_elevated setup_required". **Blocker:** Muse's Windows elevated sandbox setup hasn't run on this computer; every shell command fails until it does. |
+| Allow once | Accepted, but Muse refused to start the command: "sandbox enforcement unavailable: windows_elevated setup_required". It looked at first as if the sandbox setup hadn't run; the next row shows setup doesn't fix it. |
 | After `muse sandbox windows setup` (elevated; `status=ready`, every part true) | Same error. Also the same with the workspace outside `C:\Users`, with the host outside the app's job object, with plain `Popen` flags, and with `serve --sandbox-network restricted`. Under `serve`, even `echo` asks for approval and then fails; `muse exec --permission-profile :ask-me` runs the same `echo` in the sandbox without asking. **Looks like a Muse 1.4.20 `serve` problem**, not the app's launch; reported as [meta-models/muse-code-sdk#149](https://github.com/meta-models/muse-code-sdk/issues/149). Not worked around: `--disable-sandbox` also lifts file-tool workspace confinement. |
 | Closing the host | Ends a running turn; the session reads `notLoaded` afterwards (matters for Stage 5). |
 
@@ -73,25 +95,25 @@ Still to verify natively: an allowed command that actually runs (blocked by
 the `serve` sandbox problem above), and Stop/recovery across a host that dies
 mid-turn or mid-approval.
 
-### Current blockers
+### Blockers found at the 2026-11-14 review, and how each was resolved
 
-- `ManagedMuseExecution` inherits the history-only request gate, rejecting
-  execution before it reaches `ExecutionConnection`. Existing tests do not
-  send the first execution request through the managed connection.
-- Execution method names and request shapes remain unverified. The draft
-  sends `prompt` and `idempotencyKey`; current official `turn/start` docs
-  specify `input` and `commandId`. Published method names include
-  `approval/listPending` and `userInput/answer`, with significant casing.
-- The inherited transport ignores notifications. Three quiet history polls
-  are treated as completion, and switching chats stops monitoring.
-- Questions use Allow/Deny without collecting an answer. Allow sends the
-  request's own details or summary. Admissions need separate verified routing.
-- Failed sends and cancellations clear local running state without confirming
-  native state. Command identity and recovery state are not durable.
-- Guides describe execution ahead of native verification. This document's
-  original advice excludes Muse from `RUNTIME_PROVIDERS`, while the draft
-  already includes it. Membership requires a provider-safety audit and never
-  substitutes for capability or ownership checks.
+- The execution host inherited the history-only request gate. Resolved:
+  `ManagedMuseExecution.METHODS` is the execution allowlist, with a
+  regression through the managed connection.
+- Wrong method names and fields (`prompt`, `idempotencyKey`). Resolved:
+  `input`, `commandId` and the schema's case-sensitive names.
+- Three quiet polls counted as completion; switching chats stopped
+  monitoring. Resolved: completion comes from `lastTurn.terminal`, and the
+  monitor is per chat, not per open view.
+- Questions were Allow/Deny and sent their own text. Resolved: the dialog
+  collects real answers. Admissions were dropped rather than routed (see
+  Stage 4 status).
+- Failed sends and cancellations cleared running state. Resolved: they stay
+  unknown or running until Muse's state says otherwise.
+- `RUNTIME_PROVIDERS` included Muse ahead of an audit. Kept: Muse is a
+  runtime provider, and `MuseProvider.capabilities()` still allows send and
+  approvals only for chats started here. Guide wording now follows the
+  verified behaviour, except the sandbox limitation, which no guide states.
 
 ### Stage 1: Verify the installed execution contract
 
@@ -101,8 +123,9 @@ errors with the official references. A compatible handshake does not prove
 that the execution implementation is correct.
 
 Verify only the operations needed to create and reopen an owned chat, submit
-and cancel a turn, observe history and terminal state, handle permissions,
-admissions and questions, and establish effective native permission policy.
+and cancel a turn, observe history and terminal state, handle permissions
+and questions, and establish effective native permission policy. (Admissions
+were first in this list; they turned out to be `peerMessaging`, out of scope.)
 Use synthetic content in a disposable profile/workspace, checking the host's
 resolved profile before creating fixtures. Do not alter global configuration
 or copy real conversation content into tests. Begin with the native echo
@@ -147,14 +170,15 @@ remains running; switching chats does not abandon it. Foreign chats cannot
 send, stop, answer or reach another provider's runner. Missing Muse leaves
 other providers usable.
 
-### Stage 4: Complete permissions, admissions and questions
+### Stage 4: Complete permissions and questions
 
 Establish the verified native policy before tool-capable sends; if it cannot
 be established, explain the limitation and keep sending unavailable. Do not
 claim every tool needs individual approval unless the effective policy
 demonstrates that behavior.
 
-Keep approvals, admissions and questions distinct. Provide the native
+Keep approvals and questions distinct (admissions: see Stage 4 status;
+the app never requests `peerMessaging`, so it never lists them). Provide the native
 decision choices for permissions and labeled text/choice controls for actual
 question answers. Submit only the person's response. Escape/Not Yet leaves
 a request pending; explicit denial or question cancellation uses the verified
@@ -234,6 +258,9 @@ Protocol references, to compare against the installed schema:
 
 The material below records the earlier design and draft implementation.
 Its completion claims and original decisions do not override the active plan.
+In particular, admissions were later removed, the approval dialog shows
+Muse's own once-only choices rather than Allow Once/Deny, and quiet polls no
+longer settle a turn.
 
 ### Original goal
 
