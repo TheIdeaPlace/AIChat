@@ -150,7 +150,7 @@ SHORTCUTS = [
         ("Alt+V, H", "Show Sessions: all, needs you or working, needs you, working, with a "
                      "new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote "
                      "Control, ungrouped (in no group), Claude chats, Codex chats, GitHub "
-                     "Copilot chats, archived, hidden, or one of your groups"),
+                     "Copilot chats, Muse Code chats, archived, hidden, or one of your groups"),
         ("Alt+V, C", "Session List Columns: choose what each session's line says and in "
                      "what order, such as status first; in the dialog, Enter adds, Delete "
                      "removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move"),

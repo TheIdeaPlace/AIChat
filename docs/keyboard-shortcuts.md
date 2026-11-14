@@ -30,7 +30,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Shift+H | Chat Permissions: the selected (or loaded) Chat Place chat's permission mode, and the commands and tools it may use without asking: for a Claude chat, those it keeps and the rules from Claude Code's own settings for its folder; for a Copilot chat, the commands allowed for it and your rules for Copilot (Delete or Remove takes one back, and Remove All takes them all) |
 | F5 | Refresh the list now and put it back in order (it also refreshes itself every few seconds, without moving rows while you're in it) |
 | Alt+V, O | Sort Sessions: by status, newest first, oldest first, by title or by folder; the choice is remembered |
-| Alt+V, H | Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, ungrouped (in no group), Claude chats, Codex chats, GitHub Copilot chats, archived, hidden, or one of your groups |
+| Alt+V, H | Show Sessions: all, needs you or working, needs you, working, with a new reply, idle, desktop app, Cowork, The Chat Place, terminal, Remote Control, ungrouped (in no group), Claude chats, Codex chats, GitHub Copilot chats, Muse Code chats, archived, hidden, or one of your groups |
 | Alt+V, C | Session List Columns: choose what each session's line says and in what order, such as status first; in the dialog, Enter adds, Delete removes, and Alt+Up, Alt+Down, Alt+Home and Alt+End move |
 | Ctrl+E | Export the selected (or loaded) session as Markdown, a web page or plain text |
 | F2 | Rename the selected session (a desktop app or terminal session's new name shows only in The Chat Place) |

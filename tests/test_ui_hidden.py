@@ -7058,7 +7058,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
 def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
     dialog, said, focused = _columns_dialog(frame, ["title", "status"])
     try:
-        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex, Copilot or Muse Code)"
         dialog.shown.SetSelection(0)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DELETE)
         assert said[-1] == "Title removed. 1 column shown."
@@ -7073,7 +7073,7 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.fields() == ["status", "title"]
         assert focused[-1] == "available"  # stays, to add more
         assert dialog.shown.GetSelection() == 1  # on what it added
-        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex, Copilot or Muse Code)"
         dialog.reset()
         assert said[-1] == "Columns reset to the default: 11 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11

@@ -27,6 +27,9 @@ identifies the AI; Kind identifies where a session started. Support for other pr
 Ollama, is planned. Provider-specific features name their provider and are available where that
 provider supports them.
 
+Muse Code conversations can also be listed and read. Reply to those chats in
+Muse Code; running Muse chats here is planned for a later milestone.
+
 For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never uses an API
 key. Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
@@ -67,10 +70,12 @@ too).
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
-  **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
-  available with Codex or Copilot turned off; each is empty until its provider is enabled.
+  **Claude Chats**, **Codex Chats**, **GitHub Copilot Chats** and **Muse Code Chats** filter by provider.
+  Codex and Copilot filters remain available when their providers are turned off;
+  they are empty until enabled. Muse chats are listed automatically when Muse Code
+  is installed at app startup.
   **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex, Copilot or Muse Code), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
   Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
   until you add them. Provider says which AI; Kind says where the session started. Other
@@ -1555,6 +1560,47 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Sign-in, the user guide and bug reports
 
+- **Muse Code sign-in** (Tools, Sign In, Muse Code) checks whether Muse Code is installed and
+  reports its sign-in status. Status, error and installation notices use standard
+  OK dialogs, as the other providers' sign-in commands do. Installation is a step you run
+  yourself; the app does not run the installer. The same command helps you sign
+  in and check again afterward. When sign-in is needed, it asks first, then
+  shows the browser address and device code in boxes you can read and copy.
+  **Open Browser** opens the sign-in page; **Cancel** stops waiting. The app
+  checks the account again when sign-in ends. If Muse cannot report its account,
+  it explains that it could not check and asks you to update Muse Code and retry.
+  Stored API keys take precedence over browser sign-in and must be managed in
+  Muse Code itself.
+- **Muse Code history.** With Muse Code installed, its stored conversations appear
+  automatically in the session list. **View, Show Sessions, Muse Code Chats** lists
+  only those conversations. Open one with Enter and read, copy, find or export its
+  messages using the existing conversation controls. Conversations Muse Code
+  started are read-only; reply in Muse Code.
+  File, New Session offers Muse Code as the Provider to start a chat here.
+  Model and effort are Muse Code's own. The chat streams replies, and each
+  pending request is announced with its chat title, even while you read another
+  conversation. Press Ctrl+Shift+A in that chat to review its native permission
+  choices or answer its questions. Muse's **Ask me** policy prompts for restricted
+  actions; safe actions can run without asking. Stop waits for Muse to confirm
+  cancellation. Chat, Chat Settings, Chat Permissions explains this for a Muse
+  chat started here. Deleting Muse chats here is not available yet.
+  Signing in to Muse Code does not create a saved conversation.
+  If Muse has no stored conversations, the filter explains that none were found;
+  start a conversation in Muse Code, then press F5 to refresh the list. Pending
+  or unavailable discovery is reported separately.
+  Reading history does not resume a session or start a model
+  turn, and background discovery never starts sign-in.
+  History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
+  Sending is unavailable if the human permission policy cannot be established.
+  If a build's
+  interface differs, the app reports that Muse Code is unavailable. Session status is shown as
+  unavailable because stored history cannot establish what another Muse process
+  is doing. If a refresh fails, previously listed chats and loaded messages stay
+  available; press F5 to retry. Unsupported or shortened history is identified
+  rather than presented as complete. A history format that cannot be read safely
+  must be opened in Muse Code. The Last message column shows a cached preview
+  after a conversation has been read; it does not fetch every conversation in
+  the background.
 - **Claude Code sign-in** (Tools, Sign In, Claude Code) says whether Claude Code is signed in, to which plan and
   as whom ("Claude Code is signed in to your Claude Max plan as …"). If it isn't, it offers to
   sign in: `claude auth login` opens in its own window (a Terminal window on a Mac) and your

@@ -286,6 +286,70 @@ def test_copilot_records_carry_no_claude_or_codex_settings(tmp_path):
             OwnSession("x", "t", "/synthetic", provider="copilot", provider_options={"model": "m"}))
 
 
+# -- Muse records have a file of their own, like Copilot's --------------------
+
+
+def muse_chat(native="muse-id"):
+    return OwnSession(native, "Synthetic Muse chat", "/synthetic", provider="muse",
+                      started=True)
+
+
+def test_muse_records_never_reach_the_files_older_releases_read(tmp_path):
+    """Releases that read provider-sessions.json refuse all of it over a
+    provider they don't know, so Muse is kept out of it entirely."""
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(chat())
+    store.add(chat("codex"))
+    store.add(muse_chat())
+    codex_file = json.loads((tmp_path / "provider-sessions.json").read_text(encoding="utf-8"))
+    assert [item["provider"] for item in codex_file["sessions"]] == ["codex"]
+    assert "muse" not in (tmp_path / "sessions.json").read_text(encoding="utf-8")
+    own = json.loads((tmp_path / "provider-sessions-muse.json").read_text(encoding="utf-8"))
+    assert own["version"] == 2 and [item["provider"] for item in own["sessions"]] == ["muse"]
+    again = OwnSessionStore(path)
+    assert again.get("muse-id", "muse") == store.get("muse-id", "muse")
+    assert again.get("muse-id", "muse").to_info().key == "muse:muse-id"
+    assert len(again.all(None)) == 3 and not again.load_error
+
+
+def test_removing_the_last_muse_chat_leaves_an_empty_muse_file(tmp_path):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    store.remove("muse-id", "muse")
+    own = json.loads((tmp_path / "provider-sessions-muse.json").read_text(encoding="utf-8"))
+    assert own == {"version": 2, "sessions": []}
+    assert OwnSessionStore(path).all(None) == []
+
+
+def test_muse_command_identity_and_uncertain_state_survive_restart(tmp_path):
+    import uuid
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    command = {"command_id": str(uuid.uuid7()), "turn_id": "", "state": "submitting"}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    reopened = OwnSessionStore(path)
+    assert reopened.get("muse-id", "muse").provider_options == {"muse_command": command}
+    assert not reopened.load_error
+    assert json.loads((tmp_path / "provider-sessions.json").read_text())["sessions"] == []
+
+
+@pytest.mark.parametrize("command", [
+    {"command_id": "invalid", "turn_id": "", "state": "running"},
+    {"command_id": "00000000-0000-4000-8000-000000000000", "turn_id": "", "state": "running"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "allowAll"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "prompt": "synthetic"},
+])
+def test_muse_recovery_store_refuses_invalid_commands_and_prompt_content(tmp_path, command):
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    store.add(muse_chat())
+    with pytest.raises(ValueError):
+        store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert store.get("muse-id", "muse").provider_options == {}
+
+
 def test_a_failed_save_puts_the_copilot_file_back(tmp_path, monkeypatch):
     from thechatplace import provider_storage
     path = tmp_path / "sessions.json"

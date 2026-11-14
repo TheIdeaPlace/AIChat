@@ -791,6 +791,104 @@ def s_main_codex(frame, env, *, file_changes=False):
     _open(frame, "Codex history preview")
 
 
+def _muse_probe(frame, env, *, unavailable=False, empty=False):
+    """Install an in-memory read-only Muse backend for UI probes.
+
+    This deliberately does not import or start Muse.  It exercises the same
+    ``SessionController`` reader/capability boundary as the real adapter,
+    while keeping probe runs safe on a developer workstation.
+    """
+    import dataclasses
+    from thechatplace.providers.base import SessionCapabilities, Snapshot
+    from thechatplace.providers.claude import ClaudeConversations
+    from thechatplace.session_controller import SessionController
+    from thechatplace.sessions import STATUS_UNAVAILABLE, SessionInfo
+    from thechatplace.transcript import ASSISTANT, USER, ChatMessage, Transcript
+
+    title = "Muse Code history preview"
+    info = SessionInfo("external", "muse:synthetic", title,
+                       str(env["folders"]["Scratch"]), "synthetic",
+                       provider="muse", provider_label="Muse Code",
+                       # Muse cannot infer another host's live state from its
+                       # catalog. Keep the probe aligned with production.
+                       state=STATUS_UNAVAILABLE,
+                       detail="Muse Code history is unavailable" if unavailable else "")
+
+    class Reader:
+        def __init__(self):
+            self.transcript = Transcript(messages=[
+                ChatMessage(USER, "Explain the upload test.", key="muse-user",
+                            assistant_name="Muse Code"),
+                ChatMessage(ASSISTANT, "The upload waits for the server before sending.",
+                            key="muse-answer", assistant_name="Muse Code")], turns=1)
+
+        def refresh(self):
+            return False
+
+    class Provider:
+        provider_id = "muse"
+
+        def __init__(self):
+            self.reader = Reader()
+
+        def collect(self):
+            return Snapshot(sessions=[] if empty else [dataclasses.replace(info)])
+
+        def has_history(self, session):
+            return not unavailable
+
+        def open_reader(self, session):
+            return None if unavailable else self.reader
+
+        def last_reply(self, session):
+            return "The upload waits for the server before sending."
+
+        def capabilities(self, session):
+            return SessionCapabilities(read=True)
+
+    frame._list_timer.Stop()
+    frame.sessions = SessionController([ClaudeConversations(), Provider()])
+    existing = [session for session in frame._snapshot.sessions
+                if session.key != info.key]
+    snapshot = dataclasses.replace(frame._snapshot, sessions=existing if empty else [*existing, info])
+    frame._apply_snapshot(snapshot, [], {}, False)
+    return info
+
+
+def s_main_muse(frame, env):
+    """Synthetic Muse Code history in the shared read-only conversation view."""
+    _muse_probe(frame, env)
+    _open(frame, "Muse Code history preview")
+
+
+def s_main_muse_unavailable(frame, env):
+    """Synthetic Muse outage after a readable transcript was loaded."""
+    _muse_probe(frame, env, unavailable=False)
+    _open(frame, "Muse Code history preview")
+    # Exercise the same callback used by a failed background reader. The
+    # already loaded transcript must remain visible and the safe status must
+    # be persistent without exposing the transport exception.
+    frame._apply_chat(frame._open_generation, False, [], 0,
+                      RuntimeError("synthetic Muse transport details"))
+
+
+def s_main_muse_restore(frame, env):
+    """Return from the Muse outage probe to the original Visual probe chat."""
+    from thechatplace.sessions import VIEW_ALL
+    frame._apply_view(VIEW_ALL)
+    _open(frame, "Visual probe")
+    frame.focus_messages()
+
+
+def s_main_muse_empty(frame, env):
+    """A successful empty Muse catalog, with other providers still available."""
+    from thechatplace.sessions import VIEW_MUSE
+    frame.unload_session()
+    _muse_probe(frame, env, empty=True)
+    frame.on_view(VIEW_MUSE)
+    frame.focus_sessions()
+
+
 def s_main_codex_filter(frame, env):
     from thechatplace.sessions import FIELD_PROVIDER, VIEW_CODEX
 
@@ -1074,6 +1172,12 @@ def d_shortcuts_plain(frame, env):
     return lambda: frame._modal(ShortcutsDialog(frame))
 
 
+def d_muse_login(frame, env):
+    from thechatplace.ui.dialogs import MuseLoginDialog
+    dialog = MuseLoginDialog(frame, "https://meta.ai/device", "ABCD-EFGH", lambda: None)
+    return lambda: frame._muse_modal(dialog)
+
+
 def d_user_guide(frame, env):
     return frame.on_user_guide
 
@@ -1335,6 +1439,48 @@ def d_copilot_new(frame, env):
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
                                                 providers=("claude", "codex", "copilot"),
                                                 provider="copilot"))
+
+
+def d_muse_new(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
+                                                providers=("claude", "muse"),
+                                                provider="muse"))
+
+
+def d_muse_approval(frame, env):
+    """Muse Code asks permission to run a command in an owned chat."""
+    from thechatplace.ui.dialogs import MuseApprovalDialog
+    dialog = MuseApprovalDialog(frame, "Muse probe chat",
+                                "Run the synthetic test command",
+                                "pytest -q tests/test_muse_execution.py", "approval")
+    return lambda: frame._modal(dialog)
+
+
+def d_muse_question(frame, env):
+    """An actual answer entry, rather than an allow/deny decision."""
+    from thechatplace.ui.dialogs import MuseApprovalDialog
+    dialog = MuseApprovalDialog(frame, "Muse probe chat", "Choose a test scope", "",
+                                "question", questions=({
+                                    "id": "scope", "header": "Scope",
+                                    "question": "Which synthetic tests should run?",
+                                    "selection": {"mode": "single"},
+                                    "options": [{"label": "Focused tests"},
+                                                {"label": "Full suite"}],
+                                },))
+    return lambda: frame._modal(dialog)
+
+
+def d_chat_permissions_muse(frame, env):
+    """Chat, Chat Settings, Chat Permissions for an owned Muse Code chat:
+    nothing is kept here, so there are no rules to remove."""
+    from thechatplace.own_store import OwnSession
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    from thechatplace.ui.permission_hosts import MusePermissions
+    record = OwnSession("probe-muse", "Muse probe chat",
+                        str(env["folders"]["Scratch"]), provider="muse", started=True)
+    host = MusePermissions(frame, record.to_info(), record)
+    return lambda: frame._modal(ChatPermissionsDialog(frame, record.title, host))
 
 
 def d_new_session_copilot(frame, env):
@@ -2359,6 +2505,12 @@ SURFACES = {
                   "Kept Claude history after its original transcript is removed: read-only"),
     "main-codex": ("window", s_main_codex,
                    "Synthetic Codex history in the shared window: read-only controls and Codex labels"),
+    "main-muse": ("window", s_main_muse,
+                  "Synthetic Muse Code history in the shared window: read-only controls and Muse Code labels"),
+    "main-muse-unavailable": ("window", s_main_muse_unavailable,
+                              "Loaded synthetic Muse Code history with a safe history-read failure status"),
+    "main-muse-empty": ("window", s_main_muse_empty,
+                        "Empty Muse Code filter with persistent guidance to start a Muse conversation and refresh"),
     "main-codex-owned": ("window", s_main_codex_owned,
                          "Owned Codex chat with send/stop controls, queued text and a draft"),
     "main-codex-interrupted": ("window", s_main_codex_interrupted,
@@ -2391,6 +2543,7 @@ SURFACES = {
     "main-narrow": ("window", s_main_narrow, "An own session in a 640 by 480 window"),
     "shortcuts-page": ("dialog", d_shortcuts_page, "Help, Keyboard Shortcuts (formatted page)"),
     "shortcuts-plain": ("dialog", d_shortcuts_plain, "Keyboard Shortcuts as plain text"),
+    "muse-login": ("dialog", d_muse_login, "Muse Code device-code sign-in"),
     "user-guide": ("dialog", d_user_guide, "Help, User Guide (formatted page)"),
     "message-formatted": ("dialog", d_message_formatted,
                           "A message read as a formatted page: heading, list, code, table, link"),
@@ -2417,6 +2570,11 @@ SURFACES = {
     "codex-auto-review": ("dialog", d_codex_auto_review, "New Codex chat with automatic approval review selected"),
     "codex-review-history": ("dialog", d_codex_review_history, "Automatic reviewer, boundaries and recent decisions"),
     "copilot-new": ("dialog", d_copilot_new, "New Session with Copilot selected as Provider"),
+    "muse-new": ("dialog", d_muse_new, "New Session with Muse Code selected as Provider"),
+    "muse-approval": ("dialog", d_muse_approval, "Muse Code asks permission to run a command"),
+    "muse-question": ("dialog", d_muse_question, "Answer a Muse Code question with a choice or typed text"),
+    "chat-permissions-muse": ("dialog", d_chat_permissions_muse,
+                              "Chat Permissions: an owned Muse Code chat keeps no rules"),
     "copilot-continue": ("dialog", d_copilot_continue,
                          "Continue Here from a Copilot CLI chat that may still be working"),
     "new-session-copilot": ("dialog", d_new_session_copilot,
@@ -2550,6 +2708,7 @@ NOT_PHOTOGRAPHED = {
 DIALOG_CLASSES = {
     "shortcuts-page": "FormattedMessageDialog",
     "shortcuts-plain": "ShortcutsDialog",
+    "muse-login": "MuseLoginDialog",
     "user-guide": "FormattedMessageDialog",
     "message-formatted": "FormattedMessageDialog",
     "whole-chat": "FormattedMessageDialog",
@@ -2570,6 +2729,10 @@ DIALOG_CLASSES = {
     "codex-auto-review": "NewSessionDialog",
     "codex-review-history": "ChatPermissionsDialog",
     "copilot-new": "NewSessionDialog",
+    "muse-new": "NewSessionDialog",
+    "muse-approval": "MuseApprovalDialog",
+    "muse-question": "MuseApprovalDialog",
+    "chat-permissions-muse": "ChatPermissionsDialog",
     "copilot-continue": "NewSessionDialog",
     "new-session-copilot": "NewSessionDialog",
     "copilot-permission": "CodexPermissionDialog",

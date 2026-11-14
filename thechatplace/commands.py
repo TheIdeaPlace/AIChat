@@ -193,6 +193,7 @@ MENU_BAR: Tuple[Menu, ...] = (
             Command("claude_sign_in", "&Claude Code..."),
             Command("codex_sign_in", "C&odex..."),
             Command("copilot_sign_in", "Co&pilot..."),
+            Command("muse_sign_in", "&Muse Code..."),
         )),
         SEPARATOR,
         Command("sounds", "S&ounds..."),

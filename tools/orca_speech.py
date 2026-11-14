@@ -177,6 +177,61 @@ STEPS = [
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Missing Muse uses the same native OK warning as missing Copilot.
+    Step("Muse Code sign-in", ["alt+t", "n", "m"],
+         expect=["Muse Code", "wasn't found", "muse --version"]),
+    Step("Muse guidance acknowledged, back in the messages", ["Return"],
+         expect=["Messages in Visual probe"]),
+    Step("Muse device sign-in", [], trigger="muse-device",
+         expect=["Muse Code Sign-in", "Browser address"], refuse=["unlabeled", "unlabelled"]),
+    Step("Muse device code", ["Tab"], expect=["Device code", "ABCD-EFGH"]),
+    Step("Muse Open Browser", ["Tab"], expect=["Open Browser", "push button"]),
+    Step("Muse Cancel", ["Tab"], expect=["Cancel", "push button"]),
+    Step("Muse back to Open Browser", ["shift+Tab"], expect=["Open Browser"]),
+    Step("Muse device sign-in closed", ["Escape"], expect=["Messages in Visual probe"]),
+    Step("Muse Code history", [], trigger="muse-history",
+         expect=["Messages in Muse Code history preview", "The upload waits for the server"]),
+    Step("Muse Code history outage", [], trigger="muse-outage",
+         expect=["Muse Code", "history is unavailable"]),
+    Step("Empty Muse Code filter", [], trigger="muse-empty",
+         expect=["No Muse Code conversations were found", "Start one in Muse Code"]),
+    Step("Enter in empty Muse Code filter", ["Return"],
+         expect=["No Muse Code conversations were found"], refuse=["No session selected"]),
+    Step("Muse Code history restored", [], trigger="muse-restore",
+         expect=["Messages in Visual probe", "What changed"]),
+    # New Session with Muse Code selected: model and effort are its own, so
+    # those controls read as unavailable. Escape closes it unchanged.
+    Step("Muse New Session", [], trigger="muse-new",
+         expect=["New Chat Place Session", "Muse Code"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse New Session closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    # Review the request before its decisions; Escape leaves it unanswered.
+    Step("Muse asks permission", [], trigger="muse-approval",
+         expect=["Permission: Muse probe chat", "Request"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse permission details", ["Tab"], expect=["Details"]),
+    Step("Muse Allow Once", ["Tab"], expect=["Allow Once"]),
+    Step("Muse Deny", ["Tab"], expect=["Deny"]),
+    Step("Muse Not Yet", ["Tab"], expect=["Not Yet"]),
+    Step("Muse permission dialog closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    Step("Muse asks a question", [], trigger="muse-question",
+         expect=["Question: Muse probe chat", "Request"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse question text", ["Tab"], expect=["Question"]),
+    Step("Muse question choices", ["Tab"], expect=["choose one"]),
+    Step("Muse typed answer", ["Tab"], expect=["typed answer"]),
+    Step("Muse Send Answers", ["Tab"], expect=["Send Answers"]),
+    Step("Muse Cancel Question", ["Tab"], expect=["Cancel Question"]),
+    Step("Muse question Not Yet", ["Tab"], expect=["Not Yet"]),
+    Step("Muse question closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
+    Step("Muse Chat Permissions", [], trigger="muse-permissions",
+         expect=["Chat Permissions", "Muse Code's own"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse Chat Permissions closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     # Help, Sound Tutorial (#250): it opens on the first event, arrows move
     # through them by name, and Escape comes back.
     Step("sound tutorial", ["alt+h", "t"], expect=["Sound Tutorial", "Tool ran"],
@@ -773,8 +828,95 @@ def refresh(frame) -> None:
                   timeout=10)
 
 
+def muse_device(frame, env) -> None:
+    """Review a synthetic device code without starting Muse or a browser."""
+    import ui_probe
+    ui_probe.d_muse_login(frame, env)()
+
+
+def muse_history(frame, env) -> None:
+    """Switch to the in-memory Muse history probe without starting a host."""
+    import ui_probe
+    frame.focus_sessions()
+    ui_probe.s_main_muse(frame, env)
+
+
+def muse_outage(frame, env) -> None:
+    """Keep the loaded Muse history and announce a safe history-read failure."""
+    import ui_probe
+    ui_probe.s_main_muse_unavailable(frame, env)
+
+
+def muse_restore(frame, env) -> None:
+    """Return to the original synthetic chat before the next Orca step."""
+    import ui_probe
+    frame.focus_sessions()
+    ui_probe.s_main_muse_restore(frame, env)
+
+
+def muse_empty(frame, env) -> None:
+    """Explain a synthetic empty Muse catalog without starting a host."""
+    import ui_probe
+    ui_probe.s_main_muse_empty(frame, env)
+
+
+def muse_new(frame, env) -> None:
+    """New Session with Muse Code selected: model and effort are Muse Code's
+    own, so those controls are shown disabled with nothing to choose."""
+    import wx
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, str(env["folders"]["Scratch"]),
+                              providers=("claude", "muse"), provider="muse")
+    wx.CallAfter(frame._modal, dialog)
+
+
+def muse_approval(frame, env) -> None:
+    """A Muse Code permission request in a chat started here: Allow Once,
+    Deny or Not Yet, with the request read-only for review."""
+    import wx
+    from thechatplace.ui.dialogs import MuseApprovalDialog
+    dialog = MuseApprovalDialog(frame, "Muse probe chat",
+                                "Run the synthetic test command",
+                                "pytest -q tests/test_muse_execution.py", "approval")
+    wx.CallAfter(frame._modal, dialog)
+
+
+def muse_permissions(frame, env) -> None:
+    """Chat Permissions for an owned Muse Code chat: its own mode, no kept
+    rules, and how answering works."""
+    import wx
+    from thechatplace.own_store import OwnSession
+    from thechatplace.ui.dialogs import ChatPermissionsDialog
+    from thechatplace.ui.permission_hosts import MusePermissions
+    record = OwnSession("orca-muse", "Muse probe chat",
+                        str(env["folders"]["Scratch"]), provider="muse", started=True)
+    host = MusePermissions(frame, record.to_info(), record)
+    wx.CallAfter(frame._modal, ChatPermissionsDialog(frame, record.title, host))
+
+
+def muse_question(frame, env) -> None:
+    """Actual question controls, not permission buttons posing as an answer."""
+    import wx
+    from thechatplace.ui.dialogs import MuseApprovalDialog
+    questions = ({"id": "scope", "header": "Scope", "question": "Which synthetic checks?",
+                  "selection": {"mode": "single"},
+                  "options": [{"label": "Focused tests"}, {"label": "All tests"}]},)
+    dialog = MuseApprovalDialog(frame, "Muse probe chat", "Choose the checks", "",
+                                "question", questions=questions)
+    wx.CallAfter(frame._modal, dialog)
+
+
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    "muse-device": muse_device,
+    "muse-history": muse_history,
+    "muse-outage": muse_outage,
+    "muse-restore": muse_restore,
+    "muse-empty": muse_empty,
+    "muse-new": muse_new,
+    "muse-approval": muse_approval,
+    "muse-question": muse_question,
+    "muse-permissions": muse_permissions,
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),

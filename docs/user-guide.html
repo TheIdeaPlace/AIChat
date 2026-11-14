@@ -35,6 +35,41 @@ Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guid
 Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.</p>
 <nav aria-labelledby="contents"><h2 id="contents">Contents</h2><ul><li><a href="#before-you-start">Before you start</a></li><li><a href="#your-first-chat">Your first chat</a></li><li><a href="#getting-more-out-of-claude">Getting more out of Claude</a></li><li><a href="#getting-more-out-of-codex">Getting more out of Codex</a></li><li><a href="#getting-more-out-of-github-copilot-cli">Getting more out of GitHub Copilot CLI</a></li><li><a href="#the-window">The window</a></li><li><a href="#reading-a-chat">Reading a chat</a></li><li><a href="#sounds">Sounds</a></li><li><a href="#finding-things">Finding things</a></li><li><a href="#reviewing-changed-files">Reviewing changed files</a></li><li><a href="#kinds-of-chat">Kinds of chat</a></li><li><a href="#what-works-for-each-provider">What works for each provider</a></li><li><a href="#codex-chats">Codex chats</a></li><li><a href="#github-copilot-cli-chats-preview">GitHub Copilot CLI chats (preview)</a></li><li><a href="#starting-a-chat-and-replying">Starting a chat and replying</a></li><li><a href="#permissions-and-questions">Permissions and questions</a></li><li><a href="#connected-tools">Connected tools</a></li><li><a href="#organizing-your-chats">Organizing your chats</a></li><li><a href="#announcements-and-notifications">Announcements and notifications</a></li><li><a href="#settings">Settings</a></li><li><a href="#usage-and-context">Usage and context</a></li><li><a href="#exporting-a-chat">Exporting a chat</a></li><li><a href="#backing-up-your-chats">Backing up your chats</a></li><li><a href="#more-things-you-can-do">More things you can do</a></li><li><a href="#links-to-chats">Links to chats</a></li><li><a href="#remote-control">Remote Control</a></li><li><a href="#your-chats-on-other-computers">Your chats on other computers</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstalling">Uninstalling</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#good-to-know">Good to know</a></li><li><a href="#glossary">Glossary</a></li></ul></nav><h2 id="before-you-start">Before you start</h2>
+<p>Tools, <strong>Sign In</strong>, <strong>Muse Code</strong> provides setup assistance for Muse Code. It checks
+installation and sign-in, shows status, errors and installation instructions in
+standard OK dialogs, and helps you sign in and check again. You run the installer yourself.
+If sign-in is needed, confirm the offer, read or copy the browser address and
+device code, then choose <strong>Open Browser</strong> to sign in. <strong>Cancel</strong> stops waiting;
+the app checks your status again afterward. An older Muse build may need an
+update before the app can check its account. If Muse reports a stored API key,
+manage it in Muse Code first: it takes precedence over browser sign-in.
+With Muse Code installed, its stored conversations appear automatically in the
+session list. <strong>View, Show Sessions, Muse Code Chats</strong> shows only those chats.
+Press Enter to open one, then read, copy, find or export its messages using the
+existing conversation controls. The read-only reply area explains that replies
+to those chats must be made in Muse Code.
+File, New Session offers Muse Code as the Provider to start a chat here.
+Model and effort are Muse Code's own. The chat streams replies, and each
+pending request is announced with its chat title, even while you read another
+conversation. Press Ctrl+Shift+A in that chat to review its native permission
+choices or answer its questions. Muse's <strong>Ask me</strong> policy prompts for restricted
+actions; safe actions can run without asking. Stop waits for Muse to confirm
+cancellation. Deleting Muse chats here is not available yet.
+Reading does not resume a session or start a turn.</p>
+<p>History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
+Sending is unavailable if the human permission policy cannot be established. Other interfaces
+may be reported as unavailable. Stored history cannot establish another process's live
+state, so Muse rows say status unavailable. If a refresh fails, the last good
+session list and loaded messages stay available; press F5 to retry. Unsupported
+or shortened history is identified, and a history format the app cannot read
+safely must be opened in Muse Code. Background discovery does not start sign-in.
+The Last message column uses a cached preview after you read a conversation;
+it does not fetch every chat in the background.</p>
+<p>Signing in to Muse Code does not create a saved conversation.
+If Muse has no stored conversations, Muse Code Chats explains that none were
+found. Start a conversation in Muse Code, then press F5 to refresh the list.
+Pending or unavailable discovery is reported separately. With no rows listed,
+Enter repeats this guidance.</p>
 <p>You need:</p>
 <ul>
 <li>Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -2648,9 +2683,11 @@ in a terminal: Sign In says the command, such as <code>codex mcp login notes</co
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app chats (Code and Cowork); just Cowork chats;
 chats started here; terminal chats; Remote Control chats; ungrouped chats; Claude chats; Codex
-chats; GitHub Copilot chats; archived ones; hidden ones; or one of your groups.
-<strong>Claude Chats</strong>, <strong>Codex Chats</strong> and <strong>GitHub Copilot Chats</strong> filter by provider. They remain
-available when Codex or Copilot is off; each is empty until its provider is enabled.
+chats; GitHub Copilot chats; Muse Code chats; archived ones; hidden ones; or one of your groups.
+<strong>Claude Chats</strong>, <strong>Codex Chats</strong>, <strong>GitHub Copilot Chats</strong> and <strong>Muse Code Chats</strong> filter by provider.
+Codex and Copilot filters remain available when their providers are off; they are
+empty until enabled. Muse chats are listed automatically when Muse Code is
+installed at app startup.
 <strong>View, Sort Sessions</strong> (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same chat when it's
 still listed.</p>
@@ -2658,7 +2695,7 @@ still listed.</p>
 <p><strong>View, Session List Columns</strong> (Alt+V, C) chooses which parts each chat's line reads, and in
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.</p>
-<p>The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New
+<p>The parts are called columns: Title, Provider (Claude, Codex, Copilot or Muse Code), Folder, Status, New
 reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the others in "The
 kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started and
 Last message are read only once you add them. Older saved choices gain Provider once, just after

@@ -10,6 +10,7 @@ from __future__ import annotations
 from .. import chat_permissions, claude_settings, codex_saved_rules
 from ..claude_cli import PERMISSION_MODES, normalize_permission_mode
 from ..sessions import NEEDS_YOU, WORKING
+from ..ui_text import key_name, your_key
 
 #: Codex's sandbox choices, also used by agent-conversation templates.
 CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing changes'),
@@ -58,6 +59,39 @@ def review_history_text(reviews) -> str:
     Lists' Approvals has (lists.approval_items), so the same history doesn't
     read in two orders (#596)."""
     return REVIEW_HISTORY_HEADING + '\n\n' + '\n\n'.join(row[2] for row in reversed(list(reviews)))
+
+
+class MusePermissions:
+    """Chat Permissions for an owned Muse Code chat: nothing is kept here.
+
+    Muse enforces the native prompt-unmatched policy, including its native
+    rules. Requests are announced even while another conversation is open.
+    """
+    can_remove = False
+    empty_text = "This Muse Code chat keeps no always-allow rules here."
+
+    def __init__(self, frame, info, record):
+        self.frame = frame
+        self.info = info
+        self.record = record
+
+    def mode_text(self) -> str:
+        return "Muse Code: ask for unmatched requests"
+
+    def can_change_mode(self):
+        return False, "Muse Code chats use the native ask-for-unmatched-requests mode."
+
+    def change_mode(self, done):
+        done()
+
+    def note(self) -> str:
+        return ("Muse Code enforces its native rules and asks about unmatched requests. "
+                "Requests are announced even while you read another chat: press "
+                f"{key_name(your_key('Ctrl+Shift+A'))} to review a permission or answer a question, or Stop to "
+                "cancel the turn. The Chat Place keeps no always-allow rules here.")
+
+    def load(self, done):
+        done([], None)
 
 
 class ClaudePermissions:

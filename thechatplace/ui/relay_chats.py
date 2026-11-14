@@ -214,7 +214,7 @@ class RelayChats:
             return
         if target.provider != "claude":
             # Only Claude's runner is left, and another provider's ID must
-            # never reach it (CLAUDE.md); a new provider adds its own branch.
+            # never reach it (AGENTS.md); a new provider adds its own branch.
             self._relay_kept(text, f"The Chat Place can't send to {target.title} yet.")
             return
         if not self._send_claude(target, text, []):

@@ -2,7 +2,7 @@
 
 How to run The Chat Place from source, test it, build it and release it, and where its code
 lives. For what the app does and how to use it, see the [README](README.md) and the
-[user guide](thechatplace/assets/user-guide.md). [CLAUDE.md](CLAUDE.md) has the project's
+[user guide](thechatplace/assets/user-guide.md). [AGENTS.md](AGENTS.md) has the project's
 conventions and the architecture in more detail.
 
 ## Run from source
@@ -253,6 +253,8 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/orca.py` | Speaking through Orca on Linux |
 | `thechatplace/nvda/` | NV Access's NVDA Controller Client (LGPL 2.1, unmodified; see its README and `license.txt`) |
 | `thechatplace/platform_paths.py` | Every path and OS call |
+| `thechatplace/muse_signin.py`, `thechatplace/muse_account.py` | Muse Code setup: native identity/version checks, account-only MSP connection and browser device-code sign-in; no session execution |
+| `thechatplace/providers/muse.py`, `thechatplace/providers/muse_connection.py` | Muse Code read-only session discovery and history, bounded native MSP transport with verified schema fingerprints; no attach, resume or execution |
 | `thechatplace/links.py` | `thechatplace://` links to sessions: making, reading and registering them |
 | `thechatplace/session_tools.py`, `thechatplace/session_tools_mcp.py` | The session tools Claude turns get (`/wrap` and the like, #165): the tools' answers, the connection to the window, and the MCP server (`--session-tools-mcp`), whose stdio the built app's smoke test checks |
 | `thechatplace/ui/` | The wxPython window and dialogs |

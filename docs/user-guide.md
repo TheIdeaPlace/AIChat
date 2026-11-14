@@ -24,6 +24,44 @@ OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
 ## Before you start
 
+Tools, **Sign In**, **Muse Code** provides setup assistance for Muse Code. It checks
+installation and sign-in, shows status, errors and installation instructions in
+standard OK dialogs, and helps you sign in and check again. You run the installer yourself.
+If sign-in is needed, confirm the offer, read or copy the browser address and
+device code, then choose **Open Browser** to sign in. **Cancel** stops waiting;
+the app checks your status again afterward. An older Muse build may need an
+update before the app can check its account. If Muse reports a stored API key,
+manage it in Muse Code first: it takes precedence over browser sign-in.
+With Muse Code installed, its stored conversations appear automatically in the
+session list. **View, Show Sessions, Muse Code Chats** shows only those chats.
+Press Enter to open one, then read, copy, find or export its messages using the
+existing conversation controls. The read-only reply area explains that replies
+to those chats must be made in Muse Code.
+File, New Session offers Muse Code as the Provider to start a chat here.
+Model and effort are Muse Code's own. The chat streams replies, and each
+pending request is announced with its chat title, even while you read another
+conversation. Press Ctrl+Shift+A in that chat to review its native permission
+choices or answer its questions. Muse's **Ask me** policy prompts for restricted
+actions; safe actions can run without asking. Stop waits for Muse to confirm
+cancellation. Deleting Muse chats here is not available yet.
+Reading does not resume a session or start a turn.
+
+History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
+Sending is unavailable if the human permission policy cannot be established. Other interfaces
+may be reported as unavailable. Stored history cannot establish another process's live
+state, so Muse rows say status unavailable. If a refresh fails, the last good
+session list and loaded messages stay available; press F5 to retry. Unsupported
+or shortened history is identified, and a history format the app cannot read
+safely must be opened in Muse Code. Background discovery does not start sign-in.
+The Last message column uses a cached preview after you read a conversation;
+it does not fetch every chat in the background.
+
+Signing in to Muse Code does not create a saved conversation.
+If Muse has no stored conversations, Muse Code Chats explains that none were
+found. Start a conversation in Muse Code, then press F5 to refresh the list.
+Pending or unavailable discovery is reported separately. With no rows listed,
+Enter repeats this guidance.
+
 You need:
 
 - Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -2628,9 +2666,11 @@ With many chats, these keep the list manageable.
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app chats (Code and Cowork); just Cowork chats;
 chats started here; terminal chats; Remote Control chats; ungrouped chats; Claude chats; Codex
-chats; GitHub Copilot chats; archived ones; hidden ones; or one of your groups.
-**Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
-available when Codex or Copilot is off; each is empty until its provider is enabled.
+chats; GitHub Copilot chats; Muse Code chats; archived ones; hidden ones; or one of your groups.
+**Claude Chats**, **Codex Chats**, **GitHub Copilot Chats** and **Muse Code Chats** filter by provider.
+Codex and Copilot filters remain available when their providers are off; they are
+empty until enabled. Muse chats are listed automatically when Muse Code is
+installed at app startup.
 **View, Sort Sessions** (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same chat when it's
 still listed.
@@ -2641,7 +2681,7 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New
+The parts are called columns: Title, Provider (Claude, Codex, Copilot or Muse Code), Folder, Status, New
 reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the others in "The
 kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started and
 Last message are read only once you add them. Older saved choices gain Provider once, just after

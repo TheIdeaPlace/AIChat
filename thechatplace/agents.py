@@ -80,6 +80,8 @@ MEMBER_PROVIDERS = tuple(_PROVIDER_NAMES)
 
 
 def provider_name(provider: str) -> str:
+    if provider == "muse":
+        return "Muse Code"
     return _PROVIDER_NAMES.get(provider, (provider or "").capitalize() or "Agent")
 
 

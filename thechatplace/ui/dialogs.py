@@ -187,6 +187,19 @@ COPILOT_CONTINUE_NOTE = (
     "The original chat isn't changed.")
 
 
+def muse_note() -> str:
+    """What New Session says about a Muse Code chat. A function, not a
+    constant, so it names your key for Review Permission if you changed it
+    after the app started (#635)."""
+    return ("Muse Code chats start here and run on your Meta account. Model and effort "
+            "are Muse Code's own. Muse Code asks before it runs a command or changes "
+            "a file, and each request is announced even while you read another chat. Press "
+            f"{key_name(your_key('Ctrl+Shift+A'))} to allow it once, deny it or answer "
+            "its question, or Stop cancels the turn. "
+            "Nothing runs unless you allow it. The Chat Place never sends "
+            "to a Muse Code chat it didn't start.")
+
+
 class NewSessionDialog(wx.Dialog):
     """Folder, where in it to work, title, model, permission mode, first message.
 
@@ -233,7 +246,7 @@ class NewSessionDialog(wx.Dialog):
         outer = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        self._providers = tuple(p for p in providers if p in ("claude", "codex", "copilot")) or ("claude",)
+        self._providers = tuple(p for p in providers if p in ("claude", "codex", "copilot", "muse")) or ("claude",)
         self._provider = provider if provider in self._providers else self._providers[0]
         self.provider_choice = None
         self._control_provider = "claude"
@@ -446,7 +459,7 @@ class NewSessionDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         if self.provider_choice is not None:
             self.provider_choice.Bind(wx.EVT_CHOICE, self._on_provider)
-        if self._provider in ("codex", "copilot"):
+        if self._provider in ("codex", "copilot", "muse"):
             self._on_provider()
         if load_models is not None and "codex" in self._providers:
             wx.CallAfter(load_models, self._set_codex_models)
@@ -955,6 +968,9 @@ class NewSessionDialog(wx.Dialog):
             mode = DEFAULT_PERMISSION_MODE
             index = self.model.GetSelection() - 1
             model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
+        elif self.provider() == "muse":
+            mode = DEFAULT_PERMISSION_MODE
+            model = ""
         elif self.provider() == "copilot":
             mode = DEFAULT_PERMISSION_MODE  # it always asks
             index = self.model.GetSelection() - 1
@@ -1020,6 +1036,24 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Copilot CLI. " + note
                 self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
+        elif provider == "muse":
+            # Model and effort are Muse Code's own: shown, not hidden, so the
+            # dialog keeps its shape and says so.
+            self.model.Set(["Muse Code's default"])
+            self.model.SetSelection(0)
+            self.model.Disable()
+            self.effort_choice.Set(["Muse Code's own setting"])
+            self.effort_choice.SetSelection(0)
+            self.effort_choice.Disable()
+            self.mode.Set([label for value, label in PERMISSION_MODES])
+            self.mode.SetSelection(0)
+            self.mode.Disable()
+            self.note.SetValue(muse_note())
+            if self.continuing:
+                note = "Continuing a Muse Code chat starts a new Chat Place copy of it."
+                if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
+                    note = "This chat may still be working in Muse Code. " + note
+                self.note.SetValue(note + "\n\n" + muse_note())
         elif provider == "codex":
             # "Codex's default", as Change Effort and Properties say it (#596).
             self.model.Set([CODEX_DEFAULT] + [choice.label for choice in self._codex_models])
@@ -1109,7 +1143,7 @@ class NewSessionDialog(wx.Dialog):
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
-        if self.provider() == "copilot":
+        if self.provider() in ("copilot", "muse"):
             return ""
         if self.provider() == "codex":
             model = self.model.GetSelection() - 1
@@ -1744,6 +1778,190 @@ class MessageDialog(wx.Dialog):
         self.text.SetInsertionPoint(position)
         self.text.ShowPosition(position)
         wx.CallAfter(self.text.SetFocus)
+
+
+class MuseLoginDialog(wx.Dialog):
+    """Accessible device-code sign-in instructions for Muse Code.
+
+    The address and code are read-only text controls so a screen-reader user
+    can review them by character and copy either value.  Opening the browser
+    is deliberately a separate button: displaying a device code never starts
+    an external process by itself.
+    """
+
+    def __init__(self, parent, url: str, code: str, open_browser):
+        super().__init__(parent, title="Muse Code Sign-in",
+                         size=dialog_size(parent, 620, 300),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        intro = wx.StaticText(
+            self,
+            label="Muse Code is ready for sign-in. Open the address, then enter the device code.")
+        outer.Add(intro, 0, wx.EXPAND | wx.ALL, 10)
+
+        outer.Add(wx.StaticText(self, label="&Browser address"), 0,
+                   wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.url = wx.TextCtrl(self, value=url,
+                               style=wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.url, "Browser address")
+        outer.Add(self.url, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        outer.Add(wx.StaticText(self, label="&Device code"), 0,
+                   wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.code = wx.TextCtrl(self, value=code,
+                                style=wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.code, "Device code")
+        outer.Add(self.code, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.open_button = wx.Button(self, wx.ID_ANY, "Open Browser")
+        self.cancel_button = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        def open():
+            self.open_button.Disable()
+            opened = False
+            try:
+                opened = open_browser() is not False
+            except Exception:  # noqa: BLE001 - the caller reports a fixed error
+                pass
+            if not opened:
+                try:
+                    self.open_button.Enable()
+                    self.open_button.SetFocus()
+                except RuntimeError:
+                    pass  # login may have completed while the warning was open
+        self.open_button.Bind(wx.EVT_BUTTON, lambda _event: open())
+        buttons.Add(self.open_button, 0, wx.RIGHT, 8)
+        buttons.Add(self.cancel_button, 0)
+        outer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        self.SetSizerAndFit(outer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        wx.CallAfter(self.url.SetFocus)
+
+
+class MuseApprovalDialog(wx.Dialog):
+    """Review native permissions or answer Muse questions without guessing consent."""
+
+    def __init__(self, parent, title, summary, details, kind, *, choices=None, questions=()):
+        question = kind == "question"
+        heading = {"approval": "Muse Code wants to run",
+                   "question": "Muse Code asks"}.get(kind, "Muse Code asks permission")
+        super().__init__(parent, title=f"{'Question' if question else 'Permission'}: {title}",
+                         size=dialog_size(parent, 660, 520),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.decision = None
+        self.answers = None
+        self.answer_controls = []
+        self._questions = tuple(questions)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        body = wx.ScrolledWindow(self, style=wx.VSCROLL)
+        body.SetScrollRate(0, 12)
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(wx.StaticText(body, label=f"{heading}:"), 0, wx.ALL, 10)
+        self.summary = wx.TextCtrl(body, value=summary,
+                                   style=wx.TE_READONLY | wx.TE_RICH2 | wx.TE_MULTILINE)
+        self.summary.SetMinSize(dip(self, -1, 65))
+        set_accessible_name(self.summary, "Request")
+        content.Add(self.summary, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        if details:
+            content.Add(wx.StaticText(body, label="&Details"), 0, wx.LEFT | wx.RIGHT, 10)
+            self.details = wx.TextCtrl(body, value=details,
+                                       style=wx.TE_READONLY | wx.TE_RICH2 | wx.TE_MULTILINE)
+            self.details.SetMinSize(dip(self, -1, 80))
+            set_accessible_name(self.details, "Details")
+            content.Add(self.details, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        for prompt in self._questions:
+            label = prompt["question"]
+            question_text = wx.TextCtrl(body, value=label,
+                style=wx.TE_READONLY | wx.TE_RICH2 | wx.TE_MULTILINE)
+            question_text.SetMinSize(dip(self, -1, 60))
+            set_accessible_name(question_text, "Question")
+            content.Add(question_text, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+            options = prompt.get("options", ())
+            shown = [option["label"] + (" - " + option["description"]
+                     if option.get("description") else "") for option in options]
+            multiple = prompt.get("selection", {}).get("mode") == "multiple"
+            pick = None
+            if shown:
+                pick = (wx.CheckListBox(body, choices=shown) if multiple
+                        else wx.Choice(body, choices=shown))
+                if not multiple:
+                    pick.SetSelection(wx.NOT_FOUND)
+                set_accessible_name(pick, label + ("; choose one or more" if multiple else "; choose one"))
+                content.Add(pick, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+            content.Add(wx.StaticText(body, label="Type an answer" if not shown else
+                                      "Or type a different answer"), 0, wx.LEFT | wx.RIGHT, 10)
+            text = wx.TextCtrl(body, style=ANSWER_BOX_STYLE)
+            text.SetMaxLength(500)
+            set_accessible_name(text, label + "; typed answer")
+            content.Add(text, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+            self.answer_controls.append((pick, text))
+        body.SetSizer(content)
+        outer.Add(body, 1, wx.EXPAND)
+        buttons = wx.WrapSizer(wx.HORIZONTAL)
+        self.choice_buttons = []
+        if question:
+            self.allow_button = wx.Button(self, wx.ID_ANY, "&Send Answers")
+            self.deny_button = wx.Button(self, wx.ID_ANY, "Cancel &Question")
+            self.allow_button.Enable(bool(self._questions))
+            self.allow_button.Bind(wx.EVT_BUTTON, self._send_answers)
+            self.deny_button.Bind(wx.EVT_BUTTON, lambda _event: self._end("deny"))
+            self.choice_buttons.extend((self.allow_button, self.deny_button))
+        else:
+            for choice in choices or ():
+                button = wx.Button(self, wx.ID_ANY, choice["label"])
+                button.Bind(wx.EVT_BUTTON, lambda _event, value=choice["choiceId"]: self._end(value))
+                self.choice_buttons.append(button)
+            if choices is None:
+                # Synthetic probes and older callers use the narrow once/deny form.
+                self.allow_button = wx.Button(self, wx.ID_ANY, "Allow &Once")
+                self.deny_button = wx.Button(self, wx.ID_ANY, "&Deny")
+                self.allow_button.Bind(wx.EVT_BUTTON, lambda _event: self._end("allow"))
+                self.deny_button.Bind(wx.EVT_BUTTON, lambda _event: self._end("deny"))
+                self.choice_buttons.extend((self.allow_button, self.deny_button))
+            elif not choices:
+                content.Add(wx.StaticText(body, label=
+                    "No decision supported by The Chat Place is available. "
+                    "Leave this pending or stop the turn."), 0, wx.ALL, 10)
+        for button in self.choice_buttons:
+            buttons.Add(button, 0, wx.RIGHT | wx.BOTTOM, 8)
+        self.cancel_button = wx.Button(self, wx.ID_CANCEL, "Not &Yet")
+        buttons.Add(self.cancel_button, 0, wx.BOTTOM, 8)
+        outer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        self.SetSizer(outer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        wx.CallAfter(self.summary.SetFocus)
+
+    def _send_answers(self, _event):
+        answers = []
+        for prompt, (pick, text) in zip(self._questions, self.answer_controls):
+            answer = {"questionId": prompt["id"]}
+            typed = text.GetValue().strip()
+            if typed:
+                answer["freeText"] = typed
+            elif prompt.get("selection", {}).get("mode") == "multiple" and pick is not None:
+                selected = list(pick.GetCheckedItems())
+                limits = prompt["selection"]
+                minimum, maximum = limits.get("minSelections", 1), limits.get("maxSelections", len(prompt["options"]))
+                if not minimum <= len(selected) <= maximum:
+                    wx.MessageBox(f"Choose between {minimum} and {maximum} options, or type an answer.",
+                                  self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+                    pick.SetFocus()
+                    return
+                answer["selectedLabels"] = [prompt["options"][index]["label"] for index in selected]
+            elif pick is not None and pick.GetSelection() != wx.NOT_FOUND:
+                answer["selectedLabel"] = prompt["options"][pick.GetSelection()]["label"]
+            else:
+                wx.MessageBox("Answer each question before sending. Not Yet leaves it waiting.",
+                              self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+                (pick or text).SetFocus()
+                return
+            answers.append(answer)
+        self.answers = answers
+        self._end("answer")
+
+    def _end(self, decision):
+        self.decision = decision
+        self.EndModal(wx.ID_OK)
 
 
 class UpdateInstalledDialog(wx.Dialog):

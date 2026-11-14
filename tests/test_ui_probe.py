@@ -144,6 +144,26 @@ def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
         assert "Renamed from: old_test.py" in files[3].detail
     finally:
         ui_probe.close_frame(frame)
+    env, frame = world("muse")
+    try:
+        ui_probe.s_main_muse(frame, env)
+        assert [m.text for m in frame._chat_messages] == [
+            "Explain the upload test.",
+            "The upload waits for the server before sending.",
+        ]
+        assert "Muse Code" in frame.session_heading.GetLabel()
+        assert not frame.own_reply.IsShown()
+    finally:
+        ui_probe.close_frame(frame)
+    env, frame = world("muse-unavailable")
+    try:
+        ui_probe.s_main_muse_unavailable(frame, env)
+        row = next(s for s in frame.session_list.GetStrings()
+                   if s.startswith("Muse Code history preview"))
+        assert "Muse Code" in row
+        assert "Muse Code history is unavailable" in frame._status_latest
+    finally:
+        ui_probe.close_frame(frame)
     env, frame = world("owned")
     try:
         ui_probe.s_main_codex_owned(frame, env)
@@ -173,6 +193,49 @@ def test_surfaces_show_their_made_up_content(opened, tmp_path, monkeypatch):
     try:
         ui_probe.d_lists_decisions(frame, env)
         assert len(lists.decision_items(frame._chat_messages, None)) == 2
+    finally:
+        ui_probe.close_frame(frame)
+
+
+def test_muse_probe_history_outage_and_restore_is_one_readable_sequence(
+        tmp_path, monkeypatch, app):
+    env = ui_probe.build_world(tmp_path / "muse-sequence", monkeypatch.setattr,
+                               formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    try:
+        import orca_speech
+        orca_speech.muse_history(frame, env)
+        step = next(step for step in orca_speech.STEPS if step.trigger == "muse-history")
+        assert step.expect[1] in frame.chat_list.GetString(frame.chat_list.GetSelection())
+        orca_speech.muse_outage(frame, env)
+        assert sum(row.startswith("Muse Code history preview")
+                   for row in frame.session_list.GetStrings()) == 1
+        assert [message.text for message in frame._chat_messages] == [
+            "Explain the upload test.",
+            "The upload waits for the server before sending.",
+        ]
+        assert "Muse Code history is unavailable" in frame._status_latest
+        orca_speech.muse_restore(frame, env)
+        assert frame._open.title == "Visual probe"
+        assert frame.chat_list.GetCount() > 0
+        assert sum(row.startswith("Muse Code history preview")
+                   for row in frame.session_list.GetStrings()) == 1
+    finally:
+        ui_probe.close_frame(frame)
+
+
+def test_empty_muse_probe_explains_enter_and_returns_to_original_chat(tmp_path, monkeypatch, app):
+    env = ui_probe.build_world(tmp_path / "muse-empty", monkeypatch.setattr,
+                               formatted_view=False)
+    frame = ui_probe.build_frame(env)
+    try:
+        ui_probe.s_main_muse_empty(frame, env)
+        assert frame.session_list.GetCount() == 0
+        assert "No Muse Code conversations were found" in frame.chat_list.GetString(0)
+        frame.on_open_session()
+        assert "No Muse Code conversations were found" in frame._status_latest
+        ui_probe.s_main_muse_restore(frame, env)
+        assert frame._open.title == "Visual probe" and frame.chat_list.GetCount() > 0
     finally:
         ui_probe.close_frame(frame)
 

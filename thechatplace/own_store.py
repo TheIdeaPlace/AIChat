@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -125,10 +126,10 @@ _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
 #: Every provider a record may name.
-PROVIDERS = ("claude", "codex", "copilot")
+PROVIDERS = ("claude", "codex", "copilot", "muse")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
-SEPARATE_PROVIDERS = ("copilot",)
+SEPARATE_PROVIDERS = ("copilot", "muse")
 #: Codex settings newer than 0.4 (#467). On disk they sit beside
 #: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
 #: provider-sessions.json over a provider option it doesn't know, and then
@@ -157,6 +158,28 @@ def _valid_codex_extra(name: str, value) -> bool:
     return (isinstance(value, list) and len(value) <= 100
             and len(set(map(str, value))) == len(value)
             and all(is_safe_server_name(n) and n.strip() for n in value))
+
+
+def _valid_muse_options(options: dict) -> bool:
+    """Keep only bounded command recovery state, never a prompt or policy grant."""
+    if not options:
+        return True
+    if set(options) != {"muse_command"}:
+        return False
+    command = options["muse_command"]
+    if not isinstance(command, dict) or set(command) != {"command_id", "turn_id", "state"}:
+        return False
+    try:
+        ident = uuid.UUID(command["command_id"])
+        if ident.version != 7 or str(ident) != command["command_id"]:
+            return False
+    except (ValueError, TypeError, AttributeError):
+        return False
+    turn = command["turn_id"]
+    return (isinstance(turn, str) and len(turn) <= 128 and not any(ord(c) < 32 for c in turn)
+            and isinstance(command["state"], str)
+            and command["state"] in {"submitting", "running", "waiting", "cancelling",
+                                      "unknown", "completed", "rejected"})
 
 
 def _stored_record(session: "OwnSession") -> dict:
@@ -208,6 +231,11 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             options = item[name]
             if not isinstance(options, dict):
                 return None
+            if provider == "muse":
+                if not _valid_muse_options(options):
+                    return None
+                values[name] = json.loads(json.dumps(options))
+                continue
             # Separate backend settings; never interpret Codex policy names as
             # Claude permission modes. Runtime model support needs validation.
             allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}
