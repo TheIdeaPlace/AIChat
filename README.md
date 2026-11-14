@@ -1579,11 +1579,14 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   File, New Session offers Muse Code as the Provider to start a chat here.
   Model and effort are Muse Code's own. The chat streams replies, and each
   pending request is announced with its chat title, even while you read another
-  conversation. Press Ctrl+Shift+A in that chat to review its native permission
-  choices or answer its questions. Muse's **Ask me** policy prompts for restricted
-  actions; safe actions can run without asking. Stop waits for Muse to confirm
-  cancellation. Chat, Chat Settings, Chat Permissions explains this for a Muse
-  chat started here. Deleting Muse chats here is not available yet.
+  conversation. Press Ctrl+Shift+A in that chat to choose Muse Code's one-time Allow
+  once or Reject for a request (Reject also ends the turn), or to answer its questions.
+  Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
+  asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
+  whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow
+  doesn't run yet: Muse reports that its sandbox is unavailable. This is a known Muse
+  Code problem, not a setting in The Chat Place. Chat, Chat Settings, Chat Permissions
+  explains a Muse chat's permissions. Deleting Muse chats here is not available yet.
   Signing in to Muse Code does not create a saved conversation.
   If Muse has no stored conversations, the filter explains that none were found;
   start a conversation in Muse Code, then press F5 to refresh the list. Pending
