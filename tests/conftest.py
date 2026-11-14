@@ -36,6 +36,24 @@ def _isolated_kept_history(monkeypatch, tmp_path):
     history_keeper.close_all()
 
 
+@pytest.fixture(autouse=True)
+def _isolated_long_messages(monkeypatch, tmp_path):
+    """Codex's long-message files and remembered text (#625) stay in this
+    test's folder: no test writes to the real app data or clears the real
+    temp folder. The store follows a test's own app_data_dir when it sets one."""
+    from thechatplace import codex_long_messages, platform_paths
+    original_app_data = platform_paths.app_data_dir
+    temp = tmp_path / 'long-message-temp'
+    temp.mkdir()
+    monkeypatch.setattr(codex_long_messages, 'temp_dir', lambda: str(temp))
+    monkeypatch.setattr(codex_long_messages, '_store_path', lambda: (
+        tmp_path / 'tcp' if platform_paths.app_data_dir is original_app_data
+        else platform_paths.app_data_dir()) / 'long-messages.json')
+    codex_long_messages.reset()
+    yield
+    codex_long_messages.reset()
+
+
 @pytest.fixture(scope="session")
 def app():
     """Keep one wx application alive across every GUI test module.

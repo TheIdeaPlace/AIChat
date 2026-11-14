@@ -62,6 +62,33 @@ class CodexConnectionFailure(CodexRpcError):
 #: One Codex message, at most; longer is refused before anything is sent.
 MAX_MESSAGE_CHARS = 32_000
 
+#: Every source a chat can come from, for thread/list (it defaults to
+#: interactive sources only).
+THREAD_SOURCE_KINDS = ('cli', 'vscode', 'exec', 'appServer', 'unknown')
+
+
+def thread_list_pages(connection, archived, **extra):
+    """Each page of thread/list's threads, active or archived, following
+    its cursor. ValueError on a malformed page or a bad or repeated cursor,
+    so a caller never takes half a list for the whole. ``extra`` adds
+    request fields (sortKey, modelProviders)."""
+    cursor, cursors = None, set()
+    while True:
+        params = {'archived': archived, 'limit': 100, 'sourceKinds': list(THREAD_SOURCE_KINDS), **extra}
+        if cursor is not None:
+            params['cursor'] = cursor
+        response = connection.request('thread/list', params)
+        data = response.get('data') if isinstance(response, dict) else None
+        if not isinstance(data, list):
+            raise ValueError('Codex returned an invalid thread list')
+        yield data
+        cursor = response.get('nextCursor')
+        if cursor is None:
+            return
+        if not isinstance(cursor, str) or not cursor or cursor in cursors:
+            raise ValueError('Codex returned invalid or repeated pagination cursor')
+        cursors.add(cursor)
+
 
 class CodexMessageTooLong(CodexRpcError, ValueError):
     """A message over MAX_MESSAGE_CHARS, refused before anything was sent.
@@ -112,7 +139,9 @@ class CodexTurnRejected(CodexRpcError):
         'status_unclear': "The Chat Place couldn't confirm this Codex chat is free to take a message. If it keeps happening, quit and restart The Chat Place. No new turn was sent.",
         # Not seen yet; Stop can't reload it in place (#448 follow-up).
         'not_loaded': 'Codex closed this chat in the background. Quit and restart The Chat Place to reopen it. No new turn was sent.',
-        'thread_gone': "Codex no longer has this chat, so it can't be reopened here. It was deleted in Codex, or it was created here and no message was ever sent in it. Remove it here and start a new chat. No message was sent.",
+        # #625: confirmed against Codex's own thread list. Stop can't help;
+        # Delete Session Permanently removes the entry (#634).
+        'thread_gone': "Codex no longer has this chat, so it can't be reopened here. It was deleted in Codex, or it was created here and no message was ever sent in it. Delete Session Permanently, on the Session menu, removes it here. No message was sent.",
         'preflight_failed': 'Codex could not verify this chat before sending. No new turn was sent.',
         'billing_route': 'Codex turns require the default ChatGPT billing route',
         'verified_thread': 'Codex turn requires a verified thread',

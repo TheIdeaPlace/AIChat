@@ -692,7 +692,7 @@ def test_a_message_over_the_limit_is_saved_and_sent_not_refused(frame, env, monk
     frame.reply_text.SetValue('x' * 32001)
     frame.on_send()
     assert frame.reply_text.GetValue() == ''
-    assert pump(lambda: env['feedback'] and 'too long to send in full' in env['feedback'][-1])
+    assert pump(lambda: env['feedback'] and 'given it as a file to read' in env['feedback'][-1])
     assert 'attachment is missing' not in env['feedback'][-1]
     assert sent and sent[0][0] == 'send' and 'path: ' in sent[0][2]
 

@@ -81,6 +81,9 @@ class CodexChats(SoundHost, CodexExtras):
                     pass
             for cache in (self._codex_states, self._codex_drafts, self._codex_delayed_updates):
                 cache.pop(info.key, None)
+            # Its long messages as written go too (#625).
+            self._forget_long_messages(info.key)
+            codex_long_messages.forget_chat(info.cli_session_id)
             self._aside_histories.pop(('codex', info.cli_session_id), None)
             self._attachments.pop(self._attachment_key(info), None)
             self._leave_list(info)
@@ -602,31 +605,83 @@ class CodexChats(SoundHost, CodexExtras):
         self._update_send_state()
         self._prepare_codex_owned(self._open_generation)
 
-    def _codex_sendable(self, record, text):
+    def _codex_sendable(self, record, text, steer=False):
         """(what to send, saved file or None). A Codex message over the
         limit goes in a temp file, with a short prompt asking Codex to
-        read it as the message, so a long paste just works. If the file
-        can't be written, the text goes as it was and the runtime refuses
-        it in plain words. Other providers send as they were."""
+        read it as the message, so a long paste just works (#625). If the
+        file can't be written, the text goes as it was and the runtime
+        refuses it in plain words. Other providers send as they were."""
         if getattr(record, 'provider', '') != 'codex' or len(text) <= MAX_MESSAGE_CHARS:
             return text, None
         try:
             saved = codex_long_messages.save_message(text)
         except OSError:
             return text, None
-        codex_long_messages.remember(saved, text)
+        prompt = codex_long_messages.prompt_for(text, saved)
+        parts = getattr(text, 'parts', ())
+        if parts:
+            # Attached images and skills still go natively, with the prompt.
+            from ..providers.codex_input import CodexInput
+            prompt = CodexInput(prompt, parts)
+        codex_long_messages.remember(saved, str(text), record.cli_session_id)
+        key = record.to_info().key
         files = getattr(self, '_long_message_files', None)
         if files is None:
             files = self._long_message_files = {}
-        files.setdefault(record.to_info().key, set()).add(saved)
-        return codex_long_messages.prompt_for(text, saved), saved
+        # Which turn's end may delete it. A send can't be read by the turn
+        # the chat last had (its "completed" is still what the runtime
+        # reports while the new turn starts), so it waits for a turn other
+        # than that one; a steer goes into the running turn, so any end
+        # will do (None). See _long_message_turn_over.
+        files.setdefault(key, {})[saved] = {
+            'prompt': prompt, 'after': None if steer else self._latest_turn_id(key)}
+        return prompt, saved
 
-    def _too_long_note(self, record, text, saved):
+    def _latest_turn_id(self, key):
+        delayed = self._codex_delayed_updates.get(key)
+        state = delayed[-1] if delayed else self._codex_states.get(key)
+        return state.turn_id if state is not None else ''
+
+    def _long_message_turn_over(self, key, state):
+        """Delete the temp files of long messages whose turn has ended
+        (#625), and of any that came back unsent (they'll never be read;
+        sending again saves a new one). A file is kept while its prompt is
+        still queued, and while the latest ended turn is still the one the
+        chat had before its message went: the runtime keeps reporting that
+        turn's end until the new turn starts."""
+        files = getattr(self, '_long_message_files', {}).get(key)
+        if not files:
+            return
+        ended = state.outcome in ('completed', 'failed', 'interrupted')
+        done = []
+        for path, entry in files.items():
+            if entry['prompt'] in state.unsent:
+                done.append(path)
+            elif entry['prompt'] in state.queued:
+                # Still waiting: whichever turn ends now isn't the one that
+                # reads it. Note it, so that turn's end isn't taken for its own.
+                entry['after'] = state.turn_id
+            elif ended and state.turn_id and state.turn_id != entry['after']:
+                done.append(path)
+        codex_long_messages.delete_files(done)
+        for path in done:
+            del files[path]
+        if not files:
+            getattr(self, '_long_message_files', {}).pop(key, None)
+
+    def _forget_long_messages(self, key=None):
+        """Delete a chat's saved long-message files, or every chat's (at
+        close: no turn of this run will read them now)."""
+        files = getattr(self, '_long_message_files', {})
+        for chat in ([key] if key is not None else list(files)):
+            codex_long_messages.delete_files(files.pop(chat, {}))
+
+    def _too_long_note(self, record, saved):
         if not saved:
             return ''
-        return (f' Your message was too long to send in full ({len(text):,} characters), '
-                f'so it was saved to {saved} and {provider_name(record.provider)} '
-                'was asked to read it there.')
+        # No path: it's gone in moments, and a screen reader would read it all.
+        return (' It was too long to send directly, so '
+                f'{provider_name(record.provider)} was given it as a file to read.')
 
     def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
@@ -654,7 +709,7 @@ class CodexChats(SoundHost, CodexExtras):
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
                                          self.speech.announce_own)
-                               + self._too_long_note(record, text, saved))
+                               + self._too_long_note(record, saved))
             if not remaining:
                 for state in self._codex_delayed_updates.pop(key, ()):
                     self._on_owned_update(record.provider, state)
@@ -677,7 +732,8 @@ class CodexChats(SoundHost, CodexExtras):
         as a new turn without Kelly choosing to."""
         key = record.to_info().key
         name = provider_name(record.provider)
-        sendable, saved = (text, None) if index is not None else self._codex_sendable(record, text)
+        sendable, saved = ((text, None) if index is not None
+                           else self._codex_sendable(record, text, steer=True))
         self._steer_row(key, text, f'waiting for {name}')
 
         accepted = []  # the turn Codex took it into
@@ -710,6 +766,11 @@ class CodexChats(SoundHost, CodexExtras):
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
             self._sound(sound_events.NOT_SENT if error or refused else sound_events.STEERED, key)
+            if refused and saved:
+                # Nothing was taken, so nothing will read it; sending it
+                # again saves a new one.
+                codex_long_messages.delete_files((saved,))
+                getattr(self, '_long_message_files', {}).get(key, {}).pop(saved, None)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -729,7 +790,7 @@ class CodexChats(SoundHost, CodexExtras):
                 self._feedback(announce.steered_text(record.title, text, self.speech.announce,
                                                      index is None and self.speech.announce_own,
                                                      accepted=True)
-                               + self._too_long_note(record, text, saved))
+                               + self._too_long_note(record, saved))
             self._update_send_state()
         self._codex_work(action, done)
 
@@ -905,11 +966,7 @@ class CodexChats(SoundHost, CodexExtras):
             if agent_unsent is not None:
                 unsent = agent_unsent(provider, state.native_id, unsent)
         self._restore_codex_text(key, unsent)
-        if state.outcome in ('completed', 'failed', 'interrupted') and not state.queued:
-            # The turn is over, so its saved long messages have been read;
-            # remove the temp files rather than leave them for good.
-            files = getattr(self, '_long_message_files', {})
-            codex_long_messages.delete_files(files.pop(key, ()))
+        self._long_message_turn_over(key, state)
         record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return

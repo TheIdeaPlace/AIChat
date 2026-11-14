@@ -11,7 +11,7 @@ from ..sessions import SessionInfo
 from .codex_features import CodexFeatureError
 from .codex_rpc import (check_startable, verify_codex_rule_layers, codex_tool_overrides, verify_codex_tools,
                         is_chatgpt_account, CodexRpcError, CodexTurnRejected,
-                        ReadOnlyCodexConnection)
+                        ReadOnlyCodexConnection, thread_list_pages)
 from .codex_models import read_models
 from .codex_policy import CodexPolicy
 
@@ -117,28 +117,18 @@ class CodexOwnedThreads:
     def _thread_gone(self, native_id):
         """Whether Codex's own thread list, active and archived, has no such
         thread, so there is nothing to resume however often TCP retries.
-        Any doubt (a failed or malformed list) is not proof: return False."""
+        Any doubt (a failed or malformed list) is not proof: return False.
+
+        Every model provider's chats are listed (modelProviders: []):
+        left out, Codex lists only the provider it's set to now
+        (codex-rs thread_processor.rs), so a chat made before switching
+        providers would be called gone, and might then be deleted."""
         try:
             for archived in (False, True):
-                cursor, cursors = None, set()
-                while True:
-                    params = {'archived': archived, 'limit': 100,
-                              'sourceKinds': ['cli', 'vscode', 'exec', 'appServer', 'unknown']}
-                    if cursor is not None:
-                        params['cursor'] = cursor
-                    result = self.connection.request('thread/list', params)
-                    data = result.get('data') if isinstance(result, dict) else None
-                    if not isinstance(data, list):
-                        return False
+                for data in thread_list_pages(self.connection, archived, modelProviders=[]):
                     if any(isinstance(thread, dict) and thread.get('id') == native_id
                            for thread in data):
                         return False
-                    cursor = result.get('nextCursor')
-                    if cursor is None:
-                        break
-                    if not isinstance(cursor, str) or not cursor or cursor in cursors:
-                        return False
-                    cursors.add(cursor)
         except Exception:  # noqa: BLE001 - an unreadable list proves nothing
             return False
         return True

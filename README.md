@@ -694,6 +694,14 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   You can send attachments with an empty reply box. Queued messages keep their image and skill
   inputs. If a send fails, the recovered draft names its files; attach images again to resend
   them as image inputs.
+- **Long messages.** Codex takes at most 32,000 characters in a message. A longer one, such as
+  a pasted build log, is saved to a file in your temporary folder, and Codex is sent a short
+  message asking it to read that file as yours; attached pictures and skills still go with it.
+  You hear "It was too long to send directly, so Codex was given it as a file to read." The
+  file is deleted when that turn ends, or when The Chat Place closes. In the chat, the message
+  reads as you wrote it, labeled "You, sent as a file". To show it that way, The Chat Place
+  keeps a copy of your most recent long messages in its own data folder (up to 20, about 2 MB
+  in all), and deletes a chat's copies when you delete the chat permanently.
 - **Change Model** and **Change Effort** (Chat, Chat Settings) change an idle chat from its next turn. Choices
   come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
   such as "Codex's default (GPT-5.5)": the chat goes on Codex's default and its default effort,
@@ -761,6 +769,9 @@ chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
+If Codex no longer has the chat at all (it was deleted in Codex, or it was started here and its
+first message was never sent), you hear so, and that Session, Delete Session Permanently
+removes it from the list.
 Answer shows the command, its folder and Codex's reason. When Codex names extra access
 it needs, such as writing to Git's `.git` folder, another folder or the network, a
 "This also needs" list says what, in plain words; a network request names the host. When

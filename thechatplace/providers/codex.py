@@ -18,6 +18,7 @@ from ..ui_text import last_message_line
 from ..changes import FileEdit, Hunk, parse_unified_diff
 from .base import Snapshot
 from .codex_connection import ManagedCodexConnection
+from .codex_rpc import thread_list_pages
 from .codex_models import read_models
 from .codex_usage import read_usage, read_warnings
 from .codex_tokens import context_lines
@@ -607,17 +608,7 @@ class CodexProvider:
     def collect(self) -> Snapshot:
         sessions, ids = [], set()
         for archived in (False, True):
-            cursor, cursors = None, set()
-            while True:
-                params = {"archived": archived, "limit": 100,
-                          "sourceKinds": ["cli", "vscode", "exec", "appServer", "unknown"],
-                          "sortKey": "updated_at"}
-                if cursor is not None:
-                    params["cursor"] = cursor
-                response = self.connection.request("thread/list", params)
-                data = response.get("data")
-                if not isinstance(data, list):
-                    raise ValueError("Codex returned an invalid thread list")
+            for data in thread_list_pages(self.connection, archived, sortKey="updated_at"):
                 for thread in data:
                     if not isinstance(thread, dict):
                         raise ValueError("Codex returned invalid thread metadata")
@@ -627,12 +618,6 @@ class CodexProvider:
                     if info.identity not in ids:
                         ids.add(info.identity)
                         sessions.append(info)
-                cursor = response.get("nextCursor")
-                if cursor is None:
-                    break
-                if not isinstance(cursor, str) or not cursor or cursor in cursors:
-                    raise ValueError("Codex returned invalid or repeated pagination cursor")
-                cursors.add(cursor)
         if self.runtime is not None:
             for info in sessions:
                 if self.runtime.known(info.cli_session_id):

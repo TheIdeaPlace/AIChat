@@ -491,6 +491,6 @@ class CodexExtras:
         skills = getattr(self, '_codex_skills', {}).get(info.key, {})
         selected = [(name, path) for name, path in skills.items()
                     if re.search(r'(?<!\w)\$' + re.escape(name) + r'(?![\w-])', text)]
-        from ..providers.codex_rpc import MAX_MESSAGE_CHARS
+        # Over the limit, it's handed over in a file (#625, _codex_sendable).
         return build_input(text, self._attachments.get(self._attachment_key(info), []),
-                           skills=selected, allow_long=len(text) > MAX_MESSAGE_CHARS)
+                           skills=selected, allow_long=True)

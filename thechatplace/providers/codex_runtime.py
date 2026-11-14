@@ -506,7 +506,8 @@ class CodexChatRuntime:
                     # clear the latch (#257): Stop rechecks the saved grant,
                     # or resumes a chat that is not loaded here.
                     reason = safe_reason(error) or "Codex didn't confirm the new permissions."
-                    if STOP_TO_RECHECK not in reason:
+                    gone = isinstance(error, CodexTurnRejected) and error.code == 'thread_gone'
+                    if STOP_TO_RECHECK not in reason and not gone:  # Stop can't bring it back (#625)
                         reason += ' ' + STOP_TO_RECHECK
                     self._problems[native_id] = reason
                     if proof is not None and self._proofs.get(native_id) is proof and proof.connection.owns_runtime(proof):

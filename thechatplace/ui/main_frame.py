@@ -287,8 +287,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
-        self._long_message_files = {}
-        codex_long_messages.sweep_temp()  # last run's saved long messages
+        self._long_message_files = {}  # key -> {temp path: entry} (#625)
         self._codex_preparing = {}
         self._codex_preparation_running = set()
         self._codex_send_pending = {}
@@ -585,6 +584,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                              manual=False)
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
         self._pool.submit(remove_whole_chat_page)
+        self._pool.submit(codex_long_messages.sweep_temp)  # last run's long messages (#625)
         self.session_list.SetFocus()
         if check_updates_at_start:
             # A few seconds in, so the list is read first. Settings can turn
@@ -8562,6 +8562,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._close_session_tools()
         self._close_providers()
+        self._forget_long_messages()  # no turn of this run will read them now (#625)
         event.Skip()
 
     def _close_providers(self):
