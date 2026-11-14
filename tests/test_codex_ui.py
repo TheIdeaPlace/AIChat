@@ -106,6 +106,457 @@ def test_updates_wait_for_send_result_and_failed_send_preserves_new_draft():
     assert not w._codex_send_pending and not w._codex_delayed_updates
 
 
+def test_new_copilot_chat_with_too_long_first_message_is_not_created():
+    """Copilot still refuses an over-long first message before creating
+    anything (its limit is its own); Codex now hands its over-long first
+    message over in a file instead, so its chat is created."""
+    w = Window()
+    w._can_edit = lambda info: False
+    w._copy_text = lambda text: True
+    w._create_codex_owned('/workspace', 'Title', 'x' * 128001, provider='copilot')
+    assert not w.work
+    assert 'No Copilot chat was started' in w.said[-1]
+    assert 'too long' in w.said[-1] and '128,001' in w.said[-1] and '128,000' in w.said[-1]
+    w._create_codex_owned('/workspace', 'Title', 'x' * 32001)
+    assert len(w.work) == 1
+    w._create_codex_owned('/workspace', 'Title', 'Hello')
+    assert len(w.work) == 2
+
+
+def _long_temp():
+    from pathlib import Path
+    from thechatplace import codex_long_messages
+    return Path(codex_long_messages.temp_dir())
+
+
+def _saved_path(prompt):
+    import re
+    return _long_temp() / re.search(r'thechatplace-long-message-\S+\.txt', prompt).group(0)
+
+
+def _read_saved(path):
+    # UTF-8, with a byte order mark on Windows (Windows PowerShell 5.1).
+    return path.read_text(encoding='utf-8-sig')
+
+
+def test_too_long_codex_message_is_saved_and_codex_is_asked_to_read_it():
+    """Over the limit: the whole message goes to a temp file and Codex is
+    sent a short message asking it to read that file as the message (#625)."""
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    text = 'head\n' + 'x' * 40000 + '\nTAIL-MARKER é'
+    w._send_codex_owned(w.record, text)
+    action, done = w.work[0]
+    action()
+    assert sent[0][0] == 'send' and sent[0][1] is w.record
+    prompt = sent[0][2]
+    assert len(prompt) < 32000 and '40,019' in prompt
+    assert 'placed in this conversation by The Chat Place' in prompt and "as the user's message" in prompt
+    path = _saved_path(prompt)
+    assert _read_saved(path) == text
+    done(False, False)
+    # Said without the path: it's gone in moments, and long to hear.
+    assert 'given it as a file to read' in w.said[-1] and path.name not in w.said[-1]
+    # On failure the original long text, not the short prompt, comes back.
+    w._send_codex_owned(w.record, text)
+    w.work[1][0]()
+    w.work[1][1](None, True)
+    assert w.reply_text.value.startswith('head\n' + 'x' * 100)
+
+
+def test_a_long_reply_is_assembled_then_saved_like_a_first_message():
+    """The reply box builds its input before sending; over the limit that
+    used to refuse with 'at most 32000 characters' before the saved-file
+    handover could run. Now the assembled reply reaches it."""
+    w = Window()
+    w._attachments = {}
+    w._attachment_key = staticmethod(lambda info: info.key)
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    message = w._codex_message(w._open, 'x' * 40000)
+    assert message == 'x' * 40000
+    w._send_codex_owned(w.record, message)
+    action, done = w.work[0]
+    action()
+    assert len(sent[0][2]) < 32000 and 'path: ' in sent[0][2]
+    assert _read_saved(_saved_path(sent[0][2])) == 'x' * 40000
+    done(False, False)
+    assert 'given it as a file to read' in w.said[-1]
+
+
+def test_a_long_message_keeps_its_attached_image(tmp_path):
+    """An attached image still reaches Codex natively, with the short
+    prompt; and the limit is judged on the assembled message, so text just
+    under it plus attachment lines goes in a file rather than failing."""
+    from thechatplace.providers.codex_input import CodexInput
+    image = tmp_path / 'shot.png'
+    image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0' * 64)
+    w = Window()
+    w._attachments = {w._open.key: [str(image)]}
+    w._attachment_key = staticmethod(lambda info: info.key)
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    message = w._codex_message(w._open, 'x' * 31990)
+    assert len(message) > 32000
+    w._send_codex_owned(w.record, message)
+    w.work[0][0]()
+    prompt = sent[0][2]
+    assert isinstance(prompt, CodexInput) and len(prompt) < 32000
+    assert {'type': 'localImage', 'path': str(image.resolve())} in prompt.items()
+    assert 'Attached image: ' in _read_saved(_saved_path(prompt))
+
+
+def test_a_long_message_whose_image_has_gone_is_refused_not_stuck(tmp_path):
+    """The image vanished between assembling and sending: no file is left,
+    the send goes through the normal refusal, and the chat isn't left with
+    a send that never finishes."""
+    image = tmp_path / 'shot.png'
+    image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0' * 64)
+    w = Window()
+    w._attachments = {w._open.key: [str(image)]}
+    w._attachment_key = staticmethod(lambda info: info.key)
+    message = w._codex_message(w._open, 'x' * 31990)
+    image.unlink()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, message)
+    assert sent == [] and w._codex_send_pending
+    w.work[0][0]()
+    assert sent[0][2] == message  # as it was; the runtime refuses it
+    assert not list(_long_temp().iterdir())
+
+
+def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it():
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-9')
+    w._steer_codex_owned(w.record, 'y' * 40000)
+    action, done = w.work[0]
+    result = action()
+    assert result is None and sent[0][0] == 'steer'
+    assert len(sent[0][2]) < 32000 and "as the user's message" in sent[0][2]
+    path = _saved_path(sent[0][2])
+    done(None, False)
+    assert path.exists()
+    # A steer goes into the running turn, so that turn's end deletes it.
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-9', 'completed'))
+    assert not path.exists()
+
+
+def test_a_refused_long_steer_deletes_its_file():
+    from thechatplace.providers.codex_rpc import CodexSteerRefused
+    w = Window()
+    sent = []
+    def refuse(*a):
+        sent.append(a)
+        raise CodexSteerRefused('ended')
+    w.sessions = SimpleNamespace(owned_action=refuse)
+    w._steer_codex_owned(w.record, 'y' * 40000)
+    action, done = w.work[0]
+    done(action(), False)
+    path = _saved_path(sent[0][2])
+    assert not path.exists()
+    assert w.reply_text.value.startswith('y' * 100)
+
+
+def test_saved_message_file_is_deleted_when_its_turn_ends():
+    """The temp file lives only for its turn (#625)."""
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    action, done = w.work[0]
+    action()
+    path = _saved_path(sent[0][2])
+    done(False, False)
+    assert path.exists()  # the turn is still running
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    assert not path.exists()
+
+
+def test_a_second_long_message_outlives_the_last_turns_end():
+    """In a chat that has had a reply, the runtime keeps reporting that
+    turn's "completed" while the new one starts, and the window replays it
+    once the send returns. That isn't the long message's turn, so its file
+    must still be there for Codex to read."""
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    action, done = w.work[0]
+    action()
+    path = _saved_path(sent[0][2])
+    # Held while the send is pending, then replayed by done().
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'completed'))
+    done(False, False)
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-2', 'inProgress'))
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-2', 'completed'))
+    assert not path.exists()
+
+
+def test_a_queued_long_message_waits_for_its_own_turn():
+    """Queued behind a running turn, and behind another queued message: the
+    turns that end before it starts aren't its own, even once it has left
+    the queue (the runtime reports the last turn's end as it starts)."""
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or True)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    w.work[0][0]()
+    w.work[0][1](True, False)
+    prompt = sent[0][2]
+    path = _saved_path(prompt)
+    for state in (CodexChatState('owned', 'working', 'turn-1', 'inProgress', queued=('other', prompt)),
+                  CodexChatState('owned', 'working', 'turn-1', 'completed', queued=(prompt,)),
+                  CodexChatState('owned', 'working', 'turn-2', 'inProgress', queued=(prompt,)),
+                  # turn-2 ends and the runtime takes the prompt off the queue
+                  # before it says so: still not the prompt's turn.
+                  CodexChatState('owned', 'working', 'turn-2', 'completed'),
+                  CodexChatState('owned', 'working', 'turn-3', 'inProgress')):
+        w._on_owned_update('codex', state)
+        assert path.exists(), state
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-3', 'completed'))
+    assert not path.exists()
+
+
+def test_an_unsent_long_message_deletes_its_file_and_comes_back_as_written():
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or True)
+    text = 'head\n' + 'x' * 40000
+    w._send_codex_owned(w.record, text)
+    w.work[0][0]()
+    w.work[0][1](True, False)
+    prompt = sent[0][2]
+    path = _saved_path(prompt)
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'interrupted', unsent=(prompt,)))
+    assert not path.exists()
+    assert w.reply_text.value.startswith('head\n' + 'x' * 100)
+
+
+def test_closing_and_deleting_a_chat_remove_its_files():
+    from thechatplace import codex_long_messages
+    w = Window()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    w.work[0][0]()
+    path = _saved_path(sent[0][2])
+    w._forget_long_messages()
+    assert not path.exists() and not w._long_message_files
+    assert codex_long_messages.expand(sent[0][2]) == 'x' * 40000
+    codex_long_messages.forget_chat('owned')
+    assert codex_long_messages.expand(sent[0][2]) == sent[0][2]
+
+
+def test_saved_message_reads_back_as_written_and_as_yours():
+    """History shows the message as written, as yours, labeled as sent as
+    a file; and the prompt says to say so if the file can't be read."""
+    from thechatplace import codex_long_messages
+    from thechatplace.transcript import ChatMessage
+    text = 'head\n' + 'x' * 40000 + '\nTAIL'
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    assert "can't read" in prompt and 'say so plainly' in prompt
+    assert prompt.startswith('This message was placed in this conversation by The Chat Place. '
+                             'Your message is too long to send directly')
+    assert 'temporary file which will be deleted when the task is finished.\npath: ' in prompt
+    codex_long_messages.remember(path, text, 'owned')
+    assert codex_long_messages.expand(prompt) == text
+    shown = codex_long_messages.expand_messages(
+        [ChatMessage('user', prompt), ChatMessage('assistant', 'Fine')])
+    assert shown[0].label == 'You, sent as a file' and shown[0].text == text
+    assert shown[0].kind == 'user'
+    assert shown[1].text == 'Fine' and not shown[1].speaker
+    # Not remembered (another computer): still labeled, the prompt kept.
+    codex_long_messages.forget_chat('owned')
+    shown = codex_long_messages.expand_messages([ChatMessage('user', prompt)])
+    assert shown[0].label == 'You, sent as a file' and shown[0].text == prompt
+
+
+def test_only_the_apps_own_prompt_and_files_are_recognized(tmp_path):
+    """Codex's replies and command output can quote anything: a "path:"
+    line, even the prompt itself, never retitles a message or reads a file."""
+    from thechatplace import codex_long_messages
+    from thechatplace.transcript import ChatMessage
+    secret = tmp_path / 'config'
+    secret.write_text('TOKEN=abc', encoding='utf-8')
+    text = 'x' * 40000
+    path = codex_long_messages.save_message(text)
+    codex_long_messages.remember(path, text, 'owned')
+    prompt = codex_long_messages.prompt_for(text, path)
+    elsewhere = codex_long_messages.prompt_for(text, str(secret))
+    yaml = f'settings:\npath: {secret}\n'
+    shown = codex_long_messages.expand_messages([
+        ChatMessage('assistant', prompt),          # Codex quoting it
+        ChatMessage('tool_result', prompt),        # or a command printing it
+        ChatMessage('user', yaml),                 # your own YAML
+        ChatMessage('user', elsewhere),            # a "prompt" naming another file
+        ChatMessage('user', 'Note: ' + prompt),    # not at the start
+    ])
+    assert all(not m.speaker for m in shown)
+    assert [m.text for m in shown] == [prompt, prompt, yaml, elsewhere, 'Note: ' + prompt]
+    assert codex_long_messages.expand(yaml) == yaml
+    assert codex_long_messages.expand(elsewhere) == elsewhere
+    codex_long_messages.delete_files([str(secret)])
+    assert secret.exists()  # never deletes a file that isn't its own
+
+
+def test_remembered_messages_are_capped_by_size(monkeypatch):
+    from thechatplace import codex_long_messages
+    monkeypatch.setattr(codex_long_messages, '_KEPT_CHARS', 100_000)
+    paths = []
+    for n in range(4):
+        path = codex_long_messages.save_message('x')
+        codex_long_messages.remember(path, str(n) * 40_000, 'owned')
+        paths.append(path)
+    codex_long_messages.reset()  # read back from disk
+    kept = [codex_long_messages.original(codex_long_messages.prompt_for('x', p)) for p in paths]
+    assert kept[:2] == [None, None] and kept[2] == '2' * 40_000 and kept[3] == '3' * 40_000
+
+
+def test_leftover_saved_messages_are_swept():
+    """Files from before this run go; one written since (a send made before
+    the sweep got to run) and anything else in the folder stay."""
+    import os
+    import time
+    from thechatplace import codex_long_messages
+    temp = _long_temp()
+    leftover = temp / 'thechatplace-long-message-old.txt'
+    leftover.write_text('secret', encoding='utf-8')
+    os.utime(leftover, (time.time() - 3600,) * 2)
+    fresh = temp / 'thechatplace-long-message-new.txt'
+    fresh.write_text('being read', encoding='utf-8')
+    other = temp / 'unrelated.txt'
+    other.write_text('keep', encoding='utf-8')
+    os.utime(other, (time.time() - 3600,) * 2)
+    codex_long_messages.sweep_temp(before=time.time() - 60)
+    assert not leftover.exists() and fresh.exists() and other.exists()
+
+
+def _run(w, index):
+    """Run queued work as _codex_work does: an exception becomes an error."""
+    from thechatplace.codex_diagnostics import safe_reason
+    action, done = w.work[index]
+    try:
+        result, error = action(), False
+    except Exception as exc:  # noqa: BLE001
+        result, error = safe_reason(exc) or None, True
+    done(result, error)
+
+
+def test_steering_a_queued_long_message_shows_it_as_written_and_waits_for_that_turn():
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or True)
+    text = 'head\n' + 'x' * 40000
+    w._send_codex_owned(w.record, text)
+    _run(w, 0)
+    prompt = sent[0][2]
+    path = _saved_path(prompt)
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress',
+                                               queued=(prompt,)))
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-1')
+    w._steer_codex_owned(w.record, prompt, index=0)
+    # The steer row, and what history is matched against, is what you wrote.
+    assert w.steer_rows[-1][0] == text
+    # The prompt leaves the queue during the same turn: not a new turn.
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    _run(w, 1)
+    assert sent[-1][:2] == ('steer_queued', w.record) and sent[-1][3] == prompt
+    assert path.exists()
+    assert 'Steered' in w.said[-1] and 'path:' not in w.said[-1]
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    assert not path.exists()
+
+
+def test_a_long_steer_taken_by_the_next_turn_waits_for_that_turn():
+    """The steer can reach Codex after the turn it was meant for has ended,
+    and go into the next one: the earlier turn's end mustn't delete it."""
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-2')
+    w._steer_codex_owned(w.record, 'y' * 40000)
+    action, done = w.work[0]
+    result = action()
+    path = _saved_path(sent[0][2])
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-2', 'inProgress'))
+    assert path.exists()
+    done(result, False)
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-2', 'completed'))
+    assert not path.exists()
+
+
+def test_a_refused_long_send_deletes_its_file_and_an_uncertain_one_keeps_it():
+    from thechatplace.providers.codex_rpc import CodexRpcError, CodexTurnRejected
+    w = Window()
+    sent = []
+    def gone(*a):
+        sent.append(a)
+        raise CodexTurnRejected('thread_gone')
+    w.sessions = SimpleNamespace(owned_action=gone)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    _run(w, 0)
+    assert not _saved_path(sent[0][2]).exists()
+    assert w.reply_text.value.startswith('x' * 100)
+    assert 'no longer has this chat' in w.said[-1]
+    def lost(*a):
+        sent.append(a)
+        raise CodexRpcError('connection lost')
+    w.sessions = SimpleNamespace(owned_action=lost)
+    w._send_codex_owned(w.record, 'z' * 40000)
+    _run(w, 1)
+    assert _saved_path(sent[1][2]).exists()  # it may have reached Codex
+
+
+def test_no_file_is_written_while_files_are_being_put_back():
+    w = Window()
+    w._files_going_back_in = lambda folder: True
+    w._send_codex_owned(w.record, 'x' * 40000)
+    assert not list(_long_temp().iterdir())
+    assert 'putting files back' in w.said[-1]
+
+
+def test_a_queued_long_message_row_reads_as_written():
+    from thechatplace import codex_long_messages
+    from thechatplace.ui.main_frame import MainFrame
+    text = 'head\n' + 'x' * 40000
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    codex_long_messages.remember(path, text, 'owned')
+    row = MainFrame._queued_row(prompt, 'queued:codex:owned:0')
+    assert row.text == text and row.label == 'Queued, sent as a file'
+    plain = MainFrame._queued_row('Short one', 'queued:codex:owned:1')
+    assert plain.text == 'Short one' and not plain.speaker
+
+
+def test_an_agent_conversation_reads_a_long_hand_on_as_written():
+    """Unlabeled for an agent conversation, which names and sorts its rows
+    by what they say (a reply passed on, its setup)."""
+    from thechatplace import codex_long_messages
+    from thechatplace.transcript import ChatMessage
+    text = "Claude's reply, passed on:\n" + 'x' * 40000
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    codex_long_messages.remember(path, text, 'owned')
+    shown = codex_long_messages.expand_messages([ChatMessage('user', prompt)], label=False)
+    assert shown[0].text == text and not shown[0].speaker
+
+
 def test_preparing_is_reserved_once_and_cleared_after_failure():
     w = Window()
     w._codex_preparing['codex:owned'] = 4

@@ -69,7 +69,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
-from .. import sound_events
+from .. import codex_long_messages, sound_events
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
@@ -287,6 +287,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
+        self._long_message_files = {}  # key -> {temp path: entry} (#625)
         self._codex_preparing = {}
         self._codex_preparation_running = set()
         self._codex_send_pending = {}
@@ -583,6 +584,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                              manual=False)
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
         self._pool.submit(remove_whole_chat_page)
+        self._pool.submit(codex_long_messages.sweep_temp)  # last run's long messages (#625)
         self.session_list.SetFocus()
         if check_updates_at_start:
             # A few seconds in, so the list is read first. Settings can turn
@@ -2161,6 +2163,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 changed = active_reader.refresh()
                 transcript = active_reader.transcript
                 copies = [dataclasses.replace(m) for m in transcript.messages]
+                if info.provider == 'codex':
+                    # A saved long message reads as it was written, not as
+                    # the short prompt Codex was sent.
+                    copies = codex_long_messages.expand_messages(copies)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
@@ -5934,13 +5940,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        for turn, identity, text in getattr(state, 'permission_notices', ())
                        if turn == state.turn_id and (self._show_activity or not is_routine(identity, text))]
             return notices + self._steered_rows(info.key) + [
-                ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                self._queued_row(text, f"queued:{info.key}:{i}")
                 for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
         return self._steered_rows(info.cli_session_id) + [
             ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
             for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+
+    @staticmethod
+    def _queued_row(text: str, key: str) -> ChatMessage:
+        """A queued Codex message; one going as a file (#625) reads as
+        written, not as the short prompt that names the file."""
+        written = codex_long_messages.original(text)
+        if codex_long_messages.saved_path(text) is None:
+            return ChatMessage(QUEUED, text, key=key)
+        return ChatMessage(QUEUED, written if written is not None else text, key=key,
+                           speaker="Queued, sent as a file")
 
     def _your_messages_saying(self, text: str) -> int:
         """How many of your messages in the loaded chat say ``text``."""
@@ -8556,6 +8572,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._close_session_tools()
         self._close_providers()
+        self._forget_long_messages()  # no turn of this run will read them now (#625)
         event.Skip()
 
     def _close_providers(self):

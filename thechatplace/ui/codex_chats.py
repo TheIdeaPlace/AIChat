@@ -4,6 +4,8 @@
 The names say Codex because Codex came first; the shared paths take the
 provider from the chat's record or key (#352). Change Permission Mode, saved
 rules, plans and creation stay Codex's own."""
+import os
+import tempfile
 import time
 from dataclasses import replace
 from types import SimpleNamespace
@@ -11,12 +13,13 @@ from types import SimpleNamespace
 import wx
 
 from ..providers.codex_requests import QUESTIONS, ELICITATION
-from ..providers.codex_rpc import CodexRpcError, CodexSteerRefused, CodexTurnRejected
+from ..providers.codex_rpc import MAX_MESSAGE_CHARS, CodexMessageTooLong, CodexRpcError, CodexSteerRefused, CodexTurnRejected
 from ..providers.codex_runtime import STOP_TO_RECHECK, CodexThreadGone
 from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
+from .. import codex_long_messages
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name, with_stop_key, your_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
@@ -78,6 +81,9 @@ class CodexChats(SoundHost, CodexExtras):
                     pass
             for cache in (self._codex_states, self._codex_drafts, self._codex_delayed_updates):
                 cache.pop(info.key, None)
+            # Its long messages as written go too (#625).
+            self._forget_long_messages(info.key)
+            codex_long_messages.forget_chat(info.cli_session_id)
             self._aside_histories.pop(('codex', info.cli_session_id), None)
             self._attachments.pop(self._attachment_key(info), None)
             self._leave_list(info)
@@ -209,6 +215,19 @@ class CodexChats(SoundHost, CodexExtras):
             self._session_tools_config('')
             options.update(instructions=instructions, extra_roots=extra_roots)
         name = provider_name(provider)
+        if message and not joint and provider == 'copilot':
+            # Copilot is refused before anything is created: a chat whose
+            # first message can never be sent would stay empty and show as
+            # unavailable for ever. A Codex first message is handed over in
+            # a file at send time instead (_codex_sendable). Agent
+            # conversations (joint) hand their message on elsewhere, which
+            # checks its own limits.
+            from ..providers.copilot_runtime import MAX_MESSAGE_CHARS as COPILOT_LIMIT
+            if len(message) > COPILOT_LIMIT:
+                reason = (f'This message is too long ({len(message):,} characters; the limit is '
+                          f'{COPILOT_LIMIT:,}). Nothing was sent. Shorten it, or put the long part in a file.')
+                self._feedback(self._keep_first_message(message, provider) + ' ' + reason)
+                return
         def create():
             return (self.sessions.fork_owned(source, title, **options) if source is not None
                     else self.sessions.create_owned(provider, folder, title, **options))
@@ -495,7 +514,9 @@ class CodexChats(SoundHost, CodexExtras):
             state = self._codex_states.get(info.key)
             problem = state.problem if state is not None else ''
             text = problem if problem and problem != earlier_problem else fallback
-            if problem and 'use stop' not in text.lower() and 'press stop' not in text.lower():
+            gone = CodexTurnRejected.REASONS['thread_gone'] in text  # Stop can't help (#625)
+            if (problem and not gone and 'use stop' not in text.lower()
+                    and 'press stop' not in text.lower()):
                 text += ' ' + STOP_TO_RECHECK
             self._feedback(with_stop_key(text))
         def prepared(change, error):
@@ -586,10 +607,133 @@ class CodexChats(SoundHost, CodexExtras):
         self._update_send_state()
         self._prepare_codex_owned(self._open_generation)
 
+    def _codex_sendable(self, record, text, steer=False):
+        """(what to send, saved file or None). A Codex message over the
+        limit goes in a temp file, with a short prompt asking Codex to
+        read it as the message, so a long paste just works (#625). If the
+        file can't be written, the text goes as it was and the runtime
+        refuses it in plain words. Other providers send as they were."""
+        if getattr(record, 'provider', '') != 'codex' or len(text) <= MAX_MESSAGE_CHARS:
+            return text, None
+        try:
+            saved = codex_long_messages.save_message(text)
+        except OSError:
+            return text, None
+        prompt = codex_long_messages.prompt_for(text, saved)
+        parts = getattr(text, 'parts', ())
+        if parts:
+            # Attached images and skills still go natively, with the prompt.
+            from ..providers.codex_input import CodexInput
+            try:
+                prompt = CodexInput(prompt, parts)
+            except ValueError:
+                # A file gone since it was attached: the text goes as it
+                # was and is refused in plain words, never a stuck send.
+                codex_long_messages.delete_files((saved,))
+                return text, None
+        codex_long_messages.remember(saved, str(text), record.cli_session_id)
+        key = record.to_info().key
+        files = getattr(self, '_long_message_files', None)
+        if files is None:
+            files = self._long_message_files = {}
+        # When it may go (#625; see _long_message_turn_over). A send waits
+        # to see its turn start: a running turn other than the one the chat
+        # had when it was sent (the runtime goes on reporting that turn's
+        # end while the new one starts), once the prompt has left the
+        # queue. A steer waits for Codex to say which turn took it.
+        files.setdefault(key, {})[saved] = {
+            'prompt': prompt, 'mode': 'steering' if steer else 'waiting',
+            'after': self._latest_turn_id(key), 'turn': ''}
+        return prompt, saved
+
+    def _latest_turn_id(self, key):
+        delayed = self._codex_delayed_updates.get(key)
+        state = delayed[-1] if delayed else self._codex_states.get(key)
+        return state.turn_id if state is not None else ''
+
+    def _long_message_entry(self, key, prompt):
+        """(path, entry) for a long message's prompt in this chat, or (None, None)."""
+        for path, entry in getattr(self, '_long_message_files', {}).get(key, {}).items():
+            if entry['prompt'] == prompt:
+                return path, entry
+        return None, None
+
+    def _drop_long_message(self, key, path):
+        """Delete one saved file now (nothing will read it) and forget it."""
+        if not path:
+            return
+        codex_long_messages.delete_files((path,))
+        files = getattr(self, '_long_message_files', {})
+        files.get(key, {}).pop(path, None)
+        if key in files and not files[key]:
+            del files[key]
+
+    def _long_message_steered(self, key, path, provider, native_id, turn):
+        """A steer carrying a long message was accepted into ``turn``: its
+        file goes when that turn ends, or now if it already has."""
+        entry = getattr(self, '_long_message_files', {}).get(key, {}).get(path)
+        if entry is None:
+            return
+        if not turn:
+            entry['mode'] = 'kept'  # not known which turn: kept until close
+        elif (provider, native_id, turn) in self._codex_finished:
+            self._drop_long_message(key, path)
+        else:
+            entry['mode'], entry['turn'] = 'running', turn
+
+    def _long_message_turn_over(self, key, state):
+        """Delete the temp files of long messages whose turn has ended
+        (#625), and of any that came back unsent (they'll never be read;
+        sending again saves a new one).
+
+        A file goes only once the window has seen its own turn run and
+        end. Leaving one too long costs nothing (closing the app, and the
+        next start, delete it); deleting one early means Codex can't read
+        the message. So a send's turn is the first running turn seen,
+        after the prompt has left the queue, that isn't the turn the chat
+        had while it waited; a steer's is the one Codex said took it."""
+        files = getattr(self, '_long_message_files', {}).get(key)
+        if not files:
+            return
+        ended = state.outcome in ('completed', 'failed', 'interrupted')
+        done = []
+        for path, entry in files.items():
+            if entry['prompt'] in state.unsent:
+                done.append(path)
+            elif entry['mode'] == 'waiting':
+                if entry['prompt'] in state.queued:
+                    entry['after'] = state.turn_id
+                elif (state.outcome == 'inProgress' and state.turn_id
+                      and state.turn_id != entry['after']):
+                    entry['mode'], entry['turn'] = 'running', state.turn_id
+            elif entry['mode'] == 'running' and ended and state.turn_id == entry['turn']:
+                done.append(path)
+        codex_long_messages.delete_files(done)
+        for path in done:
+            del files[path]
+        if not files:
+            getattr(self, '_long_message_files', {}).pop(key, None)
+
+    def _forget_long_messages(self, key=None):
+        """Delete a chat's saved long-message files, or every chat's (at
+        close: no turn of this run will read them now)."""
+        files = getattr(self, '_long_message_files', {})
+        for chat in ([key] if key is not None else list(files)):
+            codex_long_messages.delete_files(files.pop(chat, {}))
+
+    def _too_long_note(self, record, saved):
+        if not saved:
+            return ''
+        # No path: it's gone in moments, and a screen reader would read it all.
+        return (' It was too long to send directly, so '
+                f'{provider_name(record.provider)} was given it as a file to read.')
+
     def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
         says what was sent, and keeps the text if it fails (``on_result``)."""
         key = record.to_info().key
+        sendable, saved = text, None
+        refused = []  # refused before anything went: its file can go (#625)
         self._codex_send_pending[key] = self._codex_send_pending.get(key, 0) + 1
         def done(queued, error):
             remaining = self._codex_send_pending[key] - 1
@@ -597,6 +741,8 @@ class CodexChats(SoundHost, CodexExtras):
                 self._codex_send_pending[key] = remaining
             else:
                 del self._codex_send_pending[key]
+            if saved and error and refused:
+                self._drop_long_message(key, saved)
             if error and not restore:
                 self._sound(sound_events.NOT_SENT, key, on_its_own=True)
             elif error:
@@ -610,7 +756,8 @@ class CodexChats(SoundHost, CodexExtras):
                 self._sound(sound_events.QUEUED if queued else sound_events.SENT, key)
                 formatter = announce.queued_text if queued else announce.sent_text
                 self._feedback(formatter(record.title, text, self.speech.announce,
-                                         self.speech.announce_own))
+                                         self.speech.announce_own)
+                               + self._too_long_note(record, saved))
             if not remaining:
                 for state in self._codex_delayed_updates.pop(key, ()):
                     self._on_owned_update(record.provider, state)
@@ -623,7 +770,17 @@ class CodexChats(SoundHost, CodexExtras):
         if going_back is not None and going_back(getattr(record, 'cwd', '')):
             done('Still putting files back in this folder. Send again in a moment.', True)
             return
-        self._codex_work(lambda: self.sessions.owned_action('send', record, text), done)
+        sendable, saved = self._codex_sendable(record, text)
+
+        def send():
+            try:
+                return self.sessions.owned_action('send', record, sendable)
+            except (CodexTurnRejected, CodexMessageTooLong, ValueError):
+                # Refusals written before anything is sent; any other error
+                # may have reached Codex, so its file is kept (until close).
+                refused.append(True)
+                raise
+        self._codex_work(send, done)
 
     def _steer_codex_owned(self, record, text, index=None):
         """Steer (#239): ``text`` into the running turn, or the queued message
@@ -633,17 +790,28 @@ class CodexChats(SoundHost, CodexExtras):
         as a new turn without Kelly choosing to."""
         key = record.to_info().key
         name = provider_name(record.provider)
-        self._steer_row(key, text, f'waiting for {name}')
+        if index is None:
+            sendable, saved = self._codex_sendable(record, text, steer=True)
+            shown = text
+        else:
+            # A queued long message is its short prompt (#625): it's shown,
+            # said and matched in history as written; its file stays until
+            # the turn that takes it has ended.
+            sendable, shown = text, codex_long_messages.expand(text)
+            saved, entry = self._long_message_entry(key, text)
+            if entry is not None:
+                entry['mode'] = 'steering'
+        self._steer_row(key, shown, f'waiting for {name}')
 
         accepted = []  # the turn Codex took it into
 
         def action():
             try:
                 if index is None:
-                    turn = self.sessions.owned_action('steer', record, text)
+                    turn = self.sessions.owned_action('steer', record, sendable)
                 else:
                     turn = self.sessions.owned_action('steer_queued', record, index, text)
-            except (CodexSteerRefused, CodexTurnRejected) as exc:
+            except (CodexSteerRefused, CodexTurnRejected, CodexMessageTooLong) as exc:
                 # ``returned``: a queued one that Stop sent back to the box.
                 return (safe_reason(exc) or f'{name} could not take it.',
                         getattr(exc, 'returned', False))
@@ -654,7 +822,7 @@ class CodexChats(SoundHost, CodexExtras):
         def done(refused, error):
             # Accepted, it stays until the chat's history has it; otherwise
             # it's back with you, in the reply box or the queue.
-            self._steer_status(key, text, None if error or refused else f'accepted by {name}')
+            self._steer_status(key, shown, None if error or refused else f'accepted by {name}')
             state = self._codex_states.get(key)
             finished = bool(accepted) and (record.provider, record.cli_session_id,
                                            accepted[0]) in self._codex_finished
@@ -665,6 +833,20 @@ class CodexChats(SoundHost, CodexExtras):
                 # used, so the history read next decides where it goes.
                 self._steers_turn_over(key)
             self._sound(sound_events.NOT_SENT if error or refused else sound_events.STEERED, key)
+            if saved:
+                entry = getattr(self, '_long_message_files', {}).get(key, {}).get(saved)
+                if error:
+                    if entry is not None:
+                        entry['mode'] = 'kept'  # it may have arrived: kept until close
+                elif not refused:
+                    self._long_message_steered(key, saved, record.provider, record.cli_session_id,
+                                               accepted[0] if accepted else '')
+                elif index is None:
+                    # Nothing was taken, so nothing will read it; sending it
+                    # again saves a new one.
+                    self._drop_long_message(key, saved)
+                elif entry is not None:
+                    entry['mode'] = 'waiting'  # still queued (or back, as unsent)
             if error:
                 # Not known whether it arrived: back in the box, never resent.
                 if index is None:
@@ -681,9 +863,10 @@ class CodexChats(SoundHost, CodexExtras):
                 else:
                     self._feedback(f'{reason} It stays queued.')
             else:
-                self._feedback(announce.steered_text(record.title, text, self.speech.announce,
+                self._feedback(announce.steered_text(record.title, shown, self.speech.announce,
                                                      index is None and self.speech.announce_own,
-                                                     accepted=True))
+                                                     accepted=True)
+                               + self._too_long_note(record, saved))
             self._update_send_state()
         self._codex_work(action, done)
 
@@ -851,13 +1034,15 @@ class CodexChats(SoundHost, CodexExtras):
             # The turn is over. An accepted steer may not have been used
             # (Stop): it stays until the history is read again (#410).
             self._steers_turn_over(key)
-        unsent = state.unsent
+        # A saved long message comes back as it was written, not as its prompt.
+        unsent = tuple(codex_long_messages.expand(text) for text in state.unsent)
         if unsent:
             # An agent conversation's own message goes back to it (#248).
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
                 unsent = agent_unsent(provider, state.native_id, unsent)
         self._restore_codex_text(key, unsent)
+        self._long_message_turn_over(key, state)
         record = self.store.get(state.native_id, provider=provider)
         if record is None:
             return
@@ -1014,7 +1199,8 @@ class CodexChats(SoundHost, CodexExtras):
                     agent_ended(provider, state.native_id, reply, state.outcome != 'completed',
                                 more_queued=bool(state.queued),
                                 queued_ours=self._agent_queued_is_ours(
-                                    provider, state.native_id, state.queued),
+                                    provider, state.native_id,
+                                    tuple(codex_long_messages.expand(t) for t in state.queued)),
                                 detail=state.problem or '',
                                 files=tuple(getattr(state, 'changed_paths', ())))
                 finally:

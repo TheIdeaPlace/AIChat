@@ -681,14 +681,20 @@ def test_a_setting_that_could_not_be_saved_says_so_without_stop(frame, env, monk
 # -- the rest of what's said (#467) -----------------------------------------------------
 
 
-def test_a_message_over_the_limit_says_so_not_that_an_attachment_is_missing(frame, env, monkeypatch):
+def test_a_message_over_the_limit_is_saved_and_sent_not_refused(frame, env, monkeypatch):
+    """A reply over the limit goes the first message's way: saved to a
+    temp file for Codex to read, not refused with the length error."""
     record = owned(frame, env)
     monkeypatch.setattr(frame, '_can_edit', lambda info: True)
     monkeypatch.setattr(frame, '_still_preparing', lambda info: False)
+    sent = []
+    monkeypatch.setattr(frame.sessions, 'owned_action', lambda *a: sent.append(a) or False)
     frame.reply_text.SetValue('x' * 32001)
     frame.on_send()
-    assert '32000' in env['feedback'][-1] and 'attachment is missing' not in env['feedback'][-1]
-    assert frame.reply_text.GetValue() == 'x' * 32001
+    assert frame.reply_text.GetValue() == ''
+    assert pump(lambda: env['feedback'] and 'given it as a file to read' in env['feedback'][-1])
+    assert 'attachment is missing' not in env['feedback'][-1]
+    assert sent and sent[0][0] == 'send' and 'path: ' in sent[0][2]
 
 
 def _compaction_state(record, **kw):
