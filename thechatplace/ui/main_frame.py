@@ -5940,13 +5940,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        for turn, identity, text in getattr(state, 'permission_notices', ())
                        if turn == state.turn_id and (self._show_activity or not is_routine(identity, text))]
             return notices + self._steered_rows(info.key) + [
-                ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                self._queued_row(text, f"queued:{info.key}:{i}")
                 for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
         return self._steered_rows(info.cli_session_id) + [
             ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
             for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+
+    @staticmethod
+    def _queued_row(text: str, key: str) -> ChatMessage:
+        """A queued Codex message; one going as a file (#625) reads as
+        written, not as the short prompt that names the file."""
+        written = codex_long_messages.original(text)
+        if codex_long_messages.saved_path(text) is None:
+            return ChatMessage(QUEUED, text, key=key)
+        return ChatMessage(QUEUED, written if written is not None else text, key=key,
+                           speaker="Queued, sent as a file")
 
     def _your_messages_saying(self, text: str) -> int:
         """How many of your messages in the loaded chat say ``text``."""

@@ -406,14 +406,135 @@ def test_remembered_messages_are_capped_by_size(monkeypatch):
 
 
 def test_leftover_saved_messages_are_swept():
+    """Files from before this run go; one written since (a send made before
+    the sweep got to run) and anything else in the folder stay."""
+    import os
+    import time
     from thechatplace import codex_long_messages
     temp = _long_temp()
     leftover = temp / 'thechatplace-long-message-old.txt'
     leftover.write_text('secret', encoding='utf-8')
+    os.utime(leftover, (time.time() - 3600,) * 2)
+    fresh = temp / 'thechatplace-long-message-new.txt'
+    fresh.write_text('being read', encoding='utf-8')
     other = temp / 'unrelated.txt'
     other.write_text('keep', encoding='utf-8')
-    codex_long_messages.sweep_temp()
-    assert not leftover.exists() and other.exists()
+    os.utime(other, (time.time() - 3600,) * 2)
+    codex_long_messages.sweep_temp(before=time.time() - 60)
+    assert not leftover.exists() and fresh.exists() and other.exists()
+
+
+def _run(w, index):
+    """Run queued work as _codex_work does: an exception becomes an error."""
+    from thechatplace.codex_diagnostics import safe_reason
+    action, done = w.work[index]
+    try:
+        result, error = action(), False
+    except Exception as exc:  # noqa: BLE001
+        result, error = safe_reason(exc) or None, True
+    done(result, error)
+
+
+def test_steering_a_queued_long_message_shows_it_as_written_and_waits_for_that_turn():
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or True)
+    text = 'head\n' + 'x' * 40000
+    w._send_codex_owned(w.record, text)
+    _run(w, 0)
+    prompt = sent[0][2]
+    path = _saved_path(prompt)
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress',
+                                               queued=(prompt,)))
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-1')
+    w._steer_codex_owned(w.record, prompt, index=0)
+    # The steer row, and what history is matched against, is what you wrote.
+    assert w.steer_rows[-1][0] == text
+    # The prompt leaves the queue during the same turn: not a new turn.
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    _run(w, 1)
+    assert sent[-1][:2] == ('steer_queued', w.record) and sent[-1][3] == prompt
+    assert path.exists()
+    assert 'Steered' in w.said[-1] and 'path:' not in w.said[-1]
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    assert not path.exists()
+
+
+def test_a_long_steer_taken_by_the_next_turn_waits_for_that_turn():
+    """The steer can reach Codex after the turn it was meant for has ended,
+    and go into the next one: the earlier turn's end mustn't delete it."""
+    w = Window()
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-1', 'inProgress'))
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or 'turn-2')
+    w._steer_codex_owned(w.record, 'y' * 40000)
+    action, done = w.work[0]
+    result = action()
+    path = _saved_path(sent[0][2])
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-1', 'completed'))
+    w._on_owned_update('codex', CodexChatState('owned', 'working', 'turn-2', 'inProgress'))
+    assert path.exists()
+    done(result, False)
+    assert path.exists()
+    w._on_owned_update('codex', CodexChatState('owned', 'idle', 'turn-2', 'completed'))
+    assert not path.exists()
+
+
+def test_a_refused_long_send_deletes_its_file_and_an_uncertain_one_keeps_it():
+    from thechatplace.providers.codex_rpc import CodexRpcError, CodexTurnRejected
+    w = Window()
+    sent = []
+    def gone(*a):
+        sent.append(a)
+        raise CodexTurnRejected('thread_gone')
+    w.sessions = SimpleNamespace(owned_action=gone)
+    w._send_codex_owned(w.record, 'x' * 40000)
+    _run(w, 0)
+    assert not _saved_path(sent[0][2]).exists()
+    assert w.reply_text.value.startswith('x' * 100)
+    assert 'no longer has this chat' in w.said[-1]
+    def lost(*a):
+        sent.append(a)
+        raise CodexRpcError('connection lost')
+    w.sessions = SimpleNamespace(owned_action=lost)
+    w._send_codex_owned(w.record, 'z' * 40000)
+    _run(w, 1)
+    assert _saved_path(sent[1][2]).exists()  # it may have reached Codex
+
+
+def test_no_file_is_written_while_files_are_being_put_back():
+    w = Window()
+    w._files_going_back_in = lambda folder: True
+    w._send_codex_owned(w.record, 'x' * 40000)
+    assert not list(_long_temp().iterdir())
+    assert 'putting files back' in w.said[-1]
+
+
+def test_a_queued_long_message_row_reads_as_written():
+    from thechatplace import codex_long_messages
+    from thechatplace.ui.main_frame import MainFrame
+    text = 'head\n' + 'x' * 40000
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    codex_long_messages.remember(path, text, 'owned')
+    row = MainFrame._queued_row(prompt, 'queued:codex:owned:0')
+    assert row.text == text and row.label == 'Queued, sent as a file'
+    plain = MainFrame._queued_row('Short one', 'queued:codex:owned:1')
+    assert plain.text == 'Short one' and not plain.speaker
+
+
+def test_an_agent_conversation_reads_a_long_hand_on_as_written():
+    """Unlabeled for an agent conversation, which names and sorts its rows
+    by what they say (a reply passed on, its setup)."""
+    from thechatplace import codex_long_messages
+    from thechatplace.transcript import ChatMessage
+    text = "Claude's reply, passed on:\n" + 'x' * 40000
+    path = codex_long_messages.save_message(text)
+    prompt = codex_long_messages.prompt_for(text, path)
+    codex_long_messages.remember(path, text, 'owned')
+    shown = codex_long_messages.expand_messages([ChatMessage('user', prompt)], label=False)
+    assert shown[0].text == text and not shown[0].speaker
 
 
 def test_preparing_is_reserved_once_and_cleared_after_failure():

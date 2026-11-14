@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Protocol
 
+from .. import codex_long_messages
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
 from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, THINKING, AgentCall, ChatMessage, Transcript
 from ..ui_text import last_message_line
@@ -589,6 +590,9 @@ class CodexProvider:
                 reader.refresh()
                 message = next((m for m in reversed(reader.transcript.messages)
                                 if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
+                if message is not None:
+                    # A long message sent as a file reads as written (#625).
+                    message = codex_long_messages.expand_messages([message])[0]
                 line = last_message_line(message.label, message.text) if message else ""
             except Exception:  # noqa: BLE001 - optional history cannot erase the catalog
                 line, failed = "", True

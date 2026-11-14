@@ -24,6 +24,7 @@ import re
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -39,6 +40,8 @@ _KEPT = 20
 _KEPT_CHARS = 2_000_000
 _lock = threading.Lock()
 _store = None
+#: When this run began (near enough: the window imports this at start).
+_LOADED = time.time()
 
 
 def temp_dir():
@@ -181,11 +184,13 @@ def expand(text):
     return text if found is None else found
 
 
-def expand_messages(messages):
+def expand_messages(messages, label=True):
     """Chat history where a message sent as a file reads as you wrote it,
     labeled so it's clear it went as a file. Only your own messages are
     looked at; a message whose original isn't remembered (another
-    computer, or dropped by the cap) keeps the prompt that was sent."""
+    computer, or dropped by the cap) keeps the prompt that was sent.
+    ``label`` off: the text only, for an agent conversation, which labels
+    and classifies its rows by what they say."""
     from .transcript import STEERING, USER
     expanded = []
     for message in messages:
@@ -193,8 +198,9 @@ def expand_messages(messages):
             expanded.append(message)
             continue
         found = original(message.text)
-        expanded.append(replace(message, speaker=LABEL,
-                                text=message.text if found is None else found))
+        text = message.text if found is None else found
+        expanded.append(replace(message, speaker=LABEL, text=text) if label
+                        else replace(message, text=text))
     return expanded
 
 
@@ -209,11 +215,19 @@ def delete_files(paths):
             pass
 
 
-def sweep_temp():
+def sweep_temp(before=None):
     """Delete any saved message files a previous run left behind: their
     turns are over, whether they finished or the app closed first. Run
-    once at start, off the UI thread."""
+    once at start, off the UI thread, so only files from before this run
+    started (``before``, default when this module loaded) go: one this run
+    has just written may be waiting to be read."""
+    cutoff = _LOADED if before is None else before
     try:
-        delete_files(Path(temp_dir()).glob(PREFIX + '*.txt'))
+        for path in Path(temp_dir()).glob(PREFIX + '*.txt'):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    delete_files((path,))
+            except OSError:
+                pass
     except OSError:
         pass
