@@ -207,6 +207,26 @@ def test_a_long_message_keeps_its_attached_image(tmp_path):
     assert 'Attached image: ' in _read_saved(_saved_path(prompt))
 
 
+def test_a_long_message_whose_image_has_gone_is_refused_not_stuck(tmp_path):
+    """The image vanished between assembling and sending: no file is left,
+    the send goes through the normal refusal, and the chat isn't left with
+    a send that never finishes."""
+    image = tmp_path / 'shot.png'
+    image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0' * 64)
+    w = Window()
+    w._attachments = {w._open.key: [str(image)]}
+    w._attachment_key = staticmethod(lambda info: info.key)
+    message = w._codex_message(w._open, 'x' * 31990)
+    image.unlink()
+    sent = []
+    w.sessions = SimpleNamespace(owned_action=lambda *a: sent.append(a) or False)
+    w._send_codex_owned(w.record, message)
+    assert sent == [] and w._codex_send_pending
+    w.work[0][0]()
+    assert sent[0][2] == message  # as it was; the runtime refuses it
+    assert not list(_long_temp().iterdir())
+
+
 def test_too_long_codex_steer_is_saved_and_codex_is_asked_to_read_it():
     w = Window()
     sent = []

@@ -624,7 +624,13 @@ class CodexChats(SoundHost, CodexExtras):
         if parts:
             # Attached images and skills still go natively, with the prompt.
             from ..providers.codex_input import CodexInput
-            prompt = CodexInput(prompt, parts)
+            try:
+                prompt = CodexInput(prompt, parts)
+            except ValueError:
+                # A file gone since it was attached: the text goes as it
+                # was and is refused in plain words, never a stuck send.
+                codex_long_messages.delete_files((saved,))
+                return text, None
         codex_long_messages.remember(saved, str(text), record.cli_session_id)
         key = record.to_info().key
         files = getattr(self, '_long_message_files', None)
