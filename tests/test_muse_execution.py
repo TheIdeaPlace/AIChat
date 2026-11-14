@@ -416,3 +416,37 @@ def test_poll_reports_how_the_native_turn_ended(owned, terminal):
     polled = owned.poll(own)
     assert polled["state"] == "idle" and polled["terminal"] == terminal
     assert own.provider_options["muse_command"]["terminal"] == terminal
+
+
+@pytest.mark.parametrize("terminal", ["completed", "cancelled"])
+def test_turn_end_saves_through_the_real_store(tmp_path, terminal):
+    """The window saves through OwnSessionStore, which validates every key.
+    A save it refused made poll() report "execution unavailable" for every
+    completed turn, so exercise the real store, not a do-nothing callback."""
+    from thechatplace.own_store import OwnSessionStore
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    chats = MuseOwnedChats(Execution())
+    chats.set_persistence(lambda item: store.update(
+        item.cli_session_id, provider="muse", provider_options=dict(item.provider_options)))
+    own = record(chats)
+    store.add(own)
+    chats.send(own, "Synthetic question")
+    if terminal == "cancelled":
+        chats.stop(own)
+    chats.execution.complete(terminal)
+    polled = chats.poll(own)
+    assert polled["state"] == "idle" and polled["notice"] == ""
+    saved = OwnSessionStore(tmp_path / "sessions.json").get(NATIVE_ID, "muse")
+    assert saved.provider_options["muse_command"]["terminal"] == terminal
+
+
+def test_a_failed_save_says_so_instead_of_execution_unavailable(owned):
+    own = record(owned)
+    owned.send(own, "Synthetic question")
+    owned.execution.complete()
+    def refuse(item):
+        raise ValueError("refused")
+    owned.set_persistence(refuse)
+    polled = owned.poll(own)
+    assert polled["state"] == "unknown"
+    assert "couldn't save" in polled["notice"] and "unavailable" not in polled["notice"]

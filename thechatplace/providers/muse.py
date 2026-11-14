@@ -464,6 +464,11 @@ def _valid_command(value: str) -> bool:
         return False
 
 
+class MuseSaveError(MuseHistoryError):
+    """The app couldn't save a turn's state. Said as itself, not as Muse
+    being unavailable: Muse may be fine (a refused save once hid that)."""
+
+
 class MuseOwnedChats:
     """Owned lifecycle using verified wire shapes and confirmed native state.
 
@@ -576,7 +581,7 @@ class MuseOwnedChats:
                     record.provider_options.pop("muse_command", None)
                 else:
                     record.provider_options["muse_command"] = previous
-                raise MuseHistoryError("Muse Code couldn't save this turn before sending. Try again.")
+                raise MuseSaveError("Muse Code couldn't save this turn before sending. Try again.")
             return
         try:
             self._persistence(record)
@@ -585,7 +590,7 @@ class MuseOwnedChats:
                 record.provider_options.pop("muse_command", None)
             else:
                 record.provider_options["muse_command"] = previous
-            raise MuseHistoryError("Muse Code couldn't save this turn's state. Check the chat before sending again.") from None
+            raise MuseSaveError("The Chat Place couldn't save this Muse Code turn's state. Check the chat before sending again.") from None
 
     def _saved(self, record: OwnSession) -> dict:
         value = record.provider_options.get("muse_command")
@@ -757,12 +762,13 @@ class MuseOwnedChats:
                 return {"state": state, "pending": pending, "turn_id": result["session"].get("activeTurnId") or "",
                         "terminal": self._saved(record).get("terminal", "") if state == "idle" else "",
                         "notice": "" if state != "unknown" else "Muse Code's turn outcome is unknown. Refresh before sending again."}
-            except Exception:
+            except Exception as error:
                 command = self._in_flight.get(record.cli_session_id) or self._saved(record)
                 if command and command.get("state") not in ("completed", "rejected"):
                     self._in_flight[record.cli_session_id] = {**command, "state": "unknown"}
-                return {"state": "unknown", "pending": (), "turn_id": "",
-                        "notice": "Muse Code execution is unavailable. Existing messages remain readable; try refreshing."}
+                notice = (str(error) if isinstance(error, MuseSaveError) else
+                          "Muse Code execution is unavailable. Existing messages remain readable; try refreshing.")
+                return {"state": "unknown", "pending": (), "turn_id": "", "notice": notice}
 
     def _answers(self, approval: MuseApproval, answers: list) -> list:
         if not isinstance(answers, list) or len(answers) != len(approval.questions):

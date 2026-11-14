@@ -336,11 +336,26 @@ def test_muse_command_identity_and_uncertain_state_survive_restart(tmp_path):
     assert json.loads((tmp_path / "provider-sessions.json").read_text())["sessions"] == []
 
 
+@pytest.mark.parametrize("terminal", ["completed", "cancelled", "failed"])
+def test_muse_finished_command_keeps_how_it_ended(tmp_path, terminal):
+    """How native Muse ended the turn is saved with it, so a stopped turn
+    isn't announced as finished; refusing it broke every completed turn."""
+    import uuid
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    ident = str(uuid.uuid7())
+    command = {"command_id": ident, "turn_id": ident, "state": "completed", "terminal": terminal}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
+
+
 @pytest.mark.parametrize("command", [
     {"command_id": "invalid", "turn_id": "", "state": "running"},
     {"command_id": "00000000-0000-4000-8000-000000000000", "turn_id": "", "state": "running"},
     {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "allowAll"},
     {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "prompt": "synthetic"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "completed", "terminal": "allowAll"},
 ])
 def test_muse_recovery_store_refuses_invalid_commands_and_prompt_content(tmp_path, command):
     store = OwnSessionStore(tmp_path / "sessions.json")

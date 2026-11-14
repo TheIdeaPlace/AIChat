@@ -167,7 +167,13 @@ def _valid_muse_options(options: dict) -> bool:
     if set(options) != {"muse_command"}:
         return False
     command = options["muse_command"]
-    if not isinstance(command, dict) or set(command) != {"command_id", "turn_id", "state"}:
+    if not isinstance(command, dict) or not (
+            {"command_id", "turn_id", "state"} <= set(command)
+            <= {"command_id", "turn_id", "state", "terminal"}):
+        return False
+    # How native Muse ended a finished turn, so Stop isn't said as finished.
+    if "terminal" in command and (command["state"] != "completed"
+                                  or command["terminal"] not in {"completed", "cancelled", "failed"}):
         return False
     try:
         ident = uuid.UUID(command["command_id"])
