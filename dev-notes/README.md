@@ -41,6 +41,8 @@ shipped.
 
 - [Muse Code execution plan](muse-code-execution.md): third milestone for owned chat creation, turn streaming and native permissions (issue not yet assigned).
 
+- [Muse Code Chat menu plan](muse-code-chat-menu.md): making every Chat menu command either work for a Muse Code chat or say why not, starting with a sweep test (issue not yet assigned).
+
 - [User guide review](user-guide-review.md): agreed corrections and improvements to the user guide, and decisions for Kelly, from a Claude and Codex review against 0.2.0.
 
 - [Backup history reader](backup-reader-436.md): the #436 UI contract and isolated Codex recovery.
