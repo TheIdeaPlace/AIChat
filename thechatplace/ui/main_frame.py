@@ -104,8 +104,8 @@ from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_
                        release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import (refresh_list_item, set_accessible_name, set_empty_list_text,
-                   set_list_items_accessible, set_voiceover_menu)
+from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
+                   set_empty_list_text, set_list_items_accessible, set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
@@ -845,7 +845,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         set_accessible_name(self.chat_list, "Messages")
         # Each row shows the first line; the screen reader reads it whole (#11).
         set_list_items_accessible(self.chat_list, self.chat_list.GetName,
-                                  self._message_item_text)
+                                  self._message_item_text, empty_text="No messages")
         self._spoken: Dict[str, tuple] = {}  # message key -> (text, spoken words)
         vsizer.Add(self.chat_list, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         self.chat_list.Bind(wx.EVT_CONTEXT_MENU, self._on_message_menu)
@@ -903,6 +903,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # something; Delete removes the selected one.
         self.attach_list = wx.ListBox(self.own_reply, style=wx.LB_SINGLE)
         set_accessible_name(self.attach_list, "Attachments, Delete removes one")
+        set_empty_list_text(self.attach_list, "No attachments")
         self.attach_list.SetMinSize(dip(self, LIST_MIN_WIDTH, 48))  # see session_list
         osizer.Add(self.attach_list, 0, wx.EXPAND | wx.TOP, 6)
         self.attach_list.Hide()
@@ -1290,8 +1291,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 selected = self._list_keys[index]
                 if selected not in {s.key for s in shown}:
                     shown += [s for s in snap.sessions if s.key == selected]
+        had_rows = self.session_list.GetCount() > 0
         self._update_session_list(shown, keep_order=keep_order)
         self._update_list_label(len(shown))
+        if had_rows and not shown and wx.Window.FindFocus() is self.session_list:
+            # The last session in the view went away while you were in the list: Windows
+            # says nothing, so the screen reader stayed on the row that had gone (#649).
+            announce_list_emptied(self.session_list)
 
         if not first and self._open is not None and not (
                 self._runtime_announces(self._open)) and any(

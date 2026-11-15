@@ -63,7 +63,8 @@ class SubagentChatDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label="&Messages:"), 0, wx.LEFT | wx.TOP, 8)
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.list, self._list_name())
-        set_list_items_accessible(self.list, self.list.GetName, self._item_text)
+        set_list_items_accessible(self.list, self.list.GetName, self._item_text,
+                                  empty_text="No messages")
         sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.activity = wx.CheckBox(self, label=key_name("Show &tool activity (Ctrl+T)"))
