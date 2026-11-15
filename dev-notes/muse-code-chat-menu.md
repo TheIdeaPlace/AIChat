@@ -386,3 +386,17 @@ is mostly commands, and on the checking computer Muse can't start any
 - The window (`_stop_muse_task`) chooses, confirms with No the default, and
   says "Stopping ..." or "... had already finished.", as Claude's does.
 
+
+### Chat Options: checked natively, nothing to offer yet (2026-11-15)
+
+Chat Options is an agent, standing instructions, an output style and more
+folders. Muse Code 1.4.20's protocol has nothing for the first three (no
+session or turn parameter, no method; `goal/*` is a different feature). For
+more folders the schema has `workspaceRoots` on `session/start`,
+`session/resume` and `turn/start` (sticky on a turn), but the installed host
+refuses it everywhere: -32602 on `session/start` (with or without
+`workspaceRoot`) and on `turn/start` with any spelling of the chat's own
+folder (plain, `\?\` long-path, forward slashes, lower case), and -32030 on
+`session/resume`. A session reports only its main `workspaceRoot`. So Chat
+Options stays refused for Muse chats; recheck `workspaceRoots` on a newer
+Muse build.
