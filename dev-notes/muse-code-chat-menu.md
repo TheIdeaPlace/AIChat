@@ -188,3 +188,25 @@ beyond that it's "unknown" rather than a guess. `session/setReasoningEffort`
 is allowlisted, and the owned actions `prepare_effort` / `set_effort` are
 added to `SessionController.owned_action`.
 
+### Step 3, Insert Command or Skill done (2026-11-14)
+
+Native check first (installed 1.4.20): `skill/list` with `sessionId` lists
+the chat's user-invocable skills (81 on the checking account: 67 user, 12
+bundled, 2 plugin), each with `selector`, `source`, `description` and an
+optional `argumentHint`. A skill runs only as a `skill` input part,
+`{type, selector, source, arguments?}`: "/name" in a text part reaches the
+model as words, and an unknown selector is refused with -32032
+`skillNotFound` before any turn starts. History records the message as
+"/name arguments" followed by a `skillRead` item.
+
+- `skill/list` is allowlisted; the `skills` owned action lists rows.
+- The window reuses `CommandPickerDialog` (with its search box): the chosen
+  skill goes before your draft as "/name ".
+- `MuseOwnedChats.send()` reads the skill list only for a message starting
+  with "/", and sends a listed name as a skill part with the rest as its
+  arguments; anything else is sent as typed. A skill removed in Muse since it
+  was listed says so and leaves the command rejected, not unknown.
+
+Checked natively through `send()`: "/plan ..." loaded the plan skill and the
+reply followed it; "/not-a-skill ..." was answered as plain text.
+

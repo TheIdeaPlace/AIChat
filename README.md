@@ -1589,6 +1589,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   the chat's model may not be available to you. Change Effort lists the efforts the
   chat's model offers, with the one it uses marked "(now)". Switching to a model that
   doesn't offer the chat's effort sets that model's default, and you hear which.
+  Chat, Insert Command or Skill (Ctrl+/) lists the chat's Muse Code skills, with a
+  search box, and puts the one you choose before your message as "/name ". A message
+  starting with a skill's name runs that skill, with the rest as what you ask it; a
+  name Muse doesn't list goes as ordinary text.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow

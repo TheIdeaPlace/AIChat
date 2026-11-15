@@ -7965,6 +7965,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if (info is not None and info.provider == "muse" and not info.is_own
                 and not self._require_capability("send", info)):
             return  # Muse Code's own chat: read-only here
+        if info is not None and info.provider == "muse" and info.is_own and self._can_edit(info):
+            self._muse_skills(info)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS:
             self._feedback("The command and skill picker isn't available for "
                            f"{provider_name(info.provider)} chats yet.")

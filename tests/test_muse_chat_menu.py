@@ -208,7 +208,7 @@ EXPECTED = {
         "running": said("Muse chat here: Muse Code is working."),
         "waiting": said("Muse chat here: Muse Code is waiting for you."),
         "foreign": said(READ_ONLY)},
-    "insert_command": owned(said("command and skill picker isn't available for Muse Code chats")),
+    "insert_command": owned(dialog("CommandPickerDialog")),
     "attach_files": owned(said(NOT_YET)),
     "prompts": every(dialog("PromptsDialog")),
     "send_and_save_prompt": owned(said("Type a message first."),
@@ -327,3 +327,18 @@ def test_change_effort_sets_the_chosen_muse_tier(world, monkeypatch):
     assert title == "Change Effort" and "now maximum" in prompt
     assert choices == ["low", "medium", "high", "maximum (now)"] and selection == 3
     assert any("effort is now low" in text for text in world.said), world.said
+
+
+def test_insert_skill_puts_it_before_your_draft(world, monkeypatch):
+    from thechatplace.ui import dialogs
+    put_in_case(world, "idle")
+    world.frame.reply_text.SetValue("Outline it briefly.")
+    shown = []
+    def pick(self):
+        shown.append([row["name"] for row in self._all])
+        self.chosen = next(row for row in self._all if row["name"] == "acme:deploy")
+        return wx.ID_OK
+    monkeypatch.setattr(dialogs.CommandPickerDialog, "ShowModal", pick)
+    world.frame._command_handlers()["insert_command"](wx.CommandEvent())
+    assert shown == [["synthetic-plan", "acme:deploy"]]
+    assert world.frame.reply_text.GetValue() == "/acme:deploy Outline it briefly."

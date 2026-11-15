@@ -236,7 +236,7 @@ class SessionController:
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
                           "recover", "set_model", "set_mode", "set_auto", "restart_warning", "restart",
                           "prepare_settings", "prepare_mode", "prepare_chat_options", "feature", "delete",
-                          "prepare_effort", "set_effort",
+                          "prepare_effort", "set_effort", "skills",
                           "settle", "pending_approvals", "turn_in_flight", "poll"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":

@@ -301,6 +301,10 @@ class MuseProvider:
     def set_model_owned(self, record, model_id):
         return self._owned_chats().set_model(record, model_id)
 
+    def skills_owned(self, record):
+        """This chat's skills for Insert Command or Skill."""
+        return self._owned_chats().skills(record)
+
     def prepare_effort_owned(self, record):
         """This chat's efforts for Change Effort: ((tier, label), ...), now."""
         return self._owned_chats().efforts(record)
@@ -686,17 +690,20 @@ class MuseOwnedChats:
             saved = self._saved(record)
             if saved.get("command_id") == key:
                 raise MuseHistoryError("That command was already submitted. Refresh the chat instead of sending it again.")
+            parts = self._input(record, text)
             command = {"command_id": key, "turn_id": "", "state": "submitting"}
             self._remember(record, command, required=True)
             self._in_flight[record.cli_session_id] = command
             try:
                 result = self.execution.request("turn/start", {
-                    "sessionId": record.cli_session_id, "commandId": key,
-                    "input": [{"type": "text", "text": text}]})
-            except MuseRequestError:
+                    "sessionId": record.cli_session_id, "commandId": key, "input": parts})
+            except MuseRequestError as error:
                 command = {**command, "state": "rejected"}
                 self._in_flight.pop(record.cli_session_id, None)
                 self._remember(record, command)
+                if error.code == -32032 and parts[0]["type"] == "skill":
+                    raise MuseHistoryError("Muse Code doesn't have that skill now. Choose it again "
+                                           "with Insert Command or Skill.") from None
                 raise
             except Exception:
                 command = {**command, "state": "unknown"}
@@ -887,6 +894,48 @@ class MuseOwnedChats:
             was = EFFORT_LABELS[standing] if standing else "the chat's unknown effort"
             return label, (f"Its effort is now {EFFORT_LABELS[default]}, since {label} "
                            f"doesn't offer {was}.")
+
+    def _skill_rows(self, record: OwnSession) -> list:
+        result = self.execution.request("skill/list", {"sessionId": record.cli_session_id})
+        rows = _request_array(result, "skills")
+        if len(rows) > 512:
+            raise MuseHistoryError("Muse Code listed more skills than this app can show.")
+        for row in rows:
+            if (not isinstance(row, dict) or not _identity(row.get("selector"))
+                    or not isinstance(row.get("source"), str) or not row["source"]
+                    or not isinstance(row.get("description"), str)
+                    or not (row.get("argumentHint") is None or isinstance(row.get("argumentHint"), str))):
+                raise MuseHistoryError("Muse Code listed a skill this app can't read.")
+        return rows
+
+    def skills(self, record: OwnSession) -> tuple:
+        """This chat's user-invocable skills: name (the selector you type
+        after "/"), description, argument hint and source."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            return tuple({"name": row["selector"], "description": row["description"],
+                          "argumentHint": row.get("argumentHint") or "", "source": row["source"]}
+                         for row in self._skill_rows(record))
+
+    def _input(self, record: OwnSession, text: str) -> list:
+        """The turn's input parts. Installed 1.4.20 passes "/name" in a text
+        part to the model as words, so a message whose first word names one
+        of this chat's skills is sent as that skill, the rest its arguments,
+        as Muse's own terminal does. Anything else is sent as typed."""
+        if text.startswith("/"):
+            head = text[1:].split(None, 1)
+            name = head[0] if head else ""
+            if name:
+                row = next((r for r in self._skill_rows(record) if r["selector"] == name), None)
+                if row is not None:
+                    part = {"type": "skill", "selector": name, "source": row["source"]}
+                    arguments = head[1].strip() if len(head) > 1 else ""
+                    if arguments:
+                        part["arguments"] = arguments
+                    return [part]
+        return [{"type": "text", "text": text}]
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.

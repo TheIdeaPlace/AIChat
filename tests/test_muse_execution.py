@@ -62,6 +62,12 @@ class Execution:
         self.profile_available = True
         self.events = []
         self.receipts = []
+        # Shaped like installed 1.4.20's skill/list rows (names synthetic).
+        self.skills = [
+            {"selector": "synthetic-plan", "displayName": "synthetic-plan", "source": "bundled",
+             "description": "Plan a synthetic change."},
+            {"selector": "acme:deploy", "displayName": "deploy", "source": "plugin", "pluginId": "acme",
+             "description": "Deploy synthetically.", "argumentHint": "[target]"}]
 
     def request(self, method, params):
         self.messages.append((method, copy.deepcopy(params)))
@@ -94,9 +100,21 @@ class Execution:
             self.session.update(policy())
             return {"session": copy.deepcopy(self.session), "viewCursor": "v:1", "pendingRequests": [],
                     "history": {"mode": "inline", "items": []}}
+        if method == "skill/list":
+            assert params == {"sessionId": NATIVE_ID}
+            return {"skills": copy.deepcopy(self.skills)}
         if method == "turn/start":
             assert set(params) == {"sessionId", "commandId", "input"}
-            assert params["input"][0]["type"] == "text" and params["input"][0]["text"].strip()
+            part = params["input"][0]
+            if part["type"] == "skill":
+                # Installed 1.4.20: the host resolves the selector; an unknown
+                # one is skillNotFound (-32032) and no turn starts.
+                assert set(part) <= {"type", "selector", "source", "arguments"}
+                if not any(s["selector"] == part["selector"] and s["source"] == part["source"]
+                           for s in self.skills):
+                    raise MuseRequestError(-32032)
+            else:
+                assert part["type"] == "text" and part["text"].strip()
             assert uuid.UUID(params["commandId"]).version == 7
             self.session.update(status="running", activeTurnId=params["commandId"])
             return {"commandId": params["commandId"], "turnId": params["commandId"], "status": "accepted",
@@ -681,3 +699,57 @@ def test_changing_model_keeps_an_effort_the_new_model_offers(owned):
     owned.set_effort(own, "low")
     label, note = owned.set_model(own, "synthetic-model-a")
     assert note == "" and owned.efforts(own)[1] == "low"
+
+
+
+def test_skills_lists_this_chats_skills(owned):
+    own = record(owned)
+    assert owned.skills(own) == (
+        {"name": "synthetic-plan", "description": "Plan a synthetic change.", "argumentHint": "",
+         "source": "bundled"},
+        {"name": "acme:deploy", "description": "Deploy synthetically.", "argumentHint": "[target]",
+         "source": "plugin"})
+
+
+def _started(owned):
+    return [p for m, p in owned.execution.messages if m == "turn/start"][-1]["input"]
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("/synthetic-plan Outline it briefly.",
+     [{"type": "skill", "selector": "synthetic-plan", "source": "bundled", "arguments": "Outline it briefly."}]),
+    ("/acme:deploy\nstaging", [{"type": "skill", "selector": "acme:deploy", "source": "plugin",
+                                 "arguments": "staging"}]),
+    ("/synthetic-plan", [{"type": "skill", "selector": "synthetic-plan", "source": "bundled"}]),
+    # Not a listed skill, or not at the start: sent as you typed it (as Muse does).
+    ("/not-a-skill hello", [{"type": "text", "text": "/not-a-skill hello"}]),
+    ("Use /synthetic-plan here", [{"type": "text", "text": "Use /synthetic-plan here"}]),
+])
+def test_a_message_starting_with_a_listed_skill_invokes_it(owned, text, expected):
+    """Installed 1.4.20 passes "/name" in a text part to the model as words;
+    only a skill part invokes the skill."""
+    own = record(owned)
+    owned.send(own, text)
+    assert _started(owned) == expected
+
+
+def test_only_a_slash_message_reads_the_skill_list(owned):
+    own = record(owned)
+    owned.send(own, "Plain synthetic message")
+    assert not any(m == "skill/list" for m, _ in owned.execution.messages)
+
+
+def test_a_skill_gone_since_listing_says_so(owned, monkeypatch):
+    own = record(owned)
+    listed = copy.deepcopy(owned.execution.skills)
+    answer = owned.execution.request
+    def stale_list(method, params):
+        if method == "skill/list":
+            owned.execution.messages.append((method, params))
+            return {"skills": listed}
+        return answer(method, params)
+    monkeypatch.setattr(owned.execution, "request", stale_list)
+    owned.execution.skills = []  # removed in Muse after the list was read
+    with pytest.raises(MuseHistoryError, match="doesn't have that skill"):
+        owned.send(own, "/synthetic-plan Go")
+    assert own.provider_options["muse_command"]["state"] == "rejected"

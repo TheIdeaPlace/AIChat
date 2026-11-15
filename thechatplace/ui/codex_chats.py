@@ -502,6 +502,41 @@ class CodexChats(SoundHost, CodexExtras):
             self._codex_work(lambda: self.sessions.owned_action("set_model", record, chosen), changed)
         self._codex_work(lambda: self.sessions.owned_action("prepare_settings", record), listed)
 
+    def _muse_skills(self, info):
+        """Chat, Insert Command or Skill for a Muse chat started here: its
+        skills, read when chosen. The chosen one goes before your draft as
+        "/name "; sent, Muse runs it with the rest as its arguments."""
+        from .dialogs import CommandPickerDialog
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        self._feedback("Getting the Muse Code skills for this chat.")
+
+        def loaded(skills, error):
+            if error:
+                self._feedback(skills if isinstance(skills, str) and skills
+                               else "Muse Code couldn't list its skills. Try again.")
+                return
+            if not skills:
+                self._feedback("Muse Code has no skills for this chat.")
+                return
+            if self._open is None or self._open.key != info.key:
+                return  # another chat is loaded now: a picker would fill its reply box
+            rows = [dict(skill, prefix="/", builtin=False) for skill in skills]
+            dialog = CommandPickerDialog(self, rows)
+            try:
+                if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
+                    return
+                chosen = dialog.chosen
+            finally:
+                dialog.Destroy()
+            draft = self.reply_text.GetValue().lstrip()
+            self.reply_text.SetValue("/" + chosen["name"] + " " + draft)
+            self.reply_text.SetFocus()
+            self.reply_text.SetInsertionPointEnd()
+        self._codex_work(lambda: self.sessions.owned_action("skills", record), loaded)
+
     def _change_muse_effort(self, info):
         """Chat, Chat Settings, Change Effort for a Muse chat started here:
         the efforts its model offers, read when chosen, with the one it uses
