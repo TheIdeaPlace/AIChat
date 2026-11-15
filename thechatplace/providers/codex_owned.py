@@ -86,6 +86,17 @@ class CodexOwnedThread:
                           provider_options=options)
 
 
+def other_provider(info) -> str:
+    """Why a Codex chat can't be copied into a ChatGPT chat, or "" if it can
+    (#644): it was made with another model provider, such as a local model.
+    "" also when the provider isn't known, as for The Chat Place's own chats,
+    which are always made on ChatGPT (_create checks it)."""
+    provider = getattr(info, "model_provider", "")
+    if getattr(info, "provider", "") == "codex" and provider not in ("", "openai"):
+        return CodexTurnRejected.REASONS["other_provider"]
+    return ""
+
+
 class CodexOwnedThreads:
     def __init__(self, connection):
         self.connection = connection
@@ -365,9 +376,10 @@ class CodexOwnedThreads:
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
             raise ValueError("Codex fork requires a valid source chat")
-        if source.model_provider not in ("", "openai"):
+        if other_provider(source):
             # Continue Here, Branch, Retry and Ask Aside all copy through
             # here, into a chat on ChatGPT (modelProvider "openai", _create).
+            # The window asks first, to say so before any dialog opens.
             raise CodexTurnRejected('other_provider')
         return self._create("thread/fork", source.cwd, title,
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,

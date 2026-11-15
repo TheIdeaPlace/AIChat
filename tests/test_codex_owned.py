@@ -91,6 +91,13 @@ def test_a_chat_from_another_model_provider_is_never_copied_into_chatgpt():
     assert refused.value.code == 'other_provider'
     assert 'other than ChatGPT' in safe_reason(refused.value)
     assert connection.calls == []
+    # Ask Aside says so plainly, before starting a Codex for the aside.
+    from thechatplace.providers.codex_aside import CodexAsideRunner
+    events, started = [], []
+    CodexAsideRunner(source, 'Why?', events.append,
+                     factory=lambda: started.append(True))._run()
+    assert started == [] and len(events) == 1
+    assert events[0].kind == 'failed' and 'other than ChatGPT' in events[0].text
     # ChatGPT's own chats, and ones whose provider isn't known, still copy.
     for provider in ('openai', ''):
         ok = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source',

@@ -169,7 +169,7 @@ class CodexExtras:
         return False
 
     def _codex_ask_aside(self, info):
-        if not self._require_capability('aside', info):
+        if not self._require_capability('aside', info) or self._other_provider_said(info):
             return
         from ..providers.codex_aside import CodexAsideRunner
         from .. import announce
@@ -317,8 +317,17 @@ class CodexExtras:
             prepare('prepare_settings', (model, effort))
         self._load_codex_models(loaded)
 
+    def _other_provider_said(self, info):
+        """Say why a chat made with another model provider can't be copied
+        into ChatGPT (#644), before any dialog opens; True if it was said."""
+        from ..providers.codex_owned import other_provider
+        refusal = other_provider(info)
+        if refusal:
+            self._feedback(refusal)
+        return bool(refusal)
+
     def _branch_codex(self, info, message, *, before=False):
-        if not self._require_capability('branch', info):
+        if not self._require_capability('branch', info) or self._other_provider_said(info):
             return
         if message is None or message.kind not in (USER, ASSISTANT) or (before and message.kind != USER):
             self._feedback('Choose one of your messages to retry from, or a message or reply to branch from.')

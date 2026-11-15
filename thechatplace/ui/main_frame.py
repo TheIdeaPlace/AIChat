@@ -5077,6 +5077,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"{info.title} is already a Chat Place session; reply to it here.")
             return
         if info.provider == "codex":
+            if self._other_provider_said(info):
+                return
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
                                       load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
