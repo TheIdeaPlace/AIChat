@@ -42,7 +42,8 @@ class SoundGalleryDialog(wx.Dialog):
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Sound schemes")
         # Windows takes a list box's name from here, not from SetName (a11y.set_accessible_name).
-        set_list_items_accessible(self.list, lambda: "Sound schemes", lambda index: None)
+        set_list_items_accessible(self.list, lambda: "Sound schemes", lambda index: None,
+                                  empty_text="No sound schemes")
         outer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         outer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT | wx.RIGHT, 10)
         # Read-only text, not a label, so it's in the Tab order and read by line.

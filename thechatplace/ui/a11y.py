@@ -44,9 +44,10 @@ def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = Fa
     box of text, which mustn't be parsed for an access key.
 
     ``SetName`` doesn't reach MSAA. Text controls, check boxes and choice
-    lists also get a wx.Accessible, so their name does. List boxes don't get
-    one here: the messages list has its own (``set_list_items_accessible``),
-    which keeps the list's name and its rows' text.
+    lists also get a wx.Accessible, so their name does. A list box on Windows
+    gets a ``ListAccessible`` that leaves its name to Windows (from the label
+    before it) but reads its row once and says when it's empty (#647, #648);
+    ``set_list_items_accessible`` gives one a name of its own.
 
     On macOS neither reaches VoiceOver, so the name goes on the native view
     as well (``mac_a11y``), and on Linux on the GTK widget, for Orca
@@ -56,6 +57,10 @@ def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = Fa
     mac_a11y.set_label(control, label)
     gtk_a11y.set_label(control, label)
     _tie_label_before(control, label)
+    if isinstance(control, wx.ListBox):
+        if wx.Platform == "__WXMSW__":
+            _list_accessible(control)
+        return
     # A combo box too (#154): Windows names one by the text in it, so the
     # Folder box was read as its path rather than as Folder. A check box or a
     # choice list named more fully than its visible label (#468): what a form
@@ -155,68 +160,38 @@ def _tie_label_before(control: wx.Window, name: str) -> None:
         tie_label(before, control)
 
 
-class ListItemsAccessible(wx.Accessible):
-    """A list box whose items tell the screen reader more than they show
-    (#11), as Image Description Toolkit's DescriptionListBox does.
+#: What a list reads while it has no rows, when it has no words of its own (#648).
+EMPTY_LIST_TEXT = "No items"
 
-    ``name()`` gives the list's own name (it changes: the messages list's
-    name says the session and its state). ``item_text(index)`` gives the text
-    a screen reader should read for that row, or None for the row's own text.
-    Both are asked each time, so the answer follows the list as it changes.
-    Everything else (role, state, child count) is left to wx.
+
+class ListAccessible(wx.Accessible):
+    """Every list box's accessible on Windows: one row read once, and an empty list read as
+    empty (#616, #621, #647, #648).
+
+    - **Focus** (#616, #647). Tabbing to a list box, Windows reports focus on the list, then on
+      its row, and NVDA reads the row for each: on the first it asks the list which row has
+      focus. While the list has focus, this says the list itself has it, which leaves the row
+      to the second report, so it's read once.
+    - **Empty** (#621, #648). An empty Windows list box still reports focus on its row 1, which
+      doesn't exist, and says row 1 has focus when asked. Every question about that row
+      failed, so NVDA read it as "unknown". While the list is empty, row 1 answers as a list
+      item named ``empty_text``, with the list's own rectangle.
+    - **Rows** (#11). ``item_text(index)``, when given, is the text a screen reader should read
+      for that row, or None for the row's own text, as Image Description Toolkit's
+      DescriptionListBox does.
+    - **Name.** ``name()``, when given, is the list's own name (the messages list's says the
+      session and its state). Without it Windows names the list from the label before it
+      ("Session list:", with its Alt+L).
+
+    Both callables are asked each time, so the answers follow the list as it changes.
+    Everything else (child count, the rows' roles and states) is left to Windows.
     """
 
-    def __init__(self, window: wx.Window, name, item_text):
+    def __init__(self, window: wx.Window, name=None, item_text=None,
+                 empty_text: str = EMPTY_LIST_TEXT):
         super().__init__(window)
         self._name = name
         self._item_text = item_text
-
-    def GetName(self, childId):
-        if not childId:
-            return (wx.ACC_OK, self._name())
-        try:
-            text = self._item_text(childId - 1)  # childId is 1-based for items
-        except Exception:  # noqa: BLE001 - never break the screen reader
-            text = None
-        if text:
-            return (wx.ACC_OK, text)
-        # The row's own text. The name must be a string even here: with None,
-        # wxPython can't build the answer and the screen reader gets an error
-        # (0x80010105) instead of the row, found reading it from another
-        # process the way JAWS and NVDA do.
-        return (wx.ACC_NOT_IMPLEMENTED, "")
-
-    def GetFocus(self):
-        """While the list has focus, say the list itself has it, not its row (#616).
-
-        Tabbing to a list box, Windows reports focus on the list, then on its row. NVDA reads
-        the row for each when they reach it apart, as they do from a wx dialog: on the first it
-        asks the list which row has focus and reads that row, then the second reads it again.
-        Answering "the list" leaves the row to the second report, so it's read once. A list
-        without focus answers as Windows would.
-
-        wxPython calls this with no arguments and takes (status, child id, child accessible),
-        whatever its docstring says; the accessible itself is what wx gives as CHILDID_SELF.
-        Checked through oleacc's accFocus in the test VM: 0 with focus, the row's id without."""
-        window = self.GetWindow()
-        if window and wx.Window.FindFocus() is window:
-            return (wx.ACC_OK, 0, self)
-        return (wx.ACC_NOT_IMPLEMENTED, 0, None)
-
-
-class EmptyListAccessible(wx.Accessible):
-    """A list box that says it's empty, rather than "unknown", when focus reaches it (#621).
-
-    Tabbing to an empty Windows list box, Windows reports focus on the list and then on its
-    row 1, which doesn't exist, and the list says row 1 has focus when asked. Every question
-    about that row fails, so NVDA read it as "unknown". While the list is empty this answers
-    for row 1 as a list item named ``empty_text``, and says the list itself has focus. With
-    rows in it, everything is left to wx, including the list's own name, which Windows takes
-    from the label before it ("Session list:", with its Alt+L), so rows read as before.
-    """
-
-    def __init__(self, window: wx.Window, empty_text: str):
-        super().__init__(window)
         self._empty_text = empty_text
 
     def _empty(self) -> bool:
@@ -227,52 +202,110 @@ class EmptyListAccessible(wx.Accessible):
         window = self.GetWindow()
         return bool(window) and wx.Window.FindFocus() is window
 
+    def _empty_row(self, childId) -> bool:
+        return childId == 1 and self._empty()
+
     def GetName(self, childId):
-        if childId == 1 and self._empty():
+        if not childId:
+            if self._name is None:
+                return (wx.ACC_NOT_IMPLEMENTED, "")
+            return (wx.ACC_OK, self._name())
+        if self._empty_row(childId):
             return (wx.ACC_OK, self._empty_text)
+        try:
+            # childId is 1-based for items.
+            text = self._item_text(childId - 1) if self._item_text else None
+        except Exception:  # noqa: BLE001 - never break the screen reader
+            text = None
+        if text:
+            return (wx.ACC_OK, text)
+        # The row's own text. The name must be a string even here: with None,
+        # wxPython can't build the answer and the screen reader gets an error
+        # (0x80010105) instead of the row, found reading it from another
+        # process the way JAWS and NVDA do.
         return (wx.ACC_NOT_IMPLEMENTED, "")
 
     def GetRole(self, childId):
-        if childId == 1 and self._empty():
+        if self._empty_row(childId):
             return (wx.ACC_OK, wx.ROLE_SYSTEM_LISTITEM)
         return (wx.ACC_NOT_IMPLEMENTED, wx.ROLE_NONE)
 
     def GetState(self, childId):
-        if childId == 1 and self._empty():
+        if self._empty_row(childId):
             return (wx.ACC_OK, wx.ACC_STATE_SYSTEM_FOCUSED if self._has_focus() else 0)
         return (wx.ACC_NOT_IMPLEMENTED, 0)
 
+    def GetLocation(self, elementId):
+        """The empty row is where the list is, so a screen reader's "where is this" has an
+        answer (Windows has none for a row that doesn't exist). Screen coordinates, as MSAA's
+        accLocation wants."""
+        if self._empty_row(elementId):
+            return (wx.ACC_OK, self.GetWindow().GetScreenRect())
+        return (wx.ACC_NOT_IMPLEMENTED, wx.Rect())
+
     def GetFocus(self):
-        """The list itself while it's empty and focused, not the row 1 Windows would give (see
-        ``ListItemsAccessible.GetFocus`` for the shape wxPython wants)."""
-        if self._empty() and self._has_focus():
+        """The list itself while it has focus, not its row (see the class docstring).
+
+        wxPython calls this with no arguments and takes (status, child id, child accessible),
+        whatever its docstring says; the accessible itself is what wx gives as CHILDID_SELF.
+        Checked through oleacc's accFocus in the test VM: 0 with focus, the row's id without."""
+        if self._has_focus():
             return (wx.ACC_OK, 0, self)
         return (wx.ACC_NOT_IMPLEMENTED, 0, None)
 
 
+def _list_accessible(listbox: wx.ListBox):
+    """``listbox``'s ListAccessible, made the first time it's asked for (None where wx has no
+    accessibles). One per list, so the empty text, the name and the rows' text can each be set
+    in any order without undoing the others."""
+    existing = getattr(listbox, "_hub_accessible", None)
+    if isinstance(existing, ListAccessible):
+        return existing
+    try:
+        accessible = ListAccessible(listbox)
+        listbox.SetAccessible(accessible)
+    except (NotImplementedError, AttributeError):
+        return None
+    listbox._hub_accessible = accessible  # keep it alive
+    return accessible
+
+
 def set_empty_list_text(listbox: wx.ListBox, empty_text: str) -> None:
-    """What a screen reader reads on ``listbox`` while it has no rows (#621). Windows only:
-    the missing row is the Windows list box's."""
+    """What a screen reader reads on ``listbox`` while it has no rows (#621, #648), in place of
+    "No items". Windows only: the missing row is the Windows list box's."""
     if wx.Platform != "__WXMSW__":
         return
+    accessible = _list_accessible(listbox)
+    if accessible is not None:
+        accessible._empty_text = empty_text
+
+
+def announce_list_emptied(listbox: wx.ListBox) -> None:
+    """Tell the screen reader that ``listbox``, which has focus, has just lost its last row
+    (#649). Windows says nothing when that happens, so NVDA stayed on the row that had gone;
+    this reports focus on the empty row, which reads as the list's empty text. Windows only."""
+    if wx.Platform != "__WXMSW__" or not listbox or listbox.GetCount():
+        return
     try:
-        accessible = EmptyListAccessible(listbox, empty_text)
-        listbox.SetAccessible(accessible)
-        listbox._hub_empty_accessible = accessible  # keep it alive
+        wx.Accessible.NotifyEvent(wx.ACC_EVENT_OBJECT_FOCUS, listbox, wx.OBJID_CLIENT, 1)
     except (NotImplementedError, AttributeError):
         pass
 
 
-def set_list_items_accessible(listbox: wx.ListBox, name, item_text) -> None:
+def set_list_items_accessible(listbox: wx.ListBox, name, item_text,
+                              empty_text: str = "") -> None:
+    """The list's name, ``name()``, and each row's text, ``item_text(index)`` (see
+    ``ListAccessible``); ``empty_text``, if given, for ``set_empty_list_text``."""
     if gtk_a11y.IS_LINUX:
         _describe_rows(listbox, name, item_text)
         return
-    try:
-        accessible = ListItemsAccessible(listbox, name, item_text)
-        listbox.SetAccessible(accessible)
-        listbox._hub_accessible = accessible  # keep it alive
-    except (NotImplementedError, AttributeError):
-        pass
+    accessible = _list_accessible(listbox)
+    if accessible is None:
+        return
+    accessible._name = name
+    accessible._item_text = item_text
+    if empty_text:
+        accessible._empty_text = empty_text
 
 
 def _describe_rows(listbox: wx.ListBox, name, item_text) -> None:

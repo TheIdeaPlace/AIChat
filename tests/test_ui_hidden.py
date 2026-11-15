@@ -3385,17 +3385,19 @@ def test_rows_that_are_not_messages_read_as_shown(frame):
 @msaa
 def test_an_empty_session_list_reads_no_sessions_not_unknown(frame, monkeypatch):
     # Windows reports focus on row 1 of an empty list box, which doesn't exist, so NVDA read
-    # "unknown" (#621). While the list is empty its accessible answers for that row and says
-    # the list itself has focus; with rows, everything is Windows' as before.
+    # "unknown" (#621). While the list is empty its accessible answers for that row; with rows,
+    # the rows are Windows' as before.
+    from thechatplace.ui.a11y import ListAccessible
     accessible = frame.session_list.GetAccessible()
-    assert accessible is frame.session_list._hub_empty_accessible
+    assert isinstance(accessible, ListAccessible)
+    assert accessible is frame.session_list._hub_accessible
     monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
     assert frame.session_list.GetCount() == 3
     assert accessible.GetName(0) == (wx.ACC_NOT_IMPLEMENTED, "")  # the label names the list
     assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")  # the row's own text
     assert accessible.GetRole(1)[0] == wx.ACC_NOT_IMPLEMENTED
     assert accessible.GetState(1)[0] == wx.ACC_NOT_IMPLEMENTED
-    assert accessible.GetFocus() == (wx.ACC_NOT_IMPLEMENTED, 0, None)
+    assert accessible.GetLocation(1)[0] == wx.ACC_NOT_IMPLEMENTED
 
     frame._set_session_filter("nothing matches this")
     assert frame.session_list.GetCount() == 0
@@ -3403,6 +3405,9 @@ def test_an_empty_session_list_reads_no_sessions_not_unknown(frame, monkeypatch)
     assert accessible.GetRole(1) == (wx.ACC_OK, wx.ROLE_SYSTEM_LISTITEM)
     assert accessible.GetState(1) == (wx.ACC_OK, wx.ACC_STATE_SYSTEM_FOCUSED)
     assert accessible.GetFocus() == (wx.ACC_OK, 0, accessible)
+    # "Where is this" on the empty row: the list's own rectangle, on the screen.
+    assert accessible.GetLocation(1) == (wx.ACC_OK, frame.session_list.GetScreenRect())
+    assert accessible.GetLocation(0)[0] == wx.ACC_NOT_IMPLEMENTED  # the list: Windows'
     # The list's own name is still Windows', from its label, which follows the view.
     assert accessible.GetName(0) == (wx.ACC_NOT_IMPLEMENTED, "")
     assert frame.sessions_label.GetLabel().startswith("Session &list, matching")
@@ -3415,6 +3420,133 @@ def test_an_empty_session_list_reads_no_sessions_not_unknown(frame, monkeypatch)
     frame._set_session_filter("")
     assert frame.session_list.GetCount() == 3
     assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")
+    # Naming the list again (its label follows the view) keeps the same accessible.
+    frame._update_list_label(1)
+    assert frame.session_list.GetAccessible() is accessible
+
+
+@msaa
+def test_the_session_list_with_rows_says_it_has_focus_so_nvda_reads_the_row_once(frame,
+                                                                                 monkeypatch):
+    # Windows reports focus on the list, then on its row, and NVDA read the row for both
+    # (#647). While the list has focus, its accessible says the list itself has it, as the
+    # dialogs' lists do (#616); without focus, Windows answers.
+    accessible = frame.session_list.GetAccessible()
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    assert frame.session_list.GetCount() == 3
+    assert accessible.GetFocus() == (wx.ACC_OK, 0, accessible)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    assert accessible.GetFocus() == (wx.ACC_NOT_IMPLEMENTED, 0, None)
+
+
+@msaa
+def test_every_list_in_the_main_window_reads_its_row_once_and_says_when_empty(frame):
+    # #648: one accessible for every list box, with each list's own words for empty.
+    from thechatplace.ui.a11y import EMPTY_LIST_TEXT, ListAccessible
+
+    def lists(window):
+        for child in window.GetChildren():
+            if isinstance(child, wx.ListBox):
+                yield child
+            yield from lists(child)
+
+    found = {box: box.GetAccessible() for box in lists(frame)}
+    assert len(found) >= 3
+    for box, accessible in found.items():
+        assert isinstance(accessible, ListAccessible), box.GetName()
+        assert accessible._empty_text != EMPTY_LIST_TEXT, box.GetName()
+    assert frame.chat_list.GetAccessible()._empty_text == "No messages"
+    assert frame.attach_list.GetAccessible()._empty_text == "No attachments"
+    # The messages list keeps its own name and rows' text alongside the empty text.
+    assert frame.chat_list.GetAccessible().GetName(0)[0] == wx.ACC_OK
+
+
+def _empty_snapshot(frame):
+    return dataclasses.replace(frame._snapshot, sessions=[])
+
+
+@msaa
+def test_the_session_list_emptying_under_you_says_no_sessions(frame, monkeypatch):
+    # A refresh that takes the last session from the view while you're in the list: Windows
+    # says nothing, so the screen reader is told focus is on the empty row (#649).
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._apply_snapshot(_empty_snapshot(frame), [], {}, False)
+    assert frame.session_list.GetCount() == 0
+    assert told == [frame.session_list]
+    # Still empty on the next refresh: nothing more to say.
+    frame._apply_snapshot(_empty_snapshot(frame), [], {}, False)
+    assert told == [frame.session_list]
+
+
+@msaa
+def test_the_session_list_emptying_elsewhere_says_nothing(frame, monkeypatch):
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    frame._apply_snapshot(_empty_snapshot(frame), [], {}, False)
+    assert frame.session_list.GetCount() == 0
+    assert told == []
+    # Find Sessions says so itself, so it isn't told twice.
+    frame._apply_snapshot(hub.collect(frame.store.all(), set()), [], {}, False)
+    assert frame.session_list.GetCount()
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._set_session_filter("nothing matches this")
+    assert frame.session_list.GetCount() == 0
+    assert told == []
+
+
+@msaa
+def test_f5_emptying_the_list_leaves_it_to_the_count_it_says(frame, monkeypatch):
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._apply_snapshot(_empty_snapshot(frame), [], {}, True)
+    assert frame.session_list.GetCount() == 0
+    assert told == []
+
+
+@msaa
+def test_a_tool_hiding_the_last_session_under_you_says_no_sessions(frame, monkeypatch):
+    # A session tool takes the row out at once and refreshes after, so the refresh finds the
+    # list already empty (#649): it says so itself. Your own Hide says "Hid ..." instead.
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._set_session_filter("Quiet one")
+    assert frame.session_list.GetCount() == 1
+    select(frame, "Quiet one")
+    frame.on_hide()
+    assert frame.session_list.GetCount() == 0
+    settle(frame)
+    assert told == []
+
+    frame._set_session_filter("Blocked one")
+    assert frame.session_list.GetCount() == 1
+    select(frame, "Blocked one")
+    assert frame._session_tools_hide(frame._selected_session()) is None
+    assert frame.session_list.GetCount() == 0
+    assert told == [frame.session_list]
+    settle(frame)
+    assert told == [frame.session_list]  # the refresh after doesn't say it again
+
+
+@msaa
+def test_announce_list_emptied_reports_focus_on_the_empty_row(frame, monkeypatch):
+    from thechatplace.ui import a11y
+    sent = []
+    monkeypatch.setattr(wx.Accessible, "NotifyEvent",
+                        staticmethod(lambda *args: sent.append(args)))
+    a11y.announce_list_emptied(frame.session_list)
+    assert sent == []  # it has rows: nothing to say
+    frame._set_session_filter("nothing matches this")
+    a11y.announce_list_emptied(frame.session_list)
+    assert sent == [(wx.ACC_EVENT_OBJECT_FOCUS, frame.session_list, wx.OBJID_CLIENT, 1)]
 
 
 def test_whole_message_setting_round_trips_and_is_in_settings(frame, tmp_path):
