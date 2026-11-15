@@ -157,6 +157,10 @@ class RewindChats:
             else:
                 self._feedback('Wait for this Codex chat to load first.')
             return
+        if self._open is not None and self._open.provider == "muse":
+            # Before Claude's rewind below, which must never see a Muse chat.
+            self._retry_muse(self._open, self._selected_message())
+            return
         found = self._rewind_source("retry")
         if found is None:
             return

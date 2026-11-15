@@ -320,3 +320,33 @@ says the chat keeps Ask me. `tests/test_orca_tools.py` keeps the steps'
 words in the warning's text. The Muse Chat Permissions step now expects
 "Muse Code: Ask me". Not yet run against real Orca (Linux CI job or the
 Ubuntu VM as `tcptest`).
+
+### Retry from Here done (2026-11-15)
+
+Native check first (installed 1.4.20): `session/fork` with
+`cutPoint.lastTurnId` copies the history through that completed turn and
+leaves the original untouched; a cut at a running turn is -32023
+`forkBoundaryInvalid`. The fork starts on approval mode `onRequest` (the
+app's check refused it), and `session/setApprovalMode` to `promptUnmatched`
+(one of allowAll, promptUnmatched, onRequest, denyUnmatched; select only)
+makes it sendable. Muse's own `session/rewind` (experimental, opaque
+selections, a child session) isn't used.
+
+- `MuseOwnedChats.retry()` finds your message by its key
+  (`muse:<chat>:<item>`), forks at the turn before it, sets
+  `promptUnmatched` and the original's profile, checks the copy's policy,
+  and returns it unstarted for you to send; your first message has no turn
+  before it, so that's a new chat in the same folder.
+- `session/fork` and `session/setApprovalMode` are allowlisted (Retry only);
+  `session/rewind` stays refused.
+- The window (`_retry_muse`, before Claude's rewind path) shows the
+  RewindDialog with Muse's files note, saves the copy with `forked_from`,
+  opens it with your message as the draft. The messages list's menu offers
+  Retry from Here for a Muse chat started here; Branch from Here isn't
+  offered. Chats started in Muse Code stay read-only.
+
+Checked natively through `retry()`: a retry from the second message knew
+only the first ("zebra"); a Read only original gave a Read only copy; a
+retry from the first message made a fresh chat; the original kept its four
+messages. The RewindDialog with Muse's note still needs the VM visual probe.
+

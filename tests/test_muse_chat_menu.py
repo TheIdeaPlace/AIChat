@@ -217,7 +217,7 @@ EXPECTED = {
     "steer": {**owned(said("Type a message first.")),
               "waiting": said("answer it first")},
     "send_reply_to_another_chat": every(dialog("RelayDialog")),
-    "retry_from_here": owned(said(NOT_YET)),
+    "retry_from_here": owned(said("Choose one of your own messages")),
     "branch_from_here": owned(said(NOT_YET)),
     "change_model": owned(dialog("SingleChoiceDialog")),
     "change_effort": owned(dialog("SingleChoiceDialog")),
@@ -434,3 +434,42 @@ def test_confirm_muse_mode_says_the_chat_keeps_its_profile_on_no(world, monkeypa
     assert ("Muse chat here keeps Ask me." in world.said) is (not expected)
     assert world.frame._confirm_muse_mode("Muse chat here", ":read-only", "Ask me") is True
     assert len(shown) == 1  # a profile you still review asks nothing
+
+
+def test_retry_from_here_opens_the_copy_with_your_message_to_change(world, monkeypatch):
+    from thechatplace.transcript import USER
+    from thechatplace.ui import dialogs
+    put_in_case(world, "idle")
+    message = next(m for m in world.frame._chat_messages if m.kind == USER)
+    monkeypatch.setattr(world.frame, "_selected_message", lambda: message)
+    made = []
+    real = world.frame.sessions.owned_action
+    def spy(action, record, *args, **kwargs):
+        if action == "retry":
+            made.append(args)
+            from thechatplace.own_store import OwnSession
+            return OwnSession("019a84c2-a1f0-7e3b-9c1e-0000000000f0", args[1], record.cwd,
+                              provider="muse", started=True)
+        return real(action, record, *args, **kwargs)
+    monkeypatch.setattr(world.frame.sessions, "owned_action", spy)
+    monkeypatch.setattr(dialogs.RewindDialog, "ShowModal", lambda self: wx.ID_OK)
+    world.frame._command_handlers()["retry_from_here"](wx.CommandEvent())
+    assert made == [(message.key, "Muse chat here (retry)")]
+    copy_ = world.frame.store.get("019a84c2-a1f0-7e3b-9c1e-0000000000f0", provider="muse")
+    assert copy_ is not None and copy_.forked_from == "Muse chat here"
+    assert world.frame._codex_drafts[copy_.to_info().key] == message.text
+    assert any("The original chat is kept" in text for text in world.said), world.said
+
+
+def test_the_messages_menu_offers_retry_but_not_branch_for_a_muse_chat(world):
+    from thechatplace.transcript import USER
+    put_in_case(world, "idle")
+    message = next(m for m in world.frame._chat_messages if m.kind == USER)
+    world.frame._selected_message = lambda: message
+    menu = world.frame._message_menu()
+    try:
+        labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
+    finally:
+        menu.Destroy()
+    assert labels.get("Retry from Here...") is True
+    assert "Branch from Here" not in labels

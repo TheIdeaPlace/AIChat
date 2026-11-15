@@ -271,6 +271,10 @@ class ExecutionConnection(HistoryConnection):
         # (muse.MuseAsideRunner). The profile is only set on that side chat.
         "session/sideChat",
         "session/setPermissionProfile",
+        # Retry from Here only: a new chat forked before your message, set to
+        # prompt for unmatched requests before anything can be sent there.
+        "session/fork",
+        "session/setApprovalMode",
         "turn/interrupt",
         "approval/listPending",
         "approval/decide",

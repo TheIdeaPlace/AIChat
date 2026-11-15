@@ -80,7 +80,12 @@ decision, but not the command's effect.
    question, and you hear the chat now uses it; send a message, then restart
    The Chat Place and check Chat Permissions still says Read only. Choose
    Auto-review or Unrestricted: a warning asks first with No focused; No
-   keeps the old profile. Set it back to Ask me.
+   keeps the old profile. Set it back to Ask me. In the messages list,
+   choose your second message and press Ctrl+Shift+Z (or Retry from Here on
+   the list's menu; Branch from Here isn't offered): the dialog says files
+   aren't put back; OK opens "*title* (retry)" with that message in the
+   reply box and focus there. Its history ends before the message, and the
+   original chat is unchanged.
 8. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become

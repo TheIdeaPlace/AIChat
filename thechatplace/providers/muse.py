@@ -307,6 +307,10 @@ class MuseProvider:
         """Ask Aside: a started MuseAsideRunner for this chat."""
         return MuseAsideRunner(self._owned_chats(), record, question, on_event, on_side=on_side).start()
 
+    def retry_owned(self, record, message_key, title):
+        """Retry from Here: a new chat of this one's history before your message."""
+        return self._owned_chats().retry(record, message_key, title)
+
     def skills_owned(self, record):
         """This chat's skills for Insert Command or Skill."""
         return self._owned_chats().skills(record)
@@ -1028,6 +1032,72 @@ class MuseOwnedChats:
                     raise MuseSaveError("The Chat Place couldn't save this chat's permission profile. "
                                         "Sending stays disabled until it's set again.") from None
             return PROFILE_LABELS[profile]
+
+    def retry(self, record: OwnSession, message_key: str, title: str) -> OwnSession:
+        """A new chat of this one's history up to just before your message
+        ``message_key`` ("muse:<chat>:<item>"), titled ``title``. Natively,
+        session/fork copies through the turn before it and leaves this chat
+        untouched; a fork starts on approval mode onRequest, so it's set to
+        promptUnmatched, and to this chat's profile, then checked like any
+        chat before it's returned. Your first message has no turn before it:
+        that's a new chat in the same folder. Nothing is sent for you."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            prefix = f"muse:{record.cli_session_id}:"
+            if not isinstance(message_key, str) or not message_key.startswith(prefix):
+                raise MuseHistoryError("Choose one of your own messages in this chat to retry from.")
+            result = self.execution.request("session/read", {"sessionId": record.cli_session_id,
+                                                             "excludeItems": False})
+            self._session(result, record.cli_session_id)
+            items = [item for item in _history_items(result) if isinstance(item, dict)]
+            target = next((item for item in items if item.get("itemId") == message_key[len(prefix):]
+                           and item.get("kind") == "userMessage"), None)
+            if target is None or not _identity(target.get("turnId")):
+                raise MuseHistoryError("Choose one of your own messages in this chat to retry from.")
+            turns = []
+            for item in items:
+                turn = item.get("turnId")
+                if _identity(turn) and turn not in turns:
+                    turns.append(turn)
+            index = turns.index(target["turnId"])
+            wanted = self._wanted(record)
+            if index == 0:
+                copy = self.create(record.cwd, title)
+            else:
+                try:
+                    forked = self.execution.request("session/fork", {
+                        "sessionId": record.cli_session_id, "commandId": _command_id(),
+                        "cutPoint": {"lastTurnId": turns[index - 1]}, "excludeItems": True})
+                except MuseRequestError as error:
+                    if error.code == -32023:
+                        raise MuseHistoryError("The turn before that message hasn't finished, so it "
+                                               "can't be copied yet. Try again once it ends.") from None
+                    raise
+                session = forked.get("session") if isinstance(forked, dict) else None
+                fid = session.get("sessionId") if isinstance(session, dict) else None
+                source = session.get("forkedFrom") if isinstance(session, dict) else None
+                if (not _identity(fid) or fid == record.cli_session_id or not isinstance(source, dict)
+                        or source.get("sessionId") != record.cli_session_id):
+                    raise MuseHistoryError("Muse Code didn't make a copy of this chat.")
+                params = {"sessionId": fid, "commandId": _command_id(), "mode": "promptUnmatched"}
+                mode = self.execution.request("session/setApprovalMode", params)
+                effective = mode.get("effectiveMode") if isinstance(mode, dict) else None
+                if (not isinstance(mode, dict) or mode.get("status") != "accepted"
+                        or not isinstance(effective, dict) or effective.get("mode") != "promptUnmatched"):
+                    raise MuseHistoryError("Muse Code couldn't set the copy to ask about unmatched "
+                                           "requests, so nothing can be sent in it.")
+                now_ms = int(time.time() * 1000)
+                copy = OwnSession(fid, title, record.cwd, provider="muse",
+                                  created_ms=now_ms, last_activity_ms=now_ms, started=True)
+                self._records[fid] = copy
+            if wanted != self.PROFILE:
+                self.execution.request("session/setPermissionProfile", {
+                    "sessionId": copy.cli_session_id, "commandId": _command_id(), "profileId": wanted})
+                copy.provider_options["muse_profile"] = wanted
+            self._policy(self._read(copy)["session"], wanted)
+            return copy
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.

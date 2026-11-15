@@ -1604,6 +1604,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   and asks you first, with No as the default, before the two that don't ask you: with
   Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file
   sandbox and no approval prompts.
+  Chat, Retry from Here (Ctrl+Shift+Z), also on the messages list's menu, makes a new
+  chat of the history before one of your messages and opens it with that message in the
+  reply box to change and send; the original chat is kept. Files aren't put back, and
+  the copy keeps the chat's permission profile.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow

@@ -502,6 +502,60 @@ class CodexChats(SoundHost, CodexExtras):
             self._codex_work(lambda: self.sessions.owned_action("set_model", record, chosen), changed)
         self._codex_work(lambda: self.sessions.owned_action("prepare_settings", record), listed)
 
+    #: What Retry from Here says about files for a Muse chat.
+    MUSE_REWIND_FILES_NOTE = ("Muse Code doesn't put files back, so only the conversation goes back. "
+                              "A retried Muse Code chat keeps the original's permission profile.")
+
+    def _retry_muse(self, info, message):
+        """Retry from Here for a Muse chat started here (MuseOwnedChats.retry):
+        a new chat of its history before your message, opened with the
+        message in the reply box to change and send. The original is kept."""
+        from .. import rewind
+        from ..transcript import USER
+        from .dialogs import RewindDialog
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("branch", info)  # Muse Code's own chat: read-only
+            return
+        if not self._chat_loaded:
+            self._feedback("Wait for this Muse Code chat to load first.")
+            return
+        if message is None or message.kind != USER or not message.key:
+            self._feedback("Choose one of your own messages in the messages list, then "
+                           "Retry from Here.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        title = rewind.rewound_title(info.title)
+        plan = rewind.RewindPlan(info.title, message, message.key,
+                                 files_problem=self.MUSE_REWIND_FILES_NOTE)
+        dialog = RewindDialog(self, plan, feedback=self._feedback)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+        finally:
+            dialog.Destroy()
+        draft = message.text
+
+        def created(copy, error):
+            if error:
+                self._feedback(copy if isinstance(copy, str) and copy
+                               else "Muse Code could not make the copy.")
+                return
+            copy.forked_from = info.title
+            if not self._store_write(self.store.add, copy):
+                self._feedback("The Muse Code copy was made but could not be saved in The Chat Place.")
+                return
+            self._codex_drafts[copy.to_info().key] = draft
+            self.open_session(copy.to_info())
+            self.refresh_sessions()
+            self.reply_text.SetFocus()
+            self._feedback(f"Opened {title}. The original chat is kept. Change your message and "
+                           "send when ready.")
+        self._feedback(f"Creating {title}.")
+        self._codex_work(lambda: self.sessions.owned_action("retry", record, message.key, title), created)
+
     def _muse_ask_aside(self, info):
         """Chat, Ask Aside for a Muse chat started here (MuseAsideRunner):
         read-only, and never asks you anything. Muse keeps the side chat as
