@@ -366,3 +366,23 @@ Checked natively: a branch from the first reply knew "zebra"; from the
 second message, "zebra otter"; Retry after the refactor, "zebra"; the
 original kept its four messages.
 
+### Stop Background Task done (2026-11-15), live stop unverified
+
+Muse 1.4.20 has `task/list` (the chat's background workloads, oldest first:
+`taskId`, `kind`, `status` `inProgress`, optional `tool`, raw `command`,
+`startedAt`) and `task/stop` (one task). Natively: `task/list` is
+`{"tasks": []}` idle and mid-turn, and `task/stop` for a task Muse doesn't
+have is -32030. Stopping a live task could not be checked: background work
+is mostly commands, and on the checking computer Muse can't start any
+(meta-models/muse-code-sdk#149). Recheck it with Allow Once.
+
+- `task/list` and `task/stop` are allowlisted (`task/stopAll`, the subagent
+  methods and `task/background` stay refused); `tasks` and `stop_task` owned
+  actions.
+- `MuseOwnedChats.tasks()` shows in-progress rows only (unknown statuses are
+  ignored, as the schema asks), labelled with the tool or kind and the
+  command on one line, at most 100 characters. `stop_task()` re-lists first
+  and treats a task no longer listed, or -32030, as already finished.
+- The window (`_stop_muse_task`) chooses, confirms with No the default, and
+  says "Stopping ..." or "... had already finished.", as Claude's does.
+

@@ -88,7 +88,11 @@ decision, but not the command's effect.
    original chat is unchanged. Choose Muse Code's first reply and Branch from
    Here: a question with No focused; No changes nothing. Yes opens
    "*title* (branch)" with an empty reply box; ask what it remembers and it
-   knows only the first turn. The original is unchanged.
+   knows only the first turn. The original is unchanged. Chat, Stop
+   Background Task with nothing in the background says so. With background
+   work running (needs commands to run: see the known limitation), it lists
+   it by tool and command, asks with No focused, and Yes says it's stopping
+   while the turn carries on.
 8. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become

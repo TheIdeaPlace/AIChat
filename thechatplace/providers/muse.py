@@ -315,6 +315,13 @@ class MuseProvider:
         """Branch from Here: a new chat of this one's history through a message's turn."""
         return self._owned_chats().branch(record, message_key, title)
 
+    def tasks_owned(self, record):
+        """Stop Background Task's choices: this chat's running background work."""
+        return self._owned_chats().tasks(record)
+
+    def stop_task_owned(self, record, task_id):
+        return self._owned_chats().stop_task(record, task_id)
+
     def skills_owned(self, record):
         """This chat's skills for Insert Command or Skill."""
         return self._owned_chats().skills(record)
@@ -1131,6 +1138,56 @@ class MuseOwnedChats:
                 "Choose one of your messages or one of Muse Code's replies in this chat to "
                 "branch from.")
             return self._fork_copy(record, target["turnId"], title)
+
+    def _task_rows(self, record: OwnSession) -> list:
+        result = self.execution.request("task/list", {"sessionId": record.cli_session_id})
+        rows = _request_array(result, "tasks")
+        if len(rows) > 256:
+            raise MuseHistoryError("Muse Code listed more background work than this app can show.")
+        # Unknown statuses are ignored, as the schema asks: only work Muse
+        # says is in progress can be stopped.
+        return [row for row in rows if isinstance(row, dict) and _identity(row.get("taskId"))
+                and row.get("status") == "inProgress"]
+
+    def tasks(self, record: OwnSession) -> tuple:
+        """This chat's running background work: id and a one-line label, the
+        tool (or the task's kind) and its command, shortened."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            result = []
+            for row in self._task_rows(record):
+                name = _text(row.get("tool")) or _text(row.get("kind")) or "Background task"
+                command = " ".join(str(row.get("command") or "").split())
+                label = f"{name}: {command}" if command else name
+                if len(label) > 100:
+                    label = label[:97].rstrip() + "..."
+                result.append({"id": row["taskId"], "label": label})
+            return tuple(result)
+
+    def stop_task(self, record: OwnSession, task_id: str) -> str:
+        """Stop one background task: "stopping" once Muse accepts it, or
+        "finished" if it had already ended (no longer listed, or -32030,
+        natively what task/stop answers for a task it doesn't have)."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            if not any(row["taskId"] == task_id for row in self._task_rows(record)):
+                return "finished"
+            params = {"sessionId": record.cli_session_id, "commandId": _command_id(), "taskId": task_id}
+            try:
+                result = self.execution.request("task/stop", params)
+            except MuseRequestError as error:
+                if error.code == -32030:
+                    return "finished"
+                raise
+            if (not isinstance(result, dict) or result.get("commandId") != params["commandId"]
+                    or result.get("status") != "accepted" or result.get("taskId") != task_id):
+                raise MuseHistoryError("Muse Code didn't confirm stopping that background work. "
+                                       "Check the chat before trying again.")
+            return "stopping"
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.

@@ -169,6 +169,8 @@ class Execution:
             assert uuid.UUID(params["commandId"]).version == 7
             self.session["modelId"] = params["model"]["modelId"]
             return {"commandId": params["commandId"], "status": "accepted"}
+        if method == "task/list":
+            return {"tasks": []}  # installed 1.4.20 with nothing running
         if method == "turn/steer":
             # Installed 1.4.20: accepted only for the turn still running,
             # else commandRejected (-32030); the ack names that turn.

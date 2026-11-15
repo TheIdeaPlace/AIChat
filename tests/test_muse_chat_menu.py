@@ -202,7 +202,7 @@ EXPECTED = {
         "idle": said("Nothing is running in Muse chat here."),
         "running": sent("turn/cancel"), "waiting": sent("turn/cancel"),
         "foreign": said(READ_ONLY)},
-    "stop_background_task": owned(said("Muse Code chats have no background tasks to stop.")),
+    "stop_background_task": owned(said("No background work is running in Muse chat here.")),
     "turn_status": {
         "idle": said("Muse chat here: Ready."),
         "running": said("Muse chat here: Muse Code is working."),
@@ -509,3 +509,36 @@ def test_branch_from_here_asks_then_opens_the_copy(world, monkeypatch, answer):
     assert copy_.forked_from == "Muse chat here"
     assert world.frame._codex_drafts.get(copy_.to_info().key) is None  # nothing to change: a new message
     assert any("The original chat is kept" in t for t in world.said), world.said
+
+
+@pytest.mark.parametrize("answer", [wx.YES, wx.NO])
+def test_stop_background_task_chooses_confirms_and_stops(world, monkeypatch, answer):
+    put_in_case(world, "running")
+    tasks = [{"id": "task-1", "label": "powershell: synthetic-build --watch"}]
+    calls = []
+    real = world.frame.sessions.owned_action
+    def spy(action, record, *args, **kwargs):
+        if action == "tasks":
+            return tasks
+        if action == "stop_task":
+            calls.append(args)
+            return "stopping"
+        return real(action, record, *args, **kwargs)
+    monkeypatch.setattr(world.frame.sessions, "owned_action", spy)
+    chosen = []
+    monkeypatch.setattr(world.frame, "_choose",
+                        lambda title, prompt, choices, selection=None: chosen.append((title, list(choices))) or 0)
+    asked = []
+    def box(text, caption="", style=0, *a, **k):
+        asked.append((text, caption, style))
+        return answer
+    monkeypatch.setattr(wx, "MessageBox", box)
+    world.frame._command_handlers()["stop_background_task"](wx.CommandEvent())
+    assert chosen == [("Stop Background Task", ["powershell: synthetic-build --watch"])]
+    text, caption, style = asked[0]
+    assert caption == "Stop Background Task" and style & wx.NO_DEFAULT and "carry on" in text
+    if answer == wx.NO:
+        assert calls == []
+        return
+    assert calls == [("task-1",)]
+    assert any("Stopping powershell: synthetic-build --watch" in t for t in world.said), world.said

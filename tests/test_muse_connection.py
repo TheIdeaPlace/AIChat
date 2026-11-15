@@ -36,10 +36,10 @@ def test_managed_execution_first_request_reaches_execution_host_and_keeps_allowl
                        "userInput/answer", "userInput/cancel", "permissionProfile/list",
                        "turn/steer", "session/setModel", "session/setReasoningEffort",
                        "skill/list", "session/sideChat", "session/setPermissionProfile",
-                       "session/fork", "session/setApprovalMode"):
+                       "session/fork", "session/setApprovalMode", "task/list", "task/stop"):
             managed.request(method, {})
         # admission/* belongs to peerMessaging, which this app never asks for.
-        for method in ("session/rewind", "settings/writeValue", "admission/listPending",
+        for method in ("session/rewind", "task/stopAll", "settings/writeValue", "admission/listPending",
                        "admission/decide", "approval/listpending", "userinput/answer",
                        "permissionprofile/list"):
             with pytest.raises(MuseHistoryError):

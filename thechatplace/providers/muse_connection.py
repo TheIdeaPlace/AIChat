@@ -275,6 +275,9 @@ class ExecutionConnection(HistoryConnection):
         # to prompt for unmatched requests before anything can be sent there.
         "session/fork",
         "session/setApprovalMode",
+        # Stop Background Task: list, and stop one you chose (not task/stopAll).
+        "task/list",
+        "task/stop",
         "turn/interrupt",
         "approval/listPending",
         "approval/decide",

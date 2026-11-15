@@ -1611,6 +1611,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Branch from Here, on the Chat menu and the messages list's menu, asks first, then
   makes a new chat through the whole turn of your message or Muse Code's reply, ready for
   your next message; the original is kept.
+  Chat, Stop Background Task lists the chat's running background work by tool and
+  command, asks before stopping the one you choose, and the turn carries on.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow

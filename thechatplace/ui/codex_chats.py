@@ -601,6 +601,44 @@ class CodexChats(SoundHost, CodexExtras):
         self._feedback(f"Creating {title}.")
         self._codex_work(lambda: self.sessions.owned_action("branch", record, message.key, title), created)
 
+    def _stop_muse_task(self, info):
+        """Chat, Stop Background Task for a Muse chat started here: choose one
+        of its running background tasks, confirm (No the default), and Muse
+        ends it; the turn and any other background work carry on."""
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+
+        def listed(tasks, error):
+            if error:
+                self._feedback(tasks if isinstance(tasks, str) and tasks
+                               else "Muse Code couldn't list its background work. Try again.")
+                return
+            if not tasks:
+                self._feedback(f"No background work is running in {info.title}.")
+                return
+            index = self._choose("Stop Background Task", f"Background work in {info.title}. Stop which?",
+                                 [task["label"] for task in tasks])
+            if index is None:
+                return
+            task = tasks[index]
+            if wx.MessageBox(f"Stop {task['label']}? Muse Code ends it at once; the turn and any "
+                             "other background work carry on.", "Stop Background Task",
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+                return
+
+            def stopped(result, error):
+                if error:
+                    self._feedback(result if isinstance(result, str) and result
+                                   else "Muse Code couldn't stop that background work.")
+                elif result == "finished":
+                    self._feedback(f"{task['label']} had already finished.")
+                else:
+                    self._feedback(f"Stopping {task['label']}.")
+            self._codex_work(lambda: self.sessions.owned_action("stop_task", record, task["id"]), stopped)
+        self._codex_work(lambda: self.sessions.owned_action("tasks", record), listed)
+
     def _muse_ask_aside(self, info):
         """Chat, Ask Aside for a Muse chat started here (MuseAsideRunner):
         read-only, and never asks you anything. Muse keeps the side chat as
