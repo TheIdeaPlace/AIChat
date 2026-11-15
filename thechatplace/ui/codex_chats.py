@@ -574,6 +574,62 @@ class CodexChats(SoundHost, CodexExtras):
             self.reply_text.SetInsertionPointEnd()
         self._codex_work(lambda: self.sessions.owned_action("skills", record), loaded)
 
+    #: What a Muse profile without your review means, said before it's set.
+    MUSE_MODE_WARNINGS = {
+        ":auto-review": ("With Auto-review, an AI reviewer, and any trusted permission hooks, may "
+                         "approve restricted actions in {title} without asking you. Use Auto-review?"),
+        ":unrestricted": ("With Unrestricted, nothing asks you: {title} runs with no file sandbox and "
+                          "no approval prompts, and its commands get direct network access. "
+                          "Use Unrestricted?"),
+    }
+
+    def _change_muse_mode(self, info, after=None):
+        """Change Permission Mode for a Muse chat started here: Muse Code's
+        permission profiles, with the chat's marked. A profile you don't
+        review yourself is confirmed first, with No as the default."""
+        after = after or (lambda: None)
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("options", info)  # Muse Code's own chat: read-only
+            after()
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            after()
+            return
+
+        def listed(result, error):
+            if error or not result:
+                self._feedback(result if isinstance(result, str) and result
+                               else "Muse Code couldn't list its permission profiles. Try again.")
+                after()
+                return
+            choices, now = result
+            names = dict(choices)
+            chosen = self._change_setting("Change Permission Mode",
+                                          f"Permission mode for {info.title}, now {names.get(now, now)}:",
+                                          list(choices), now)
+            if chosen is None:
+                after()
+                return
+            warning = self.MUSE_MODE_WARNINGS.get(chosen)
+            if warning and wx.MessageBox(warning.format(title=info.title), "Change Permission Mode",
+                                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) != wx.YES:
+                self._feedback(f"{info.title} keeps {names.get(now, now)}.")
+                after()
+                return
+
+            def changed(label, error):
+                if error:
+                    self._feedback(label if isinstance(label, str) and label
+                                   else "Muse Code couldn't change the permission mode.")
+                else:
+                    self._feedback(f"{info.title} now uses Muse Code's {label} permissions.")
+                self._update_send_state()
+                after()
+            self._codex_work(lambda: self.sessions.owned_action("set_mode", record, chosen), changed)
+        self._codex_work(lambda: self.sessions.owned_action("prepare_mode", record), listed)
+
     def _change_muse_effort(self, info):
         """Chat, Chat Settings, Change Effort for a Muse chat started here:
         the efforts its model offers, read when chosen, with the one it uses

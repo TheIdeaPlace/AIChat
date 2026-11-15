@@ -18,9 +18,15 @@ from thechatplace.providers.muse_connection import MuseHistoryError, MuseRequest
 NATIVE_ID = "019a84c2-a1f0-7e3b-9c1e-2f6a8b4d5e7f"
 
 
-def policy():
+#: Each profile's reviewer, as installed 1.4.20 reports it.
+REVIEWERS = {":read-only": "human", ":ask-me": "human", ":auto-review": "autoReview", ":unrestricted": "none"}
+LABELS = {":read-only": "Read only", ":ask-me": "Ask me", ":auto-review": "Auto-review", ":unrestricted": "Unrestricted"}
+
+
+def policy(profile=":ask-me"):
     return {"approvalMode": {"mode": "promptUnmatched", "source": "startup", "lastCommandId": None},
-            "permissionState": {"profileId": ":ask-me", "reviewerAuthority": "human", "reviewerAttached": True}}
+            "permissionState": {"profileId": profile, "reviewerAuthority": REVIEWERS[profile],
+                                "reviewerAttached": True}}
 
 
 def approval():
@@ -60,6 +66,8 @@ class Execution:
         self.approvals, self.questions = [], []
         self.error = None
         self.profile_available = True
+        self.ignore_profile = False  # setPermissionProfile accepted but not applied
+        self.resumed_with = None
         self.events = []
         self.receipts = []
         # Shaped like installed 1.4.20's skill/list rows (names synthetic).
@@ -79,8 +87,16 @@ class Execution:
             raise MuseRequestError(-32010)
         if method == "permissionProfile/list":
             assert params == {}
-            return {"profiles": [{"profileId": ":ask-me", "label": "Ask Me", "available": self.profile_available,
-                                  "reviewerAuthority": "human"}]}
+            return {"profiles": [{"profileId": p, "label": LABELS[p], "reviewerAuthority": REVIEWERS[p],
+                                  "available": self.profile_available if p == ":ask-me" else True}
+                                 for p in REVIEWERS]}
+        if method == "session/setPermissionProfile":
+            assert set(params) == {"sessionId", "commandId", "profileId"} and params["sessionId"] == NATIVE_ID
+            assert uuid.UUID(params["commandId"]).version == 7
+            if not self.ignore_profile:
+                self.session.update(policy(params["profileId"]))
+            return {"commandId": params["commandId"], "status": "accepted", "applyOutcome": "completed",
+                    "permissionState": copy.deepcopy(self.session["permissionState"])}
         if method == "session/start":
             assert set(params) == {"commandId", "workspaceRoot", "approvalMode", "permissionProfile"}
             assert uuid.UUID(params["commandId"]).version == 7
@@ -95,9 +111,10 @@ class Execution:
             return result
         if method == "session/resume":
             assert params["sessionId"] == NATIVE_ID and params["autoRecover"] is False
-            assert params["permissionProfile"] == ":ask-me" and uuid.UUID(params["commandId"]).version == 7
+            assert params["permissionProfile"] in REVIEWERS and uuid.UUID(params["commandId"]).version == 7
+            self.resumed_with = params["permissionProfile"]
             self.session.update(status="idle", activeTurnId=None)
-            self.session.update(policy())
+            self.session.update(policy(params["permissionProfile"]))
             return {"session": copy.deepcopy(self.session), "viewCursor": "v:1", "pendingRequests": [],
                     "history": {"mode": "inline", "items": []}}
         if method == "skill/list":
@@ -317,7 +334,7 @@ def test_prepare_only_owned_and_reopens_native_unloaded_chat(owned):
 def test_effective_auto_review_policy_blocks_send(owned):
     own = record(owned)
     owned.execution.session["permissionState"]["reviewerAuthority"] = "autoReview"
-    with pytest.raises(MuseHistoryError, match="human permission review"):
+    with pytest.raises(MuseHistoryError, match="couldn't confirm"):
         owned.send(own, "Synthetic question")
     assert not any(m == "turn/start" for m, _ in owned.execution.messages)
 
@@ -758,3 +775,57 @@ def test_a_skill_gone_since_listing_says_so(owned, monkeypatch):
     with pytest.raises(MuseHistoryError, match="doesn't have that skill"):
         owned.send(own, "/synthetic-plan Go")
     assert own.provider_options["muse_command"]["state"] == "rejected"
+
+
+
+def test_modes_list_muses_profiles_with_this_chats_marked(owned):
+    own = record(owned)
+    choices, now = owned.modes(own)
+    assert choices == ((":read-only", "Read only"), (":ask-me", "Ask me"),
+                       (":auto-review", "Auto-review"), (":unrestricted", "Unrestricted"))
+    assert now == ":ask-me"
+
+
+@pytest.mark.parametrize("profile", [":read-only", ":auto-review", ":unrestricted", ":ask-me"])
+def test_set_mode_switches_saves_and_sends_still_work(owned, profile):
+    own = record(owned)
+    assert owned.set_mode(own, profile) == LABELS[profile]
+    assert own.provider_options["muse_profile"] == profile
+    assert ("session/setPermissionProfile" in [m for m, _ in owned.execution.messages])
+    owned.send(own, "Synthetic question")  # the saved profile is what Muse reports
+    assert owned.modes(own)[1] == profile
+
+
+def test_a_profile_muse_does_not_report_stops_sending(owned):
+    """Muse's effective policy must match the chat's saved choice."""
+    own = record(owned)
+    owned.set_mode(own, ":read-only")
+    owned.execution.session.update(policy(":unrestricted"))  # changed behind the app's back
+    with pytest.raises(MuseHistoryError, match="couldn't confirm"):
+        owned.send(own, "Synthetic question")
+    assert not any(m == "turn/start" for m, _ in owned.execution.messages)
+
+
+def test_reopening_uses_the_saved_profile(owned):
+    """After a restart Muse reports no profile until the chat is reopened,
+    and reopening sets whichever one the app passes."""
+    own = record(owned)
+    owned.set_mode(own, ":read-only")
+    owned.execution.session["status"] = "notLoaded"
+    owned.prepare(own)
+    assert owned.execution.resumed_with == ":read-only"
+
+
+def test_set_mode_refuses_a_profile_muse_does_not_list(owned):
+    own = record(owned)
+    with pytest.raises(MuseHistoryError, match="doesn't offer"):
+        owned.set_mode(own, ":made-up")
+    assert not any(m == "session/setPermissionProfile" for m, _ in owned.execution.messages)
+
+
+def test_a_change_muse_did_not_make_is_not_saved(owned):
+    own = record(owned)
+    owned.execution.ignore_profile = True
+    with pytest.raises(MuseHistoryError, match="didn't confirm"):
+        owned.set_mode(own, ":unrestricted")
+    assert "muse_profile" not in own.provider_options

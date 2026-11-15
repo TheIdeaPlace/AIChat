@@ -164,8 +164,15 @@ def _valid_muse_options(options: dict) -> bool:
     """Keep only bounded command recovery state, never a prompt or policy grant."""
     if not options:
         return True
-    if set(options) != {"muse_command"}:
+    if not set(options) <= {"muse_command", "muse_profile"}:
         return False
+    # The permission profile chosen with Change Permission Mode: one of Muse
+    # Code's four, passed when the chat is reopened and checked before sends.
+    if "muse_profile" in options and options["muse_profile"] not in {
+            ":read-only", ":ask-me", ":auto-review", ":unrestricted"}:
+        return False
+    if "muse_command" not in options:
+        return True
     command = options["muse_command"]
     if not isinstance(command, dict) or not (
             {"command_id", "turn_id", "state"} <= set(command)

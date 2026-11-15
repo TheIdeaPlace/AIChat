@@ -221,7 +221,7 @@ EXPECTED = {
     "branch_from_here": owned(said(NOT_YET)),
     "change_model": owned(dialog("SingleChoiceDialog")),
     "change_effort": owned(dialog("SingleChoiceDialog")),
-    "change_permission_mode": owned(said("Muse Code chats always use Muse Code's own mode")),
+    "change_permission_mode": owned(dialog("SingleChoiceDialog")),
     "chat_permissions": owned(dialog("ChatPermissionsDialog"),
                               said("was started in Muse Code, so it's read-only here. "
                                    "Muse Code decides what it may do.")),
@@ -371,3 +371,50 @@ def test_attached_files_go_with_the_next_muse_message(world, tmp_path, monkeypat
     assert isinstance(sent[0], MuseInput) and len(sent[0].images) == 1
     assert "Attached image: synthetic.png" in str(sent[0])
     assert not world.frame._attachments.get(world.frame._attachment_key(world.owned))
+
+
+def _choose_mode(world, monkeypatch, profile_label, answer=wx.YES):
+    put_in_case(world, "idle")
+    asked = []
+    def choose(title, prompt, choices, selection=None):
+        asked.append(("choose", title, prompt, list(choices), selection))
+        return [c.replace(" (now)", "") for c in choices].index(profile_label)
+    def box(message, caption="", style=0, *a, **k):
+        asked.append(("box", caption, message, style))
+        return answer
+    monkeypatch.setattr(world.frame, "_choose", choose)
+    monkeypatch.setattr(wx, "MessageBox", box)
+    world.frame._command_handlers()["change_permission_mode"](wx.CommandEvent())
+    return asked
+
+
+def test_change_mode_offers_muses_profiles_and_switches(world, monkeypatch):
+    asked = _choose_mode(world, monkeypatch, "Read only")
+    _kind, title, prompt, choices, selection = asked[0]
+    assert title == "Change Permission Mode" and "now Ask me" in prompt
+    assert choices == ["Read only", "Ask me (now)", "Auto-review", "Unrestricted"] and selection == 1
+    assert len(asked) == 1  # no warning for a profile you still review
+    assert world.execution.session["permissionState"]["profileId"] == ":read-only"
+    assert any("Read only" in text for text in world.said), world.said
+
+
+@pytest.mark.parametrize("label,profile,warns", [
+    ("Auto-review", ":auto-review", "an AI reviewer"),
+    ("Unrestricted", ":unrestricted", "nothing asks you"),
+])
+def test_a_mode_without_your_review_warns_first_and_no_keeps_it(world, monkeypatch, label, profile, warns):
+    asked = _choose_mode(world, monkeypatch, label, answer=wx.NO)
+    kind, caption, message, style = asked[1]
+    assert kind == "box" and warns in message and style & wx.NO_DEFAULT
+    assert world.execution.session["permissionState"]["profileId"] == ":ask-me"
+    asked = _choose_mode(world, monkeypatch, label, answer=wx.YES)
+    assert world.execution.session["permissionState"]["profileId"] == profile
+
+
+def test_chat_permissions_names_the_chats_profile_and_can_change_it(world):
+    from thechatplace.ui.permission_hosts import MusePermissions
+    put_in_case(world, "idle")
+    record = world.frame.store.get(world.owned.cli_session_id, provider="muse")
+    host = MusePermissions(world.frame, world.owned, record)
+    assert host.mode_text() == "Muse Code: Ask me"
+    assert host.can_change_mode()[0] is True

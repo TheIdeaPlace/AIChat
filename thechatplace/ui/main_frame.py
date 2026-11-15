@@ -4424,8 +4424,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 and not self._require_capability("options", selected)):
             return  # Muse Code's own chat: read-only here
         if selected is not None and selected.provider == 'muse':
-            self._feedback("Muse Code chats always use Muse Code's own mode. "
-                           "Answer each request as it comes.")
+            self._change_muse_mode(selected)
             return
         found = self._own_for_setting("permission mode", selected)
         if found is None:

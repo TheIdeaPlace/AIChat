@@ -282,3 +282,32 @@ Checked natively through `build_input()` and `send()`: a green picture and
 a text file from outside the folder in one message; the reply was "green
 otter".
 
+### Change Permission Mode done (2026-11-15)
+
+Decided: offer all four Muse Code profiles, warning before the two you
+don't review. Native check first (installed 1.4.20): `session/setPermissionProfile`
+switches an owned chat between `:read-only`, `:ask-me`, `:auto-review` and
+`:unrestricted`; approval mode stays `promptUnmatched`; the reviewer is
+human, human, `autoReview` and `none`, attached in each, and Unrestricted
+reports filesystem unrestricted, network enabled, approval `allowAll`. After
+a host restart a chat reports no profile until reopened, and
+`session/resume`'s `permissionProfile` sets it, so the app passing Ask me
+would have silently undone a change.
+
+- The chosen profile is saved (`provider_options["muse_profile"]`, one of the
+  four, allowed by `own_store`), passed when the chat is reopened, and
+  checked before every send: `_policy()` now wants the saved profile with its
+  own reviewer, so an Ask me chat whose reviewer turns to `autoReview` is
+  still refused.
+- `set_mode()` sends only a profile Muse lists with the expected reviewer,
+  confirms it from the reply and a read-back, and saves it only then.
+- The window offers the four through the shared choice dialog, and asks
+  first (Yes/No, No default) before Auto-review or Unrestricted;
+  `MusePermissions` names the chat's profile and its Change goes to the same
+  flow. The New Session note now says a chat starts on Ask me.
+
+Checked natively through `set_mode()`/`send()`: Read only (sent), kept after
+a host restart (sent), Auto-review (sent), Unrestricted (no turn), back to
+Ask me. The changed dialog text (New Session note, Chat Permissions) still
+needs the VM visual probe.
+

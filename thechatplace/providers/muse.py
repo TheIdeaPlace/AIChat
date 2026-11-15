@@ -311,6 +311,13 @@ class MuseProvider:
         """This chat's skills for Insert Command or Skill."""
         return self._owned_chats().skills(record)
 
+    def prepare_mode_owned(self, record):
+        """Change Permission Mode's choices: ((profile, label), ...), now."""
+        return self._owned_chats().modes(record)
+
+    def set_mode_owned(self, record, profile):
+        return self._owned_chats().set_mode(record, profile)
+
     def prepare_effort_owned(self, record):
         """This chat's efforts for Change Effort: ((tier, label), ...), now."""
         return self._owned_chats().efforts(record)
@@ -501,6 +508,14 @@ def _failure_kind(result: dict) -> str:
     return kind if isinstance(kind, str) and re.fullmatch(r"[A-Za-z]{1,40}", kind) else ""
 
 
+#: Muse Code's permission profiles and who reviews restricted actions in
+#: each, as installed 1.4.20 reports them (permissionProfile/list and the
+#: session's permissionState). A chat starts on Ask me.
+PROFILES = {":read-only": "human", ":ask-me": "human", ":auto-review": "autoReview",
+            ":unrestricted": "none"}
+PROFILE_LABELS = {":read-only": "Read only", ":ask-me": "Ask me", ":auto-review": "Auto-review",
+                  ":unrestricted": "Unrestricted"}
+
 #: Muse's closed effort tiers, in plain words.
 EFFORT_LABELS = {"none": "none", "minimal": "minimal", "low": "low", "medium": "medium",
                  "high": "high", "xhigh": "extra high", "max": "maximum", "ultra": "ultra"}
@@ -558,14 +573,24 @@ class MuseOwnedChats:
         if not self.available():
             raise MuseHistoryError("Muse Code execution is unavailable. Check its installation and refresh.")
 
-    def _profile(self) -> str:
+    def _wanted(self, record) -> str:
+        """The profile this chat should be on: the one chosen with Change
+        Permission Mode, else Ask me, which every chat starts on."""
+        chosen = record.provider_options.get("muse_profile") if record is not None else None
+        return chosen if chosen in PROFILES else self.PROFILE
+
+    def _listed_profiles(self) -> list:
         result = self.execution.request("permissionProfile/list", {})
-        profiles = _request_array(result, "profiles")
-        if not any(isinstance(p, dict) and p.get("profileId") == self.PROFILE
-                   and p.get("available") is True and p.get("reviewerAuthority") == "human"
-                   for p in profiles):
-            raise MuseHistoryError("Muse Code's Ask Me permission profile is unavailable. Sending is disabled.")
-        return self.PROFILE
+        return [p for p in _request_array(result, "profiles")
+                if isinstance(p, dict) and p.get("profileId") in PROFILES and p.get("available") is True
+                and p.get("reviewerAuthority") == PROFILES[p["profileId"]]]
+
+    def _profile(self, wanted=None) -> str:
+        wanted = wanted or self.PROFILE
+        if not any(p["profileId"] == wanted for p in self._listed_profiles()):
+            raise MuseHistoryError(f"Muse Code's {PROFILE_LABELS[wanted]} permission profile is "
+                                   "unavailable. Sending is disabled.")
+        return wanted
 
     def _session(self, result: dict, native_id: str) -> dict:
         session = result.get("session") if isinstance(result, dict) else None
@@ -573,13 +598,17 @@ class MuseOwnedChats:
             raise MuseHistoryError("Muse Code didn't return the requested owned chat.")
         return session
 
-    def _policy(self, session: dict) -> None:
+    def _policy(self, session: dict, wanted=None) -> None:
+        """Muse's effective policy must be the chat's chosen profile, with
+        that profile's reviewer: a human for Ask me and Read only."""
+        wanted = wanted or self.PROFILE
         mode, policy = session.get("approvalMode"), session.get("permissionState")
         if (not isinstance(mode, dict) or mode.get("mode") != "promptUnmatched"
-                or not isinstance(policy, dict) or policy.get("profileId") != self.PROFILE
-                or policy.get("reviewerAuthority") != "human"
+                or not isinstance(policy, dict) or policy.get("profileId") != wanted
+                or policy.get("reviewerAuthority") != PROFILES[wanted]
                 or policy.get("reviewerAttached") is not True):
-            raise MuseHistoryError("Muse Code couldn't confirm human permission review. Sending is disabled.")
+            raise MuseHistoryError(f"Muse Code couldn't confirm this chat's permission profile, "
+                                   f"{PROFILE_LABELS[wanted]}. Sending is disabled.")
 
     def create(self, cwd: str, title: str) -> OwnSession:
         with self._lock:
@@ -619,9 +648,9 @@ class MuseOwnedChats:
             if result["session"].get("status") == "notLoaded":
                 result = self.execution.request("session/resume", {
                     "commandId": _command_id(), "sessionId": record.cli_session_id,
-                    "permissionProfile": self._profile(), "excludeItems": True,
+                    "permissionProfile": self._profile(self._wanted(record)), "excludeItems": True,
                     "autoRecover": False})
-            self._policy(self._session(result, record.cli_session_id))
+            self._policy(self._session(result, record.cli_session_id), self._wanted(record))
             self._reconcile(record, result)
             return True
 
@@ -951,6 +980,54 @@ class MuseOwnedChats:
                         part["arguments"] = arguments
                     return [part]
         return [{"type": "text", "text": text}]
+
+    def modes(self, record: OwnSession) -> tuple:
+        """((profile, label), ...) Muse offers, and this chat's profile."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            choices = tuple((p["profileId"], PROFILE_LABELS[p["profileId"]]) for p in self._listed_profiles())
+            if not choices:
+                raise MuseHistoryError("Muse Code didn't list its permission profiles.")
+            return choices, self._wanted(record)
+
+    def set_mode(self, record: OwnSession, profile: str) -> str:
+        """Switch the chat to ``profile``, confirmed by Muse's reply and the
+        session read back, then saved, so a reopened chat asks for it and
+        each send checks it. Not saved unless Muse made it."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            if profile not in PROFILES or not any(p["profileId"] == profile for p in self._listed_profiles()):
+                raise MuseHistoryError("Muse Code doesn't offer that permission profile now. "
+                                       "Choose Change Permission Mode again.")
+            params = {"sessionId": record.cli_session_id, "commandId": _command_id(), "profileId": profile}
+            result = self.execution.request("session/setPermissionProfile", params)
+            state = result.get("permissionState") if isinstance(result, dict) else None
+            try:
+                if (not isinstance(result, dict) or result.get("commandId") != params["commandId"]
+                        or result.get("status") != "accepted" or not isinstance(state, dict)
+                        or state.get("profileId") != profile
+                        or state.get("reviewerAuthority") != PROFILES[profile]):
+                    raise MuseHistoryError("not applied")
+                self._policy(self._read(record)["session"], profile)
+            except MuseHistoryError:
+                raise MuseHistoryError("Muse Code didn't confirm the permission change. Check the "
+                                       "chat's permissions before sending.") from None
+            previous = record.provider_options.get("muse_profile")
+            record.provider_options["muse_profile"] = profile
+            if self._persistence is not None:
+                try:
+                    self._persistence(record)
+                except Exception:
+                    if previous is None:
+                        record.provider_options.pop("muse_profile", None)
+                    else:
+                        record.provider_options["muse_profile"] = previous
+                    raise MuseSaveError("The Chat Place couldn't save this chat's permission profile. "
+                                        "Sending stays disabled until it's set again.") from None
+            return PROFILE_LABELS[profile]
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.

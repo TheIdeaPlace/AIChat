@@ -74,8 +74,13 @@ decision, but not the command's effect.
    picture and quotes the file. A file deleted before sending says it's no
    longer there, and the message isn't sent.
 7. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
-   own mode, no kept rules, and the same answering instructions. Change
-   Permission Mode says Muse Code chats always use Muse Code's own mode.
+   profile ("Muse Code: Ask me"), no kept rules, and answering instructions.
+   Chat, Chat Settings, Change Permission Mode (Ctrl+Shift+O) lists Read
+   only, Ask me (now), Auto-review and Unrestricted. Choose Read only: no
+   question, and you hear the chat now uses it; send a message, then restart
+   The Chat Place and check Chat Permissions still says Read only. Choose
+   Auto-review or Unrestricted: a warning asks first with No focused; No
+   keeps the old profile. Set it back to Ask me.
 8. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become

@@ -192,11 +192,11 @@ def muse_note() -> str:
     constant, so it names your key for Review Permission if you changed it
     after the app started (#635)."""
     return ("Muse Code chats start here and run on your Meta account. Model and effort "
-            "are Muse Code's own. Muse Code asks before it runs a command or changes "
-            "a file, and each request is announced even while you read another chat. Press "
-            f"{key_name(your_key('Ctrl+Shift+A'))} to allow it once, deny it or answer "
-            "its question, or Stop cancels the turn. "
-            "Nothing runs unless you allow it. The Chat Place never sends "
+            "are Muse Code's own. It starts on Muse's Ask me permissions: Muse Code asks "
+            "before it runs a command or changes a file, and each request is announced even "
+            f"while you read another chat. Press {key_name(your_key('Ctrl+Shift+A'))} to allow "
+            "it once, deny it or answer its question, or Stop cancels the turn. Change "
+            "Permission Mode can change that later. The Chat Place never sends "
             "to a Muse Code chat it didn't start.")
 
 

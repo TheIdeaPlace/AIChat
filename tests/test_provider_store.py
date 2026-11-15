@@ -550,3 +550,20 @@ def test_muse_command_keeps_the_steers_sent_into_its_turn(tmp_path):
     command = {"command_id": ident, "turn_id": ident, "state": "running", "steers": [str(uuid.uuid7())]}
     store.update("muse-id", provider="muse", provider_options={"muse_command": command})
     assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
+
+
+
+@pytest.mark.parametrize("profile", [":read-only", ":ask-me", ":auto-review", ":unrestricted"])
+def test_muse_chat_keeps_its_permission_profile(tmp_path, profile):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    store.update("muse-id", provider="muse", provider_options={"muse_profile": profile})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_profile": profile}
+
+
+def test_muse_chat_refuses_an_unknown_profile(tmp_path):
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    store.add(muse_chat())
+    with pytest.raises(ValueError):
+        store.update("muse-id", provider="muse", provider_options={"muse_profile": ":allow-all"})

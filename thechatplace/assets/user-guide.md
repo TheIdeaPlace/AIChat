@@ -59,7 +59,12 @@ read-only side chat that never asks you anything; the question and answer don't 
 the chat. Muse Code keeps each side chat in its own list, so The Chat Place hides it
 from yours: View, Show Sessions, Hidden shows them.
 Chat, Attach Files (Ctrl+Shift+F) attaches files to your next message: Muse Code sees
-an image, and reads any other file wherever it is. Muse's
+an image, and reads any other file wherever it is.
+A chat starts on Muse Code's Ask me permissions. Chat, Chat Settings, Change Permission
+Mode (Ctrl+Shift+O) switches it between Read only, Ask me, Auto-review and Unrestricted,
+and asks you first, with No as the default, before the two that don't ask you: with
+Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file
+sandbox and no approval prompts. Muse's
 **Ask me** policy prompts for restricted actions; safe actions can run without asking.
 Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
 finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow doesn't run

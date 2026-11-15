@@ -75,20 +75,29 @@ class MusePermissions:
         self.info = info
         self.record = record
 
+    def _profile(self) -> str:
+        from ..providers.muse import PROFILES
+        chosen = self.record.provider_options.get("muse_profile") if self.record else None
+        return chosen if chosen in PROFILES else ":ask-me"
+
     def mode_text(self) -> str:
-        return "Muse Code: ask for unmatched requests"
+        from ..providers.muse import PROFILE_LABELS
+        return f"Muse Code: {PROFILE_LABELS[self._profile()]}"
 
     def can_change_mode(self):
-        return False, "Muse Code chats use the native ask-for-unmatched-requests mode."
+        return True, ""
 
     def change_mode(self, done):
-        done()
+        self.frame._change_muse_mode(self.info, after=done)
 
     def note(self) -> str:
-        return ("Muse Code enforces its native rules and asks about unmatched requests. "
-                "Requests are announced even while you read another chat: press "
-                f"{key_name(your_key('Ctrl+Shift+A'))} to review a permission or answer a question, or Stop to "
-                "cancel the turn. The Chat Place keeps no always-allow rules here.")
+        who = {":read-only": "It only reads files, and asks you about anything restricted.",
+               ":ask-me": "It asks you before restricted actions.",
+               ":auto-review": "An AI reviewer may approve restricted actions without asking you.",
+               ":unrestricted": "Nothing asks you: it has no file sandbox and no approval prompts."}
+        return (f"{who[self._profile()]} Requests are announced even while you read another chat: "
+                f"press {key_name(your_key('Ctrl+Shift+A'))} to review a permission or answer a "
+                "question, or Stop to cancel the turn. The Chat Place keeps no always-allow rules here.")
 
     def load(self, done):
         done([], None)
