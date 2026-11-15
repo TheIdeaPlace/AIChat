@@ -67,9 +67,12 @@ def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleC
     """wx's own single-choice list, which screen readers handle well. On
     Linux its list has no name of its own (Windows takes the label before
     it), and Orca reached "a table with no name" (#230, found by the Orca
-    audit in tools/ui_probe.py), so there it takes the dialog's title."""
+    audit in tools/ui_probe.py), so there it takes the dialog's title. On
+    Windows it's a wx list box like the app's own, so it gets their
+    accessible too (#647), which reads its row once; its name stays
+    Windows' own, from the label before it."""
     dialog = wx.SingleChoiceDialog(parent, prompt, title, choices)
-    if gtk_a11y.IS_LINUX:
+    if gtk_a11y.IS_LINUX or wx.Platform == "__WXMSW__":
         for child in dialog.GetChildren():
             if isinstance(child, wx.ListBox):
                 set_accessible_name(child, title)
