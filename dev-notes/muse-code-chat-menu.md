@@ -163,3 +163,28 @@ across a host restart. Two surprises:
 `prepare_settings` / `set_model` owned actions and the shared single-choice
 dialog. Muse also has `session/setReasoningEffort`, so Change Effort could
 follow the same path.
+
+### Step 3, Change Effort done (2026-11-14)
+
+Native check first (installed 1.4.20): `session/setReasoningEffort` takes
+`{sessionId, commandId, reasoningEffort}` from the closed eight-tier list.
+`session/read` never carries the effort; the view does, as
+`session/reasoningEffortChanged` events, and `view/page` with `direction:
+backward` returns the newest page first (each page in order, `nextCursor`
+towards the start). No event means none was set: the model's
+`defaultReasoningEffort` applies. Each catalog model lists its tiers
+(`variants`). Two surprises, as with models:
+
+- Muse **accepts a tier the model doesn't offer** ("max" on muse-spark-1.2),
+  and the next turn fails with `modelError`. `set_effort()` sends only one of
+  the chat's model's tiers and reads the view back to confirm.
+- So does a model switch: a chat set to "max" switched to a model without it
+  fails every turn. `set_model()` now sets the new model's default in that
+  case and says so ("Its effort is now high, since muse-spark-1.2 doesn't
+  offer maximum."). Checked natively: the turn after the switch completed.
+
+The current effort is read from at most 10 backward pages of 200 events;
+beyond that it's "unknown" rather than a guess. `session/setReasoningEffort`
+is allowlisted, and the owned actions `prepare_effort` / `set_effort` are
+added to `SessionController.owned_action`.
+

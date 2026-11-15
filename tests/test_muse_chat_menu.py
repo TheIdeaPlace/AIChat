@@ -220,7 +220,7 @@ EXPECTED = {
     "retry_from_here": owned(said(NOT_YET)),
     "branch_from_here": owned(said(NOT_YET)),
     "change_model": owned(dialog("SingleChoiceDialog")),
-    "change_effort": owned(said(NOT_YET)),
+    "change_effort": owned(dialog("SingleChoiceDialog")),
     "change_permission_mode": owned(said("Muse Code chats always use Muse Code's own mode")),
     "chat_permissions": owned(dialog("ChatPermissionsDialog"),
                               said("was started in Muse Code, so it's read-only here. "
@@ -313,3 +313,17 @@ def test_change_model_switches_to_the_chosen_muse_model(world, monkeypatch):
     assert choices == ["synthetic-model-a", "synthetic-model-b (now)"] and selection == 1
     assert world.execution.session["modelId"] == "synthetic-model-a"
     assert any("now uses synthetic-model-a" in text for text in world.said), world.said
+
+
+def test_change_effort_sets_the_chosen_muse_tier(world, monkeypatch):
+    put_in_case(world, "idle")
+    chooser = []
+    def choose(title, prompt, choices, selection=None):
+        chooser.append((title, prompt, list(choices), selection))
+        return 0
+    monkeypatch.setattr(world.frame, "_choose", choose)
+    world.frame._command_handlers()["change_effort"](wx.CommandEvent())
+    title, prompt, choices, selection = chooser[0]
+    assert title == "Change Effort" and "now maximum" in prompt
+    assert choices == ["low", "medium", "high", "maximum (now)"] and selection == 3
+    assert any("effort is now low" in text for text in world.said), world.said

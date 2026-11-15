@@ -47,7 +47,9 @@ the turn ends just then, Muse Code refuses it and your message comes back to the
 reply box. Chat, Chat Settings, Change Model lists the models Muse Code offers the chat,
 with its own marked "(now)", and switches it from Muse's next model call, even during a
 turn. Muse lists some models an account can't use: if a turn then fails, you hear that
-the chat's model may not be available to you. Muse's
+the chat's model may not be available to you. Change Effort lists the efforts the
+chat's model offers, with the one it uses marked "(now)". Switching to a model that
+doesn't offer the chat's effort sets that model's default, and you hear which. Muse's
 **Ask me** policy prompts for restricted actions; safe actions can run without asking.
 Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
 finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow doesn't run

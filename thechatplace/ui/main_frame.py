@@ -4565,6 +4565,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider == 'codex':
             self._change_codex_settings(selected, 'effort')
             return
+        if selected is not None and selected.provider == "muse":
+            self._change_muse_effort(selected)
+            return
         found = self._own_for_setting("effort")
         if found is None:
             return

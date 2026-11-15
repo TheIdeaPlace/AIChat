@@ -301,6 +301,13 @@ class MuseProvider:
     def set_model_owned(self, record, model_id):
         return self._owned_chats().set_model(record, model_id)
 
+    def prepare_effort_owned(self, record):
+        """This chat's efforts for Change Effort: ((tier, label), ...), now."""
+        return self._owned_chats().efforts(record)
+
+    def set_effort_owned(self, record, tier):
+        return self._owned_chats().set_effort(record, tier)
+
     def steer_owned(self, record, text):
         return self._owned_chats().steer(record, text)
 
@@ -482,6 +489,17 @@ def _failure_kind(result: dict) -> str:
     error = last.get("error") if isinstance(last, dict) and last.get("terminal") == "failed" else None
     kind = error.get("kind") if isinstance(error, dict) else None
     return kind if isinstance(kind, str) and re.fullmatch(r"[A-Za-z]{1,40}", kind) else ""
+
+
+#: Muse's closed effort tiers, in plain words.
+EFFORT_LABELS = {"none": "none", "minimal": "minimal", "low": "low", "medium": "medium",
+                 "high": "high", "xhigh": "extra high", "max": "maximum", "ultra": "ultra"}
+
+
+def _tiers(entry) -> tuple:
+    """The efforts a catalog model offers, in Muse's order."""
+    variants = entry.get("variants") if isinstance(entry, dict) else None
+    return tuple(t for t in variants if t in EFFORT_LABELS) if isinstance(variants, list) else ()
 
 
 class MuseSaveError(MuseHistoryError):
@@ -763,11 +781,84 @@ class MuseOwnedChats:
             return tuple((m["modelId"], m["displayLabel"].strip() or m["modelId"], m["isActive"])
                          for m in self._catalog(record))
 
-    def set_model(self, record: OwnSession, model_id: str) -> str:
-        """Switch to ``model_id``, from Muse's next model call. Installed
-        1.4.20 accepts any id, even one it doesn't offer, and keeps it, so
-        only a model from the catalog read just now is sent, and the session
-        is read back to confirm it took."""
+    def _active_model(self, record: OwnSession, catalog=None):
+        catalog = self._catalog(record) if catalog is None else catalog
+        model_id = self._read(record)["session"].get("modelId")
+        return next((m for m in catalog if m["modelId"] == model_id), None)
+
+    def _standing_effort(self, record: OwnSession):
+        """The effort last set on this chat, from its view (session/read
+        doesn't carry it): "" if none was ever set (the model's default
+        applies), None if it can't be told within the bound."""
+        cursor = None
+        for _ in range(10):
+            params = {"sessionId": record.cli_session_id, "limit": 200, "direction": "backward"}
+            if cursor:
+                params["cursor"] = cursor
+            result = self.execution.request("view/page", params)
+            for event in reversed(_request_array(result, "events")):
+                if isinstance(event, dict) and event.get("method") == "session/reasoningEffortChanged":
+                    tier = (event.get("params") or {}).get("reasoningEffort")
+                    return tier if tier in EFFORT_LABELS else None
+            cursor = result.get("nextCursor")
+            if cursor is None:
+                return ""
+            if not isinstance(cursor, str) or not cursor or len(cursor) > 4096:
+                raise MuseHistoryError("Muse Code sent an unreadable view page.")
+        return None
+
+    def _effort_now(self, record: OwnSession, entry):
+        standing = self._standing_effort(record)
+        if standing == "":
+            default = entry.get("defaultReasoningEffort") if entry else None
+            return default if default in EFFORT_LABELS else None
+        return standing
+
+    def efforts(self, record: OwnSession) -> tuple:
+        """((tier, label), ...) this chat's model offers, and the effort it
+        uses now (None if that can't be told)."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            entry = self._active_model(record)
+            if entry is None:
+                raise MuseHistoryError("Muse Code doesn't list this chat's model now. Choose one "
+                                       "with Change Model first.")
+            tiers = _tiers(entry)
+            if not tiers:
+                raise MuseHistoryError("Muse Code doesn't say which efforts this chat's model offers.")
+            return tuple((t, EFFORT_LABELS[t]) for t in tiers), self._effort_now(record, entry)
+
+    def _send_effort(self, record: OwnSession, tier: str) -> None:
+        params = {"sessionId": record.cli_session_id, "commandId": _command_id(), "reasoningEffort": tier}
+        result = self.execution.request("session/setReasoningEffort", params)
+        if (not isinstance(result, dict) or result.get("commandId") != params["commandId"]
+                or result.get("status") != "accepted" or self._standing_effort(record) != tier):
+            raise MuseHistoryError("Muse Code didn't confirm the effort change. Check the chat's "
+                                   "effort before trying again.")
+
+    def set_effort(self, record: OwnSession, tier: str) -> str:
+        """Set ``tier``, from Muse's next model call. Installed 1.4.20 accepts
+        a tier the model doesn't offer, then fails the turn, so only one of
+        the model's own is sent, and the view is read back to confirm it."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            entry = self._active_model(record)
+            if entry is None or tier not in _tiers(entry):
+                raise MuseHistoryError("This chat's model doesn't offer that effort. "
+                                       "Choose Change Effort again.")
+            self._send_effort(record, tier)
+            return EFFORT_LABELS[tier]
+
+    def set_model(self, record: OwnSession, model_id: str) -> tuple:
+        """Switch to ``model_id``, from Muse's next model call: (its label, a
+        note: "" or what happened to the effort). Installed 1.4.20 accepts any
+        id, even one it doesn't offer, and keeps it, so only a model from the
+        catalog read just now is sent, and the session is read back to confirm
+        it took. An effort the new model doesn't offer would fail every turn,
+        so it becomes the new model's default."""
         with self._lock:
             self._check(record)
             self._require_available()
@@ -786,7 +877,16 @@ class MuseOwnedChats:
                     or self._read(record)["session"].get("modelId") != model_id):
                 raise MuseHistoryError("Muse Code didn't confirm the model change. "
                                        "Check the chat's model before trying again.")
-            return entry["displayLabel"].strip() or model_id
+            label = entry["displayLabel"].strip() or model_id
+            standing = self._standing_effort(record)
+            tiers = _tiers(entry)
+            default = entry.get("defaultReasoningEffort")
+            if standing == "" or standing in tiers or default not in tiers:
+                return label, ""  # the new model's default applies, or nothing better to set
+            self._send_effort(record, default)
+            was = EFFORT_LABELS[standing] if standing else "the chat's unknown effort"
+            return label, (f"Its effort is now {EFFORT_LABELS[default]}, since {label} "
+                           f"doesn't offer {was}.")
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.

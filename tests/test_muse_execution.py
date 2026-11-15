@@ -49,9 +49,13 @@ class Execution:
         # Shaped like installed 1.4.20's catalog (ids synthetic).
         self.catalog = [
             {"modelId": "synthetic-model-a", "displayLabel": "synthetic-model-a", "providerId": "meta",
-             "profileId": "tbh", "isDefault": True},
+             "profileId": "tbh", "isDefault": True,
+             "variants": ["low", "medium", "high"], "defaultReasoningEffort": "medium"},
             {"modelId": "synthetic-model-b", "displayLabel": "synthetic-model-b", "providerId": "meta",
-             "profileId": "tbh", "isDefault": False}]
+             "profileId": "tbh", "isDefault": False,
+             "variants": ["low", "medium", "high", "max"], "defaultReasoningEffort": "max"}]
+        # The session's view, oldest first; view/page reads it newest page first.
+        self.view = [{"method": "session/approvalModeChanged", "params": {"sessionId": NATIVE_ID}}]
         self.last_turn = None
         self.approvals, self.questions = [], []
         self.error = None
@@ -103,6 +107,22 @@ class Execution:
                     "models": [{**m, "isActive": m["modelId"] == active, "contextLimit": None,
                                 "outputLimit": None, "cost": None, "description": None,
                                 "releaseDate": None} for m in self.catalog]}
+        if method == "view/page":
+            # Installed 1.4.20: backward pages run newest first, each page in
+            # order, and nextCursor steps towards the start.
+            assert params["direction"] == "backward" and params["sessionId"] == NATIVE_ID
+            end = int(params["cursor"]) if params.get("cursor") else len(self.view)
+            start = max(0, end - params["limit"])
+            return {"events": copy.deepcopy(self.view[start:end]),
+                    "nextCursor": str(start) if start else None}
+        if method == "session/setReasoningEffort":
+            # Installed 1.4.20 accepts any tier, even one the model doesn't offer.
+            assert set(params) == {"sessionId", "commandId", "reasoningEffort"}
+            assert uuid.UUID(params["commandId"]).version == 7
+            self.view.append({"method": "session/reasoningEffortChanged",
+                              "params": {"sessionId": NATIVE_ID, "reasoningEffort": params["reasoningEffort"],
+                                         "source": "client"}})
+            return {"commandId": params["commandId"], "status": "accepted"}
         if method == "session/setModel":
             # Installed 1.4.20 accepts any id, even one not in its catalog.
             assert set(params) == {"sessionId", "commandId", "model"}
@@ -562,7 +582,7 @@ def test_models_lists_the_catalog_with_this_chats_model_marked(owned):
 
 def test_set_model_sends_the_catalog_entry_and_confirms_it(owned):
     own = record(owned)
-    assert owned.set_model(own, "synthetic-model-a") == "synthetic-model-a"
+    assert owned.set_model(own, "synthetic-model-a") == ("synthetic-model-a", "")
     method, params = [m for m in owned.execution.messages if m[0] == "session/setModel"][0]
     assert params["sessionId"] == NATIVE_ID
     assert params["model"] == {"modelId": "synthetic-model-a", "providerId": "meta", "profileId": "tbh"}
@@ -606,3 +626,58 @@ def test_a_finished_turn_reports_no_failure(owned):
     owned.send(own, "Synthetic question")
     owned.execution.complete()
     assert owned.poll(own)["failure"] == ""
+
+
+
+def test_efforts_offer_this_models_tiers_and_say_its_default_until_one_is_set(owned):
+    own = record(owned)
+    choices, now = owned.efforts(own)
+    assert choices == (("low", "low"), ("medium", "medium"), ("high", "high"), ("max", "maximum"))
+    assert now == "max"  # synthetic-model-b's default; none set yet
+
+
+def test_set_effort_sends_a_tier_this_model_offers_and_confirms_it(owned):
+    own = record(owned)
+    assert owned.set_effort(own, "low") == "low"
+    assert "session/setReasoningEffort" in [m for m, _ in owned.execution.messages]
+    assert owned.efforts(own)[1] == "low"
+
+
+def test_set_effort_refuses_a_tier_the_model_does_not_offer(owned):
+    """Installed 1.4.20 took "max" for a model without it; the next turn failed."""
+    own = record(owned)
+    owned.execution.session["modelId"] = "synthetic-model-a"
+    with pytest.raises(MuseHistoryError, match="doesn't offer"):
+        owned.set_effort(own, "max")
+    assert not any(m == "session/setReasoningEffort" for m, _ in owned.execution.messages)
+
+
+def test_the_latest_effort_is_found_pages_back(owned):
+    own = record(owned)
+    owned.set_effort(own, "high")
+    owned.execution.view += [{"method": "item/delta", "params": {}}] * 450
+    assert owned.efforts(own)[1] == "high"
+
+
+def test_an_effort_beyond_the_page_bound_is_unknown(owned):
+    own = record(owned)
+    owned.set_effort(own, "high")
+    owned.execution.view += [{"method": "item/delta", "params": {}}] * 2001
+    assert owned.efforts(own)[1] is None
+
+
+def test_changing_to_a_model_without_the_chats_effort_sets_its_default(owned):
+    """Otherwise every turn after the switch would fail (seen natively)."""
+    own = record(owned)
+    owned.set_effort(own, "max")
+    label, note = owned.set_model(own, "synthetic-model-a")
+    assert label == "synthetic-model-a"
+    assert owned.efforts(own)[1] == "medium"
+    assert "medium" in note and "maximum" in note
+
+
+def test_changing_model_keeps_an_effort_the_new_model_offers(owned):
+    own = record(owned)
+    owned.set_effort(own, "low")
+    label, note = owned.set_model(own, "synthetic-model-a")
+    assert note == "" and owned.efforts(own)[1] == "low"

@@ -55,8 +55,12 @@ decision, but not the command's effect.
    models with the chat's own marked "(now)". Choose another: you hear the
    chat now uses it, from Muse's next model call. Send a message. If the turn
    fails because the account can't use that model, you hear so and are told
-   to choose another with Change Model. Change Model on a chat started in Muse
-   Code says it's read-only here.
+   to choose another with Change Model. Change Effort lists the efforts the
+   chat's model offers, with the one it uses marked "(now)"; choose another
+   and you hear the chat's effort is now that one. Set the highest effort,
+   then switch to a model without it: you hear the effort became that model's
+   default, and the next turn still works. Change Model and Change Effort on
+   a chat started in Muse Code say it's read-only here.
 7. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
    own mode, no kept rules, and the same answering instructions. Change
    Permission Mode says Muse Code chats always use Muse Code's own mode.
