@@ -418,3 +418,19 @@ def test_chat_permissions_names_the_chats_profile_and_can_change_it(world):
     host = MusePermissions(world.frame, world.owned, record)
     assert host.mode_text() == "Muse Code: Ask me"
     assert host.can_change_mode()[0] is True
+
+
+@pytest.mark.parametrize("answer,expected", [(wx.NO, False), (wx.YES, True)])
+def test_confirm_muse_mode_says_the_chat_keeps_its_profile_on_no(world, monkeypatch, answer, expected):
+    put_in_case(world, "idle")
+    shown = []
+    def box(message, caption="", style=0, *a, **k):
+        shown.append((message, caption, style))
+        return answer
+    monkeypatch.setattr(wx, "MessageBox", box)
+    assert world.frame._confirm_muse_mode("Muse chat here", ":unrestricted", "Ask me") is expected
+    message, caption, style = shown[0]
+    assert caption == "Change Permission Mode" and style & wx.NO_DEFAULT
+    assert ("Muse chat here keeps Ask me." in world.said) is (not expected)
+    assert world.frame._confirm_muse_mode("Muse chat here", ":read-only", "Ask me") is True
+    assert len(shown) == 1  # a profile you still review asks nothing

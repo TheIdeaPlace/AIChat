@@ -583,6 +583,20 @@ class CodexChats(SoundHost, CodexExtras):
                           "Use Unrestricted?"),
     }
 
+    def _confirm_muse_mode(self, title, profile, now_label) -> bool:
+        """Whether to go on to ``profile``: True straight away for one you
+        still review; else Yes in a warning that says who decides, with No
+        the default. No says the chat keeps ``now_label``. Orca's speech
+        check opens this same warning (tools/orca_speech.py)."""
+        warning = self.MUSE_MODE_WARNINGS.get(profile)
+        if not warning:
+            return True
+        if wx.MessageBox(warning.format(title=title), "Change Permission Mode",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) == wx.YES:
+            return True
+        self._feedback(f"{title} keeps {now_label}.")
+        return False
+
     def _change_muse_mode(self, info, after=None):
         """Change Permission Mode for a Muse chat started here: Muse Code's
         permission profiles, with the chat's marked. A profile you don't
@@ -612,10 +626,7 @@ class CodexChats(SoundHost, CodexExtras):
             if chosen is None:
                 after()
                 return
-            warning = self.MUSE_MODE_WARNINGS.get(chosen)
-            if warning and wx.MessageBox(warning.format(title=info.title), "Change Permission Mode",
-                                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) != wx.YES:
-                self._feedback(f"{info.title} keeps {names.get(now, now)}.")
+            if not self._confirm_muse_mode(info.title, chosen, names.get(now, now)):
                 after()
                 return
 

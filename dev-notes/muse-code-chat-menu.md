@@ -311,3 +311,12 @@ a host restart (sent), Auto-review (sent), Unrestricted (no turn), back to
 Ask me. The changed dialog text (New Session note, Chat Permissions) still
 needs the VM visual probe.
 
+
+Orca (2026-11-15): `tools/orca_speech.py` has steps for both warnings
+(triggers `muse-mode-auto-review` and `muse-mode-unrestricted`, which open
+the app's own `_confirm_muse_mode`): the warning is read with its title,
+who decides and No; Enter (No) returns to the messages and, with Orca 49+,
+says the chat keeps Ask me. `tests/test_orca_tools.py` keeps the steps'
+words in the warning's text. The Muse Chat Permissions step now expects
+"Muse Code: Ask me". Not yet run against real Orca (Linux CI job or the
+Ubuntu VM as `tcptest`).

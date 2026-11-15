@@ -228,10 +228,23 @@ STEPS = [
     Step("Muse question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("Muse Chat Permissions", [], trigger="muse-permissions",
-         expect=["Chat Permissions", "Muse Code's own"],
+         expect=["Chat Permissions", "Muse Code: Ask me"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Muse Chat Permissions closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Change Permission Mode warns before a Muse profile you don't review
+    # yourself: the warning is read with No focused, and Enter (No) keeps
+    # the chat's profile, said, then focus is back in the messages.
+    Step("Muse warns before Auto-review", [], trigger="muse-mode-auto-review",
+         expect=["Change Permission Mode", "AI reviewer", "without asking you", "No"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse Auto-review declined, back in the messages", ["Return"],
+         expect=["Messages in Visual probe"], expect_dbus=["keeps Ask me"]),
+    Step("Muse warns before Unrestricted", [], trigger="muse-mode-unrestricted",
+         expect=["Change Permission Mode", "nothing asks you", "no approval prompts", "No"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Muse Unrestricted declined, back in the messages", ["Return"],
+         expect=["Messages in Visual probe"], expect_dbus=["keeps Ask me"]),
     # Help, Sound Tutorial (#250): it opens on the first event, arrows move
     # through them by name, and Escape comes back.
     Step("sound tutorial", ["alt+h", "t"], expect=["Sound Tutorial", "Tool ran"],
@@ -894,6 +907,15 @@ def muse_permissions(frame, env) -> None:
     wx.CallAfter(frame._modal, ChatPermissionsDialog(frame, record.title, host))
 
 
+def muse_mode_warning(profile):
+    """Change Permission Mode's warning before ``profile``, exactly as the
+    app shows it (CodexChats._confirm_muse_mode), for a Muse probe chat."""
+    def open_warning(frame, env) -> None:
+        import wx
+        wx.CallAfter(frame._confirm_muse_mode, "Muse probe chat", profile, "Ask me")
+    return open_warning
+
+
 def muse_question(frame, env) -> None:
     """Actual question controls, not permission buttons posing as an answer."""
     import wx
@@ -917,6 +939,8 @@ TRIGGERS = {
     "muse-approval": muse_approval,
     "muse-question": muse_question,
     "muse-permissions": muse_permissions,
+    "muse-mode-auto-review": muse_mode_warning(":auto-review"),
+    "muse-mode-unrestricted": muse_mode_warning(":unrestricted"),
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
