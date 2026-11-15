@@ -1910,7 +1910,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             row = self._list_keys.index(info.key)
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
-        self.SetTitle(f"{info.title} \u2014 {APP_NAME}")
         self._show_attachments()
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
@@ -1989,6 +1988,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         if info is None:
             return
+        # The window title names the open chat, so it follows a rename,
+        # here or elsewhere (#553): it's what Alt+Tab and a screen reader's
+        # read-title key say. Set only when it changes.
+        title = f"{info.title} — {APP_NAME}"
+        if self.GetTitle() != title:
+            self.SetTitle(title)
         if info.provider == AGENTS:
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
@@ -2080,7 +2085,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # chat, a new title, read-only becoming yours) is said at once.
         identity = (info.key, info.title, kind)
         if (not arriving and self._messages_label_key == identity and self.chat_list.HasFocus()
-                and self.messages_label.GetLabel() != f"&{label}:"):
+                and self.messages_label.GetLabel() != self._messages_label_text(label)):
             # Only the state changed, with you in the list: a screen reader
             # says a focused control's new name again, and on a braille
             # display it replaces the message you're on (JAWS showed
@@ -2123,10 +2128,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_messages_label(arriving=True)
         self._update_heading()
 
+    @staticmethod
+    def _messages_label_text(label):
+        """What the label above the messages shows: Alt+M on its "M", and
+        any "&" in the chat's title shown as written, not taken for a second
+        access key (#539)."""
+        return f"&{wx.Control.EscapeMnemonics(label)}:"
+
     def _set_messages_label(self, label):
         self._pending_messages_label = None
-        if self.messages_label.GetLabel() != f"&{label}:":
-            self.messages_label.SetLabel(f"&{label}:")
+        shown = self._messages_label_text(label)
+        if self.messages_label.GetLabel() != shown:
+            self.messages_label.SetLabel(shown)
             set_accessible_name(self.chat_list, label)
 
     def _on_chat_list_left(self, event):
