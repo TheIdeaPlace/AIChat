@@ -181,8 +181,11 @@ class LiveTurns:
         background work as it goes. Codex is asked only when you choose it,
         and it says if none are running, so it's on for its own chats."""
         info = info if info is not None else self._open
+        # Muse, like Codex, is asked when you choose it (task/list), and says
+        # if nothing is running; only its chats started here can stop work.
         return bool(self._background_entries(info)) or (
-            info is not None and info.provider == 'codex' and info.is_own)
+            info is not None and info.provider == 'codex' and info.is_own) or (
+            info is not None and info.provider == "muse" and info.is_own and self._can_edit(info))
 
     def on_stop_background_task(self):
         """Chat, Stop Background Task: end one shell command or agent Claude

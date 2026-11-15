@@ -542,3 +542,14 @@ def test_stop_background_task_chooses_confirms_and_stops(world, monkeypatch, ans
         return
     assert calls == [("task-1",)]
     assert any("Stopping powershell: synthetic-build --watch" in t for t in world.said), world.said
+
+
+@pytest.mark.parametrize("case", ["idle", "running", "waiting"])
+@pytest.mark.parametrize("command_id", ["stop_running_turn", "stop_background_task"])
+def test_the_stop_menu_items_are_on_for_a_muse_chat_started_here(world, case, command_id):
+    """The sweep calls handlers directly; this checks the menu bar itself, as
+    you reach it. Stop Background Task was greyed out for Muse chats."""
+    put_in_case(world, case)
+    world.frame._update_send_state()
+    item = world.frame.menu_items[command_id]
+    assert item is not None and item.IsEnabled(), command_id
