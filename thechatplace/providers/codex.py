@@ -109,6 +109,7 @@ def session_from_thread(thread: dict, archived: bool) -> SessionInfo:
               if isinstance(origin, str) else "external")
     return SessionInfo(source, f"codex:{native_id}", title.split("\n", 1)[0] or "Untitled session",
                        _text(thread.get("cwd")), native_id, provider="codex",
+                       model_provider=_text(thread.get("modelProvider"))[:64],
                        state=state, detail=detail, archived=archived,
                        created_ms=_time(thread.get("createdAt")),
                        last_activity_ms=_time(thread.get("updatedAt")))
@@ -617,7 +618,8 @@ class CodexProvider:
         for archived in (False, True):
             # Every model provider's chats (#644): left out, Codex lists only
             # the provider it's set to now (codex-rs thread_processor.rs), so
-            # chats made before a switch, ours included, dropped out of the list.
+            # chats made in Codex before a switch dropped out of the list
+            # (ours stayed, merged back by SessionController._merge_owned).
             for data in thread_list_pages(self.connection, archived, sortKey="updated_at",
                                           modelProviders=[]):
                 for thread in data:

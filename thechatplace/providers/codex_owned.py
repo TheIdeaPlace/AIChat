@@ -365,6 +365,10 @@ class CodexOwnedThreads:
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
             raise ValueError("Codex fork requires a valid source chat")
+        if source.model_provider not in ("", "openai"):
+            # Continue Here, Branch, Retry and Ask Aside all copy through
+            # here, into a chat on ChatGPT (modelProvider "openai", _create).
+            raise CodexTurnRejected('other_provider')
         return self._create("thread/fork", source.cwd, title,
                             native_id=source.cli_session_id, ephemeral=ephemeral, model=model, effort=effort,
                             sandbox=sandbox, approval_policy=approval_policy, approvals_reviewer=approvals_reviewer,

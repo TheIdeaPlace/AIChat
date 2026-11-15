@@ -77,6 +77,27 @@ def test_external_chat_is_forked_into_another_identity_and_not_resumed():
     assert not any(m == 'thread/resume' for m, p in connection.calls)
 
 
+def test_a_chat_from_another_model_provider_is_never_copied_into_chatgpt():
+    """Listed since #644: a chat made with a local model, say, isn't forked
+    into a ChatGPT chat (Continue Here, Branch, Retry, Ask Aside), and
+    nothing is sent to Codex."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    source = SessionInfo('external', 'codex:local', 'Local', '/workspace', 'local',
+                         provider='codex', model_provider='ollama')
+    connection = Connection()
+    with pytest.raises(CodexTurnRejected) as refused:
+        CodexOwnedThreads(connection).fork(source, 'Copy')
+    assert refused.value.code == 'other_provider'
+    assert 'other than ChatGPT' in safe_reason(refused.value)
+    assert connection.calls == []
+    # ChatGPT's own chats, and ones whose provider isn't known, still copy.
+    for provider in ('openai', ''):
+        ok = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source',
+                         provider='codex', model_provider=provider)
+        CodexOwnedThreads(Connection()).fork(ok, 'Copy')
+
+
 def test_owned_resume_retains_native_identity_and_chosen_model():
     connection = Connection(response('owned'))
     record = OwnSession('owned', 'Owned', '/workspace', provider='codex', provider_options={'model': 'gpt-default'})

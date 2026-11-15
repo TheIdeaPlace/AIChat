@@ -52,11 +52,13 @@ class Connection:
 def test_lists_all_pages_and_archives_without_loading_threads():
     connection = Connection([
         {"data": [thread()], "nextCursor": "page-2"},
-        {"data": [thread(), thread("two"), thread("child", parentThreadId="one")], "nextCursor": None},
+        {"data": [thread(), thread("two", modelProvider="ollama"), thread("child", parentThreadId="one")], "nextCursor": None},
         {"data": [thread("old")], "nextCursor": None},
     ])
     snapshot = CodexProvider(connection).collect()
     assert [s.key for s in snapshot.sessions] == ["codex:one", "codex:two", "codex:old"]
+    # Each chat says which model provider it was made with (#644).
+    assert snapshot.sessions[1].model_provider == "ollama"
     assert snapshot.sessions[-1].archived
     assert snapshot.sessions[0].state == "status unavailable"
     assert snapshot.sessions[0].created_ms == 100_000
