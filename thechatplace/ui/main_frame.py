@@ -2085,7 +2085,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # chat, a new title, read-only becoming yours) is said at once.
         identity = (info.key, info.title, kind)
         if (not arriving and self._messages_label_key == identity and self.chat_list.HasFocus()
-                and self.messages_label.GetLabel() != f"&{label}:"):
+                and self.messages_label.GetLabel() != self._messages_label_text(label)):
             # Only the state changed, with you in the list: a screen reader
             # says a focused control's new name again, and on a braille
             # display it replaces the message you're on (JAWS showed
@@ -2128,10 +2128,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_messages_label(arriving=True)
         self._update_heading()
 
+    @staticmethod
+    def _messages_label_text(label):
+        """What the label above the messages shows: Alt+M on its "M", and
+        any "&" in the chat's title shown as written, not taken for a second
+        access key (#539)."""
+        return f"&{wx.Control.EscapeMnemonics(label)}:"
+
     def _set_messages_label(self, label):
         self._pending_messages_label = None
-        if self.messages_label.GetLabel() != f"&{label}:":
-            self.messages_label.SetLabel(f"&{label}:")
+        shown = self._messages_label_text(label)
+        if self.messages_label.GetLabel() != shown:
+            self.messages_label.SetLabel(shown)
             set_accessible_name(self.chat_list, label)
 
     def _on_chat_list_left(self, event):

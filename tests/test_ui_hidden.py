@@ -5943,6 +5943,13 @@ def test_a_heading_shows_an_ampersand_as_written(frame, env):
     assert frame.session_heading.GetLabel().startswith("Salt & pepper && more,")
     shown = frame.session_heading.GetLabelText().replace("\n", " ")
     assert shown.startswith("Salt & pepper && more,"), shown
+    # The label above the messages too, keeping only its own Alt+M.
+    assert frame.messages_label.GetLabelText().startswith("Messages in Salt & pepper && more (")
+    assert frame.messages_label.GetLabel().startswith("&Messages in Salt && pepper &&&& more (")
+    assert frame.chat_list.GetName().startswith("Messages in Salt & pepper && more (")
+    # Closing the chat puts the window title back.
+    frame.unload_session()
+    assert frame.GetTitle() == "The Chat Place"
 
 
 def test_rename_says_so_when_titles_cant_be_saved(frame, env, monkeypatch):
