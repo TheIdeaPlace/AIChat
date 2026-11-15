@@ -412,7 +412,10 @@ class CodexSubagentTracker:
             for archived in (False, True):
                 cursor, cursors = None, set()
                 for _ in range(100):
-                    params = {'parentThreadId': parent, 'limit': 100, 'archived': archived, 'sourceKinds': ['subAgentThreadSpawn', 'subAgentReview', 'subAgentOther']}
+                    # Every model provider's (#644): a chat made before the
+                    # provider changed keeps its subagents.
+                    params = {'parentThreadId': parent, 'limit': 100, 'archived': archived, 'modelProviders': [],
+                              'sourceKinds': ['subAgentThreadSpawn', 'subAgentReview', 'subAgentOther']}
                     if cursor:
                         params['cursor'] = cursor
                     page = connection.request('thread/list', params)
@@ -612,7 +615,11 @@ class CodexProvider:
     def collect(self) -> Snapshot:
         sessions, ids = [], set()
         for archived in (False, True):
-            for data in thread_list_pages(self.connection, archived, sortKey="updated_at"):
+            # Every model provider's chats (#644): left out, Codex lists only
+            # the provider it's set to now (codex-rs thread_processor.rs), so
+            # chats made before a switch, ours included, dropped out of the list.
+            for data in thread_list_pages(self.connection, archived, sortKey="updated_at",
+                                          modelProviders=[]):
                 for thread in data:
                     if not isinstance(thread, dict):
                         raise ValueError("Codex returned invalid thread metadata")
