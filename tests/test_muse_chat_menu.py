@@ -218,7 +218,8 @@ EXPECTED = {
               "waiting": said("answer it first")},
     "send_reply_to_another_chat": every(dialog("RelayDialog")),
     "retry_from_here": owned(said("Choose one of your own messages")),
-    "branch_from_here": owned(said(NOT_YET)),
+    # The reply is selected when a chat opens, so Branch asks before copying.
+    "branch_from_here": owned(said("Branch here?")),
     "change_model": owned(dialog("SingleChoiceDialog")),
     "change_effort": owned(dialog("SingleChoiceDialog")),
     "change_permission_mode": owned(dialog("SingleChoiceDialog")),
@@ -461,15 +462,50 @@ def test_retry_from_here_opens_the_copy_with_your_message_to_change(world, monke
     assert any("The original chat is kept" in text for text in world.said), world.said
 
 
-def test_the_messages_menu_offers_retry_but_not_branch_for_a_muse_chat(world):
-    from thechatplace.transcript import USER
+@pytest.mark.parametrize("kind,retry,branch", [("user", True, True), ("assistant", False, True)])
+def test_the_messages_menu_offers_retry_and_branch_for_a_muse_chat(world, kind, retry, branch):
+    from thechatplace.transcript import ASSISTANT, USER
     put_in_case(world, "idle")
-    message = next(m for m in world.frame._chat_messages if m.kind == USER)
+    wanted = USER if kind == "user" else ASSISTANT
+    message = next(m for m in world.frame._chat_messages if m.kind == wanted)
     world.frame._selected_message = lambda: message
     menu = world.frame._message_menu()
     try:
         labels = {item.GetItemLabelText(): item.IsEnabled() for item in menu.GetMenuItems()}
     finally:
         menu.Destroy()
-    assert labels.get("Retry from Here...") is True
-    assert "Branch from Here" not in labels
+    assert labels.get("Retry from Here...") is retry
+    assert labels.get("Branch from Here") is branch
+
+
+@pytest.mark.parametrize("answer", [wx.YES, wx.NO])
+def test_branch_from_here_asks_then_opens_the_copy(world, monkeypatch, answer):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.transcript import ASSISTANT
+    put_in_case(world, "idle")
+    message = next(m for m in world.frame._chat_messages if m.kind == ASSISTANT)
+    monkeypatch.setattr(world.frame, "_selected_message", lambda: message)
+    asked, made = [], []
+    def box(text, caption="", style=0, *a, **k):
+        asked.append((text, caption, style))
+        return answer
+    monkeypatch.setattr(wx, "MessageBox", box)
+    real = world.frame.sessions.owned_action
+    def spy(action, record, *args, **kwargs):
+        if action == "branch":
+            made.append(args)
+            return OwnSession("019a84c2-a1f0-7e3b-9c1e-0000000000f1", args[1], record.cwd,
+                              provider="muse", started=True)
+        return real(action, record, *args, **kwargs)
+    monkeypatch.setattr(world.frame.sessions, "owned_action", spy)
+    world.frame._command_handlers()["branch_from_here"](wx.CommandEvent())
+    text, caption, style = asked[0]
+    assert caption == "Branch from Here" and style & wx.NO_DEFAULT and "this chat is kept" in text
+    copy_ = world.frame.store.get("019a84c2-a1f0-7e3b-9c1e-0000000000f1", provider="muse")
+    if answer == wx.NO:
+        assert made == [] and copy_ is None
+        return
+    assert made == [(message.key, "Muse chat here (branch)")]
+    assert copy_.forked_from == "Muse chat here"
+    assert world.frame._codex_drafts.get(copy_.to_info().key) is None  # nothing to change: a new message
+    assert any("The original chat is kept" in t for t in world.said), world.said

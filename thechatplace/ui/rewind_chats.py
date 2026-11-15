@@ -358,6 +358,10 @@ class RewindChats:
     def on_branch_from_here(self):
         """Chat, Branch from Here, and the messages list's menu: a new chat
         whose history ends with the chosen message, to try another way."""
+        if self._open is not None and self._open.provider == "muse":
+            # Before Claude's branch below, which must never see a Muse chat.
+            self._branch_muse(self._open, self._selected_message())
+            return
         if self._open is not None and self._open.provider == 'codex':
             if not self._require_capability('branch', self._open):
                 return

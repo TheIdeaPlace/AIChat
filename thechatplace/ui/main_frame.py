@@ -2842,10 +2842,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         elif (self._open is not None and self._open.provider == "muse" and self._open.is_own
               and self._can_edit(self._open)):
-            # Retry only: Branch from Here isn't offered for Muse chats.
             rewind_item = menu.Append(wx.ID_ANY, self._keyed("Retr&y from Here...", "retry_from_here"))
             rewind_item.Enable(message is not None and message.kind == USER and bool(message.key))
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
+            branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
+            branch_item.Enable(message is not None and message.kind in rewind_chats.BRANCHABLE
+                               and bool(message.key))
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, self._keyed("&Properties...", "properties"))
         read.Enable(message is not None)

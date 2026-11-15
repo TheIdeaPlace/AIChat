@@ -556,6 +556,51 @@ class CodexChats(SoundHost, CodexExtras):
         self._feedback(f"Creating {title}.")
         self._codex_work(lambda: self.sessions.owned_action("retry", record, message.key, title), created)
 
+    def _branch_muse(self, info, message):
+        """Branch from Here for a Muse chat started here (MuseOwnedChats.branch):
+        a new chat through the whole turn of your message or Muse Code's
+        reply, asked first with No the default, then opened for your next
+        message. The original is kept."""
+        from .. import rewind
+        from ..transcript import ASSISTANT, USER
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("branch", info)  # Muse Code's own chat: read-only
+            return
+        if not self._chat_loaded:
+            self._feedback("Wait for this Muse Code chat to load first.")
+            return
+        if message is None or message.kind not in (USER, ASSISTANT) or not message.key:
+            self._feedback("Choose one of your messages or one of Muse Code's replies in the "
+                           "messages list, then Branch from Here.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        if wx.MessageBox("A new Muse Code chat will start with the whole turn containing this "
+                         "message, and this chat is kept. Muse Code doesn't copy files, and the "
+                         "new chat keeps this one's permission profile. Branch here?",
+                         "Branch from Here", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                         self) != wx.YES:
+            return
+        title = rewind.branch_title(info.title)
+
+        def created(copy, error):
+            if error:
+                self._feedback(copy if isinstance(copy, str) and copy
+                               else "Muse Code could not make the branch.")
+                return
+            copy.forked_from = info.title
+            if not self._store_write(self.store.add, copy):
+                self._feedback("The Muse Code copy was made but could not be saved in The Chat Place.")
+                return
+            self.open_session(copy.to_info())
+            self.refresh_sessions()
+            self.reply_text.SetFocus()
+            self._feedback(f"Opened {title}. The original chat is kept.")
+        self._feedback(f"Creating {title}.")
+        self._codex_work(lambda: self.sessions.owned_action("branch", record, message.key, title), created)
+
     def _muse_ask_aside(self, info):
         """Chat, Ask Aside for a Muse chat started here (MuseAsideRunner):
         read-only, and never asks you anything. Muse keeps the side chat as

@@ -133,3 +133,40 @@ def test_an_unfinished_turn_is_refused_with_why(host):
     host.execution.refuse_cut = True
     with pytest.raises(MuseHistoryError, match="hasn't finished"):
         host.retry(own, key("u-b"), "Synthetic chat (retry)")
+
+
+
+@pytest.mark.parametrize("item,cut", [("r-a", TURN_A), ("u-b", TURN_B), ("r-b", TURN_B)])
+def test_branch_copies_through_the_whole_turn_of_the_message(host, item, cut):
+    """session/fork's cut is inclusive (native): a branch keeps the message's turn."""
+    own = record(host)
+    copy_ = host.branch(own, key(item), "Synthetic chat (branch)")
+    fork = [p for m, p in host.execution.messages if m == "session/fork"]
+    assert [f["cutPoint"] for f in fork] == [{"lastTurnId": cut}]
+    assert copy_.cli_session_id == FORK_ID and copy_.title == "Synthetic chat (branch)"
+    assert host.execution.fork["approvalMode"]["mode"] == "promptUnmatched"
+    host.prepare(copy_)
+    assert not any(m == "turn/start" for m, _ in host.execution.messages)
+
+
+def test_branch_keeps_the_originals_permission_profile(host):
+    own = record(host)
+    host.set_mode(own, ":read-only")
+    copy_ = host.branch(own, key("r-a"), "Synthetic chat (branch)")
+    assert copy_.provider_options == {"muse_profile": ":read-only"}
+    host.prepare(copy_)
+
+
+@pytest.mark.parametrize("item", ["not-there"])
+def test_only_your_messages_and_replies_can_be_branched_from(host, item):
+    own = record(host)
+    with pytest.raises(MuseHistoryError, match="one of Muse Code's replies"):
+        host.branch(own, key(item), "Synthetic chat (branch)")
+    assert not any(m == "session/fork" for m, _ in host.execution.messages)
+
+
+def test_branching_from_an_unfinished_turn_is_refused_with_why(host):
+    own = record(host)
+    host.execution.refuse_cut = True
+    with pytest.raises(MuseHistoryError, match="hasn't finished"):
+        host.branch(own, key("r-b"), "Synthetic chat (branch)")

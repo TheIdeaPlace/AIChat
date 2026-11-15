@@ -350,3 +350,19 @@ only the first ("zebra"); a Read only original gave a Read only copy; a
 retry from the first message made a fresh chat; the original kept its four
 messages. The RewindDialog with Muse's note still needs the VM visual probe.
 
+### Branch from Here done (2026-11-15)
+
+`session/fork`'s cut is inclusive (checked for Retry), so a branch is a fork
+at the chosen message's own turn. Retry's code became shared helpers in
+`MuseOwnedChats`: `_history_turns()` (the chosen item and the turn order),
+`_fork_copy()` (fork, `promptUnmatched`, the original's profile, the policy
+check) and `_keep_profile()`; `retry()` cuts at the turn before your message,
+`branch()` at your message's or Muse Code's reply's own turn. The window
+(`_branch_muse`, before Claude's branch path) asks first with No the default,
+then saves and opens the copy with an empty reply box; the messages list's
+menu offers Branch from Here for a Muse chat started here too.
+
+Checked natively: a branch from the first reply knew "zebra"; from the
+second message, "zebra otter"; Retry after the refactor, "zebra"; the
+original kept its four messages.
+

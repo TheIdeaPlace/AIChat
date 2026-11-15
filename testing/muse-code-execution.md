@@ -82,10 +82,13 @@ decision, but not the command's effect.
    Auto-review or Unrestricted: a warning asks first with No focused; No
    keeps the old profile. Set it back to Ask me. In the messages list,
    choose your second message and press Ctrl+Shift+Z (or Retry from Here on
-   the list's menu; Branch from Here isn't offered): the dialog says files
+   the list's menu): the dialog says files
    aren't put back; OK opens "*title* (retry)" with that message in the
    reply box and focus there. Its history ends before the message, and the
-   original chat is unchanged.
+   original chat is unchanged. Choose Muse Code's first reply and Branch from
+   Here: a question with No focused; No changes nothing. Yes opens
+   "*title* (branch)" with an empty reply box; ask what it remembers and it
+   knows only the first turn. The original is unchanged.
 8. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become

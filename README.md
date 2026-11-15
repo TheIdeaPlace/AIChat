@@ -1608,6 +1608,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   chat of the history before one of your messages and opens it with that message in the
   reply box to change and send; the original chat is kept. Files aren't put back, and
   the copy keeps the chat's permission profile.
+  Branch from Here, on the Chat menu and the messages list's menu, asks first, then
+  makes a new chat through the whole turn of your message or Muse Code's reply, ready for
+  your next message; the original is kept.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow
