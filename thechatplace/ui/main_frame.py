@@ -1798,8 +1798,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # and selecting it again can make a screen reader say it twice.
                 if self.session_list.GetSelection() != target:
                     self.session_list.SetSelection(target)
-            elif not self._list_keys:
-                self._announce_if_list_emptied()
+            # Emptied by your own Hide or Delete: no focus event here (#649). What the command
+            # says ("Hid ...") is the announcement, and in the test VM NVDA dropped the event's
+            # "No sessions" behind it anyway; NVDA+Tab reads "No sessions" either way.
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()

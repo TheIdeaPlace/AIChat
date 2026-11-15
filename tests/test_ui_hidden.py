@@ -3511,9 +3511,9 @@ def test_f5_emptying_the_list_leaves_it_to_the_count_it_says(frame, monkeypatch)
 
 
 @msaa
-def test_hiding_or_a_tool_hiding_the_last_session_under_you_says_no_sessions(frame, monkeypatch):
-    # These take the row out at once and refresh after, so the refresh finds the list
-    # already empty (#649): they say so themselves.
+def test_a_tool_hiding_the_last_session_under_you_says_no_sessions(frame, monkeypatch):
+    # A session tool takes the row out at once and refreshes after, so the refresh finds the
+    # list already empty (#649): it says so itself. Your own Hide says "Hid ..." instead.
     from thechatplace.ui import main_frame
     told = []
     monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
@@ -3523,16 +3523,17 @@ def test_hiding_or_a_tool_hiding_the_last_session_under_you_says_no_sessions(fra
     select(frame, "Quiet one")
     frame.on_hide()
     assert frame.session_list.GetCount() == 0
-    assert told == [frame.session_list]
     settle(frame)
-    assert told == [frame.session_list]  # the refresh after doesn't say it again
+    assert told == []
 
     frame._set_session_filter("Blocked one")
     assert frame.session_list.GetCount() == 1
-    told.clear()
+    select(frame, "Blocked one")
     assert frame._session_tools_hide(frame._selected_session()) is None
     assert frame.session_list.GetCount() == 0
     assert told == [frame.session_list]
+    settle(frame)
+    assert told == [frame.session_list]  # the refresh after doesn't say it again
 
 
 @msaa
