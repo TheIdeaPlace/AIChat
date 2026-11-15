@@ -3382,6 +3382,41 @@ def test_rows_that_are_not_messages_read_as_shown(frame):
     assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")
 
 
+@msaa
+def test_an_empty_session_list_reads_no_sessions_not_unknown(frame, monkeypatch):
+    # Windows reports focus on row 1 of an empty list box, which doesn't exist, so NVDA read
+    # "unknown" (#621). While the list is empty its accessible answers for that row and says
+    # the list itself has focus; with rows, everything is Windows' as before.
+    accessible = frame.session_list.GetAccessible()
+    assert accessible is frame.session_list._hub_empty_accessible
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    assert frame.session_list.GetCount() == 3
+    assert accessible.GetName(0) == (wx.ACC_NOT_IMPLEMENTED, "")  # the label names the list
+    assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")  # the row's own text
+    assert accessible.GetRole(1)[0] == wx.ACC_NOT_IMPLEMENTED
+    assert accessible.GetState(1)[0] == wx.ACC_NOT_IMPLEMENTED
+    assert accessible.GetFocus() == (wx.ACC_NOT_IMPLEMENTED, 0, None)
+
+    frame._set_session_filter("nothing matches this")
+    assert frame.session_list.GetCount() == 0
+    assert accessible.GetName(1) == (wx.ACC_OK, "No sessions")
+    assert accessible.GetRole(1) == (wx.ACC_OK, wx.ROLE_SYSTEM_LISTITEM)
+    assert accessible.GetState(1) == (wx.ACC_OK, wx.ACC_STATE_SYSTEM_FOCUSED)
+    assert accessible.GetFocus() == (wx.ACC_OK, 0, accessible)
+    # The list's own name is still Windows', from its label, which follows the view.
+    assert accessible.GetName(0) == (wx.ACC_NOT_IMPLEMENTED, "")
+    assert frame.sessions_label.GetLabel().startswith("Session &list, matching")
+    assert accessible.GetName(2) == (wx.ACC_NOT_IMPLEMENTED, "")  # only Windows' row 1
+    # Without focus, Windows answers for the list, and the row isn't focused.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    assert accessible.GetFocus() == (wx.ACC_NOT_IMPLEMENTED, 0, None)
+    assert accessible.GetState(1) == (wx.ACC_OK, 0)
+
+    frame._set_session_filter("")
+    assert frame.session_list.GetCount() == 3
+    assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")
+
+
 def test_whole_message_setting_round_trips_and_is_in_settings(frame, tmp_path):
     from thechatplace.ui.dialogs import SettingsDialog
     path = tmp_path / "s.json"

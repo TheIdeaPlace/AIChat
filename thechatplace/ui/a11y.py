@@ -204,6 +204,65 @@ class ListItemsAccessible(wx.Accessible):
         return (wx.ACC_NOT_IMPLEMENTED, 0, None)
 
 
+class EmptyListAccessible(wx.Accessible):
+    """A list box that says it's empty, rather than "unknown", when focus reaches it (#621).
+
+    Tabbing to an empty Windows list box, Windows reports focus on the list and then on its
+    row 1, which doesn't exist, and the list says row 1 has focus when asked. Every question
+    about that row fails, so NVDA read it as "unknown". While the list is empty this answers
+    for row 1 as a list item named ``empty_text``, and says the list itself has focus. With
+    rows in it, everything is left to wx, including the list's own name, which Windows takes
+    from the label before it ("Session list:", with its Alt+L), so rows read as before.
+    """
+
+    def __init__(self, window: wx.Window, empty_text: str):
+        super().__init__(window)
+        self._empty_text = empty_text
+
+    def _empty(self) -> bool:
+        window = self.GetWindow()
+        return bool(window) and window.GetCount() == 0
+
+    def _has_focus(self) -> bool:
+        window = self.GetWindow()
+        return bool(window) and wx.Window.FindFocus() is window
+
+    def GetName(self, childId):
+        if childId == 1 and self._empty():
+            return (wx.ACC_OK, self._empty_text)
+        return (wx.ACC_NOT_IMPLEMENTED, "")
+
+    def GetRole(self, childId):
+        if childId == 1 and self._empty():
+            return (wx.ACC_OK, wx.ROLE_SYSTEM_LISTITEM)
+        return (wx.ACC_NOT_IMPLEMENTED, wx.ROLE_NONE)
+
+    def GetState(self, childId):
+        if childId == 1 and self._empty():
+            return (wx.ACC_OK, wx.ACC_STATE_SYSTEM_FOCUSED if self._has_focus() else 0)
+        return (wx.ACC_NOT_IMPLEMENTED, 0)
+
+    def GetFocus(self):
+        """The list itself while it's empty and focused, not the row 1 Windows would give (see
+        ``ListItemsAccessible.GetFocus`` for the shape wxPython wants)."""
+        if self._empty() and self._has_focus():
+            return (wx.ACC_OK, 0, self)
+        return (wx.ACC_NOT_IMPLEMENTED, 0, None)
+
+
+def set_empty_list_text(listbox: wx.ListBox, empty_text: str) -> None:
+    """What a screen reader reads on ``listbox`` while it has no rows (#621). Windows only:
+    the missing row is the Windows list box's."""
+    if wx.Platform != "__WXMSW__":
+        return
+    try:
+        accessible = EmptyListAccessible(listbox, empty_text)
+        listbox.SetAccessible(accessible)
+        listbox._hub_empty_accessible = accessible  # keep it alive
+    except (NotImplementedError, AttributeError):
+        pass
+
+
 def set_list_items_accessible(listbox: wx.ListBox, name, item_text) -> None:
     if gtk_a11y.IS_LINUX:
         _describe_rows(listbox, name, item_text)

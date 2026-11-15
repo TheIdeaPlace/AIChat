@@ -104,8 +104,8 @@ from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_
                        release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
-                   set_voiceover_menu)
+from .a11y import (refresh_list_item, set_accessible_name, set_empty_list_text,
+                   set_list_items_accessible, set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
@@ -820,6 +820,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # lists share the width by proportion instead.
         self.session_list.SetMinSize(dip(self, LIST_MIN_WIDTH))
         set_accessible_name(self.session_list, "Session list")
+        # Read as "No sessions", not "unknown", when nothing is listed (#621).
+        set_empty_list_text(self.session_list, "No sessions")
         left.Add(self.session_list, 1, wx.EXPAND | wx.ALL, 8)
         self.session_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_session)
         self.session_list.Bind(wx.EVT_CONTEXT_MENU, self._on_session_menu)
