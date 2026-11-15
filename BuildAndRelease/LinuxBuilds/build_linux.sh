@@ -174,7 +174,7 @@ rm -rf "$APP"
 "$PY" -m PyInstaller --noconfirm --clean --windowed --onedir --name TheChatPlace \
     --hidden-import velopack --hidden-import thechatplace.providers.codex \
     --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot \
-    --hidden-import thechatplace.providers.copilot_runtime --hidden-import thechatplace.muse_account --hidden-import thechatplace.muse_signin --hidden-import thechatplace.providers.muse --hidden-import thechatplace.providers.muse_connection \
+    --hidden-import thechatplace.providers.copilot_runtime --hidden-import thechatplace.muse_account --hidden-import thechatplace.muse_signin --hidden-import thechatplace.providers.muse --hidden-import thechatplace.providers.muse_connection --hidden-import thechatplace.providers.muse_input \
     --collect-data theideaplace_appkit \
     --add-data "thechatplace/assets:thechatplace/assets" \
     --add-data "thechatplace/speech:thechatplace/speech" \

@@ -115,6 +115,11 @@ class Execution:
                     raise MuseRequestError(-32032)
             else:
                 assert part["type"] == "text" and part["text"].strip()
+            for extra in params["input"][1:]:
+                # Installed 1.4.20 takes images after the text; bad base64 is -32602.
+                assert extra["type"] == "image" and set(extra) <= {
+                    "type", "base64Data", "mediaType", "clientRef", "width", "height"}
+                assert extra["base64Data"] and extra["mediaType"].startswith("image/")
             assert uuid.UUID(params["commandId"]).version == 7
             self.session.update(status="running", activeTurnId=params["commandId"])
             return {"commandId": params["commandId"], "turnId": params["commandId"], "status": "accepted",
@@ -404,7 +409,7 @@ def test_history_and_foreign_actions_remain_read_only(owned):
     foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
     assert provider.capabilities(foreign) == SessionCapabilities()
     own = provider.create_owned("C:\\synthetic", "Synthetic own chat")
-    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True, aside=True)
+    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True, aside=True, attachments=True)
     assert provider.open_reader(foreign).connection is provider.connection
     assert provider.open_reader(own.to_info()).connection is owned.execution
     provider.close()

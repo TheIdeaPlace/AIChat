@@ -246,7 +246,8 @@ class MuseProvider:
         # Foreign chats stay read-only even when execution exists; only
         # chats started here can send, stop, or answer permissions.
         enabled = self._owned is not None and session.is_own
-        return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled, aside=enabled)
+        return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled, aside=enabled,
+                                   attachments=enabled)
 
     def execution_available(self):
         return self._owned is not None and self._owned.available()
@@ -511,6 +512,11 @@ def _tiers(entry) -> tuple:
     return tuple(t for t in variants if t in EFFORT_LABELS) if isinstance(variants, list) else ()
 
 
+#: The most a message's parts may hold, base64 images included: under the
+#: connection's 10 MB frame, with room for the request around them.
+MAX_INPUT_BYTES = 8 * 1024 * 1024
+
+
 class MuseSaveError(MuseHistoryError):
     """The app couldn't save a turn's state. Said as itself, not as Muse
     being unavailable: Muse may be fine (a refused save once hid that)."""
@@ -695,7 +701,11 @@ class MuseOwnedChats:
             saved = self._saved(record)
             if saved.get("command_id") == key:
                 raise MuseHistoryError("That command was already submitted. Refresh the chat instead of sending it again.")
-            parts = self._input(record, text)
+            parts = self._input(record, str(text))
+            parts += list(getattr(text, "images", ()))  # a MuseInput's attached images
+            if sum(len(str(value)) for part in parts for value in part.values()) > MAX_INPUT_BYTES:
+                raise MuseHistoryError("These attachments are too large to send together. "
+                                       "Attach fewer or smaller images.")
             command = {"command_id": key, "turn_id": "", "state": "submitting"}
             self._remember(record, command, required=True)
             self._in_flight[record.cli_session_id] = command

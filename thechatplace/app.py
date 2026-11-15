@@ -91,6 +91,7 @@ def smoke_test(out_path: str) -> int:
         report["muse_setup"] = True
         from .providers.muse import MuseProvider  # noqa: F401 - no process on import
         from .providers.muse_connection import HistoryConnection  # noqa: F401
+        from .providers.muse_input import build_input  # noqa: F401 - imported when attaching
         report["muse_reader"] = True
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")

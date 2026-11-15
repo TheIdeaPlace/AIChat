@@ -255,3 +255,30 @@ request); a question needing a shell command made no request (the read-only
 side chat couldn't run it, the #149 sandbox problem) and the model said so;
 no decision was sent and the main chat got only its own messages.
 
+### Step 3, Attach Files done (2026-11-14)
+
+Native check first (installed 1.4.20): an `image` input part
+(`base64Data`, `mediaType`, optional `clientRef`) reaches the model (128 px
+red and blue squares named correctly; an 8 px one was called grey, so tiny
+images say little); bad base64 is -32602 before any turn starts. A file goes
+as `@"path"` in the text: Muse reads it with `read_file`, inside the chat's
+folder and outside it (only writes are confined to the workspace).
+
+- `providers/muse_input.py`: `MuseInput` (a `str`, as `CodexInput` is, so
+  the send path, announcements and recovery keep working) carries image
+  parts; `build_input()` makes images that pass the app's checks (signature,
+  `fits_inline`) image parts named in the text, and every other file an
+  `Attached: @"path"` line. At most 20; a file gone is refused.
+- `MuseOwnedChats.send()` appends the images after the text (or skill) part,
+  and refuses more than `MAX_INPUT_BYTES` (8 MB, under the 10 MB frame)
+  before saving or sending anything. A skill message keeps its attachments:
+  the lines join its arguments.
+- `attachments` is granted to chats started here only; the window builds the
+  `MuseInput` on Send and clears the attachments once it has gone.
+- The new module is in all four PyInstaller command lines and the smoke
+  test, as AGENTS.md requires for a lazily imported one.
+
+Checked natively through `build_input()` and `send()`: a green picture and
+a text file from outside the folder in one message; the reply was "green
+otter".
+

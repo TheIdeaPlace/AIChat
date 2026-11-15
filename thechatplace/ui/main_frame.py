@@ -5355,7 +5355,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if self.reply_text.GetValue().strip() == message:
                     self.reply_text.SetValue('')
                 return
-            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
+            if not message and not (info.provider in ('codex', 'muse')
+                                    and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -5372,10 +5373,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     except (ValueError, OSError) as error:
                         self._feedback(str(error))  # too long, too many, or a file gone
                         return
+                attached = self._attachments.get(self._attachment_key(info), [])
+                if info.provider == 'muse' and attached:
+                    from ..providers.muse_input import build_input as build_muse_input
+                    try:
+                        message = build_muse_input(message, attached)
+                    except (ValueError, OSError) as error:
+                        self._feedback(str(error) if isinstance(error, ValueError)
+                                       else "An attached file is no longer there. Attach it again.")
+                        return
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
                 self._send_codex_owned(record, message)
-                if info.provider == 'codex':
+                if info.provider in ('codex', 'muse'):
                     self._clear_attachments(self._attachment_key(info))
                     getattr(self, '_codex_skills', {}).pop(info.key, None)
             return

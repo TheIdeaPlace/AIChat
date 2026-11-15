@@ -209,7 +209,7 @@ EXPECTED = {
         "waiting": said("Muse chat here: Muse Code is waiting for you."),
         "foreign": said(READ_ONLY)},
     "insert_command": owned(dialog("CommandPickerDialog")),
-    "attach_files": owned(said(NOT_YET)),
+    "attach_files": owned(dialog("FileDialog")),
     "prompts": every(dialog("PromptsDialog")),
     "send_and_save_prompt": owned(said("Type a message first."),
                                   said("read-only here. Reply in Muse Code.")),
@@ -349,3 +349,25 @@ def test_a_side_chat_ask_aside_made_is_hidden_here(world):
     put_in_case(world, "idle")
     world.frame._hide_muse_aside("019a84c2-a1f0-7e3b-9c1e-0000000000aa")
     assert "muse:019a84c2-a1f0-7e3b-9c1e-0000000000aa" in world.frame.hidden
+
+
+def test_attached_files_go_with_the_next_muse_message(world, tmp_path, monkeypatch):
+    from test_muse_input import png
+    from thechatplace.providers.muse_input import MuseInput
+    put_in_case(world, "idle")
+    picture = png(tmp_path / "synthetic.png")
+    monkeypatch.setattr(wx.FileDialog, "ShowModal", lambda self: wx.ID_OK)
+    monkeypatch.setattr(wx.FileDialog, "GetPaths", lambda self: [str(picture)])
+    world.frame._command_handlers()["attach_files"](wx.CommandEvent())
+    sent = []
+    real = world.frame.sessions.owned_action
+    def spy(action, record, *args, **kwargs):
+        if action == "send":
+            sent.append(args[0])
+        return real(action, record, *args, **kwargs)
+    monkeypatch.setattr(world.frame.sessions, "owned_action", spy)
+    world.frame.reply_text.SetValue("What is this?")
+    world.frame.on_send()
+    assert isinstance(sent[0], MuseInput) and len(sent[0].images) == 1
+    assert "Attached image: synthetic.png" in str(sent[0])
+    assert not world.frame._attachments.get(world.frame._attachment_key(world.owned))
