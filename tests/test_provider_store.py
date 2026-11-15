@@ -356,6 +356,9 @@ def test_muse_finished_command_keeps_how_it_ended(tmp_path, terminal):
     {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "allowAll"},
     {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "prompt": "synthetic"},
     {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "completed", "terminal": "allowAll"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "steers": ["not-a-uuid"]},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running",
+     "steers": ["00000000-0000-7000-8000-000000000000"] * 17},
 ])
 def test_muse_recovery_store_refuses_invalid_commands_and_prompt_content(tmp_path, command):
     store = OwnSessionStore(tmp_path / "sessions.json")
@@ -535,3 +538,15 @@ def test_a_codex_setting_cleared_here_stays_cleared_and_a_later_one_stays(tmp_pa
     codex, = _records(tmp_path, "provider-sessions.json")
     assert codex["provider_extras"] == {"later_mode": "pair", "mcp_servers": ["docs"]}
     assert OwnSessionStore(path).get("same-id", "codex").provider_options == {"mcp_servers": ["docs"]}
+
+
+
+def test_muse_command_keeps_the_steers_sent_into_its_turn(tmp_path):
+    import uuid
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    ident = str(uuid.uuid7())
+    command = {"command_id": ident, "turn_id": ident, "state": "running", "steers": [str(uuid.uuid7())]}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}

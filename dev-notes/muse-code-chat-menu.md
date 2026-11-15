@@ -119,3 +119,25 @@ Each fix started as a failing row in `EXPECTED`; the sweep now has no xfails.
   Permissions says "Muse Code decides what it may do." Limited to Muse; the
   same wording could serve Codex and Copilot chats started elsewhere
   (`HOME_APPS`), which `tests/test_ui_rewind.py` pins today.
+
+### Step 3, Steer done (2026-11-14)
+
+Native check first (installed 1.4.20): `turn/steer` takes `sessionId`,
+`commandId` (UUIDv7), `expectedTurnId` and `input`; accepted while the named
+turn runs (the ack names it), refused with -32030 `commandRejected` once it
+has ended. Muse records the steer as **its own turn**, id = the steer's
+`commandId`, after the steered one, so the chat's last turn may be the steer's.
+
+- `turn/steer` is allowlisted; `MuseProvider.capabilities()` grants `steer`
+  to chats started here only.
+- `MuseOwnedChats.steer()` saves the steer id with the turn (`steers`, at most
+  16, UUIDv7, allowed by `own_store`) before sending, forgets it if Muse
+  refuses, and `_reconcile` accepts the turn's end from the steered turn or
+  any saved steer. Checked natively with no polling during the steer's turn.
+- The window (`_steer_muse_owned`) steers a running turn, asks you to answer
+  first while a request waits, and puts refused or unconfirmed text back in
+  the reply box with Muse's reason.
+- Found on the way: `codex_diagnostics.safe_reason` passed no Muse message, so
+  every Muse refusal reached the window as a generic one. Muse errors are all
+  the app's own words, so they now pass (same length and control-character
+  guard as Copilot's).

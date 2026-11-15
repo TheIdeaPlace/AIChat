@@ -213,9 +213,9 @@ EXPECTED = {
     "prompts": every(dialog("PromptsDialog")),
     "send_and_save_prompt": owned(said("Type a message first."),
                                   said("read-only here. Reply in Muse Code.")),
-    # During a turn, whether Muse can be steered comes before any text, as for Codex.
-    "steer": {**owned(said("Muse Code can't take a message during its turn.")),
-              "idle": said("Type a message first.")},
+    # Steer goes into a running turn; waiting for you, answer first.
+    "steer": {**owned(said("Type a message first.")),
+              "waiting": said("answer it first")},
     "send_reply_to_another_chat": every(dialog("RelayDialog")),
     "retry_from_here": owned(said(NOT_YET)),
     "branch_from_here": owned(said(NOT_YET)),
@@ -232,7 +232,8 @@ EXPECTED = {
 #: The same commands with text in the reply box, where it changes the outcome.
 EXPECTED_WITH_TEXT = {
     ("steer", "idle"): sent("turn/start"),
-    ("steer", "running"): said("Muse Code can't take a message during its turn."),
+    ("steer", "running"): sent("turn/steer"),
+    ("steer", "waiting"): said("answer it first"),
 }
 
 PAIRS = [(command_id, case) for command_id in chat_menu_ids() for case in CASES]
@@ -283,3 +284,17 @@ def test_chat_menu_command_does_what_is_expected(world, command_id, case):
 def test_chat_menu_command_with_text_typed(world, command_id, case):
     check(run(world, command_id, case, text="Synthetic follow-up"),
           EXPECTED_WITH_TEXT[(command_id, case)])
+
+
+def test_steer_clears_the_reply_box_once_muse_takes_it(world):
+    run(world, "steer", "running", text="Synthetic change of plan")
+    assert world.frame.reply_text.GetValue() == ""
+    assert "turn/steer" in [m for m, _ in world.execution.messages]
+
+
+def test_a_refused_steer_puts_the_text_back_with_why(world):
+    from thechatplace.providers.muse_connection import MuseRequestError
+    world.execution.error = ("turn/steer", MuseRequestError(-32030))
+    result = run(world, "steer", "running", text="Synthetic change of plan")
+    assert world.frame.reply_text.GetValue() == "Synthetic change of plan"
+    assert any("already ended" in text and "back in the reply box" in text for text in result["said"])

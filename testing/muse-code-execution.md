@@ -44,8 +44,12 @@ decision, but not the command's effect.
    cancellation, then you hear "*title*: Muse Code stopped." (not "finished").
    Sending straight after a finished or stopped turn starts a new turn;
    nothing is sent twice. Stop with nothing running says "Nothing is running
-   in *title*." Steer (Ctrl+Alt+Enter) during a turn says Muse Code can't take
-   a message during its turn, and nothing is sent. Chat, Stop Background Task
+   in *title*." Steer (Ctrl+Alt+Enter) with text typed during a turn sends it into
+   the turn: the reply box empties, you hear it was sent, and Muse's reply
+   follows it. Once the turn has ended, Steer sends the text as a new message.
+   If the turn ends just as you steer, Muse refuses it, and the text comes
+   back to the reply box with why. While a request waits, Steer says to answer it
+   first. Chat, Stop Background Task
    says Muse Code chats have no background tasks to stop.
 6. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
    own mode, no kept rules, and the same answering instructions. Change

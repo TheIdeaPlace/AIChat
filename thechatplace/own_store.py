@@ -169,8 +169,21 @@ def _valid_muse_options(options: dict) -> bool:
     command = options["muse_command"]
     if not isinstance(command, dict) or not (
             {"command_id", "turn_id", "state"} <= set(command)
-            <= {"command_id", "turn_id", "state", "terminal"}):
+            <= {"command_id", "turn_id", "state", "terminal", "steers"}):
         return False
+    # Steers sent into the turn: Muse makes each its own turn (id = its
+    # commandId), so the turn's end may be a steer's. Bounded UUIDv7 ids only.
+    if "steers" in command:
+        steers = command["steers"]
+        if not isinstance(steers, list) or len(steers) > 16:
+            return False
+        for steer in steers:
+            try:
+                parsed = uuid.UUID(steer)
+            except (ValueError, TypeError, AttributeError):
+                return False
+            if parsed.version != 7 or str(parsed) != steer:
+                return False
     # How native Muse ended a finished turn, so Stop isn't said as finished.
     if "terminal" in command and (command["state"] != "completed"
                                   or command["terminal"] not in {"completed", "cancelled", "failed"}):

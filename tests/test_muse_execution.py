@@ -90,6 +90,17 @@ class Execution:
             self.session.update(status="running", activeTurnId=params["commandId"])
             return {"commandId": params["commandId"], "turnId": params["commandId"], "status": "accepted",
                     "disposition": "started", "startedNewTurn": True}
+        if method == "turn/steer":
+            # Installed 1.4.20: accepted only for the turn still running,
+            # else commandRejected (-32030); the ack names that turn.
+            assert set(params) == {"sessionId", "commandId", "expectedTurnId", "input"}
+            assert uuid.UUID(params["commandId"]).version == 7
+            assert params["input"] and params["input"][0]["type"] == "text"
+            if (self.session["status"] != "running"
+                    or params["expectedTurnId"] != self.session["activeTurnId"]):
+                raise MuseRequestError(-32030)
+            return {"commandId": params["commandId"], "status": "accepted",
+                    "turnId": params["expectedTurnId"]}
         if method == "turn/cancel":
             assert uuid.UUID(params["commandId"]).version == 7
             assert params["turnId"] == self.session["activeTurnId"]
@@ -331,7 +342,7 @@ def test_history_and_foreign_actions_remain_read_only(owned):
     foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
     assert provider.capabilities(foreign) == SessionCapabilities()
     own = provider.create_owned("C:\\synthetic", "Synthetic own chat")
-    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True)
+    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True)
     assert provider.open_reader(foreign).connection is provider.connection
     assert provider.open_reader(own.to_info()).connection is owned.execution
     provider.close()
@@ -459,3 +470,59 @@ def test_stop_says_whether_anything_was_running(owned):
     assert not any(m == "turn/cancel" for m, _ in owned.execution.messages)
     owned.send(own, "Synthetic question")
     assert owned.stop(own) == "cancelling"
+
+
+
+def test_steer_reaches_the_running_turn_and_its_turn_counts_as_the_end(owned):
+    """Native 1.4.20 records a steer as its own turn, id = the steer's
+    commandId, after the steered one: that turn ending ends the chat's turn."""
+    own = record(owned)
+    saved = []
+    owned.set_persistence(lambda item: saved.append(copy.deepcopy(item.provider_options["muse_command"])))
+    owned.send(own, "Synthetic question")
+    turn = owned.execution.session["activeTurnId"]
+    steer = owned.steer(own, "Synthetic change of plan")
+    method, params = owned.execution.messages[-1]
+    assert method == "turn/steer" and params["expectedTurnId"] == turn
+    assert params["input"] == [{"type": "text", "text": "Synthetic change of plan"}]
+    assert steer in saved[-1]["steers"]  # saved before it went
+    owned.execution.last_turn = {"turnId": steer, "terminal": "completed"}
+    owned.execution.session.update(status="idle", activeTurnId=None)
+    polled = owned.poll(own)
+    assert polled["state"] == "idle" and polled["terminal"] == "completed"
+
+
+def test_a_late_steer_is_refused_and_forgotten(owned):
+    own = record(owned)
+    owned.send(own, "Synthetic question")
+    # Read as running, ended before the steer arrived: Muse refuses it.
+    owned.execution.error = ("turn/steer", MuseRequestError(-32030))
+    with pytest.raises(MuseHistoryError, match="already ended"):
+        owned.steer(own, "Synthetic change of plan")
+    assert not own.provider_options["muse_command"].get("steers")
+
+
+def test_steer_needs_a_running_turn_and_sends_nothing_otherwise(owned):
+    own = record(owned)
+    with pytest.raises(MuseHistoryError, match="no turn running"):
+        owned.steer(own, "Synthetic change of plan")
+    assert not any(m == "turn/steer" for m, _ in owned.execution.messages)
+
+
+def test_steer_is_a_capability_of_chats_started_here_only(owned):
+    provider = MuseProvider(connection=object(), execution=owned.execution)
+    own_info = record(owned).to_info()
+    foreign = session_from_muse({"sessionId": "external-1", "name": "Synthetic"})
+    assert provider.capabilities(own_info).steer is True
+    assert provider.capabilities(foreign).steer is False
+
+
+def test_muse_reasons_reach_the_window():
+    """The window shows a worker's error only through safe_reason. Muse's
+    messages are all the app's own words (MuseRequestError keeps just the
+    code), so they're shown; without this every Muse refusal became generic."""
+    from thechatplace.codex_diagnostics import safe_reason
+    assert safe_reason(MuseHistoryError("That turn has already ended.")) == "That turn has already ended."
+    assert safe_reason(MuseRequestError(-32030)) == str(MuseRequestError(-32030))
+    assert safe_reason(MuseHistoryError("x" * 1001)) == ""
+    assert safe_reason(MuseHistoryError("line\nbreak")) == ""

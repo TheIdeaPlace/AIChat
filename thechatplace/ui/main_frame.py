@@ -6270,6 +6270,48 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("This chat is still loading. Steer again in a moment.")
         return True
 
+    def _steer_muse_owned(self, info):
+        """Steer for a Muse chat started here, from Muse's own state
+        (_muse_runtime). Muse refuses a steer for a turn that has ended
+        (expectedTurnId), so it never lands in the next one; refused or
+        unconfirmed, the text comes back to the reply box, never resent."""
+        state = self._muse_runtime.get(info.cli_session_id, {}).get("state", "idle")
+        if state not in ("running", "waiting", "cancelling", "submitting"):
+            self.on_send()  # nothing running to steer (unknown: Send explains)
+            return
+        if state == "waiting":
+            self._feedback("Muse Code is waiting for you: answer it first with "
+                           f"{key_name(your_key('Ctrl+Shift+A'))}.")
+            return
+        if state != "running":
+            self._feedback("Muse Code can't take a message while its turn is starting or "
+                           "stopping. Send it once the turn has ended.")
+            return
+        message = self.reply_text.GetValue().strip()
+        if not message:
+            self._feedback("Type a message first.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback("That chat is no longer in The Chat Place's list.")
+            return
+        self.reply_text.SetValue("")
+        self._codex_drafts.pop(info.key, None)
+
+        def done(result, error):
+            if error:
+                self._restore_codex_text(info.key, (message,))
+                self._sound(sound_events.NOT_SENT, info.key)
+                reason = result or "Muse Code could not confirm your message."
+                self._feedback(f"{reason} Your message is back in the reply box.")
+            else:
+                self._sound(sound_events.STEERED, info.key)
+                self._feedback(announce.steered_text(record.title, message, self.speech.announce,
+                                                     self.speech.announce_own, accepted=True))
+                self._poll_muse_owned(record)
+            self._update_send_state()
+        self._codex_work(lambda: self.sessions.owned_action("steer", record, message), done)
+
     def _can_steer(self, info: Optional[SessionInfo]) -> bool:
         """Whether this chat's provider can take a message into a running turn
         (#238, #239)."""
@@ -6289,14 +6331,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.on_send()
             return
         if info.provider == "muse" and self._can_edit(info):
-            # Muse's state is its own (_muse_runtime), and Muse can't be
-            # steered: say so during a turn, rather than try to send.
-            state = self._muse_runtime.get(info.cli_session_id, {}).get("state", "idle")
-            if state not in ("running", "waiting", "cancelling", "submitting"):
-                self.on_send()  # nothing running to steer (unknown: Send explains)
-                return
-            self._feedback("Muse Code can't take a message during its turn. Wait for it to "
-                           f"finish, or press {key_name(your_key('Ctrl+.'))} to stop it.")
+            self._steer_muse_owned(info)
             return
         if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)

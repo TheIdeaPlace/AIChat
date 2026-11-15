@@ -36,6 +36,13 @@ def safe_reason(error):
     from .providers.codex_features import CodexFeatureError
     if type(error) is CodexFeatureError:
         return CodexFeatureError.REASONS.get(error.code, '')
+    from .providers.muse_connection import MuseHistoryError
+    if isinstance(error, MuseHistoryError):
+        # Every Muse error is the app's own words: MuseRequestError keeps only
+        # the code, and the connection's _error is a fixed sentence. Without
+        # this, each Muse refusal reached the window as a generic message.
+        text = str(error)
+        return text if len(text) <= 1000 and not any(ord(c) < 32 for c in text) else ''
     if _copilot_error(error):
         # Copilot's runtime words every reason it gives to be shown (#370).
         text = str(error)

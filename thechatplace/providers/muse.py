@@ -244,7 +244,7 @@ class MuseProvider:
         # Foreign chats stay read-only even when execution exists; only
         # chats started here can send, stop, or answer permissions.
         enabled = self._owned is not None and session.is_own
-        return SessionCapabilities(send=enabled, approvals=enabled)
+        return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled)
 
     def execution_available(self):
         return self._owned is not None and self._owned.available()
@@ -292,6 +292,9 @@ class MuseProvider:
     def settle_owned(self, record):
         if self._owned is not None:
             self._owned.settle(record)
+
+    def steer_owned(self, record, text):
+        return self._owned_chats().steer(record, text)
 
     def stop_owned(self, record):
         return self._owned_chats().stop(record)
@@ -617,13 +620,17 @@ class MuseOwnedChats:
         if command and command.get("state") not in ("completed", "rejected"):
             last = result.get("lastTurn")
             expected = command.get("turn_id") or command.get("command_id")
-            if (not isinstance(last, dict) or last.get("turnId") != expected
+            # A steer becomes its own turn after the steered one (installed
+            # 1.4.20), so the chat's turn may end with one of them.
+            ends = {expected, *command.get("steers", ())}
+            if (not isinstance(last, dict) or last.get("turnId") not in ends
                     or last.get("terminal") not in ("completed", "cancelled", "failed")):
                 self._in_flight[native_id] = {**command, "state": "unknown"}
                 return "unknown"
             # Keep how it ended: a stopped turn is "cancelled", not finished.
             command = {**command, "state": "completed", "turn_id": expected,
                        "terminal": last["terminal"]}
+            command.pop("steers", None)
             self._remember(record, command)
         self._in_flight.pop(native_id, None)
         return "idle"
@@ -672,6 +679,50 @@ class MuseOwnedChats:
             self._in_flight[record.cli_session_id] = command
             self._remember(record, command)
             return key
+
+    def steer(self, record: OwnSession, text: str) -> str:
+        """Send ``text`` into the running turn. Muse refuses it if that turn
+        has ended (expectedTurnId), so it can never land in the next one. The
+        steer's id is saved first: its turn may be where the chat's turn ends."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            if not isinstance(text, str) or not text.strip():
+                raise MuseHistoryError("There is no message to send.")
+            self.prepare(record)
+            result = self._read(record)
+            state = self._reconcile(record, result)
+            turn = result["session"].get("activeTurnId")
+            if state != "running" or not _identity(turn):
+                raise MuseHistoryError("Muse Code has no turn running to send this into. "
+                                       "Send it as a new message.")
+            command = self._in_flight.get(record.cli_session_id) or self._saved(record)
+            steers = list(command.get("steers", ()))
+            if len(steers) >= 16:
+                raise MuseHistoryError("This turn has taken as many messages as it can. "
+                                       "Send this once it ends.")
+            ident = _command_id()
+            self._remember(record, {**command, "steers": [*steers, ident]}, required=True)
+            try:
+                result = self.execution.request("turn/steer", {
+                    "sessionId": record.cli_session_id, "commandId": ident,
+                    "expectedTurnId": turn, "input": [{"type": "text", "text": text}]})
+            except MuseRequestError as error:
+                # Refused, so nothing went: forget the steer.
+                self._remember(record, {**command, "steers": steers})
+                if error.code == -32030:
+                    raise MuseHistoryError("That turn has already ended, so Muse Code didn't take "
+                                           "the message. Send it as a new message.") from None
+                raise
+            except Exception:
+                raise MuseHistoryError("Muse Code didn't confirm the message. Check the chat "
+                                       "before sending it again.") from None
+            if (not isinstance(result, dict) or result.get("commandId") != ident
+                    or result.get("status") != "accepted" or result.get("turnId") != turn):
+                raise MuseHistoryError("Muse Code didn't confirm the message. Check the chat "
+                                       "before sending it again.")
+            self._in_flight[record.cli_session_id] = {**self._saved(record)}
+            return ident
 
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.
