@@ -502,6 +502,43 @@ class CodexChats(SoundHost, CodexExtras):
             self._codex_work(lambda: self.sessions.owned_action("set_model", record, chosen), changed)
         self._codex_work(lambda: self.sessions.owned_action("prepare_settings", record), listed)
 
+    def _muse_ask_aside(self, info):
+        """Chat, Ask Aside for a Muse chat started here (MuseAsideRunner):
+        read-only, and never asks you anything. Muse keeps the side chat as
+        an ordinary chat; it is hidden here as soon as it exists."""
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("aside", info)  # Muse Code's own chat: read-only
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        from .dialogs import AskAsideDialog
+        from .. import announce
+
+        def ask(question, on_event):
+            return self.sessions.owned_action(
+                "aside", record, question, lambda event: wx.CallAfter(on_event, event),
+                lambda side: wx.CallAfter(self._hide_muse_aside, side))
+        focus = wx.Window.FindFocus()
+        dialog = AskAsideDialog(self, info.title, ask, provider="Muse Code",
+            say=lambda text, failed=False: self._say(text if failed else
+                announce.reply_text("Ask Aside", text, self.speech.announce)),
+            copy=self._copy_text, feedback=self._feedback, history=self._aside_history(info))
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.settle()
+            dialog.Destroy()
+        if focus and wx.Window.FindFocus() is not focus:
+            focus.SetFocus()
+
+    def _hide_muse_aside(self, side_id):
+        """Hide a side chat Ask Aside made: Muse lists it as an ordinary chat."""
+        if self._gone():
+            return
+        self.hidden.hide(f"muse:{side_id}")
+
     def _muse_skills(self, info):
         """Chat, Insert Command or Skill for a Muse chat started here: its
         skills, read when chosen. The chosen one goes before your draft as

@@ -267,6 +267,10 @@ class ExecutionConnection(HistoryConnection):
         "session/setModel",
         "session/setReasoningEffort",
         "skill/list",
+        # Ask Aside only: a side chat, made read-only before it is asked
+        # (muse.MuseAsideRunner). The profile is only set on that side chat.
+        "session/sideChat",
+        "session/setPermissionProfile",
         "turn/interrupt",
         "approval/listPending",
         "approval/decide",

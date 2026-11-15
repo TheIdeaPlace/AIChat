@@ -197,7 +197,7 @@ def owned(outcome, foreign=None):
 EXPECTED = {
     "answer": {**every(said("No session is waiting for an answer.")),
                "waiting": dialog("MuseApprovalDialog")},
-    "ask_aside": owned(said(NOT_YET)),
+    "ask_aside": owned(dialog("AskAsideDialog")),
     "stop_running_turn": {
         "idle": said("Nothing is running in Muse chat here."),
         "running": sent("turn/cancel"), "waiting": sent("turn/cancel"),
@@ -342,3 +342,10 @@ def test_insert_skill_puts_it_before_your_draft(world, monkeypatch):
     world.frame._command_handlers()["insert_command"](wx.CommandEvent())
     assert shown == [["synthetic-plan", "acme:deploy"]]
     assert world.frame.reply_text.GetValue() == "/acme:deploy Outline it briefly."
+
+
+def test_a_side_chat_ask_aside_made_is_hidden_here(world):
+    """Muse keeps each side chat as an ordinary chat; the window hides it."""
+    put_in_case(world, "idle")
+    world.frame._hide_muse_aside("019a84c2-a1f0-7e3b-9c1e-0000000000aa")
+    assert "muse:019a84c2-a1f0-7e3b-9c1e-0000000000aa" in world.frame.hidden

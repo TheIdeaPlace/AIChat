@@ -64,7 +64,11 @@ decision, but not the command's effect.
    or Skill (Ctrl+/) lists the chat's skills; type in Search to narrow them,
    choose plan, and "/plan " goes before your draft with focus at its end.
    Send it: Muse replies in the plan skill's way. A message starting with a
-   name Muse doesn't list is answered as ordinary text.
+   name Muse doesn't list is answered as ordinary text. Chat, Ask Aside
+   (Ctrl+Shift+Y) asks a question about the chat, idle and with a turn
+   running: the answer comes from the chat's history, the chat itself gets
+   nothing, and no permission or question dialog ever opens. The side chat
+   doesn't appear in the list; View, Show Sessions, Hidden shows it.
 7. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
    own mode, no kept rules, and the same answering instructions. Change
    Permission Mode says Muse Code chats always use Muse Code's own mode.

@@ -227,3 +227,31 @@ ordinary `kind: root` session, and a later `session/read` shows no
 conversation) in Muse Code's list and in The Chat Place's Muse list.
 Codex's Ask Aside is ephemeral and leaves nothing; the app can't delete Muse
 chats. Not implemented until it's decided whether that's acceptable.
+
+### Step 3, Ask Aside done (2026-11-14): build it, hide the side chats
+
+Decided: build it and hide each side chat here (it still appears in Muse
+Code's own list). `MuseAsideRunner` (interface as `CodexAsideRunner`):
+
+- refuses a chat with no finished turn (`NOTHING_FINISHED`);
+- opens `session/sideChat` from the main chat, checks `sideFrom` names it,
+  and gives the side id to the window at once (`_hide_muse_aside` hides
+  `muse:<id>` in `HiddenStore`);
+- sets `:read-only` with `session/setPermissionProfile` and asks nothing
+  unless the reply confirms it (with a human reviewer);
+- sends the question to the side chat only, streams the side turn's replies,
+  and cancels the turn on any pending approval or question: nothing is ever
+  decided for you;
+- always cancels an unfinished side turn and leaves the side chat.
+
+`session/sideChat` and `session/setPermissionProfile` are allowlisted, the
+latter only ever sent for the side chat just made; `aside` is granted to
+chats started here only, and Ask Aside's Muse branch comes before its
+capability check so a Muse chat can never reach the Claude path.
+
+Checked natively: idle and mid-turn asides both answered from the main
+chat's history (mid-turn, only the question, not the running turn's
+request); a question needing a shell command made no request (the read-only
+side chat couldn't run it, the #149 sandbox problem) and the model said so;
+no decision was sent and the main chat got only its own messages.
+

@@ -14,6 +14,7 @@ import threading
 import time
 import uuid
 
+from ..aside import NOTHING_FINISHED, AsideEvent
 from ..own_store import OwnSession
 from ..sessions import SessionInfo, STATUS_UNAVAILABLE
 from ..titles import clean_title
@@ -245,7 +246,7 @@ class MuseProvider:
         # Foreign chats stay read-only even when execution exists; only
         # chats started here can send, stop, or answer permissions.
         enabled = self._owned is not None and session.is_own
-        return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled)
+        return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled, aside=enabled)
 
     def execution_available(self):
         return self._owned is not None and self._owned.available()
@@ -300,6 +301,10 @@ class MuseProvider:
 
     def set_model_owned(self, record, model_id):
         return self._owned_chats().set_model(record, model_id)
+
+    def aside_owned(self, record, question, on_event, on_side=None):
+        """Ask Aside: a started MuseAsideRunner for this chat."""
+        return MuseAsideRunner(self._owned_chats(), record, question, on_event, on_side=on_side).start()
 
     def skills_owned(self, record):
         """This chat's skills for Insert Command or Skill."""
@@ -1128,3 +1133,131 @@ class MuseOwnedChats:
                     or result.get("status") != "accepted" or result.get(ident_name) != approval.request_id):
                 raise MuseHistoryError("Muse Code didn't confirm the decision. Check the chat before deciding again.")
             return result
+
+
+class MuseAsideRunner:
+    """Ask Aside for a Muse chat started here (installed 1.4.20's
+    session/sideChat): a side chat that sees the main chat's history, made
+    read-only before the question goes, and never asks you anything; a
+    request in it cancels its turn. The main chat is never sent anything.
+
+    Muse keeps the side chat as an ordinary chat, so ``on_side(id)`` is
+    called as soon as it exists, for the window to hide it. It is left when
+    the aside ends. Interface as CodexAsideRunner: start(), cancel(), and
+    AsideEvent("text" | "done" | "failed", text) to ``on_event``."""
+    TIMEOUT = 300.0
+
+    def __init__(self, chats, record, question, on_event, *, on_side=None, poll=1.0):
+        self.chats, self.record, self.question = chats, record, question
+        self.on_event, self.on_side, self.poll = on_event, on_side or (lambda _side: None), poll
+        self._cancel = threading.Event()
+        self._event_lock = threading.Lock()
+        self._terminal = False
+
+    def start(self):
+        threading.Thread(target=self._run, name="muse-aside", daemon=True).start()
+        return self
+
+    def cancel(self):
+        self._cancel.set()
+        self._emit(AsideEvent("failed", "Stopped."))
+
+    def _emit(self, event):
+        with self._event_lock:
+            if self._terminal:
+                return
+            if event.kind in ("done", "failed"):
+                self._terminal = True
+            self.on_event(event)
+
+    def _run(self):
+        execution = self.chats.execution
+        main = self.record.cli_session_id
+        side = turn = None
+        try:
+            self.chats.prepare(self.record)
+            result = self.chats._read(self.record)
+            last, count = result.get("lastTurn"), result["session"].get("turnCount")
+            if not ((isinstance(last, dict) and last.get("terminal") == "completed")
+                    or (type(count) is int and count > 0)):
+                self._emit(AsideEvent("failed", NOTHING_FINISHED))
+                return
+            if self._cancel.is_set():
+                return
+            opened = execution.request("session/sideChat", {"sessionId": main, "commandId": _command_id()})
+            session = opened.get("session") if isinstance(opened, dict) else None
+            side = session.get("sessionId") if isinstance(session, dict) else None
+            source = session.get("sideFrom") if isinstance(session, dict) else None
+            if (not _identity(side) or side == main or not isinstance(source, dict)
+                    or source.get("sessionId") != main):
+                side = None if side == main else side
+                self._emit(AsideEvent("failed", "Muse Code didn't open a side chat for this chat."))
+                return
+            self.on_side(side)
+            changed = execution.request("session/setPermissionProfile", {
+                "sessionId": side, "commandId": _command_id(), "profileId": ":read-only"})
+            state = changed.get("permissionState") if isinstance(changed, dict) else None
+            if (not isinstance(changed, dict) or changed.get("status") != "accepted"
+                    or not isinstance(state, dict) or state.get("profileId") != ":read-only"
+                    or state.get("reviewerAuthority") != "human"):
+                self._emit(AsideEvent("failed", "Muse Code couldn't make the side chat read-only, "
+                                                "so nothing was asked."))
+                return
+            if self._cancel.is_set():
+                return
+            command = _command_id()
+            started = execution.request("turn/start", {
+                "sessionId": side, "commandId": command,
+                "input": [{"type": "text", "text": self.question}]})
+            if (not isinstance(started, dict) or started.get("status") != "accepted"
+                    or not _identity(started.get("turnId"))):
+                self._emit(AsideEvent("failed", "Muse Code didn't start the side question."))
+                return
+            turn = started["turnId"]
+            deadline, previous = time.monotonic() + self.TIMEOUT, ""
+            while not self._cancel.wait(self.poll):
+                pending = execution.request("approval/listPending", {"sessionId": side})
+                if _request_array(pending, "approvals") or _request_array(pending, "userInputs"):
+                    execution.request("turn/cancel", {"sessionId": side, "commandId": _command_id(),
+                                                      "turnId": turn})
+                    turn = None
+                    self._emit(AsideEvent("failed", "Muse Code needed to do something or ask you "
+                                                    "something to answer, so the side question was "
+                                                    "stopped. Ask it in the chat instead."))
+                    return
+                read = execution.request("session/read", {"sessionId": side, "excludeItems": False})
+                answer = "\n\n".join(
+                    item["text"] for item in _history_items(read)
+                    if isinstance(item, dict) and item.get("kind") == "agentMessage"
+                    and item.get("turnId") == turn and isinstance(item.get("text"), str)
+                    and item["text"].strip())
+                if answer != previous:
+                    previous = answer
+                    self._emit(AsideEvent("text", answer))
+                ended = read.get("lastTurn") if isinstance(read, dict) else None
+                session = read.get("session") if isinstance(read, dict) else None
+                if (isinstance(session, dict) and session.get("status") == "idle"
+                        and not session.get("activeTurnId") and isinstance(ended, dict)
+                        and ended.get("turnId") == turn):
+                    turn = None
+                    self._emit(AsideEvent("done", answer) if ended.get("terminal") == "completed" and answer
+                               else AsideEvent("failed", "Muse Code did not complete this side question."))
+                    return
+                if time.monotonic() > deadline:
+                    self._emit(AsideEvent("failed", "Muse Code took too long with this side question."))
+                    return
+        except Exception:
+            if not self._cancel.is_set():
+                self._emit(AsideEvent("failed", "Could not ask Muse Code. Check its sign-in and connection."))
+        finally:
+            if side and turn:
+                try:
+                    execution.request("turn/cancel", {"sessionId": side, "commandId": _command_id(),
+                                                      "turnId": turn})
+                except Exception:  # noqa: BLE001 - the side chat is left either way
+                    pass
+            if side:
+                try:
+                    execution.request("session/leave", {"sessionId": side, "commandId": _command_id()})
+                except Exception:  # noqa: BLE001 - best effort; it is hidden here regardless
+                    pass

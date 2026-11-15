@@ -175,6 +175,11 @@ class ClaudeExtras:
         if info.provider == 'codex':
             self._codex_ask_aside(info)
             return
+        if info.provider == "muse":
+            # Before the capability check: Muse grants "aside" to chats
+            # started here, which must never reach the Claude path below.
+            self._muse_ask_aside(info)
+            return
         if info.provider == "claude" and info.cowork:
             self._feedback(COWORK_REFUSED)
             return

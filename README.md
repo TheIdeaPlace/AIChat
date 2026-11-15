@@ -1593,6 +1593,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   search box, and puts the one you choose before your message as "/name ". A message
   starting with a skill's name runs that skill, with the rest as what you ask it; a
   name Muse doesn't list goes as ordinary text.
+  Chat, Ask Aside (Ctrl+Shift+Y) asks Muse Code a quick question about the chat in a
+  read-only side chat that never asks you anything; the question and answer don't join
+  the chat. Muse Code keeps each side chat in its own list, so The Chat Place hides it
+  from yours: View, Show Sessions, Hidden shows them.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow

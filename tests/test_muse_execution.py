@@ -404,7 +404,7 @@ def test_history_and_foreign_actions_remain_read_only(owned):
     foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
     assert provider.capabilities(foreign) == SessionCapabilities()
     own = provider.create_owned("C:\\synthetic", "Synthetic own chat")
-    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True)
+    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True, aside=True)
     assert provider.open_reader(foreign).connection is provider.connection
     assert provider.open_reader(own.to_info()).connection is owned.execution
     provider.close()
