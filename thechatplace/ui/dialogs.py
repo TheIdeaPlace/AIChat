@@ -2102,11 +2102,16 @@ class WrappingText(wx.StaticText):
     again when that changes (#176). Add it with wx.EXPAND. A plain StaticText
     is one line as long as its text, and a long one ran past the dialog's
     edge: Report a Bug hid the support address that way. Screen readers read
-    the label as written, without the line breaks."""
+    the label as written, without the line breaks.
+
+    It's a paragraph, never a control's label, so an "&" in it is shown as
+    written rather than taken for an access key: a chat titled "Salt &
+    pepper" lost its "&" in the heading above the messages (#539)."""
 
     def __init__(self, parent, label: str = ""):
         # Not resized to its label: its width is the sizer's to give.
-        super().__init__(parent, label=label, style=wx.ST_NO_AUTORESIZE)
+        super().__init__(parent, label=wx.Control.EscapeMnemonics(label),
+                         style=wx.ST_NO_AUTORESIZE)
         self._text = label
         self._width = 0
         self._laying_out = False
@@ -2141,7 +2146,7 @@ class WrappingText(wx.StaticText):
         # Measured with the control's own font in its own pixels: on a PC at
         # 150%, while the app wasn't DPI aware (#185), wx's Wrap left a
         # heading 50 pixels too wide unwrapped.
-        wx.StaticText.SetLabel(self, _wrapped(self, self._text, width))
+        wx.StaticText.SetLabel(self, wx.Control.EscapeMnemonics(_wrapped(self, self._text, width)))
         # Measured with no minimum, which would hold the old height.
         self.SetMinSize((1, -1))
         self.InvalidateBestSize()

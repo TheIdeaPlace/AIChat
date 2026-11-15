@@ -5926,9 +5926,23 @@ def test_rename_the_loaded_session_updates_its_heading(frame, env):
     select(frame, "Quiet one")
     frame.on_open_session()
     assert pump(lambda: frame._open is not None)
+    assert frame.GetTitle() == "Quiet one — The Chat Place"
     frame.rename_session(frame._open, "Calm one")
     assert frame._open.title == "Calm one"
     assert frame.session_heading.GetLabel().startswith("Calm one,")
+    # The window title follows (#553): what Alt+Tab and read-title say.
+    assert frame.GetTitle() == "Calm one — The Chat Place"
+
+
+def test_a_heading_shows_an_ampersand_as_written(frame, env):
+    """The heading is a paragraph, not a label: "&" isn't an access key (#539)."""
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._open is not None)
+    frame.rename_session(frame._open, "Salt & pepper && more")
+    assert frame.session_heading.GetLabel().startswith("Salt & pepper && more,")
+    shown = frame.session_heading.GetLabelText().replace("\n", " ")
+    assert shown.startswith("Salt & pepper && more,"), shown
 
 
 def test_rename_says_so_when_titles_cant_be_saved(frame, env, monkeypatch):

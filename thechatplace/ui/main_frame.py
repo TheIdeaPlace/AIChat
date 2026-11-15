@@ -1910,7 +1910,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             row = self._list_keys.index(info.key)
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
-        self.SetTitle(f"{info.title} \u2014 {APP_NAME}")
         self._show_attachments()
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
@@ -1989,6 +1988,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         if info is None:
             return
+        # The window title names the open chat, so it follows a rename,
+        # here or elsewhere (#553): it's what Alt+Tab and a screen reader's
+        # read-title key say. Set only when it changes.
+        title = f"{info.title} — {APP_NAME}"
+        if self.GetTitle() != title:
+            self.SetTitle(title)
         if info.provider == AGENTS:
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
