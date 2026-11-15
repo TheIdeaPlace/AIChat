@@ -342,6 +342,12 @@ class CodexChats(SoundHost, CodexExtras):
             ended = {"cancelled": "Muse Code stopped.",
                      "failed": "Muse Code's turn failed. Its messages so far are in the chat.",
                      }.get(update.get("terminal", ""), "Muse Code finished.")
+            # Why, by Muse's error kind only, in the app's own words.
+            why = {"modelError": "Muse Code's turn failed: it couldn't use this chat's model, "
+                                 "which your account may not have access to. Choose another "
+                                 "with Chat, Chat Settings, Change Model."}
+            if update.get("terminal") == "failed" and update.get("failure") in why:
+                ended = why[update["failure"]]
             self._say(f"{record.title}: {ended}", interrupt=False)
         if self._open is not None and self._open.identity == record.identity:
             self._refresh_chat()
@@ -459,6 +465,41 @@ class CodexChats(SoundHost, CodexExtras):
             else:
                 self._feedback(f'{info.title} now uses {names[chosen]}, from its next turn.')
         self._codex_work(lambda: self.sessions.owned_action('set_model', record, chosen), done)
+
+    def _change_muse_model(self, info):
+        """Chat, Chat Settings, Change Model for a Muse chat started here: the
+        models Muse offers it, read when chosen, with its own marked. Muse
+        applies the change from its next model call, even mid-turn."""
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("options", info)  # Muse Code's own chat: read-only
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+
+        def listed(models, error):
+            if error or not models:
+                self._feedback(models if isinstance(models, str) and models
+                               else "Muse Code couldn't list its models. Try again.")
+                return
+            names = {model_id: label for model_id, label, _active in models}
+            now = next((model_id for model_id, _label, active in models if active), "")
+            current = names.get(now, "a model Muse Code doesn't list now")
+            chosen = self._change_setting("Change Model", f"Model for {info.title}, now {current}:",
+                                          [(model_id, label) for model_id, label, _a in models], now)
+            if chosen is None:
+                return
+
+            def changed(label, error):
+                if error:
+                    self._feedback(label if isinstance(label, str) and label
+                                   else "Muse Code couldn't switch to that model.")
+                else:
+                    self._feedback(f"{info.title} now uses {label}, from Muse Code's next "
+                                   "model call.")
+            self._codex_work(lambda: self.sessions.owned_action("set_model", record, chosen), changed)
+        self._codex_work(lambda: self.sessions.owned_action("prepare_settings", record), listed)
 
     def _change_copilot_mode(self, info, after=None):
         """Change Permission Mode for a Copilot chat (_start_copilot_mode_change).

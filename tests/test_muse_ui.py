@@ -403,6 +403,9 @@ def test_muse_unknown_state_is_persistent_and_late_callbacks_are_ignored(frame, 
     ("completed", "Synthetic Muse: Muse Code finished."),
     ("cancelled", "Synthetic Muse: Muse Code stopped."),
     ("failed", "Synthetic Muse: Muse Code's turn failed. Its messages so far are in the chat."),
+    ("failed:modelError", "Synthetic Muse: Muse Code's turn failed: it couldn't use this chat's "
+     "model, which your account may not have access to. Choose another with Chat, Chat "
+     "Settings, Change Model."),
 ])
 def test_muse_turn_end_says_how_it_ended(frame, monkeypatch, terminal, said):
     import threading
@@ -414,5 +417,7 @@ def test_muse_turn_end_says_how_it_ended(frame, monkeypatch, terminal, said):
     spoken = []
     monkeypatch.setattr(frame, "_say", lambda text, **kwargs: spoken.append(text))
     frame._apply_muse_owned_update(record, {"state": "cancelling", "pending": ()}, token)
-    frame._apply_muse_owned_update(record, {"state": "idle", "pending": (), "terminal": terminal}, token)
+    terminal, _, failure = terminal.partition(":")
+    frame._apply_muse_owned_update(record, {"state": "idle", "pending": (), "terminal": terminal,
+                                            "failure": failure}, token)
     assert spoken == [said]

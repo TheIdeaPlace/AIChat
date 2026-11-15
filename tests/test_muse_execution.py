@@ -44,7 +44,14 @@ class Execution:
 
     def __init__(self):
         self.messages = []
-        self.session = {"sessionId": NATIVE_ID, "status": "idle", "activeTurnId": None, **policy()}
+        self.session = {"sessionId": NATIVE_ID, "status": "idle", "activeTurnId": None,
+                        "modelId": "synthetic-model-b", **policy()}
+        # Shaped like installed 1.4.20's catalog (ids synthetic).
+        self.catalog = [
+            {"modelId": "synthetic-model-a", "displayLabel": "synthetic-model-a", "providerId": "meta",
+             "profileId": "tbh", "isDefault": True},
+            {"modelId": "synthetic-model-b", "displayLabel": "synthetic-model-b", "providerId": "meta",
+             "profileId": "tbh", "isDefault": False}]
         self.last_turn = None
         self.approvals, self.questions = [], []
         self.error = None
@@ -90,6 +97,18 @@ class Execution:
             self.session.update(status="running", activeTurnId=params["commandId"])
             return {"commandId": params["commandId"], "turnId": params["commandId"], "status": "accepted",
                     "disposition": "started", "startedNewTurn": True}
+        if method == "model/list":
+            active = self.session["modelId"] if params.get("sessionId") == NATIVE_ID else None
+            return {"providerId": "meta", "profileId": "tbh", "source": "providerCatalog",
+                    "models": [{**m, "isActive": m["modelId"] == active, "contextLimit": None,
+                                "outputLimit": None, "cost": None, "description": None,
+                                "releaseDate": None} for m in self.catalog]}
+        if method == "session/setModel":
+            # Installed 1.4.20 accepts any id, even one not in its catalog.
+            assert set(params) == {"sessionId", "commandId", "model"}
+            assert uuid.UUID(params["commandId"]).version == 7
+            self.session["modelId"] = params["model"]["modelId"]
+            return {"commandId": params["commandId"], "status": "accepted"}
         if method == "turn/steer":
             # Installed 1.4.20: accepted only for the turn still running,
             # else commandRejected (-32030); the ack names that turn.
@@ -115,8 +134,13 @@ class Execution:
                 return {"commandId": params["commandId"], field: params[field], "status": "accepted", "terminal": True}
         raise AssertionError(method)
 
-    def complete(self, terminal="completed"):
+    def complete(self, terminal="completed", error_kind=None):
         self.last_turn = {"turnId": self.session["activeTurnId"], "terminal": terminal}
+        if error_kind:
+            # As installed 1.4.20 ends a turn on a model the account can't use.
+            self.last_turn.update(reason="synthetic host text [request_id=x]",
+                                  error={"kind": error_kind, "message": "synthetic host text",
+                                         "retryable": False})
         self.session.update(status="idle", activeTurnId=None)
 
     def drain_events(self):
@@ -526,3 +550,59 @@ def test_muse_reasons_reach_the_window():
     assert safe_reason(MuseRequestError(-32030)) == str(MuseRequestError(-32030))
     assert safe_reason(MuseHistoryError("x" * 1001)) == ""
     assert safe_reason(MuseHistoryError("line\nbreak")) == ""
+
+
+
+def test_models_lists_the_catalog_with_this_chats_model_marked(owned):
+    own = record(owned)
+    assert owned.models(own) == (("synthetic-model-a", "synthetic-model-a", False),
+                                 ("synthetic-model-b", "synthetic-model-b", True))
+    assert ("model/list", {"sessionId": NATIVE_ID}) in owned.execution.messages
+
+
+def test_set_model_sends_the_catalog_entry_and_confirms_it(owned):
+    own = record(owned)
+    assert owned.set_model(own, "synthetic-model-a") == "synthetic-model-a"
+    method, params = [m for m in owned.execution.messages if m[0] == "session/setModel"][0]
+    assert params["sessionId"] == NATIVE_ID
+    assert params["model"] == {"modelId": "synthetic-model-a", "providerId": "meta", "profileId": "tbh"}
+    assert owned.execution.session["modelId"] == "synthetic-model-a"
+
+
+def test_set_model_refuses_a_model_muse_does_not_list(owned):
+    """Installed 1.4.20 took "not-a-model" and kept it, leaving the chat with
+    no usable model: only a listed id is ever sent."""
+    own = record(owned)
+    with pytest.raises(MuseHistoryError, match="doesn't offer"):
+        owned.set_model(own, "not-a-model")
+    assert not any(m == "session/setModel" for m, _ in owned.execution.messages)
+
+
+def test_set_model_reports_a_change_muse_did_not_make(owned, monkeypatch):
+    own = record(owned)
+    answer = owned.execution.request
+    def ignore_set(method, params):
+        if method == "session/setModel":
+            owned.execution.messages.append((method, params))
+            return {"commandId": params["commandId"], "status": "accepted"}
+        return answer(method, params)
+    monkeypatch.setattr(owned.execution, "request", ignore_set)
+    with pytest.raises(MuseHistoryError, match="didn't confirm"):
+        owned.set_model(own, "synthetic-model-a")
+
+
+
+def test_poll_says_why_a_turn_failed_by_kind_never_host_text(owned):
+    own = record(owned)
+    owned.send(own, "Synthetic question")
+    owned.execution.complete("failed", error_kind="modelError")
+    polled = owned.poll(own)
+    assert polled["terminal"] == "failed" and polled["failure"] == "modelError"
+    assert "synthetic host text" not in repr(polled)
+
+
+def test_a_finished_turn_reports_no_failure(owned):
+    own = record(owned)
+    owned.send(own, "Synthetic question")
+    owned.execution.complete()
+    assert owned.poll(own)["failure"] == ""

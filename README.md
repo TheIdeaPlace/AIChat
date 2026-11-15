@@ -1583,7 +1583,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   once or Reject for a request (Reject also ends the turn), or to answer its questions.
   While a turn runs, Chat, Steer (Ctrl+Alt+Enter) sends what you've typed into it; if
   the turn ends just then, Muse Code refuses it and your message comes back to the
-  reply box.
+  reply box. Chat, Chat Settings, Change Model lists the models Muse Code offers the chat,
+  with its own marked "(now)", and switches it from Muse's next model call, even during a
+  turn. Muse lists some models an account can't use: if a turn then fails, you hear that
+  the chat's model may not be available to you.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
   whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow

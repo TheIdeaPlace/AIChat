@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
+import re
 import threading
 import time
 import uuid
@@ -293,6 +294,13 @@ class MuseProvider:
         if self._owned is not None:
             self._owned.settle(record)
 
+    def prepare_settings_owned(self, record):
+        """This chat's models for Change Model: (id, label, active) each."""
+        return self._owned_chats().models(record)
+
+    def set_model_owned(self, record, model_id):
+        return self._owned_chats().set_model(record, model_id)
+
     def steer_owned(self, record, text):
         return self._owned_chats().steer(record, text)
 
@@ -465,6 +473,15 @@ def _valid_command(value: str) -> bool:
         return parsed.version == 7 and str(parsed) == value
     except (ValueError, TypeError, AttributeError):
         return False
+
+
+def _failure_kind(result: dict) -> str:
+    """Why the last turn failed, as Muse's error kind ("modelError") only:
+    its message is the host's own text (with a request id), never shown."""
+    last = result.get("lastTurn") if isinstance(result, dict) else None
+    error = last.get("error") if isinstance(last, dict) and last.get("terminal") == "failed" else None
+    kind = error.get("kind") if isinstance(error, dict) else None
+    return kind if isinstance(kind, str) and re.fullmatch(r"[A-Za-z]{1,40}", kind) else ""
 
 
 class MuseSaveError(MuseHistoryError):
@@ -724,6 +741,53 @@ class MuseOwnedChats:
             self._in_flight[record.cli_session_id] = {**self._saved(record)}
             return ident
 
+    def _catalog(self, record: OwnSession) -> list:
+        result = self.execution.request("model/list", {"sessionId": record.cli_session_id})
+        models = _request_array(result, "models")
+        if len(models) > 64:
+            raise MuseHistoryError("Muse Code listed more models than this app can show.")
+        for entry in models:
+            if (not isinstance(entry, dict) or not _identity(entry.get("modelId"))
+                    or not isinstance(entry.get("displayLabel"), str)
+                    or not isinstance(entry.get("providerId"), str)
+                    or type(entry.get("isActive")) is not bool
+                    or not (entry.get("profileId") is None or isinstance(entry.get("profileId"), str))):
+                raise MuseHistoryError("Muse Code listed a model this app can't read.")
+        return models
+
+    def models(self, record: OwnSession) -> tuple:
+        """(model id, label, this chat's) for each model Muse offers."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            return tuple((m["modelId"], m["displayLabel"].strip() or m["modelId"], m["isActive"])
+                         for m in self._catalog(record))
+
+    def set_model(self, record: OwnSession, model_id: str) -> str:
+        """Switch to ``model_id``, from Muse's next model call. Installed
+        1.4.20 accepts any id, even one it doesn't offer, and keeps it, so
+        only a model from the catalog read just now is sent, and the session
+        is read back to confirm it took."""
+        with self._lock:
+            self._check(record)
+            self._require_available()
+            self.prepare(record)
+            entry = next((m for m in self._catalog(record) if m["modelId"] == model_id), None)
+            if entry is None:
+                raise MuseHistoryError("Muse Code doesn't offer that model for this chat now. "
+                                       "Choose Change Model again.")
+            model = {"modelId": entry["modelId"], "providerId": entry["providerId"]}
+            if entry.get("profileId") is not None:
+                model["profileId"] = entry["profileId"]
+            params = {"sessionId": record.cli_session_id, "commandId": _command_id(), "model": model}
+            result = self.execution.request("session/setModel", params)
+            if (not isinstance(result, dict) or result.get("commandId") != params["commandId"]
+                    or result.get("status") != "accepted"
+                    or self._read(record)["session"].get("modelId") != model_id):
+                raise MuseHistoryError("Muse Code didn't confirm the model change. "
+                                       "Check the chat's model before trying again.")
+            return entry["displayLabel"].strip() or model_id
+
     def settle(self, record: OwnSession) -> None:
         # Retained for callers from earlier drafts; only a native read settles.
         self.poll(record)
@@ -815,6 +879,7 @@ class MuseOwnedChats:
                     state = "waiting"
                 return {"state": state, "pending": pending, "turn_id": result["session"].get("activeTurnId") or "",
                         "terminal": self._saved(record).get("terminal", "") if state == "idle" else "",
+                        "failure": _failure_kind(result) if state == "idle" else "",
                         "notice": "" if state != "unknown" else "Muse Code's turn outcome is unknown. Refresh before sending again."}
             except Exception as error:
                 command = self._in_flight.get(record.cli_session_id) or self._saved(record)

@@ -141,3 +141,25 @@ has ended. Muse records the steer as **its own turn**, id = the steer's
   every Muse refusal reached the window as a generic one. Muse errors are all
   the app's own words, so they now pass (same length and control-character
   guard as Copilot's).
+
+### Step 3, Change Model done (2026-11-14)
+
+Native check first (installed 1.4.20): `model/list` with `sessionId` lists
+the catalog (four models on the checking account) and marks the session's
+model `isActive`; `session/setModel` takes `{modelId, providerId,
+profileId}`, applies from the next model call (also mid-turn), and lasts
+across a host restart. Two surprises:
+
+- Muse **accepts any `modelId`**, even "not-a-model", and keeps it, leaving
+  the chat with no usable model. `MuseOwnedChats.set_model()` sends only an id
+  from the catalog it has just read, and reads the session back to confirm.
+- The catalog lists models an account **can't use**: a turn on muse-ember-1.0
+  failed with `lastTurn.error.kind` `modelError`. `poll()` now returns that
+  kind (only a short identifier; Muse's message has a request id and is never
+  shown), and the window says the chat's model may not be available to you
+  and to choose another with Change Model.
+
+`session/setModel` is allowlisted; Change Model uses the existing
+`prepare_settings` / `set_model` owned actions and the shared single-choice
+dialog. Muse also has `session/setReasoningEffort`, so Change Effort could
+follow the same path.

@@ -264,6 +264,7 @@ class ExecutionConnection(HistoryConnection):
         "turn/start",
         "turn/cancel",
         "turn/steer",
+        "session/setModel",
         "turn/interrupt",
         "approval/listPending",
         "approval/decide",

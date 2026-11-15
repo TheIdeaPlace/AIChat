@@ -219,7 +219,7 @@ EXPECTED = {
     "send_reply_to_another_chat": every(dialog("RelayDialog")),
     "retry_from_here": owned(said(NOT_YET)),
     "branch_from_here": owned(said(NOT_YET)),
-    "change_model": owned(said(NOT_YET)),
+    "change_model": owned(dialog("SingleChoiceDialog")),
     "change_effort": owned(said(NOT_YET)),
     "change_permission_mode": owned(said("Muse Code chats always use Muse Code's own mode")),
     "chat_permissions": owned(dialog("ChatPermissionsDialog"),
@@ -298,3 +298,18 @@ def test_a_refused_steer_puts_the_text_back_with_why(world):
     result = run(world, "steer", "running", text="Synthetic change of plan")
     assert world.frame.reply_text.GetValue() == "Synthetic change of plan"
     assert any("already ended" in text and "back in the reply box" in text for text in result["said"])
+
+
+def test_change_model_switches_to_the_chosen_muse_model(world, monkeypatch):
+    put_in_case(world, "idle")
+    chooser = []
+    def choose(title, prompt, choices, selection=None):
+        chooser.append((title, prompt, list(choices), selection))
+        return 0  # the first model, not this chat's
+    monkeypatch.setattr(world.frame, "_choose", choose)
+    world.frame._command_handlers()["change_model"](wx.CommandEvent())
+    title, prompt, choices, selection = chooser[0]
+    assert title == "Change Model" and "now synthetic-model-b" in prompt
+    assert choices == ["synthetic-model-a", "synthetic-model-b (now)"] and selection == 1
+    assert world.execution.session["modelId"] == "synthetic-model-a"
+    assert any("now uses synthetic-model-a" in text for text in world.said), world.said

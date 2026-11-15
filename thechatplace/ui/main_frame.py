@@ -4383,6 +4383,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
+        if selected is not None and selected.provider == "muse":
+            self._change_muse_model(selected)
+            return
         found = self._own_for_setting("model")
         if found is None:
             return

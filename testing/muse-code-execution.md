@@ -51,23 +51,29 @@ decision, but not the command's effect.
    back to the reply box with why. While a request waits, Steer says to answer it
    first. Chat, Stop Background Task
    says Muse Code chats have no background tasks to stop.
-6. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
+6. Chat, Chat Settings, Change Model on the owned chat lists Muse Code's
+   models with the chat's own marked "(now)". Choose another: you hear the
+   chat now uses it, from Muse's next model call. Send a message. If the turn
+   fails because the account can't use that model, you hear so and are told
+   to choose another with Change Model. Change Model on a chat started in Muse
+   Code says it's read-only here.
+7. Chat, Chat Settings, Chat Permissions on the owned chat shows Muse Code's
    own mode, no kept rules, and the same answering instructions. Change
    Permission Mode says Muse Code chats always use Muse Code's own mode.
-7. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
+8. View, Show Sessions, Muse Code Chats lists the new chat with the Chat
    Place session identity. Externally created Muse conversations stay
    read-only: Send, Stop, Answer and permanent deletion must not become
    available for them, and no permission dialog may open for them. Chat menu
    commands that would change one say "*title* was started in Muse Code, so
    it's read-only here. Do that in Muse Code." Chat Permissions says Muse Code
    decides what it may do.
-8. Restart The Chat Place and open the owned chat again. Its identity and
+9. Restart The Chat Place and open the owned chat again. Its identity and
    history are stable; it remains a Chat Place session and can send again.
-9. Make Muse Code unavailable (rename or remove its executable) and restart.
+10. Make Muse Code unavailable (rename or remove its executable) and restart.
    Startup, other providers and shutdown must not break. Creating or sending
    in a Muse chat reports that execution is unavailable, without raw
    protocol data. Restore Muse and press F5 to confirm recovery.
-10. Close the window while a Muse turn runs and while a permission request
+11. Close the window while a Muse turn runs and while a permission request
     waits. The Muse host must exit; no late dialog or announcement may land
     after the window closes. Closing ends the running turn in Muse too.
 
