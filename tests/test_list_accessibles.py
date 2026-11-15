@@ -18,7 +18,10 @@ def test_every_list_box_gets_a_list_accessible():
         for match in CREATED.finditer(source):
             found += 1
             name = re.escape(match.group(1))
-            if not any(re.search(rf"{call}\(\s*{name}\b", source) for call in GIVEN):
+            # In the same method: dialogs.py has many lists called self.list.
+            end = source.find("\n    def ", match.end())
+            method = source[match.end():end if end >= 0 else len(source)]
+            if not any(re.search(rf"{call}\(\s*{name}\b", method) for call in GIVEN):
                 line = source.count("\n", 0, match.start()) + 1
                 missing.append(f"{path.name}:{line} {match.group(1)}")
     assert found >= 20  # the pattern still finds the lists

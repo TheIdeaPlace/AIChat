@@ -3500,6 +3500,42 @@ def test_the_session_list_emptying_elsewhere_says_nothing(frame, monkeypatch):
 
 
 @msaa
+def test_f5_emptying_the_list_leaves_it_to_the_count_it_says(frame, monkeypatch):
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._apply_snapshot(_empty_snapshot(frame), [], {}, True)
+    assert frame.session_list.GetCount() == 0
+    assert told == []
+
+
+@msaa
+def test_hiding_or_a_tool_hiding_the_last_session_under_you_says_no_sessions(frame, monkeypatch):
+    # These take the row out at once and refresh after, so the refresh finds the list
+    # already empty (#649): they say so themselves.
+    from thechatplace.ui import main_frame
+    told = []
+    monkeypatch.setattr(main_frame, "announce_list_emptied", told.append)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._set_session_filter("Quiet one")
+    assert frame.session_list.GetCount() == 1
+    select(frame, "Quiet one")
+    frame.on_hide()
+    assert frame.session_list.GetCount() == 0
+    assert told == [frame.session_list]
+    settle(frame)
+    assert told == [frame.session_list]  # the refresh after doesn't say it again
+
+    frame._set_session_filter("Blocked one")
+    assert frame.session_list.GetCount() == 1
+    told.clear()
+    assert frame._session_tools_hide(frame._selected_session()) is None
+    assert frame.session_list.GetCount() == 0
+    assert told == [frame.session_list]
+
+
+@msaa
 def test_announce_list_emptied_reports_focus_on_the_empty_row(frame, monkeypatch):
     from thechatplace.ui import a11y
     sent = []

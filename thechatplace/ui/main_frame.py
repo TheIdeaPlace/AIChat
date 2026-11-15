@@ -1294,10 +1294,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         had_rows = self.session_list.GetCount() > 0
         self._update_session_list(shown, keep_order=keep_order)
         self._update_list_label(len(shown))
-        if had_rows and not shown and wx.Window.FindFocus() is self.session_list:
-            # The last session in the view went away while you were in the list: Windows
-            # says nothing, so the screen reader stayed on the row that had gone (#649).
-            announce_list_emptied(self.session_list)
+        if had_rows and not force:  # F5 says how many sessions there are itself
+            self._announce_if_list_emptied()
 
         if not first and self._open is not None and not (
                 self._runtime_announces(self._open)) and any(
@@ -1468,6 +1466,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.session_list.SetSelection(keys.index(selected_key))
         else:
             self.session_list.SetSelection(min(max(index, 0), len(keys) - 1))
+
+    def _announce_if_list_emptied(self):
+        """Call after the session list may have lost its last row: if it's now empty and has
+        focus, tell the screen reader, which otherwise stays on the row that had gone; Windows
+        says nothing when a list box empties (#649)."""
+        if not self.session_list.GetCount() and wx.Window.FindFocus() is self.session_list:
+            announce_list_emptied(self.session_list)
 
     @staticmethod
     def _list_keys_before_delete(index: int, count: int) -> int:
@@ -1793,6 +1798,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # and selecting it again can make a screen reader say it twice.
                 if self.session_list.GetSelection() != target:
                     self.session_list.SetSelection(target)
+            elif not self._list_keys:
+                self._announce_if_list_emptied()
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()

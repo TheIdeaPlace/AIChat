@@ -1597,6 +1597,40 @@ def test_the_gallery_says_when_it_cant_be_reached(frame):
         dialog.Destroy()
 
 
+@msaa
+def test_the_empty_gallery_list_reads_no_sound_schemes_not_unknown(frame):
+    # NVDA read "unknown" on the empty list when the gallery couldn't be reached (#648).
+    from theideaplace_appkit import soundgallery
+    dialog, said = _gallery_dialog(frame, se.load_schemes({}), _FakeGallery(problem=soundgallery.Unreachable()))
+    try:
+        assert pump(lambda: len(said) == 2)
+        accessible = dialog.list.GetAccessible()
+        assert accessible.GetName(1) == (wx.ACC_OK, "No sound schemes")
+        assert accessible.GetRole(1) == (wx.ACC_OK, wx.ROLE_SYSTEM_LISTITEM)
+        assert accessible.GetName(0) == (wx.ACC_OK, "Sound schemes")
+    finally:
+        dialog.Destroy()
+
+
+@msaa
+def test_a_list_named_only_by_set_accessible_name_reads_no_items_when_empty(frame):
+    from thechatplace.ui.a11y import EMPTY_LIST_TEXT, ListAccessible, set_accessible_name
+    dialog = wx.Dialog(frame)
+    try:
+        box = wx.ListBox(dialog)
+        set_accessible_name(box, "Things")
+        accessible = box.GetAccessible()
+        assert isinstance(accessible, ListAccessible)
+        assert accessible.GetName(1) == (wx.ACC_OK, EMPTY_LIST_TEXT)
+        assert accessible.GetName(0) == (wx.ACC_NOT_IMPLEMENTED, "")  # Windows names it
+        box.Append("One")
+        assert accessible.GetName(1) == (wx.ACC_NOT_IMPLEMENTED, "")  # the row's own text
+        set_accessible_name(box, "Things, 1")
+        assert box.GetAccessible() is accessible
+    finally:
+        dialog.Destroy()
+
+
 def test_adding_from_the_gallery_remembers_where_it_came_from(frame, dialog, monkeypatch):
     exported = se.export(se.built_in_scheme("wood"))
     entry = _gallery_entry(exported, "woody", "Woody")
