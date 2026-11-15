@@ -210,3 +210,20 @@ model as words, and an unknown selector is refused with -32032
 Checked natively through `send()`: "/plan ..." loaded the plan skill and the
 reply followed it; "/not-a-skill ..." was answered as plain text.
 
+
+### Step 3, Ask Aside: checked natively, waiting on a decision (2026-11-14)
+
+`session/sideChat` (from a loaded main session, `{sessionId, commandId}`)
+returns a new session that sees the main chat's history (asked which word to
+remember, it answered from the main chat) and leaves the main chat
+untouched. It also opens while the main chat has a turn running. Its policy
+is `:ask-me` with a human reviewer but approval mode `onRequest`, and
+`session/setPermissionProfile` to `:read-only` works on it (filesystem
+sandboxed, network restricted). `session/leave` is accepted.
+
+The catch: a side chat is **durable**. `session/list` lists it as an
+ordinary `kind: root` session, and a later `session/read` shows no
+`sideFrom`, so each Ask Aside would leave a new chat (a copy of the
+conversation) in Muse Code's list and in The Chat Place's Muse list.
+Codex's Ask Aside is ephemeral and leaves nothing; the app can't delete Muse
+chats. Not implemented until it's decided whether that's acceptable.
