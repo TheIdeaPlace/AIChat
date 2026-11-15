@@ -139,6 +139,9 @@ class CodexTurnRejected(CodexRpcError):
         'status_unclear': "The Chat Place couldn't confirm this Codex chat is free to take a message. If it keeps happening, quit and restart The Chat Place. No new turn was sent.",
         # Not seen yet; Stop can't reload it in place (#448 follow-up).
         'not_loaded': 'Codex closed this chat in the background. Quit and restart The Chat Place to reopen it. No new turn was sent.',
+        # #644: copying it would send its history through ChatGPT, which
+        # someone who chose another provider (a local model) may not want.
+        'other_provider': "This Codex chat was made with a model provider other than ChatGPT, so The Chat Place won't copy it into a ChatGPT chat or ask about it there. Nothing was sent.",
         # #625: confirmed against Codex's own thread list. Stop can't help;
         # Delete Session Permanently removes the entry (#634).
         'thread_gone': "Codex no longer has this chat, so it can't be reopened here. It was deleted in Codex, or it was created here and no message was ever sent in it. Delete Session Permanently, on the Session menu, removes it here. No message was sent.",
