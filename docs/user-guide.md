@@ -82,12 +82,13 @@ not a setting in The Chat Place. Deleting Muse chats here is not available yet.
 Reading does not resume a session or start a turn.
 
 History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
-Sending is unavailable if the human permission policy cannot be established. Other interfaces
-may be reported as unavailable. Stored history cannot establish another process's live
-state, so Muse rows say status unavailable. If a refresh fails, the last good
-session list and loaded messages stay available; press F5 to retry. Unsupported
-or shortened history is identified, and a history format the app cannot read
-safely must be opened in Muse Code. Background discovery does not start sign-in.
+Sending is unavailable if Muse Code can't confirm the chat's permission profile. Other
+interfaces may be reported as unavailable. In the Status column, a Muse Code chat started
+here says Working, Needs you or Idle. One started in Muse Code says status unavailable:
+The Chat Place can't see what another Muse Code program is doing. If a refresh fails, the
+last good session list and loaded messages stay available; press F5 to retry. An item Muse
+Code shortened says so where it is, history the app can't read is identified, and a history
+format the app cannot read safely must be opened in Muse Code. Background discovery does not start sign-in.
 The Last message column uses a cached preview after you read a conversation;
 it does not fetch every chat in the background.
 
