@@ -28,9 +28,12 @@ conversation content and record manual results separately from automated tests.
    must remain; the status must explain the failure without raw protocol data.
    Repeated timer retries must not keep announcing the same failure. Restore
    availability, press F5 and confirm recovery.
-8. Test unsupported items and truncated history. The warning must be readable
-   even with tool activity hidden. Complete-history-unavailable cases must not
-   be described as an empty conversation.
+8. Test unsupported items and truncated history. An item Muse shortened ends
+   "(Shortened by Muse Code.)" where it is, and raises no warning; a skill Muse
+   read shows as an activity line ("Muse Code read the plan skill."). Only an
+   unknown or unreadable item gives the chat-wide warning, which must be
+   readable even with tool activity hidden. Complete-history-unavailable cases
+   must not be described as an empty conversation.
 9. Start loading a chat, select another, then close the window during a slow
    request. Stale callbacks must not replace the new chat or show late dialogs;
    the Muse child host must exit.

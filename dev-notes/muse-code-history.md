@@ -176,3 +176,15 @@ conversation from the user's Meta account, the new history flow with NVDA/JAWS, 
 Mac runtime and Linux Orca CI remain separate validation work. No VM tooling is
 available in this environment; no visual baseline was accepted or desktop theme
 changed. Existing onboarding reader passes do not establish a history-flow pass.
+
+Update (2026-11-16): a long conversation made in Muse Code showed the
+chat-wide warning for two reasons, found by counting kinds only: `skillRead`
+items (installed 1.4.20 records one when a skill is loaded; the reader didn't
+know the kind) and `truncated` items (3 reasoning, 1 tool call; Muse keeps
+very long items cut short). `skillRead` now shows as an activity line naming
+the skill, and a shortened item ends "(Shortened by Muse Code.)" on the text
+that was cut instead of counting against the whole chat. The warning (still
+the Error kind, since Properties would describe a permission notice as an
+allowed rule) remains for unknown, malformed, conflicting or text-less items
+only. Rechecked read-only: that conversation now opens with no warning.
+

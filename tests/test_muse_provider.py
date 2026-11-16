@@ -9,7 +9,7 @@ from thechatplace.providers.muse import MuseProvider, MuseReader, session_from_m
 from thechatplace.providers.muse_connection import MuseHistoryError
 from thechatplace.session_controller import SessionController
 from thechatplace.sessions import SessionInfo, STATUS_UNAVAILABLE, SORT_STATUS
-from thechatplace.transcript import USER, ASSISTANT, TOOL, TOOL_RESULT, ERROR, EVENT
+from thechatplace.transcript import USER, ASSISTANT, TOOL, TOOL_RESULT, ERROR, EVENT, THINKING
 
 
 NATIVE_ID = "019a7b33-1234-7000-8000-000000000001"
@@ -281,3 +281,35 @@ def test_forged_local_ownership_never_grants_muse_write_actions():
     assert not controller.can_create("muse")
     with pytest.raises(ValueError):
         controller.fork_owned(forged, "forbidden")
+
+
+@pytest.mark.parametrize("selector,said", [
+    ("bundled:plan", "Muse Code read the plan skill."),
+    ("plugin:acme:deploy", "Muse Code read the acme:deploy skill."),
+    (None, "Muse Code read a skill."),
+])
+def test_a_skill_read_is_activity_not_unreadable_history(selector, said):
+    """Installed 1.4.20 records a skillRead item when a skill is loaded."""
+    fields = {"selector": selector} if selector else {}
+    transcript = transcript_from_muse(history([
+        item("userMessage", "u", text="/plan Synthetic"),
+        item("skillRead", "s", **fields),
+        item("agentMessage", "a", text="Synthetic plan")]), NATIVE_ID)
+    assert [(m.kind, m.text) for m in transcript.messages][1] == (EVENT, said)
+    assert transcript.unreadable_lines == 0
+    assert not any("couldn't be" in m.text for m in transcript.messages)
+
+
+def test_a_shortened_item_says_so_where_it_is_and_raises_no_warning():
+    """Muse keeps very long items cut short in its history (truncated)."""
+    transcript = transcript_from_muse(history([
+        item("agentMessage", "a", text="Synthetic long answer", truncated=True),
+        item("toolCall", "t", tool="shell", args="synthetic", visibleOutput="Synthetic output", truncated=True),
+        item("reasoning", "r", text="Synthetic thinking", truncated=True)]), NATIVE_ID)
+    shortened = "(Shortened by Muse Code.)"
+    by_kind = {m.kind: m.text for m in transcript.messages}
+    assert by_kind[ASSISTANT].endswith(shortened) and by_kind[TOOL_RESULT].endswith(shortened)
+    assert by_kind[THINKING].endswith(shortened)
+    assert not by_kind[TOOL].endswith(shortened)  # the command itself is whole
+    assert transcript.unreadable_lines == 0
+    assert not any("couldn't be" in m.text for m in transcript.messages)

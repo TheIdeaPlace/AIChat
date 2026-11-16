@@ -117,7 +117,14 @@ def transcript_from_muse(result, native_id):
             if not transcript.first_time:
                 transcript.first_time = stamp
             transcript.last_time = stamp
-        def add(message_kind, text, suffix=""):
+        # Muse keeps a very long item cut short in its history: say so on
+        # the text that was cut (not the command line), rather than count
+        # it against the whole chat.
+        shortened = item.get("truncated") is True
+
+        def add(message_kind, text, suffix="", whole=False):
+            if shortened and not whole:
+                text = text.rstrip() + "\n\n(Shortened by Muse Code.)"
             transcript.messages.append(ChatMessage(message_kind, text, timestamp=stamp,
                 key=key + suffix, assistant_name="Muse Code", turn=transcript.turns))
         if kind in ("userMessage", "agentMessage"):
@@ -130,7 +137,7 @@ def transcript_from_muse(result, native_id):
         elif kind in ("toolCall", "userShell"):
             tool = _text(item.get("tool")) or ("Shell" if kind == "userShell" else "Tool")
             args = _text(item.get("args")) or _text(item.get("commandText"))
-            add(TOOL, f"{tool}: {args}" if args else tool)
+            add(TOOL, f"{tool}: {args}" if args else tool, whole=isinstance(item.get("visibleOutput"), str))
             if isinstance(item.get("visibleOutput"), str):
                 add(TOOL_RESULT, item["visibleOutput"], ":output")
         elif kind == "reasoning":
@@ -145,6 +152,15 @@ def transcript_from_muse(result, native_id):
         elif kind == "reminderChild" and isinstance(item.get("fallbackText"), str):
             # A reminder's child summary is activity, not unreadable content.
             add(EVENT, item["fallbackText"])
+        elif kind == "skillRead":
+            # Muse loaded a skill (installed 1.4.20): activity, like a reminder.
+            selector = _text(item.get("selector"))
+            for source in ("bundled:", "user:", "project:", "plugin:"):
+                if selector.startswith(source):
+                    selector = selector[len(source):]
+                    break
+            add(EVENT, f"Muse Code read the {selector} skill." if selector else "Muse Code read a skill.",
+                whole=True)
         elif kind == "compaction":
             add(COMPACTION, _text(item.get("fallbackText")) or "Muse Code compacted the conversation.")
         else:
@@ -153,8 +169,6 @@ def transcript_from_muse(result, native_id):
             fallback = _text(item.get("fallbackText"))
             if fallback:
                 add(EVENT, fallback)
-            transcript.unreadable_lines += 1
-        if item.get("truncated") is True:
             transcript.unreadable_lines += 1
     transcript.lines_read = len(items)
     if transcript.unreadable_lines:
