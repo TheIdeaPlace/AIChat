@@ -299,6 +299,9 @@ def set_list_items_accessible(listbox: wx.ListBox, name, item_text,
     if gtk_a11y.IS_LINUX:
         _describe_rows(listbox, name, item_text)
         return
+    if mac_a11y.IS_MACOS:
+        _read_rows_on_mac(listbox, item_text)
+        return
     accessible = _list_accessible(listbox)
     if accessible is None:
         return
@@ -306,6 +309,20 @@ def set_list_items_accessible(listbox: wx.ListBox, name, item_text,
     accessible._item_text = item_text
     if empty_text:
         accessible._empty_text = empty_text
+
+
+def _read_rows_on_mac(listbox: wx.ListBox, item_text) -> None:
+    """macOS (#11): VoiceOver reads each row as ``item_text`` says, the whole
+    message in the messages lists, where it read only the row's first line
+    (see ``mac_a11y.set_row_text``). The list's name is ``set_accessible_name``'s."""
+    if not mac_a11y.set_row_text(listbox, item_text):
+        return
+
+    def forget(event):
+        if event.GetEventObject() is listbox:
+            mac_a11y.set_row_text(listbox, None)
+        event.Skip()
+    listbox.Bind(wx.EVT_WINDOW_DESTROY, forget)
 
 
 def _describe_rows(listbox: wx.ListBox, name, item_text) -> None:

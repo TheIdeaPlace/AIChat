@@ -3375,6 +3375,61 @@ def test_screen_reader_reads_whole_messages_in_the_list(frame, env):
     assert accessible.GetName(2) == (wx.ACC_NOT_IMPLEMENTED, "")
 
 
+def _shown_for_voiceover(window):
+    """Show `window` (the fixture destroys it at the end): in a hidden
+    window a table row's accessibility parent is the window, not the table, so the rows of
+    no list can be told apart. VoiceOver only reads shown windows."""
+    window.Show()
+    wx.SafeYield()
+
+
+@voiceover
+def test_voiceover_reads_whole_messages_in_the_list(frame, env):
+    # VoiceOver read only a row's own text, a message's first line, as wx's
+    # accessible is Windows-only.
+    from thechatplace.ui import mac_a11y
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [
+        user_text("Check the build"),
+        assistant_block(text_block("## Result\nIt **passes**.\n\n- tests: 352\n\n```py\nx = 1\n```\nShip it."),
+                        "m1")])
+    select(frame, "Quiet one")
+    frame.on_open_session()
+    assert pump(lambda: frame._chat_loaded and frame.chat_list.GetCount() == 2)
+    assert frame.chat_list.GetString(1) == "Claude: ## Result"  # the row shows the first line
+    _shown_for_voiceover(frame)
+    assert mac_a11y.row_text(frame.chat_list, 1) == ("Claude: Result. It passes. tests: 352. "
+                                                     "Code block, Python, 1 line. Ship it.")
+    frame.speech.full_messages_in_list = False
+    assert mac_a11y.row_text(frame.chat_list, 1) == "Claude: ## Result"
+
+
+@voiceover
+def test_voiceover_row_text_only_for_live_lists_that_ask(frame):
+    from thechatplace.ui import mac_a11y
+    from thechatplace.ui.a11y import set_list_items_accessible
+    # Another list box reads its rows as shown.
+    other = wx.ListBox(frame, choices=["one", "two"])
+    _shown_for_voiceover(frame)
+    assert mac_a11y.row_text(other, 1) == "two"
+    # Most dialogs' lists register with no text of their own: they read as shown.
+    set_list_items_accessible(other, lambda: "Other", lambda index: None)
+    assert mac_a11y.row_text(other, 1) == "two"
+    set_list_items_accessible(other, lambda: "Other", lambda index: f"row {index} in full")
+    assert mac_a11y.row_text(other, 1) == "row 1 in full"
+    # A destroyed list is forgotten, so a new view at its address isn't read as the old list.
+    address = mac_a11y._target_view(other).value
+    assert address in mac_a11y._row_texts
+    other.Destroy()
+    assert address not in mac_a11y._row_texts
+
+
+def test_mac_row_text_does_nothing_off_macos(monkeypatch):
+    from thechatplace.ui import mac_a11y
+    monkeypatch.setattr(mac_a11y, "IS_MACOS", False)
+    assert mac_a11y.set_row_text(object(), lambda index: "x") is False
+    assert mac_a11y.row_text(object(), 0) is None
+
+
 @msaa
 def test_rows_that_are_not_messages_read_as_shown(frame):
     accessible = frame.chat_list._hub_accessible

@@ -669,11 +669,10 @@ Pressing Enter on the chat that's already loaded takes you back to where you wer
 ### Reading the messages
 
 The newest message is last, and you start on it. Each line shows "You:" or the provider's name,
-such as "Claude:" or "Codex:", and the message's first line. On Windows, your screen reader
+such as "Claude:" or "Codex:", and the message's first line. Your screen reader
 reads the **whole message** as you arrow onto it. Headings and list items are read as sentences,
 and a code block is read as what it is, such as "Code block, Python, 14 lines". If you'd rather
-hear just the first line, turn that off in Settings, Reading messages. On a Mac, VoiceOver reads
-each line as it's shown, the first line only; press Enter to read the whole message.
+hear just the first line, turn that off in Settings, Reading messages.
 
 To read a full chat that way, press **Ctrl+Shift+W** (View, **Read Full Chat as a Web Page**). It
 works for every provider and opens on the selected message. Each message is a level 2 heading
@@ -2781,8 +2780,7 @@ setting moves straight to it.
     - **Open full messages as a formatted page** (Alt+P): Enter on a message opens the formatted
       page. Off, it opens the plain text box. On at first (off on Linux).
     - **Read the whole message on each item in the messages list** (Alt+W): off, you hear only
-      each message's first line. On at first. This works on Windows only: on a Mac, VoiceOver reads
-      each line as it's shown.
+      each message's first line. On at first.
 - **Speech engine** (Alt+E): Automatic, the default, speaks through your screen reader when one
   is running, otherwise a system voice. You can also choose a screen reader (JAWS or NVDA on
   Windows, VoiceOver on a Mac) or one system voice. With both JAWS and NVDA running, choosing one

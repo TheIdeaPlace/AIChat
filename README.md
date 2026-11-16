@@ -119,7 +119,7 @@ too).
 ### Reading a chat
 
 - **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
-  first line, but on Windows your screen reader reads the **whole message** as you arrow onto it, as words
+  first line, but your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14
   lines"). Settings, Reading messages turns that off, to hear just the first line. The list's name
   says the session's state and whether it's read-only. **Enter** (or the context menu's Read Full
@@ -2099,10 +2099,10 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 
 ## Limitations
 
-- On a Mac, edit boxes, lists and
-  choices have their names under VoiceOver, as under JAWS and NVDA. But the text a screen reader
-  reads for each row of the messages list (the whole message) uses MSAA, which wxPython has only
-  on Windows, so VoiceOver reads the row's own text instead. On Linux, Orca reads a row's own text
+- wxPython gives a screen reader its names and row text through MSAA, which it has only on
+  Windows, so the Mac and Linux are reached another way. On a Mac, edit boxes, lists and choices
+  are named for VoiceOver through macOS's own accessibility, and VoiceOver reads each row of the
+  messages list as the whole message, as JAWS and NVDA do. On Linux, Orca reads a row's own text
   and then the rest of the message (from the row's accessible description). The OS-specific
   parts are in `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`,
   `thechatplace/ui/mac_a11y.py`, `thechatplace/ui/gtk_a11y.py`, `thechatplace/orca.py` and the

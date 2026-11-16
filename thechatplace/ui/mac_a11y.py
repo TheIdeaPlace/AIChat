@@ -309,6 +309,132 @@ def set_show_menu(window, handler) -> bool:
         return False
 
 
+_CELL_PROXY_CLASS = b"NSTableViewCellProxy"  # what VoiceOver reads a table row's text from
+_row_texts: dict = {}  # table view address -> item_text(index)
+_row_text_methods: list = []  # the installed method's ctypes callbacks, kept alive
+_ATTRIBUTE_TYPE = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                                   ctypes.c_void_p)
+
+
+def _attribute(element, name: str):
+    """``[element accessibilityAttributeValue:name]``, the old accessibility
+    call, which is all a table's row speaks."""
+    return _send(element, "accessibilityAttributeValue:", ctypes.c_void_p(_nsstring(name)),
+                 argtypes=(ctypes.c_void_p,))
+
+
+def _install_row_text() -> bool:
+    """Make a wx.ListBox row's text, as VoiceOver reads it, come from the
+    list's ``item_text``, once (#11).
+
+    VoiceOver reads a row of the list's table from the row's one cell, an
+    ``NSTableViewCellProxy`` whose AXValue is the row's text as drawn: for the
+    messages list, a message's first line. Labelling the rows doesn't work, as
+    the table makes new row and cell objects each time it's asked, so a label
+    set on one is gone by the next question. Instead the proxy class's
+    ``accessibilityAttributeValue:`` is replaced: for AXValue, a cell in a
+    table with an ``item_text`` answers with ``item_text(row)``. Everything
+    else, and every other table, is answered as before. Tried first in a
+    standalone list with VoiceOver, which then read whole messages.
+    """
+    if _row_text_methods:
+        return True
+    objc = _runtime()
+    if objc is None:
+        return False
+    objc.class_getInstanceMethod.restype = ctypes.c_void_p
+    objc.class_getInstanceMethod.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    objc.method_getImplementation.restype = ctypes.c_void_p
+    objc.method_getImplementation.argtypes = [ctypes.c_void_p]
+    objc.class_replaceMethod.restype = ctypes.c_void_p
+    objc.class_replaceMethod.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                         ctypes.c_void_p, ctypes.c_char_p]
+    cls = objc.objc_getClass(_CELL_PROXY_CLASS)
+    if not cls:
+        return False
+    selector = _selector("accessibilityAttributeValue:")
+    inherited = objc.class_getInstanceMethod(cls, selector)
+    if not inherited:
+        return False
+    original = _ATTRIBUTE_TYPE(objc.method_getImplementation(inherited))
+
+    def attribute_value(proxy, selector_, attribute):
+        value = original(proxy, selector_, attribute)
+        if not _row_texts:
+            return value
+        try:
+            if _to_str(attribute) != "AXValue":
+                return value
+            row = original(proxy, selector_, _nsstring("AXParent"))
+            if not row or not _responds(ctypes.c_void_p(row), "accessibilityAttributeValue:"):
+                return value
+            table = _attribute(ctypes.c_void_p(row), "AXParent")
+            item_text = _row_texts.get(table)
+            if item_text is None:
+                return value
+            index = _attribute(ctypes.c_void_p(row), "AXIndex")
+            if not index or not _responds(ctypes.c_void_p(index), "integerValue"):
+                return value
+            text = item_text(_send(ctypes.c_void_p(index), "integerValue",
+                                   restype=ctypes.c_long))
+            if text:
+                return _nsstring(text)
+        except Exception:  # noqa: BLE001 - an exception can't cross into AppKit
+            pass
+        return value
+
+    imp = _ATTRIBUTE_TYPE(attribute_value)
+    _row_text_methods.extend([original, imp])
+    objc.class_replaceMethod(cls, selector, ctypes.cast(imp, ctypes.c_void_p), b"@@:@")
+    return True
+
+
+def set_row_text(window, item_text) -> bool:
+    """Make VoiceOver read row ``i`` of list box `window` as ``item_text(i)``,
+    or the row's own text when that's None or empty. True if it will.
+
+    ``item_text`` is asked each time VoiceOver reads a row, so it follows the
+    list as it changes. ``item_text=None`` removes it, which a destroyed list
+    must do, as its view's address can be reused.
+    """
+    if not IS_MACOS:
+        return False
+    try:
+        view = _target_view(window)
+        if view is None or not _install_row_text():
+            return False
+        if item_text is None:
+            _row_texts.pop(view.value, None)
+        else:
+            _row_texts[view.value] = item_text
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def row_text(window, index: int) -> str | None:
+    """The text VoiceOver reads for row `index` of list box `window`, or None.
+    For tests."""
+    if not IS_MACOS:
+        return None
+    try:
+        view = _target_view(window)
+        if view is None or not _responds(view, "accessibilityRows"):
+            return None
+        rows = _send(view, "accessibilityRows")
+        if not rows or index >= _send(ctypes.c_void_p(rows), "count", restype=ctypes.c_ulong):
+            return None
+        row = _send(ctypes.c_void_p(rows), "objectAtIndex:", index,
+                    argtypes=(ctypes.c_ulong,))
+        cells = _attribute(ctypes.c_void_p(row), "AXChildren")
+        if not cells or not _send(ctypes.c_void_p(cells), "count", restype=ctypes.c_ulong):
+            return None
+        cell = _send(ctypes.c_void_p(cells), "objectAtIndex:", 0, argtypes=(ctypes.c_ulong,))
+        return _to_str(_attribute(ctypes.c_void_p(cell), "AXValue"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def get_label(window) -> str | None:
     """The name VoiceOver would read for `window`, or None. For tests, and for
     checking a control reported as unlabelled."""
