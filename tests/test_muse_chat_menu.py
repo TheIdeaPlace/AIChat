@@ -557,3 +557,10 @@ def test_the_stop_menu_items_are_on_for_a_muse_chat_started_here(world, case, co
     world.frame._update_send_state()
     item = world.frame.menu_items[command_id]
     assert item is not None and item.IsEnabled(), command_id
+
+
+def test_a_muse_chat_started_here_announces_its_own_turns_once(world):
+    """Its rows now show Working and Needs you, so the list's own "finished"
+    and "needs you" notices would repeat what the Muse monitor says."""
+    assert world.frame._runtime_announces(world.owned) is True
+    assert world.frame._runtime_announces(world.foreign) is False

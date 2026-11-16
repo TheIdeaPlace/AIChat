@@ -1260,8 +1260,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _runtime_announces(self, info):
         # A conversation's members announce through it (#248).
+        # A Muse chat started here: its monitor says "Muse Code finished." and
+        # announces each request, so the list mustn't say so again.
         return info.provider == AGENTS or (
-            info.is_own and (info.provider == 'claude' or info.key in self._codex_states))
+            info.is_own and (info.provider in ('claude', 'muse') or info.key in self._codex_states))
 
     def _apply_snapshot(self, snap: Snapshot, ended, replies, force, resort=False):
         self._snapshot_busy = False

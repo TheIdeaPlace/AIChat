@@ -188,3 +188,19 @@ the Error kind, since Properties would describe a permission notice as an
 allowed rule) remains for unknown, malformed, conflicting or text-less items
 only. Rechecked read-only: that conversation now opens with no warning.
 
+
+Status column (2026-11-16): a Muse session's `status` (`notLoaded`, `idle`,
+`running`, `needsInput`) is its load state in the host that's asked. A chat
+started here runs in The Chat Place's own host, so `MuseProvider.owned_state()`
+reads it there (`session/read`, nothing loaded) and the controller's
+`_merge_owned` shows Working, Needs you or Idle (`notLoaded` is Idle: no turn of
+it runs in this host); unreadable stays unavailable. Checked natively through
+the list's collect path: Idle, Working during a turn, Idle after. Its turns are
+announced once (`_runtime_announces` covers a Muse chat started here).
+
+A chat started in Muse Code runs in another process this host can't see.
+`muse sessions --json` reads a "local session registry" of running sessions,
+but on Windows it listed none: not a `muse serve` host's sessions, and not a
+terminal session that had just replied (checked 2026-11-16, two terminals).
+So those rows keep "status unavailable"; recheck the registry on a newer
+build or on Mac/Linux.

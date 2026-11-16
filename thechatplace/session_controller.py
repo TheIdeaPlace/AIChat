@@ -116,6 +116,11 @@ class SessionController:
                 info.state, info.detail = STATUS_UNAVAILABLE, ""
                 snapshot.sessions.append(info)
                 indexed[record.identity] = info
+            # A provider that runs its own chats here can say what one is
+            # doing (Muse: from the app's own host); others stay as listed.
+            owned_state = getattr(self._providers[record.provider], "owned_state", None)
+            if callable(owned_state):
+                info.state, info.detail = owned_state(record), ""
             info.source = OWN
             info.title = record.title
             info.unread = record.unread

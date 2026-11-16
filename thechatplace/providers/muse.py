@@ -16,7 +16,7 @@ import uuid
 
 from ..aside import NOTHING_FINISHED, AsideEvent
 from ..own_store import OwnSession
-from ..sessions import SessionInfo, STATUS_UNAVAILABLE
+from ..sessions import IDLE, NEEDS_YOU, SessionInfo, STATUS_UNAVAILABLE, WORKING
 from ..titles import clean_title
 from ..transcript import (Transcript, ChatMessage, USER, ASSISTANT, TOOL,
                           TOOL_RESULT, THINKING, ERROR, EVENT, COMPACTION)
@@ -262,6 +262,23 @@ class MuseProvider:
         enabled = self._owned is not None and session.is_own
         return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled, aside=enabled,
                                    attachments=enabled)
+
+    def owned_state(self, record):
+        """The Status column for a chat started here, from The Chat Place's
+        own Muse host (a read; nothing is loaded or resumed). Muse's status
+        there is notLoaded, idle, running or needsInput: notLoaded means no
+        turn of it is running in this host, where chats started here run.
+        Unknown if Muse can't be asked."""
+        if self._owned is None or not self._owned.available():
+            return STATUS_UNAVAILABLE
+        try:
+            result = self._owned.execution.request("session/read", {
+                "sessionId": record.cli_session_id, "excludeItems": True})
+            status = self._owned._session(result, record.cli_session_id).get("status")
+        except Exception:  # noqa: BLE001 - the row says unknown rather than guess
+            return STATUS_UNAVAILABLE
+        return {"running": WORKING, "needsInput": NEEDS_YOU, "idle": IDLE,
+                "notLoaded": IDLE}.get(status, STATUS_UNAVAILABLE)
 
     def execution_available(self):
         return self._owned is not None and self._owned.available()
