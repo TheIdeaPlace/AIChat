@@ -226,7 +226,11 @@ EXPECTED = {
     "chat_permissions": owned(dialog("ChatPermissionsDialog"),
                               said("was started in Muse Code, so it's read-only here. "
                                    "Muse Code decides what it may do.")),
-    "chat_options": owned(said(NOT_YET)),
+    # Muse Code 1.4.20 has no agent, instructions or output style, and refuses
+    # extra folders (dev-notes/muse-code-chat-menu.md): say that, not "yet".
+    "chat_options": owned(said("Muse Code doesn't offer chat options yet: it has no agent, "
+                               "instructions or output style for its chats, and doesn't accept "
+                               "more folders.")),
     "other_machines": owned(said(NOT_YET)),
 }
 
