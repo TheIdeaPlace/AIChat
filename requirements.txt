@@ -9,7 +9,7 @@ markdown==3.11.3
 # Automatic updates (installed copies only; a source run ignores it).
 velopack==1.2.161
 # JAWS speech from the app itself (screen_readers.py, issue #98).
-comtypes==1.4.17; sys_platform == "win32"
+comtypes==1.5.0; sys_platform == "win32"
 # Certificate checks through Windows, for the update check (see updater._ssl_context).
 truststore==0.10.5
 # Encrypted backups (#435): AES-256 zips WinZip and 7-Zip can open too, and the
