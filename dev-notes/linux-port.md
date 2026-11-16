@@ -37,7 +37,7 @@ idle event (any earlier and wx links it again).
 
 ## The messages list's rows (#11)
 
-On Windows the screen reader reads each row as the whole message (MSAA, `ListItemsAccessible`).
+On Windows the screen reader reads each row as the whole message (MSAA, `ListAccessible`).
 On Linux the row's accessible name can be set (it's a `GtkTextCellAccessible`), and Orca's log
 showed the new name, but Orca 48 speaks a table cell's displayed text, not its name. It does
 speak the cell's description after it, so the selected row's description is the rest of the
