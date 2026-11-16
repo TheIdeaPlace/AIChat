@@ -173,6 +173,11 @@ menu item goes there, with its handler in `MainFrame._command_handlers`, never s
 `_build_menu`. `ui_text.py` holds UI text that can be tested without wx
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
+**Connecting another agent.** To add a provider, follow the `connect-agent` skill
+(`.claude/skills/connect-agent/SKILL.md`): detection and sign-in, read-only history, chats of
+the app's own with native permissions, then every menu command, each checked against the
+installed agent before it's built. Muse Code is its worked example.
+
 **Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
 if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
 WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachments.py`, `export.py`,
