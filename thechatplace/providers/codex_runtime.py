@@ -7,7 +7,7 @@ from .codex_connection import ManagedCodexConnection
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
-from .codex_rpc import (CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
+from .codex_rpc import (CodexMessageTooLong, MAX_MESSAGE_CHARS, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
                         CodexRememberedApprovalError, CodexSteerRefused, STOP_TO_RECONNECT)
 from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
@@ -506,7 +506,8 @@ class CodexChatRuntime:
                     # clear the latch (#257): Stop rechecks the saved grant,
                     # or resumes a chat that is not loaded here.
                     reason = safe_reason(error) or "Codex didn't confirm the new permissions."
-                    if STOP_TO_RECHECK not in reason:
+                    gone = isinstance(error, CodexTurnRejected) and error.code == 'thread_gone'
+                    if STOP_TO_RECHECK not in reason and not gone:  # Stop can't bring it back (#625)
                         reason += ' ' + STOP_TO_RECHECK
                     self._problems[native_id] = reason
                     if proof is not None and self._proofs.get(native_id) is proof and proof.connection.owns_runtime(proof):
@@ -829,8 +830,10 @@ class CodexChatRuntime:
             return False
 
     def send(self, record, text):
-        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+        if not isinstance(text, str) or not text.strip():
             raise ValueError('Enter a message of at most 32000 characters')
+        if len(text) > MAX_MESSAGE_CHARS:
+            raise CodexMessageTooLong(len(text))
         from .codex_input import input_items
         try:
             input_items(text)
@@ -924,7 +927,7 @@ class CodexChatRuntime:
                 stopping = native_id in self._stopping
             if stopping:
                 executor.interrupt(proof)
-        except CodexTurnRejected:
+        except (CodexTurnRejected, CodexMessageTooLong):
             # No prompt was sent, so a fresh verified retry is safe. Do not
             # latch an uncertain-turn problem or make this chat unrecoverable.
             rejected = True
@@ -990,8 +993,10 @@ class CodexChatRuntime:
         nothing was sent or Codex refused it as an invalid request (-32600):
         a queued message goes back where it was. Any other error, a timeout
         or a lost connection is unknown: never queued or sent again."""
-        if not isinstance(text, str) or not text.strip() or len(text) > 32000:
+        if not isinstance(text, str) or not text.strip():
             raise ValueError('Enter a message of at most 32000 characters')
+        if len(text) > MAX_MESSAGE_CHARS:
+            raise CodexMessageTooLong(len(text))
         # Every check before turn/steer is written refuses: nothing was sent.
         try:
             proof, executor = self._context(record)

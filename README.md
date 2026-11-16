@@ -124,7 +124,7 @@ too).
 ### Reading a chat
 
 - **Messages:** newest last, with focus on the newest. Each row shows "You:" or the provider's name, such as "Claude:" or "Codex:", and its
-  first line, but on Windows your screen reader reads the **whole message** as you arrow onto it, as words
+  first line, but your screen reader reads the **whole message** as you arrow onto it, as words
   (headings and list items as sentences, and each code block as what it is: "Code block, Python, 14
   lines"). Settings, Reading messages turns that off, to hear just the first line. The list's name
   says the session's state and whether it's read-only. **Enter** (or the context menu's Read Full
@@ -699,6 +699,14 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   You can send attachments with an empty reply box. Queued messages keep their image and skill
   inputs. If a send fails, the recovered draft names its files; attach images again to resend
   them as image inputs.
+- **Long messages.** Codex takes at most 32,000 characters in a message. A longer one, such as
+  a pasted build log, is saved to a file in your temporary folder, and Codex is sent a short
+  message asking it to read that file as yours; attached pictures and skills still go with it.
+  You hear "It was too long to send directly, so Codex was given it as a file to read." The
+  file is deleted when that turn ends, or when The Chat Place closes. In the chat, the message
+  reads as you wrote it, labeled "You, sent as a file". To show it that way, The Chat Place
+  keeps a copy of your most recent long messages in its own data folder (up to 20, about 2 MB
+  in all), and deletes a chat's copies when you delete the chat permanently.
 - **Change Model** and **Change Effort** (Chat, Chat Settings) change an idle chat from its next turn. Choices
   come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
   such as "Codex's default (GPT-5.5)": the chat goes on Codex's default and its default effort,
@@ -766,6 +774,9 @@ chat whose latest turn is unfinished or uncertain. If the connection is lost,
 use Stop to check the saved turn and reconnect once it has ended. No message
 is resent. Selecting the chat again does not automatically reconnect. If
 Codex still reports unfinished work, The Chat Place refuses recovery and says why.
+If Codex no longer has the chat at all (it was deleted in Codex, or it was started here and its
+first message was never sent), you hear so, and that Session, Delete Session Permanently
+removes it from the list.
 Answer shows the command, its folder and Codex's reason. When Codex names extra access
 it needs, such as writing to Git's `.git` folder, another folder or the network, a
 "This also needs" list says what, in plain words; a network request names the host. When
@@ -2169,10 +2180,10 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
 
 ## Limitations
 
-- On a Mac, edit boxes, lists and
-  choices have their names under VoiceOver, as under JAWS and NVDA. But the text a screen reader
-  reads for each row of the messages list (the whole message) uses MSAA, which wxPython has only
-  on Windows, so VoiceOver reads the row's own text instead. On Linux, Orca reads a row's own text
+- wxPython gives a screen reader its names and row text through MSAA, which it has only on
+  Windows, so the Mac and Linux are reached another way. On a Mac, edit boxes, lists and choices
+  are named for VoiceOver through macOS's own accessibility, and VoiceOver reads each row of the
+  messages list as the whole message, as JAWS and NVDA do. On Linux, Orca reads a row's own text
   and then the rest of the message (from the row's accessible description). The OS-specific
   parts are in `thechatplace/platform_paths.py`, `thechatplace/ui/a11y.py`,
   `thechatplace/ui/mac_a11y.py`, `thechatplace/ui/gtk_a11y.py`, `thechatplace/orca.py` and the

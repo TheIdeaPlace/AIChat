@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
+from .. import codex_long_messages
 from ..agents import AGENTS, AgentConversationStore, combine
 from ..sessions import SessionInfo
 from ..transcript import Transcript
@@ -61,7 +62,12 @@ class CombinedReader:
                     histories.append([])
                     continue
                 changed = reader.refresh() or changed
-                histories.append(list(reader.transcript.messages))
+                messages = list(reader.transcript.messages)
+                if member.provider == "codex":
+                    # A long hand-on went as a file (#625): classified by
+                    # what was written, not the prompt naming the file.
+                    messages = codex_long_messages.expand_messages(messages, label=False)
+                histories.append(messages)
             except Exception:  # noqa: BLE001 - one member mustn't hide the rest
                 self._readers.pop(member.identity, None)
                 histories.append(None)

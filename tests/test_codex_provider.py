@@ -52,11 +52,13 @@ class Connection:
 def test_lists_all_pages_and_archives_without_loading_threads():
     connection = Connection([
         {"data": [thread()], "nextCursor": "page-2"},
-        {"data": [thread(), thread("two"), thread("child", parentThreadId="one")], "nextCursor": None},
+        {"data": [thread(), thread("two", modelProvider="ollama"), thread("child", parentThreadId="one")], "nextCursor": None},
         {"data": [thread("old")], "nextCursor": None},
     ])
     snapshot = CodexProvider(connection).collect()
     assert [s.key for s in snapshot.sessions] == ["codex:one", "codex:two", "codex:old"]
+    # Each chat says which model provider it was made with (#644).
+    assert snapshot.sessions[1].model_provider == "ollama"
     assert snapshot.sessions[-1].archived
     assert snapshot.sessions[0].state == "status unavailable"
     assert snapshot.sessions[0].created_ms == 100_000
@@ -65,6 +67,30 @@ def test_lists_all_pages_and_archives_without_loading_threads():
     assert connection.calls[1][1]["cursor"] == "page-2"
     assert "appServer" in connection.calls[0][1]["sourceKinds"]
     assert connection.calls[-1][1]["archived"] is True
+    # Every model provider's chats (#644): left out, Codex lists only the
+    # current provider's, and chats from before a switch drop out.
+    assert all(params["modelProviders"] == [] for _, params in connection.calls)
+
+
+def test_subagents_are_listed_for_every_model_provider():
+    """A chat made before the Codex provider changed keeps its subagents (#644)."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex import CodexSubagentTracker
+    calls = []
+
+    class Children:
+        def request(self, method, params):
+            calls.append((method, params))
+            return {"data": [], "nextCursor": None}
+
+    parent = SimpleNamespace(native_id="one", connection=Children(),
+                             transcript=SimpleNamespace(agents=[]))
+    tracker = CodexSubagentTracker(parent)
+    tracker.refresh()
+    assert tracker.subagents(None, None) == []
+    assert [method for method, _ in calls] == ["thread/list", "thread/list"]
+    assert all(params["modelProviders"] == [] and params["parentThreadId"] == "one"
+               for _, params in calls)
 
 
 def test_repeated_cursor_fails_instead_of_looping():

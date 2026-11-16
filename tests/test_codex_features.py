@@ -54,6 +54,24 @@ def test_missing_images_and_unrecognised_parts_are_rejected(tmp_path):
         build_input('x' * 32001)
 
 
+def test_over_long_text_can_be_assembled_for_the_file_handover(tmp_path):
+    """A reply over the limit must reach the saved-file handover (#625), not
+    die in input validation, with its native parts kept; the limit is the
+    assembled message's, attachment lines included. Without allow_long it
+    is still refused here, and under the limit it's an ordinary input."""
+    from thechatplace.providers.codex_input import CodexInput, LongCodexInput
+    with pytest.raises(ValueError):
+        build_input('x' * 32001)
+    value = build_input('x' * 32001, allow_long=True)
+    assert type(value) is LongCodexInput and len(value) == 32001 and value.parts == ()
+    assert type(build_input('x' * 100, allow_long=True)) is CodexInput
+    image = tmp_path / 'shot.png'
+    image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0' * 64)
+    value = build_input('x' * 31990, [str(image)], allow_long=True)
+    assert type(value) is LongCodexInput
+    assert value.parts == ({'type': 'localImage', 'path': str(image.resolve())},)
+
+
 def test_queued_image_is_sent_with_its_native_parts(tmp_path):
     service, connection, _ = runtime()
     try:

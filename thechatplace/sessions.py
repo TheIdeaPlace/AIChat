@@ -145,6 +145,10 @@ class SessionInfo:
     #: An agent conversation's members' providers, so View, Show Sessions,
     #: Claude Chats (or Codex Chats) lists it too.
     member_providers: tuple = ()
+    #: A Codex chat's model provider as Codex lists it ("openai" for
+    #: ChatGPT), "" when not known (#644). A chat made under another
+    #: provider isn't copied into a ChatGPT chat (CodexOwnedThreads.fork).
+    model_provider: str = ""
     #: For one of The Chat Place's own made by Continue Here: the title of
     #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
     #: Copilot copy's first message carries the history (#423).

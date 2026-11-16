@@ -77,6 +77,34 @@ def test_external_chat_is_forked_into_another_identity_and_not_resumed():
     assert not any(m == 'thread/resume' for m, p in connection.calls)
 
 
+def test_a_chat_from_another_model_provider_is_never_copied_into_chatgpt():
+    """Listed since #644: a chat made with a local model, say, isn't forked
+    into a ChatGPT chat (Continue Here, Branch, Retry, Ask Aside), and
+    nothing is sent to Codex."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    source = SessionInfo('external', 'codex:local', 'Local', '/workspace', 'local',
+                         provider='codex', model_provider='ollama')
+    connection = Connection()
+    with pytest.raises(CodexTurnRejected) as refused:
+        CodexOwnedThreads(connection).fork(source, 'Copy')
+    assert refused.value.code == 'other_provider'
+    assert 'other than ChatGPT' in safe_reason(refused.value)
+    assert connection.calls == []
+    # Ask Aside says so plainly, before starting a Codex for the aside.
+    from thechatplace.providers.codex_aside import CodexAsideRunner
+    events, started = [], []
+    CodexAsideRunner(source, 'Why?', events.append,
+                     factory=lambda: started.append(True))._run()
+    assert started == [] and len(events) == 1
+    assert events[0].kind == 'failed' and 'other than ChatGPT' in events[0].text
+    # ChatGPT's own chats, and ones whose provider isn't known, still copy.
+    for provider in ('openai', ''):
+        ok = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source',
+                         provider='codex', model_provider=provider)
+        CodexOwnedThreads(Connection()).fork(ok, 'Copy')
+
+
 def test_owned_resume_retains_native_identity_and_chosen_model():
     connection = Connection(response('owned'))
     record = OwnSession('owned', 'Owned', '/workspace', provider='codex', provider_options={'model': 'gpt-default'})
@@ -370,6 +398,96 @@ def test_a_chat_whose_last_turn_failed_reopens(monkeypatch):
     lease = CodexOwnedThreads(connection).resume(record)
     assert lease.native_id == 'owned'
     assert any(method == 'thread/resume' for method, _ in connection.calls)
+
+
+def test_resume_of_a_chat_codex_no_longer_has_says_so():
+    """Codex has no thread for it (deleted there, or created here without a
+    first message): that is not an uncertain turn, so say it's gone."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexTurnRejected
+    class GoneConnection(Connection):
+        def request(self, method, params):
+            if method == 'thread/read':
+                self.calls.append((method, params))
+                raise CodexRpcError('Codex request failed')
+            if method == 'thread/list':
+                self.calls.append((method, params))
+                return {'data': [{'id': 'someone-else'}], 'nextCursor': None}
+            return super().request(method, params)
+    connection = GoneConnection(response('owned'))
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexTurnRejected) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert refused.value.code == 'thread_gone'
+    assert 'no longer has this chat' in str(refused.value)
+    assert 'Delete Session Permanently' in str(refused.value)
+    assert not any(method == 'thread/resume' for method, _ in connection.calls)
+    # The words the user hears are the refusal's own.
+    assert safe_reason(refused.value) == str(refused.value)
+    # Every model provider's chats were asked for: left out, Codex lists only
+    # the current provider's, and a chat from before a switch would be "gone".
+    lists = [params for method, params in connection.calls if method == 'thread/list']
+    assert lists and all(params['modelProviders'] == [] for params in lists)
+
+
+def _paged_connection(pages_by_archived, fail_on=None):
+    """thread/read fails; thread/list answers from ``pages_by_archived``
+    ({archived: [(ids, next cursor), ...]}), raising on ``fail_on``."""
+    class Paged(Connection):
+        def request(self, method, params):
+            if method == 'thread/read':
+                raise CodexRpcError('Codex request failed')
+            if method == 'thread/list':
+                self.calls.append((method, params))
+                pages = pages_by_archived[params['archived']]
+                index = 0 if 'cursor' not in params else int(params['cursor'])
+                if fail_on == (params['archived'], index):
+                    raise CodexRpcError('list failed')
+                ids, cursor = pages[index]
+                return {'data': [{'id': i} for i in ids], 'nextCursor': cursor}
+            return super().request(method, params)
+    return Paged(response('owned'))
+
+
+def test_a_chat_on_a_later_page_is_not_gone():
+    connection = _paged_connection({False: [(['a'], '1'), (['owned'], None)], True: [([], None)]})
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexRpcError) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert type(refused.value) is CodexRpcError
+
+
+@pytest.mark.parametrize('pages,fail_on', [
+    ({False: [(['a'], '1'), (['b'], '1')], True: [([], None)]}, None),        # repeated cursor
+    ({False: [(['a'], '1'), (['b'], None)], True: [([], None)]}, (False, 1)),  # page 2 fails
+])
+def test_an_unreadable_list_never_says_gone(pages, fail_on):
+    connection = _paged_connection(pages, fail_on)
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexRpcError) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert type(refused.value) is CodexRpcError and str(refused.value) == 'Codex request failed'
+
+
+def test_resume_read_failure_for_a_listed_chat_stays_uncertain():
+    """A chat Codex still lists (here only as archived) may just have hit a
+    transient read failure: never call it gone."""
+    class ListedConnection(Connection):
+        def request(self, method, params):
+            if method == 'thread/read':
+                self.calls.append((method, params))
+                raise CodexRpcError('Codex request failed')
+            if method == 'thread/list':
+                self.calls.append((method, params))
+                return {'data': [{'id': 'owned'}] if params.get('archived') else [],
+                        'nextCursor': None}
+            return super().request(method, params)
+    connection = ListedConnection(response('owned'))
+    record = OwnSession('owned', 'Owned', '/workspace', provider='codex')
+    with pytest.raises(CodexRpcError) as refused:
+        CodexOwnedThreads(connection).resume(record)
+    assert type(refused.value) is CodexRpcError
+    assert str(refused.value) == 'Codex request failed'
 
 
 @pytest.mark.parametrize('status,code,words', [

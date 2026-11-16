@@ -12,12 +12,14 @@ import threading
 import time
 from typing import Protocol
 
+from .. import codex_long_messages
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
 from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, THINKING, AgentCall, ChatMessage, Transcript
 from ..ui_text import last_message_line
 from ..changes import FileEdit, Hunk, parse_unified_diff
 from .base import Snapshot
 from .codex_connection import ManagedCodexConnection
+from .codex_rpc import thread_list_pages
 from .codex_models import read_models
 from .codex_usage import read_usage, read_warnings
 from .codex_tokens import context_lines
@@ -107,6 +109,7 @@ def session_from_thread(thread: dict, archived: bool) -> SessionInfo:
               if isinstance(origin, str) else "external")
     return SessionInfo(source, f"codex:{native_id}", title.split("\n", 1)[0] or "Untitled session",
                        _text(thread.get("cwd")), native_id, provider="codex",
+                       model_provider=_text(thread.get("modelProvider"))[:64],
                        state=state, detail=detail, archived=archived,
                        created_ms=_time(thread.get("createdAt")),
                        last_activity_ms=_time(thread.get("updatedAt")))
@@ -410,7 +413,10 @@ class CodexSubagentTracker:
             for archived in (False, True):
                 cursor, cursors = None, set()
                 for _ in range(100):
-                    params = {'parentThreadId': parent, 'limit': 100, 'archived': archived, 'sourceKinds': ['subAgentThreadSpawn', 'subAgentReview', 'subAgentOther']}
+                    # Every model provider's (#644): a chat made before the
+                    # provider changed keeps its subagents.
+                    params = {'parentThreadId': parent, 'limit': 100, 'archived': archived, 'modelProviders': [],
+                              'sourceKinds': ['subAgentThreadSpawn', 'subAgentReview', 'subAgentOther']}
                     if cursor:
                         params['cursor'] = cursor
                     page = connection.request('thread/list', params)
@@ -588,6 +594,9 @@ class CodexProvider:
                 reader.refresh()
                 message = next((m for m in reversed(reader.transcript.messages)
                                 if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
+                if message is not None:
+                    # A long message sent as a file reads as written (#625).
+                    message = codex_long_messages.expand_messages([message])[0]
                 line = last_message_line(message.label, message.text) if message else ""
             except Exception:  # noqa: BLE001 - optional history cannot erase the catalog
                 line, failed = "", True
@@ -607,17 +616,12 @@ class CodexProvider:
     def collect(self) -> Snapshot:
         sessions, ids = [], set()
         for archived in (False, True):
-            cursor, cursors = None, set()
-            while True:
-                params = {"archived": archived, "limit": 100,
-                          "sourceKinds": ["cli", "vscode", "exec", "appServer", "unknown"],
-                          "sortKey": "updated_at"}
-                if cursor is not None:
-                    params["cursor"] = cursor
-                response = self.connection.request("thread/list", params)
-                data = response.get("data")
-                if not isinstance(data, list):
-                    raise ValueError("Codex returned an invalid thread list")
+            # Every model provider's chats (#644): left out, Codex lists only
+            # the provider it's set to now (codex-rs thread_processor.rs), so
+            # chats made in Codex before a switch dropped out of the list
+            # (ours stayed, merged back by SessionController._merge_owned).
+            for data in thread_list_pages(self.connection, archived, sortKey="updated_at",
+                                          modelProviders=[]):
                 for thread in data:
                     if not isinstance(thread, dict):
                         raise ValueError("Codex returned invalid thread metadata")
@@ -627,12 +631,6 @@ class CodexProvider:
                     if info.identity not in ids:
                         ids.add(info.identity)
                         sessions.append(info)
-                cursor = response.get("nextCursor")
-                if cursor is None:
-                    break
-                if not isinstance(cursor, str) or not cursor or cursor in cursors:
-                    raise ValueError("Codex returned invalid or repeated pagination cursor")
-                cursors.add(cursor)
         if self.runtime is not None:
             for info in sessions:
                 if self.runtime.known(info.cli_session_id):

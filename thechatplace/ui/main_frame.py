@@ -69,7 +69,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, new_session_id,
                           normalize_permission_mode)
-from .. import sound_events
+from .. import codex_long_messages, sound_events
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
                    forget_last_messages)
@@ -104,8 +104,8 @@ from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_
                        release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
-                   set_voiceover_menu)
+from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
+                   set_empty_list_text, set_list_items_accessible, set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
 from .codex_chats import CodexChats
@@ -298,6 +298,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.speech = SpeechSettings.load()
         self._codex_states = {}
         self._codex_drafts = {}
+        self._long_message_files = {}  # key -> {temp path: entry} (#625)
         self._codex_preparing = {}
         self._codex_preparation_running = set()
         self._codex_send_pending = {}
@@ -617,6 +618,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                              manual=False)
         self._pool.submit(attachments.remove_old_pastes)  # pasted pictures over 30 days old
         self._pool.submit(remove_whole_chat_page)
+        self._pool.submit(codex_long_messages.sweep_temp)  # last run's long messages (#625)
         self.session_list.SetFocus()
         if check_updates_at_start:
             # A few seconds in, so the list is read first. Settings can turn
@@ -853,6 +855,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # lists share the width by proportion instead.
         self.session_list.SetMinSize(dip(self, LIST_MIN_WIDTH))
         set_accessible_name(self.session_list, "Session list")
+        # Read as "No sessions", not "unknown", when nothing is listed (#621).
+        set_empty_list_text(self.session_list, "No sessions")
         left.Add(self.session_list, 1, wx.EXPAND | wx.ALL, 8)
         self.session_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_session)
         self.session_list.Bind(wx.EVT_CONTEXT_MENU, self._on_session_menu)
@@ -876,7 +880,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         set_accessible_name(self.chat_list, "Messages")
         # Each row shows the first line; the screen reader reads it whole (#11).
         set_list_items_accessible(self.chat_list, self.chat_list.GetName,
-                                  self._message_item_text)
+                                  self._message_item_text, empty_text="No messages")
         self._spoken: Dict[str, tuple] = {}  # message key -> (text, spoken words)
         vsizer.Add(self.chat_list, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         self.chat_list.Bind(wx.EVT_CONTEXT_MENU, self._on_message_menu)
@@ -934,6 +938,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # something; Delete removes the selected one.
         self.attach_list = wx.ListBox(self.own_reply, style=wx.LB_SINGLE)
         set_accessible_name(self.attach_list, "Attachments, Delete removes one")
+        set_empty_list_text(self.attach_list, "No attachments")
         self.attach_list.SetMinSize(dip(self, LIST_MIN_WIDTH, 48))  # see session_list
         osizer.Add(self.attach_list, 0, wx.EXPAND | wx.TOP, 6)
         self.attach_list.Hide()
@@ -1329,8 +1334,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 selected = self._list_keys[index]
                 if selected not in {s.key for s in shown}:
                     shown += [s for s in snap.sessions if s.key == selected]
+        had_rows = self.session_list.GetCount() > 0
         self._update_session_list(shown, keep_order=keep_order)
         self._update_list_label(len(shown))
+        if had_rows and not force:  # F5 says how many sessions there are itself
+            self._announce_if_list_emptied()
 
         if not first and self._open is not None and not (
                 self._runtime_announces(self._open)) and any(
@@ -1501,6 +1509,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.session_list.SetSelection(keys.index(selected_key))
         else:
             self.session_list.SetSelection(min(max(index, 0), len(keys) - 1))
+
+    def _announce_if_list_emptied(self):
+        """Call after the session list may have lost its last row: if it's now empty and has
+        focus, tell the screen reader, which otherwise stays on the row that had gone; Windows
+        says nothing when a list box empties (#649)."""
+        if not self.session_list.GetCount() and wx.Window.FindFocus() is self.session_list:
+            announce_list_emptied(self.session_list)
 
     @staticmethod
     def _list_keys_before_delete(index: int, count: int) -> int:
@@ -1826,6 +1841,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # and selecting it again can make a screen reader say it twice.
                 if self.session_list.GetSelection() != target:
                     self.session_list.SetSelection(target)
+            # Emptied by your own Hide or Delete: no focus event here (#649). What the command
+            # says ("Hid ...") is the announcement, and in the test VM NVDA dropped the event's
+            # "No sessions" behind it anyway; NVDA+Tab reads "No sessions" either way.
         if refocus:
             # Its messages and reply box are gone: don't leave focus on them.
             self.session_list.SetFocus()
@@ -1953,7 +1971,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             row = self._list_keys.index(info.key)
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
-        self.SetTitle(f"{info.title} \u2014 {APP_NAME}")
         self._show_attachments()
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
@@ -2050,6 +2067,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         if info is None:
             return
+        # The window title names the open chat, so it follows a rename,
+        # here or elsewhere (#553): it's what Alt+Tab and a screen reader's
+        # read-title key say. Set only when it changes.
+        title = f"{info.title} — {APP_NAME}"
+        if self.GetTitle() != title:
+            self.SetTitle(title)
         if info.provider == AGENTS:
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
@@ -2141,7 +2164,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # chat, a new title, read-only becoming yours) is said at once.
         identity = (info.key, info.title, kind)
         if (not arriving and self._messages_label_key == identity and self.chat_list.HasFocus()
-                and self.messages_label.GetLabel() != f"&{label}:"):
+                and self.messages_label.GetLabel() != self._messages_label_text(label)):
             # Only the state changed, with you in the list: a screen reader
             # says a focused control's new name again, and on a braille
             # display it replaces the message you're on (JAWS showed
@@ -2184,10 +2207,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_messages_label(arriving=True)
         self._update_heading()
 
+    @staticmethod
+    def _messages_label_text(label):
+        """What the label above the messages shows: Alt+M on its "M", and
+        any "&" in the chat's title shown as written, not taken for a second
+        access key (#539)."""
+        return f"&{wx.Control.EscapeMnemonics(label)}:"
+
     def _set_messages_label(self, label):
         self._pending_messages_label = None
-        if self.messages_label.GetLabel() != f"&{label}:":
-            self.messages_label.SetLabel(f"&{label}:")
+        shown = self._messages_label_text(label)
+        if self.messages_label.GetLabel() != shown:
+            self.messages_label.SetLabel(shown)
             set_accessible_name(self.chat_list, label)
 
     def _on_chat_list_left(self, event):
@@ -2224,6 +2255,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 changed = active_reader.refresh()
                 transcript = active_reader.transcript
                 copies = [dataclasses.replace(m) for m in transcript.messages]
+                if info.provider == 'codex':
+                    # A saved long message reads as it was written, not as
+                    # the short prompt Codex was sent.
+                    copies = codex_long_messages.expand_messages(copies)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
@@ -5230,6 +5265,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"{info.title} is already a Chat Place session; reply to it here.")
             return
         if info.provider == "codex":
+            if self._other_provider_said(info):
+                return
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
                                       load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
@@ -6118,13 +6155,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        for turn, identity, text in getattr(state, 'permission_notices', ())
                        if turn == state.turn_id and (self._show_activity or not is_routine(identity, text))]
             return notices + self._steered_rows(info.key) + [
-                ChatMessage(QUEUED, text, key=f"queued:{info.key}:{i}")
+                self._queued_row(text, f"queued:{info.key}:{i}")
                 for i, text in enumerate(state.queued)]
         if info is None or not info.is_own or info.provider != "claude":
             return []
         return self._steered_rows(info.cli_session_id) + [
             ChatMessage(QUEUED, text, key=f"queued:{info.cli_session_id}:{i}")
             for i, text in enumerate(self._queued.get(info.cli_session_id, []))]
+
+    @staticmethod
+    def _queued_row(text: str, key: str) -> ChatMessage:
+        """A queued Codex message; one going as a file (#625) reads as
+        written, not as the short prompt that names the file."""
+        written = codex_long_messages.original(text)
+        if codex_long_messages.saved_path(text) is None:
+            return ChatMessage(QUEUED, text, key=key)
+        return ChatMessage(QUEUED, written if written is not None else text, key=key,
+                           speaker="Queued, sent as a file")
 
     def _your_messages_saying(self, text: str) -> int:
         """How many of your messages in the loaded chat say ``text``."""
@@ -8990,6 +9037,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._close_session_tools()
         self._close_providers()
+        self._forget_long_messages()  # no turn of this run will read them now (#625)
         event.Skip()
 
     def _close_providers(self):

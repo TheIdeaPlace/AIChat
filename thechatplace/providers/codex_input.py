@@ -44,7 +44,24 @@ def validate_input(items):
             raise ValueError('Unsupported Codex input item.')
 
 
-def build_input(text, paths=(), *, skills=()):
+class LongCodexInput(str):
+    """An assembled message over the send limit (#625), carrying its native
+    parts (images, skills) unvalidated for length: the window hands the
+    text over in a file and sends the parts with the short prompt
+    (CodexInput(prompt, parts)), so an attached image still reaches Codex."""
+
+    def __new__(cls, text, parts=()):
+        value = super().__new__(cls, text)
+        value.parts = tuple(dict(part) for part in parts)
+        return value
+
+
+def build_input(text, paths=(), *, skills=(), allow_long=False):
+    """Assemble a message's text, attachment lines and native parts.
+
+    ``allow_long``: an assembled message over the send limit (attachment
+    lines included) comes back as a LongCodexInput instead of being
+    refused, for the caller to hand over in a file."""
     if not isinstance(text, str) or len(paths) + len(skills) > 20:
         raise ValueError('Choose at most 20 attachments.')
     lines, parts = [text.strip()] if text.strip() else [], []
@@ -60,7 +77,11 @@ def build_input(text, paths=(), *, skills=()):
     for name, path in skills:
         lines.append('$' + name)
         parts.append({'type': 'skill', 'name': name, 'path': str(Path(path).resolve(strict=True))})
-    return CodexInput('\n\n'.join(lines), parts)
+    joined = '\n\n'.join(lines)
+    from .codex_rpc import MAX_MESSAGE_CHARS
+    if allow_long and len(joined) > MAX_MESSAGE_CHARS:
+        return LongCodexInput(joined, parts)
+    return CodexInput(joined, parts)
 
 
 def input_items(text):

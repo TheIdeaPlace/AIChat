@@ -4,7 +4,7 @@ import threading
 from .. import platform_paths
 from ..aside import NOTHING_FINISHED, AsideEvent
 from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
-from .codex_owned import CodexOwnedThreads
+from .codex_owned import CodexOwnedThreads, other_provider
 from .codex_rpc import CodexRpcError
 
 
@@ -87,6 +87,11 @@ class CodexAsideRunner:
 
     def _run(self):
         connection = None
+        refusal = other_provider(self.source)
+        if refusal:
+            # Said plainly, before an aside Codex is even started (#644).
+            self._emit(AsideEvent('failed', refusal))
+            return
         try:
             connection = self._connection = self.factory()
             # The copy always ends with the newest completed turn (#559):
