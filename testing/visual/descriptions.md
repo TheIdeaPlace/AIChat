@@ -283,7 +283,7 @@ Claude.ai connectors aren't available on API credits. A chat's charging can't be
 once it's made." before the usual permissions text. Without a key (new-session), there's
 no Charge to row and the dialog is as before.
 
-**Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). Everything below moves down about 45 pixels, so the dialog is 600 by about 725, and nothing else in its layout changed. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
+**Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). The dialog stays 600 by 680: everything below moves down to make room, and the read-only boxes (Test result, About spending) are a little shorter. Nothing else in its layout changed, and nothing is cut off. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
 
 ## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
 
