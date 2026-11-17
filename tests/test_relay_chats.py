@@ -84,6 +84,11 @@ class Window(CodexChats, RelayChats):
     def _can_edit(self, info):
         return info.is_own and self.can_edit
 
+    def _api_own(self, native):
+        # As MainFrame's (#658): the chat's record if it's on API credits.
+        record = self.records.get(native)
+        return record if record is not None and record.billing == 'api' else None
+
     # what a new chat or an agent conversation (#378) calls
     def on_new_session(self, forward=None):
         self.new_sessions.append(forward)

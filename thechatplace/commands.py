@@ -137,6 +137,9 @@ MENU_BAR: Tuple[Menu, ...] = (
         # for (#596).
         Command("retry_from_here", "Retr&y from Here...", "Ctrl+Shift+Z", not_on_mac=True),
         Command("branch_from_here", "Branch &from Here"),
+        # A new chat that carries on from this one, charged to the API key
+        # (#658): how a chat is charged is fixed, so this is the way across.
+        Command("continue_on_api_credits", "Continu&e on API Credits..."),
         SEPARATOR,
         # The loaded chat's own settings, together (#596). Their keys are
         # still window-wide with the submenu shut, as any menu item's are.
@@ -194,6 +197,8 @@ MENU_BAR: Tuple[Menu, ...] = (
             Command("codex_sign_in", "C&odex..."),
             Command("copilot_sign_in", "Co&pilot..."),
         )),
+        # A Claude API key and the limits on what it may spend (#658).
+        Command("api_keys", "A&PI Keys..."),
         SEPARATOR,
         Command("sounds", "S&ounds..."),
         Command("mute_all_sounds", "&Mute All Sounds", "Ctrl+Shift+X", check=True),

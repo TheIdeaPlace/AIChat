@@ -19,7 +19,7 @@ import wx
 
 from .. import hub, platform_paths, rewind
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, ResumeRefused, build_fork_command,
-                          new_session_id)
+                          model_allowed, new_session_id)
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
 from ..transcript import ASSISTANT, USER, ChatMessage
@@ -107,13 +107,22 @@ class RewindChats:
                 wx.MessageBox(str(exc), "The Chat Place", wx.OK | wx.ICON_WARNING, self)
                 return None
         now = int(time.time() * 1000)
+        source = self.store.get(info.cli_session_id) if info.is_own else None
+        # A branch is charged as the chat it comes from (#658): a branch of
+        # an API chat is an API chat, its sends asked and said like any
+        # other's, and keeps Fable; anything else is on the subscription,
+        # where a model it can't have (Fable) is never carried.
+        billing = source.billing if source is not None and source.provider == "claude" \
+            else "subscription"
+        if not model_allowed(model, billing):
+            model = ""
         own = OwnSession(cli_session_id=new_id, title=title, cwd=info.cwd,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          # With nothing to keep (your first message), it's a
                          # new session in the same folder, not a copy.
                          fork_source=info.cli_session_id if cut else "", fork_at=cut,
-                         forked_from=info.title, created_ms=now, last_activity_ms=now)
-        source = self.store.get(info.cli_session_id) if info.is_own else None
+                         forked_from=info.title, created_ms=now, last_activity_ms=now,
+                         billing=billing)
         if source is not None:
             # Chat Options (#468) carry over too: the copy inherits the
             # system prompt Claude Code recorded for the source, options and

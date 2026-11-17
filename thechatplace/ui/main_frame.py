@@ -67,7 +67,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           SESSION_INJECTED_PREFIXES, STRIPPED_VARS, child_environment,
                           deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
-                          model_matches, model_spoken, new_session_id,
+                          model_matches, model_spoken, models_for, new_session_id,
                           normalize_permission_mode)
 from .. import codex_long_messages, sound_events
 from .sound_host import SoundHost
@@ -93,7 +93,7 @@ from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP
                         WORKING, STATUS_UNAVAILABLE,
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
-from ..speech import ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
+from ..speech import API_NOTICE_SOUND, ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
 from .. import workplaces
 from ..transcript import latest_relocation
 from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, ERROR,
@@ -144,6 +144,24 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
+#: An API chat with no key kept (#658): the message stays in the reply box.
+NO_API_KEY = ("This chat is charged to API credits, but there's no Claude API key. Add one "
+              "with Tools, API Keys.")
+#: Said with every send into a chat on API credits (#658), always.
+API_SENT_WORDS = "Sent on API credits."
+#: Remote Control (and Other Machines, which uses it) in a chat on API
+#: credits (#658): it's a claude.ai feature, so it's never turned on there.
+REMOTE_NOT_ON_API = ("Remote Control isn't available in chats on API credits, so {title} "
+                     "can't be reached from claude.ai or your other devices. It works in chats "
+                     "on your Claude subscription.")
+
+
+def _dollars(amount: float) -> str:
+    """Dollars as the status bar shows them (#658): "$0.42", "$12.30", and
+    a whole amount, as limits usually are, without cents: "$190"."""
+    cents = int(round(max(0.0, amount or 0.0) * 100))
+    return f"${cents // 100:,}" if cents % 100 == 0 else f"${cents // 100:,}.{cents % 100:02d}"
+
 # Scheduled backups (#437): how often to look whether one is due, and how
 # long after starting to look first (after the first list and sign-in checks).
 BACKUP_CHECK_MS = 10 * 60 * 1000
@@ -390,6 +408,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: row under the reader changed only in those (#146).
         self._row_basis: Dict[str, Tuple[str, str]] = {}
         self._runners: Dict[str, TurnRunner] = {}
+        #: API chats whose first send this run was confirmed (#658).
+        self._api_confirmed: set = set()
         self._denials: Dict[str, List[str]] = {}
         #: What needed you (refusals, an error) in a reply said while the
         #: turn waited on background work (#161): not said again at the
@@ -728,6 +748,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "continue_here": self.on_continue_here,
             "retry_from_here": lambda e: self.on_rewind_to_here(),
             "branch_from_here": lambda e: self.on_branch_from_here(),
+            "continue_on_api_credits": lambda e: self.on_continue_on_api_credits(),
+            "api_keys": lambda e: self.on_api_keys(),
             "new_session": self.on_new_session,
             "change_model": lambda e: self.on_change_model(),
             "change_effort": lambda e: self.on_change_effort(),
@@ -989,6 +1011,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.status_session = self.status_parts.add_text("session", "Loaded session", -2,
                                                          empty_text="No session loaded")
         self.status_parts.add_button("context", 150, self.on_usage)
+        # What an API chat and the app have spent (#658), shown only while
+        # such a chat is loaded; pressed, it opens Tools, API Keys.
+        self.status_parts.add_button("api_credits", 300, lambda: self.on_api_keys())
         self.status_parts.add_button("needs_you", 170, self._go_to_needs_you)
         self.status_parts.add_button("update", 190, lambda: self.check_for_updates(True))
         self._status_latest = ""
@@ -1009,6 +1034,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             state = state_with_detail(info.state, info.detail, ", ")
             text = f"{info.title}: {state}"
         self.status_parts.set("session", text)
+        self._update_status_api()
+
+    def _update_status_api(self):
+        """The API credits part (#658): shown while an API chat is loaded."""
+        info = self._open
+        text = (self._api_spend_line(info.cli_session_id)
+                if self._is_api_chat(info) else "")
+        self.status_parts.set("api_credits", text)
 
     def _update_status_context(self):
         tokens, window = self._context(self._open)
@@ -2000,6 +2033,157 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         else:
             self.desktop_note.SetFocus()
 
+    # -- API credits (#658) ---------------------------------------------------
+
+    def _api_own(self, session_id: str) -> Optional[OwnSession]:
+        """The Claude chat of the app's own with this id, if it's charged to
+        API credits; else None."""
+        own = self.store.get(session_id) if session_id else None
+        return own if own is not None and own.provider == "claude" \
+            and own.billing == "api" else None
+
+    def _is_api_chat(self, info: Optional[SessionInfo]) -> bool:
+        return (info is not None and info.is_own and info.provider == "claude"
+                and self._api_own(info.cli_session_id) is not None)
+
+    def _name_reply_box(self, api: bool) -> None:
+        """The reply box's name says API credits in such a chat (#658):
+        heard on tabbing in, alongside the title and the send announcement."""
+        name = "Your message, API credits" if api else "Your message"
+        if getattr(self, "_reply_name", "Your message") != name:
+            self._reply_name = name
+            set_accessible_name(self.reply_text, name)
+
+    @staticmethod
+    def _has_api_key() -> bool:
+        """Whether a Claude API key is kept, without reading it (#658)."""
+        try:
+            return platform_paths.has_secret(platform_paths.CLAUDE_API_KEY_SECRET)
+        except Exception:  # noqa: BLE001 - unknown reads as none
+            return False
+
+    def _api_spend_line(self, session_id: str) -> str:
+        """The status bar's API credits part for an API chat (#658), or ""."""
+        if self._api_own(session_id) is None:
+            return ""
+        from ..spend_ledger import default_ledger
+        ledger = default_ledger()
+        # Read again only when the ledger or the limits changed: this runs
+        # with every turn status tick.
+        stamp = []
+        for path in (ledger.path, ledger.limits_path):
+            try:
+                info = path.stat()
+                stamp.append((info.st_mtime_ns, info.st_size))
+            except OSError:
+                stamp.append(None)
+        cached = getattr(self, "_api_totals_cache", None)
+        if cached is not None and cached[0] == stamp:
+            totals = cached[1]
+        else:
+            try:
+                totals = ledger.totals()
+            except Exception:  # noqa: BLE001 - the status bar must never fail
+                return ""
+            self._api_totals_cache = (stamp, totals)
+        chat = totals.chat_all_time.get(session_id, 0.0)
+        return (f"API credits: this chat {_dollars(chat)}, The Chat Place "
+                f"{_dollars(totals.counted)} of {_dollars(totals.limits.overall)}")
+
+    def _api_send_problem(self, session_id: str, ask: bool = True) -> Optional[str]:
+        """Why a message can't go into this chat now because of API credits
+        (#658): no key kept, the spending limit reached or the tally
+        damaged, or "" when you chose Cancel at "Send on API credits?". None
+        for a subscription chat, or once it may go. ``ask``:
+        the first send this run in the chat is confirmed (Settings can turn
+        it off); a queued message going on its own isn't asked again."""
+        own = self._api_own(session_id)
+        if own is None:
+            return None
+        if not self._has_api_key():
+            return NO_API_KEY
+        # A reached limit or a damaged tally is said now, before "Send on API
+        # credits?" is asked or "Sent on API credits" said, with the message
+        # still in the reply box; the turn's own reservation checks again.
+        from ..spend_ledger import default_ledger
+        try:
+            refusal = default_ledger().can_spend()
+        except Exception as exc:  # noqa: BLE001 - unknown is "no", never "yes"
+            refusal = f"The Chat Place couldn't check its record of API spending ({exc})."
+        if refusal:
+            return refusal
+        if ask and self.speech.api_confirm_first and session_id not in self._api_confirmed:
+            if not self._confirm_api_send(own.title):
+                return ""
+            self._api_confirmed.add(session_id)
+        return None
+
+    def _confirm_api_send(self, title: str) -> bool:
+        """ "Send on API credits?": Enter sends, Escape cancels (#658)."""
+        dialog = wx.MessageDialog(
+            self, f"Send on API credits? Messages in {title} are charged to your Claude API "
+            "key.", "Send on API credits?", wx.OK | wx.CANCEL | wx.OK_DEFAULT | wx.ICON_QUESTION)
+        dialog.SetOKCancelLabels("&Send", "Cancel")
+        try:
+            return dialog.ShowModal() == wx.ID_OK
+        finally:
+            dialog.Destroy()
+
+    def _say_api_sent(self, session_id: str, on_its_own: bool = False) -> None:
+        """Every send into an API chat says so (#658): spoken, or its own
+        sound when Settings asks for one and this build has it. Spoken even
+        with announcements set to Silent, as it's the feature's promise that
+        no message is charged unheard; queued behind other speech rather
+        than cutting it off, and not made the last announcement, so Repeat
+        Last Announcement still repeats what was sent."""
+        if self._api_own(session_id) is None:
+            return
+        if self.speech.api_send_notice == API_NOTICE_SOUND and sound_events.has_api_sent_sound():
+            self._sound(sound_events.API_SENT, self._own_key(session_id), on_its_own=on_its_own)
+        else:
+            self._status(API_SENT_WORDS)
+            self._speak_announcement(API_SENT_WORDS, interrupt=False)
+
+    def _api_cost_words(self, event) -> str:
+        """What a finished turn on API credits cost, as said ("6 cents",
+        "less than a cent"; never "0 cents"), or "" for the subscription or
+        with Settings' "Give the cost of each API-credit reply" off (#658)."""
+        data = getattr(event, "data", None) or {}
+        if data.get("billing") != "api" or not self.speech.api_say_cost:
+            return ""
+        from ..billing import money
+        return money(data.get("cost_usd"))
+
+    def _first_message_held(self, own: OwnSession, message: str) -> bool:
+        """A new chat on API credits whose first message can't go yet (no
+        key, or Cancel at "Send on API credits?", #658): the chat is made
+        and opened, with the message in its reply box. False to send it."""
+        problem = self._api_send_problem(own.cli_session_id)
+        if problem is None:
+            return False
+        if message:
+            self._drafts[own.cli_session_id] = message
+        self.open_session(own.to_info())
+        self.refresh_sessions()
+        if problem:
+            wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+        self._feedback("Not sent. Your message is in the reply box." if message
+                       else "Not sent.")
+        self.reply_text.SetFocus()
+        return True
+
+    def _billing_kwargs(self, session_id: str) -> dict:
+        """What a TurnRunner for this chat is given about billing (#658): the
+        route, the chat and the app's ledger for API credits; for the
+        subscription (the runner's default route) only where each chat's
+        last reported cost is kept, so that a copy of it made on API credits
+        later counts only what it adds (spend_ledger, "What a result
+        cost"). An aside takes the API kwargs without ``chat_id``."""
+        from ..spend_ledger import default_ledger
+        if self._api_own(session_id) is None:
+            return {"cost_baselines": default_ledger()}
+        return {"billing": "api", "chat_id": session_id, "ledger": default_ledger()}
+
     def _update_heading(self):
         info = self._open
         if info is None:
@@ -2007,9 +2191,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # The window title names the open chat, so it follows a rename,
         # here or elsewhere (#553): it's what Alt+Tab and a screen reader's
         # read-title key say. Set only when it changes.
-        title = f"{info.title} — {APP_NAME}"
+        # A chat on API credits says so in the title too (#658), as it's
+        # what's heard on Alt+Tab and the read-title key.
+        api = self._is_api_chat(info)
+        title = f"{info.title}{', API credits' if api else ''} — {APP_NAME}"
         if self.GetTitle() != title:
             self.SetTitle(title)
+        self._name_reply_box(api)
         if info.provider == AGENTS:
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
@@ -2030,6 +2218,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 kind += f" on {model_label(own.model)}"
                 if own.effort:
                     kind += f" at {effort_label(own.effort)}"
+                if own.billing == "api":
+                    kind += ", on API credits"  # #658
                 # The agent, only if its name is short (#468).
                 agent = own.chat_options().heading_part()
                 if agent:
@@ -2089,6 +2279,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # the messages; the heading above is never focused.
             own = self.store.get(info.cli_session_id, provider=info.provider)
             kind = f", on {model_label(own.model)}" if own is not None else ""
+            if own is not None and own.billing == "api":
+                kind += ", API credits"  # #658: heard on arriving in the messages
         elif info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             kind = f", on {provider_name(info.provider)}"
         elif info.provider == AGENTS:
@@ -3044,10 +3236,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 transcript = dataclasses.replace(transcript, tasks=list(self._chat_tasks))
         model = transcript.model if transcript is not None else ""
         running = getattr(self._codex_states.get(info.key), 'model', '') if info.provider == 'codex' else ''
+        api_spent = None
+        if own is not None and info.provider == "claude" and own.billing == "api":
+            from ..spend_ledger import default_ledger
+            try:
+                api_spent = default_ledger().totals().chat_all_time.get(info.cli_session_id, 0.0)
+            except Exception:  # noqa: BLE001 - Properties without it, not an error
+                api_spent = None
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
-                read_error=error, subagent_count=subagent_count, running_model=running)
+                read_error=error, subagent_count=subagent_count, running_model=running,
+                api_spent=api_spent)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         lines = properties.with_branch_facts(lines, branch_facts)
@@ -3717,7 +3917,27 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         lines = usage.usage_lines(context, self._limits)
         # What fills it, after the context line (#468).
         lines[1:1] = self._context_breakdown(self._open)
+        if self._is_api_chat(self._open):
+            # Right after the context, before the plan's limits (#658).
+            lines.insert(1, usage.PLAN_LIMITS_NOT_FOR_API)
+        lines += self._api_usage_lines()  # #658
         self._modal(UsageDialog(self, lines, self._copy_usage))
+
+    def _api_usage_lines(self) -> List[str]:
+        """Usage's API credits section (#658): shown once a key has been
+        added, anything spent, or an API chat is loaded."""
+        from ..spend_ledger import default_ledger
+        try:
+            totals = default_ledger().totals()
+        except Exception:  # noqa: BLE001 - Usage without it, not an error
+            return []
+        api_open = self._is_api_chat(self._open)
+        if not (api_open or self._has_api_key() or totals.spent or totals.today
+                or totals.last_7_days or totals.held or totals.problem):
+            return []
+        names = {own.cli_session_id: own.title for own in self.store.all()
+                 if own.provider == "claude"}
+        return usage.api_credit_lines(totals, names)
 
     def _copy_usage(self, text: str, one_line: bool):
         if self._copy_text(text):
@@ -4036,7 +4256,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return f"own:{session_id}"
 
     def _remote_control_on(self, own) -> bool:
-        """This session's Remote Control: its own choice, or the default."""
+        """This session's Remote Control: its own choice, or the default.
+        Never for a chat on API credits (#658): it's a claude.ai feature, so
+        it fails closed there, whatever the chat or Settings chose."""
+        if getattr(own, "provider", "claude") == "claude" and getattr(own, "billing", "") == "api":
+            return False
         if own.remote_control in ("on", "off"):
             return own.remote_control == "on"
         return self.speech.remote_control
@@ -4053,6 +4277,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         the selected session from its next turn. While a turn runs, the
         session can be reached from claude.ai and your other devices."""
         info = self._selected_session()
+        if info is not None and info.is_own and self._api_own(info.cli_session_id) is not None:
+            # First, so it's the reason given even where Remote Control is
+            # otherwise unavailable, as on a Mac's tests (#658).
+            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Remote Control",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return
         if not self._require_capability("remote_control", info):
             return
         if info is None:
@@ -4116,6 +4346,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
             return
+        if self._api_own(info.cli_session_id) is not None:
+            # Other Machines works through Remote Control (#658).
+            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Other Machines",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return
         if not self._remote_control_on(own):
             wx.MessageBox(f"Remote Control is off for {info.title}, and Claude can only "
                           "reach your other computers with it on. Turn it on with Session, "
@@ -4168,6 +4403,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         words, and ``said`` tells you what happened instead. It isn't queued
         either, where it would show and be editable as if you'd typed it."""
         session_id = info.cli_session_id
+        problem = self._api_send_problem(session_id)  # #658, as Send does
+        if problem is not None:
+            if problem:
+                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+            else:
+                self._feedback("Not sent.")
+            return
         runner = self._runners.get(session_id)
         if runner is not None and runner.waiting_on_background:
             # Answered and only waiting on background work (#161): it goes in.
@@ -4175,6 +4417,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._update_send_state()
                 self._sound(sound_events.SENT, self._own_key(session_id))
                 self._feedback(said)
+                self._say_api_sent(session_id)
                 return
         if session_id in self._runners:
             self._feedback(f"{info.title} is working. Use Other Machines again when "
@@ -4316,7 +4559,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info, own = found
         model = self._change_setting("Change Model",
                                      f"Model for {info.title}, now {model_label(own.model)}:",
-                                     MODELS, own.model)
+                                     # Fable too for a chat on API credits (#658).
+                                     models_for(own.billing), own.model)
         if model is None:
             return
         # own's id, not info's: Claude may have given the session another id
@@ -4866,6 +5110,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                   clone_root=str(platform_paths.clone_root()),
                                   remove_recent=self._remove_recent_folder,
                                   load_chat_choices=self._load_chat_choices,
+                                  # Charge to, once a key exists (#658); never
+                                  # for an agent conversation's chat, which is
+                                  # always on the subscription for now.
+                                  api_key=self._has_api_key() and not (
+                                      forward is not None and forward.joint),
                                   **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -4881,8 +5130,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
             # What New Session made, said once the chat has started (#561).
             worktree_said = getattr(dialog, "worktree_said", "")
+            billing = getattr(dialog, "billing", lambda: "subscription")()  # #658
         finally:
             dialog.Destroy()
+        if forward is not None and forward.joint:
+            billing = "subscription"  # agent conversations stay on it (#658)
         if worktree_said:
             # Queued, so the chat's own announcements don't cut it off.
             wx.CallAfter(self._feedback, worktree_said)
@@ -4922,6 +5174,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = OwnSession(cli_session_id=session_id, title=title, cwd=folder,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
+                         billing=billing,  # fixed from now on (#658)
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -4930,6 +5183,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.refresh_sessions()
             made(own.to_info(), message)
             return
+        if self._first_message_held(own, message):
+            return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
         # Start the turn first, so the session view sees it running.
         self._start_turn(own.cli_session_id, command, folder, message, title)
         self.open_session(own.to_info())
@@ -5156,13 +5411,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                   load_chat_choices=self._load_chat_choices,
-                                  feedback=self._feedback)
+                                  feedback=self._feedback,
+                                  api_key=self._has_api_key())  # Charge to (#658)
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
             _folder, title, mode, message, model = dialog.values()
             effort = dialog.effort()
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
+            billing = getattr(dialog, "billing", lambda: "subscription")()
         finally:
             dialog.Destroy()
         if self._keep_for_files_going_back(info.cwd, message, "no copy was made."):
@@ -5189,6 +5446,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          # ignored), so its own options need it made afresh.
                          prompt_fresh=bool(chat_options),
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
+                         billing=billing,  # fixed from now on (#658)
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -5198,11 +5456,106 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self.tool_activity.add(own.to_info().key)
             except OSError:
                 pass
+        if self._first_message_held(own, message):
+            return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
         self._start_turn(new_id, command, info.cwd, message, title)
         self.open_session(own.to_info())
         self.refresh_sessions()
         if remote_control == "on":
             self._feedback(f"{title} starts on Remote Control; it's said once it connects.")
+
+    def on_api_keys(self):
+        """Tools, API Keys (#658): the Claude API key and the spending limits."""
+        from .api_keys_dialog import ApiKeysDialog
+        self._modal(ApiKeysDialog(self, speak=self._feedback))
+        # The key or the tally may have changed: what's shown follows.
+        self._api_totals_cache = None
+        self._update_status_api()
+
+    # -- Continue on API Credits (#658) -----------------------------------------
+
+    def _continue_on_api_problem(self, info: Optional[SessionInfo]) -> str:
+        """Why Chat, Continue on API Credits can't be used on ``info``, or "".
+        Like the app's other items it stays on the menu and says why."""
+        if info is None:
+            return "No session selected."
+        if not info.is_own or info.provider != "claude":
+            return (f"{info.title} isn't a Claude chat started in The Chat Place, so it can't "
+                    "be continued on API credits. Continue Here makes a copy of a desktop or "
+                    "terminal session, and it can be charged to API credits there.")
+        own = self.store.get(info.cli_session_id)
+        if own is None:
+            return f"Couldn't find {info.title} in The Chat Place's sessions."
+        if own.billing == "api":
+            return f"{info.title} is already on API credits."
+        if not self._has_api_key():
+            return "There's no Claude API key. Add one with Tools, API Keys, then try again."
+        if not self._session_exists(own):
+            return (f"{info.title} has no conversation yet to carry on from. Start a new chat on "
+                    "API credits with File, New Session instead.")
+        if not own.cwd or not os.path.isdir(own.cwd):
+            return (f"{info.title}'s folder ({own.cwd or 'unknown'}) doesn't exist any more, so "
+                    "a new chat can't be started in it.")
+        return ""
+
+    def _confirm_continue_on_api(self, title: str) -> bool:
+        """The question before Continue on API Credits, Cancel focused (#658)."""
+        dialog = wx.MessageDialog(
+            self, f"This makes a new chat, charged to your Claude API key, that carries on "
+            f"from {title}. Its first message sends the whole conversation again, so it costs "
+            "more than later ones. Claude.ai connectors aren't available on API credits.",
+            "Continue on API Credits", wx.OK | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
+        dialog.SetOKCancelLabels("&Continue", "Cancel")
+        try:
+            return dialog.ShowModal() == wx.ID_OK
+        finally:
+            dialog.Destroy()
+
+    def on_continue_on_api_credits(self):
+        """Chat, Continue on API Credits: a new chat, charged to the API key,
+        that carries on from a subscription chat of the app's own (#658). How
+        a chat is charged never changes, so this is a copy, made as Continue
+        Here's are (its first Send forks the whole conversation); the
+        original is left as it was."""
+        info = self._selected_session()
+        problem = self._continue_on_api_problem(info)
+        if problem:
+            self._feedback(problem)
+            return
+        source = self.store.get(info.cli_session_id)
+        if not self._confirm_continue_on_api(info.title):
+            self._feedback("No new chat was made.")
+            return
+        now = int(time.time() * 1000)
+        # Named as Continue Here names a copy: the row and the window title
+        # already say "API credits", so it isn't in the name too.
+        title = f"{info.title} (continued)"[:MAX_TITLE]
+        own = OwnSession(cli_session_id=new_session_id(), title=title, cwd=source.cwd,
+                         permission_mode=source.permission_mode, started=False,
+                         # Fable stays the subscription's to refuse; every
+                         # other model is kept.
+                         model=source.model, effort=source.effort,
+                         fork_source=source.cli_session_id, forked_from=info.title,
+                         created_ms=now, last_activity_ms=now, billing="api",
+                         # The copy carries the source's recorded system
+                         # prompt, so its Chat Options come with it (#468).
+                         agent=source.agent, instructions=source.instructions,
+                         output_style=source.output_style, prompt_fresh=source.prompt_fresh,
+                         disabled_mcp=list(source.disabled_mcp),
+                         allowed_dirs=list(source.allowed_dirs),
+                         allowed_dirs_at=dict(source.allowed_dirs_at))
+        if not self._store_write(self.store.add, own):
+            return
+        if info.key in self.tool_activity:
+            try:
+                self.tool_activity.add(own.to_info().key)
+            except OSError:
+                pass
+        self.open_session(own.to_info())
+        self.refresh_sessions()
+        self.reply_text.SetFocus()
+        self._feedback(f"Made {title}, on API credits. Type your message to carry on from "
+                       f"{info.title}.")
 
     def on_send(self, _event=None):
         info = self._open
@@ -5288,6 +5641,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # change them under it, or have its edits overwritten.
             self._feedback("Still putting the files back. Send again in a moment.")
             return False
+        # A chat on API credits: a key is needed, and the first send this
+        # run is confirmed (#658). Either way the message stays with you.
+        problem = self._api_send_problem(session_id)
+        if problem is not None:
+            if problem:
+                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+            else:
+                self._feedback("Not sent.")
+            return False
         runner = self._runners.get(session_id)
         if runner is not None and runner.cancelled:
             # Queuing behind a stopped turn would only bounce back when the
@@ -5311,6 +5673,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             on_its_own=not announce_send)
                 if announce_send:
                     self._feedback(said)
+                self._say_api_sent(session_id, on_its_own=not announce_send)  # #658
                 return True
             # Claude started on the finished work just now: queue it.
         if runner is not None:
@@ -5370,6 +5733,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(session_id)
         if own is None:
             return "That session is no longer in The Chat Place's list."
+        # A queued message going on its own still needs the key (#658); it
+        # was confirmed when it was queued.
+        problem = self._api_send_problem(session_id, ask=False)
+        if problem:
+            return problem
         try:
             if self._session_exists(own):
                 command = build_resume_command(
@@ -5440,7 +5808,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             mcp_config=self._session_tools_config(session_id),
                             # Tools turned off for this chat (#468).
                             disabled_mcp=list(own.disabled_mcp) if own is not None else [],
-                            context_usage=True)  # for Usage and Context (#468)
+                            context_usage=True,  # for Usage and Context (#468)
+                            # Charged as the chat was made to be (#658).
+                            **self._billing_kwargs(session_id))
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -5457,6 +5827,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     on_its_own=queued or not announce_send)
         if announce_send:
             self._feedback(said)
+        # Every send on API credits says so, a queued one going too (#658).
+        self._say_api_sent(session_id, on_its_own=queued or not announce_send)
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
                           last_activity_ms=int(time.time() * 1000))
 
@@ -5506,6 +5878,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                     self._said_problems):
                     if session_id in per_session:
                         per_session[reported] = per_session.pop(session_id)
+                if session_id in self._api_confirmed:  # #658: asked once is once
+                    self._api_confirmed.add(reported)
                 if ("claude", session_id) in self._aside_histories:
                     self._aside_histories[("claude", reported)] = self._aside_histories.pop(
                         ("claude", session_id))
@@ -5733,14 +6107,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 spoken = f"{title}: the turn failed. {usage.friendly_error(event.text)}"
                 self._say(spoken)
             else:
-                text = announce.reply_text(title, event.text, self.speech.announce)
+                # On API credits, what the reply cost (#658), unless
+                # Settings turned that off.
+                cost = self._api_cost_words(event)
+                text = announce.reply_text(title, event.text, self.speech.announce, cost=cost)
                 if denials and self.speech.enabled:
-                    text = (text or f"{title} finished.") + f" {detail}: " + "; ".join(denials)
+                    text = ((text or f"{title} finished{', ' + cost if cost else ''}.")
+                            + f" {detail}: " + "; ".join(denials))
                 if text:
                     self._say(text)
                 else:
                     reply = announce.first_sentence(event.text) if event.text else ""
-                    self._status(f"{title} finished. {reply}".strip())
+                    self._status(f"{title} finished{', ' + cost if cost else ''}. {reply}".strip())
+            self._api_totals_cache = None  # the tally changed (#658)
+            if is_open:
+                self._update_status_api()
             if signature and signature not in command_state['spoken']:
                 command_state['spoken'] = (command_state['spoken'] + [signature])[-32:]
             if is_open:
@@ -6245,6 +6626,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._sound(sound_events.STEERED, info.key)
         self._feedback(announce.steered_text(info.title, message, self.speech.announce,
                                              self.speech.announce_own))
+        self._say_api_sent(session_id)  # #658
         self.reply_text.SetFocus()
 
     def steer_queued(self):
@@ -6296,6 +6678,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # It was read back when it was queued.
         self._sound(sound_events.STEERED, info.key)
         self._feedback(announce.steered_text(info.title, text, self.speech.announce, False))
+        self._say_api_sent(info.cli_session_id)  # #658
 
     def send_queued_now(self):
         """Send the selected queued message now: Claude stops what it's doing
@@ -6326,6 +6709,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._update_send_state()
             self._sound(sound_events.SENT, info.key)
             self._feedback(f"Sent now to {info.title}.")
+            self._say_api_sent(info.cli_session_id)  # #658
             return
         if not runner.send_now(text):
             self._feedback("The turn is already ending: the message stays queued and goes "
@@ -6338,6 +6722,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._rebuild_chat_list()
         self._update_send_state()
         self._feedback(f"Sent now. {info.title} is stopping what it was doing to answer it.")
+        self._say_api_sent(info.cli_session_id)  # #658
 
     def edit_queued(self):
         """Take the selected queued message back into the reply box, to

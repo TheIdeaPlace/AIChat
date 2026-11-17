@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   1020,
-  926
+  1008
  ],
  "client": [
   998,
-  870
+  952
  ],
  "dpi": [
   144,
@@ -23,10 +23,10 @@
     0,
     0,
     998,
-    818
+    900
    ],
    "best": [
-    987,
+    983,
     25
    ],
    "depth": 0,
@@ -41,7 +41,7 @@
    "rect": [
     10,
     10,
-    978,
+    952,
     150
    ],
    "best": [
@@ -155,7 +155,7 @@
    "rect": [
     10,
     240,
-    978,
+    952,
     103
    ],
    "best": [
@@ -206,12 +206,69 @@
    "problems": []
   },
   {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "API credits",
+   "rect": [
+    10,
+    353,
+    952,
+    103
+   ],
+   "best": [
+    114,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Ask &before the first API-credit message in each chat",
+   "rect": [
+    24,
+    386,
+    443,
+    25
+   ],
+   "best": [
+    443,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Gi&ve the cost of each API-credit reply",
+   "rect": [
+    24,
+    417,
+    328,
+    25
+   ],
+   "best": [
+    328,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "StaticText",
    "name": "staticText",
    "label": "Speech &engine:",
    "rect": [
     10,
-    366,
+    479,
     120,
     26
    ],
@@ -229,9 +286,9 @@
    "name": "Speech engine",
    "label": "",
    "rect": [
-    138,
-    363,
-    850,
+    214,
+    476,
+    748,
     33
    ],
    "best": [
@@ -250,7 +307,7 @@
    "label": "Speaking &rate:",
    "rect": [
     10,
-    407,
+    520,
     113,
     26
    ],
@@ -268,8 +325,8 @@
    "name": "Speaking rate",
    "label": "",
    "rect": [
-    138,
-    404,
+    214,
+    517,
     96,
     33
    ],
@@ -288,8 +345,8 @@
    "name": "staticText",
    "label": "Voice and rate follow your screen reader's own settings.",
    "rect": [
-    10,
-    447,
+    320,
+    520,
     441,
     26
    ],
@@ -308,7 +365,7 @@
    "label": "Windows &notifications:",
    "rect": [
     10,
-    486,
+    561,
     181,
     26
    ],
@@ -326,8 +383,8 @@
    "name": "Windows notifications, while The Chat Place isn't the active window",
    "label": "",
    "rect": [
-    199,
-    483,
+    214,
+    558,
     502,
     33
    ],
@@ -344,10 +401,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
+   "label": "Mark c&hanged lines with:",
+   "rect": [
+    10,
+    602,
+    196,
+    26
+   ],
+   "best": [
+    196,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Mark changed lines with",
+   "label": "",
+   "rect": [
+    214,
+    599,
+    400,
+    33
+   ],
+   "best": [
+    400,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Words (Added, Removed, Unchanged)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
    "label": "Recent &folders New Session offers:",
    "rect": [
     10,
-    531,
+    647,
     274,
     26
    ],
@@ -366,7 +462,7 @@
    "label": "",
    "rect": [
     292,
-    526,
+    642,
     74,
     33
    ],
@@ -385,7 +481,7 @@
    "label": "C&lear Recent Folders",
    "rect": [
     374,
-    526,
+    642,
     193,
     36
    ],
@@ -401,10 +497,10 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Turn on Remote &Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (File, Remote Control changes one session.)",
+   "label": "T&urn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (Session, Remote Control changes one session.)",
    "rect": [
     10,
-    572,
+    688,
     937,
     50
    ],
@@ -420,15 +516,15 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so View, Tasks shows how far\nalong it is (from the next message)",
+   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so Tools, Tasks shows\nhow far along it is (from the next turn)",
    "rect": [
     10,
-    632,
-    967,
+    748,
+    908,
     50
    ],
    "best": [
-    967,
+    908,
     50
    ],
    "depth": 1,
@@ -442,7 +538,7 @@
    "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
    "rect": [
     10,
-    692,
+    808,
     932,
     50
    ],
@@ -461,7 +557,7 @@
    "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
-    752,
+    868,
     489,
     25
    ],
@@ -477,10 +573,29 @@
   {
    "class": "CheckBox",
    "name": "check",
+   "label": "Check for up&dates when The Chat Place starts",
+   "rect": [
+    10,
+    899,
+    394,
+    25
+   ],
+   "best": [
+    394,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    783,
+    934,
     572,
     25
    ],
@@ -494,12 +609,70 @@
    "problems": []
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Histor&y retention and kept copies:",
+   "rect": [
+    10,
+    979,
+    269,
+    26
+   ],
+   "best": [
+    269,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "History retention and kept copies",
+   "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
+   "rect": [
+    12,
+    1007,
+    952,
+    165
+   ],
+   "best": [
+    191,
+    258
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\nCopilot CLI: no documented automatic age limit for saved sessions.\nThe Chat Place keeps copies"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Open Claude's retention settings",
+   "rect": [
+    10,
+    1180,
+    291,
+    36
+   ],
+   "best": [
+    291,
+    36
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "Button",
    "name": "button",
    "label": "OK",
    "rect": [
     747,
-    826,
+    908,
     114,
     36
    ],
@@ -518,7 +691,7 @@
    "label": "Cancel",
    "rect": [
     871,
-    826,
+    908,
     114,
     36
    ],

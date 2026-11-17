@@ -27,8 +27,8 @@ identifies the AI; Kind identifies where a session started. Support for other pr
 Ollama, is planned. Provider-specific features name their provider and are available where that
 provider supports them.
 
-For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never uses an API
-key. Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
+For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never use an API
+key, unless you make a chat on API credits (see [Chats on API credits](#chats-on-api-credits)). Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 says those count against a monthly credit; past it, turns stop unless you've turned on extra
 usage, which is billed. Tools, Usage and Context (Ctrl+Shift+U) shows where you
@@ -460,6 +460,74 @@ too).
   just attachments. Each session keeps its own until they're sent. Pasted pictures are saved
   in `%APPDATA%\TheChatPlace\pasted images` (on a Mac,
   `~/Library/Application Support/TheChatPlace/pasted images`).
+
+### Chats on API credits
+
+A Claude chat can be charged to an Anthropic API key (prepaid API credits) instead of your
+Claude subscription. Nothing changes until you add a key and choose API credits for a chat;
+every new chat still starts on the subscription. Codex and Copilot chats can't use API credits
+yet.
+
+- **Add a key** with Tools, API Keys (Alt+T, P). Its Key status box, first in the Tab order,
+  says "Claude: No key", or "Claude: key ending in 7Q2x, added November 16"; it never shows the
+  key. Paste the key (it starts with
+  `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
+  The key is kept by the system: protected with your Windows sign-in on Windows, in the
+  Keychain on a Mac, and with `secret-tool` on Linux. It's never in a backup, a bug report, a
+  log or a command line. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
+  works. That test cost less than a cent.", or why it didn't. **Replace Key** puts in another,
+  and **Remove Key** (Alt+M) forgets it after asking. On a Mac, the first message on API
+  credits may bring up a keychain question for "security" (the command that hands Claude Code
+  the key): choose **Always Allow**, or it asks again each time.
+- **Spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
+  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Tally
+  box right after them says what's been spent since the last reset, what's held for messages
+  still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
+  saved asks first. **Reset Tally** (Alt+E) starts counting again from nothing, after asking.
+  **Release Held** (Alt+H) is on only when something is held for messages that are no longer
+  running (left by an earlier run, a crash, or a message you stopped before Claude Code said
+  what it cost): after asking, it lets that go, since those messages may have spent up to that
+  much, and leaves what was spent counted. The Chat
+  Place counts only its own spending: your Anthropic account may have less left if other apps
+  use the same key, and a limit can be passed by one request. **Billing Page** (Alt+B) opens
+  your account's billing page at console.anthropic.com.
+- **Choose it for a chat.** Once a key is added, New Session and Continue Here have **Charge
+  to**: Claude subscription (chosen at first) or API credits. How a chat is charged is fixed
+  when it's made. To carry on a chat of your own on API credits, use **Chat, Continue on API
+  Credits** (Alt+C, E): after asking (Cancel is the default), it makes a new chat that carries
+  on from it, named as Continue Here names a copy ("Notes (continued)"), and leaves the first as
+  it was. That new chat's first message sends the whole conversation again, so it costs more
+  than later ones. Retry from Here and Branch from Here in a chat on API credits make chats on
+  API credits too. Agent conversations stay on the subscription for now: a chat on API credits
+  can't join one, from New Agent Conversation or Send Reply to Another Chat.
+- **What's different.** Fable is offered in New Session and Change Model for chats on API
+  credits, charged at its own price. Claude.ai connectors aren't available on API credits
+  (Claude Code's rule); your own MCP servers still work. Remote Control isn't available in
+  chats on API credits either, so neither is Chat, Other Machines; Session, Remote Control says
+  so. Your plan's usage limits don't apply.
+- **Always knowing.** The chat's row in the session list says "API credits" after its name,
+  and so do the window's title, the heading and the messages list's name; the reply box is
+  named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
+  chat $0.42, The Chat Place $12.30 of $190" (Enter there opens Tools, API Keys). Every message
+  you send in it, Ask Aside, queued messages, steering and Send Now included, is followed by
+  "Sent on API credits", always said, even when announcements are off. The first message in
+  each such chat each time The Chat Place starts
+  asks "Send on API credits?" first: Enter sends, Escape keeps the message in the reply box.
+  When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents." (or "less than
+  a cent"). Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask
+  before the first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit
+  reply" (Alt+V), both on at first.
+- **Before anything is sent** The Chat Place checks with Claude Code that the message will be
+  charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
+  spending limit is reached or the tally is damaged, the message isn't sent, stays in the reply
+  box, and you hear why, before any "Send on API credits?". A chat on the subscription
+  is checked the same way the other round: it never uses a key. A message that reaches its
+  per-message limit stops, says so and what it cost; one refused for no credit or a bad key
+  says that plainly.
+- **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
+  today, the last 7 days, since the tally was reset, what's held, what's left of the limit, and
+  spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
+  credits" or "Claude subscription", and for API credits what the chat has spent.
 
 ### Going back: Retry from Here and Branch from Here
 
@@ -1506,7 +1574,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   closes.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **Session, Remote Control** turns it on or off for one session (or back to the Settings
-  default). A session on Remote Control can be reached from claude.ai and your other devices
+  default). It's never on in a chat on API credits, whatever Settings says; there Session,
+  Remote Control says it isn't available. A session on Remote Control can be reached from
+  claude.ai and your other devices
   while one of its turns is running: each turn is its own Claude Code process, so between turns
   it shows as offline. The same Remote Control session is joined every turn, and Session, Remote
   Control copies its claude.ai address. Turning it on copies the conversation to claude.ai,
@@ -1901,7 +1971,12 @@ first message and `--resume <id>` for each reply, plus `--allowedTools` with any
 "for this chat". The message goes in on standard input as a stream-json message, and standard
 input stays open for the turn so The Chat Place can answer what Claude asks; it's closed when the
 turn's result arrives. That runs under the same login as the desktop app, never an API key; it
-uses the plan's Agent SDK credit, as any `claude -p` does.
+uses the plan's Agent SDK credit, as any `claude -p` does. The exception is a chat you made on
+API credits: its turns get your key only through Claude Code's `apiKeyHelper` setting, a
+command that reads the kept key and prints it for Claude Code (never in an environment
+variable, so the tools Claude runs don't see it), and a `--max-budget-usd` reserved from the
+spending limits. Its message goes only once Claude Code's answer to `initialize` says the turn
+will use that key at Anthropic's own API.
 
 - It never uses `--bare`, which needs an API key.
 - It needs the native `claude.exe`. The npm install's `claude.cmd` is never run, because Windows
@@ -1920,8 +1995,11 @@ uses the plan's Agent SDK credit, as any `claude -p` does.
   that never comes. The second is anything that would move billing off the subscription:
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and the Bedrock, Vertex and
   Foundry switches. Both lists are in `claude_cli.py`.
-- As a second check, `claude` reports where its credentials came from before it sends anything.
-  If that's an API key rather than the subscription login, The Chat Place stops the run and says so.
+- Before the message is written, Claude Code's answer to `initialize` says how the turn would
+  be charged; a subscription chat that would use any API key, or another provider, is stopped
+  there, with nothing sent. As a second check, `claude` reports where its credentials came from
+  before it sends anything. If that's an API key rather than the subscription login, The Chat
+  Place stops the run and says so. (A chat on API credits is checked the other way round.)
 
 Desktop app sessions are read-only because two programs resuming one session run their turns into
 the same transcript at once and tangle it. Only the desktop app writes to its sessions, and only

@@ -174,6 +174,32 @@ STEPS = [
          expect=["New Session, Ctrl+N, File menu"]),
     Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    # Tools, API Keys (#658), by its access key. The probe's world has no key,
+    # so it opens on the key box, and Test Key and Remove Key are off: Tab
+    # goes past them, through every other control in turn, to Close.
+    Step("API Keys", ["alt+t", "p"], expect=["API Keys", "Claude API key"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("API Keys, Add Key", ["Tab"], expect=["Add Key", "push button"]),
+    Step("API Keys, test result", ["Tab"], expect=["Test result"],
+         # The buttons, not the words: the box's own help names Test Key.
+         refuse=["Test Key push button", "Remove Key push button"]),
+    Step("API Keys, overall limit", ["Tab"],
+         expect=["Stop API chats once The Chat Place has spent"]),
+    Step("API Keys, per-message limit", ["Tab"], expect=["Stop any one message at about"]),
+    # The tally, a read-only box right after the limits (#658 review).
+    Step("API Keys, tally", ["Tab"], expect=["Tally"]),
+    Step("API Keys, Save Limits", ["Tab"], expect=["Save Limits", "push button"]),
+    # Release Held is off with nothing held, so Tab goes past it.
+    Step("API Keys, Reset Tally", ["Tab"], expect=["Reset Tally", "push button"]),
+    Step("API Keys, about spending", ["Tab"], expect=["About spending"],
+         refuse=["Release Held push button"]),
+    Step("API Keys, Billing Page", ["Tab"], expect=["Billing Page", "push button"]),
+    Step("API Keys, Close", ["Tab"], expect=["Close", "push button"]),
+    # Round to the top: the key status, a read-only box, then the key box.
+    Step("API Keys, key status", ["Tab"], expect=["Key status", "Claude: No key"]),
+    Step("API Keys, round to the key box", ["Tab"], expect=["Claude API key"]),
+    Step("API Keys closed, back in the messages", ["Escape"],
+         expect=["Messages in Visual probe"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -239,8 +265,11 @@ STEPS = [
          expect=["Turn Off for New Chats"]),
     Step("Connected Tools closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Ask Aside (#468): it opens on the question box; Escape closes it.
-    Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
+    # Ask Aside (#468): it opens on the question box; Escape closes it. From
+    # the Chat menu, not Ctrl+Shift+Y: that key's Y could land in the question
+    # box once the dialog had focus, so Orca said "Y" instead of the box's
+    # name (a race lost every run once #658's steps ran first).
+    Step("Ask Aside", ["alt+c", "i"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Chat, Chat Settings (#596), by its access key: the submenu opens on

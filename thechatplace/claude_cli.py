@@ -34,7 +34,21 @@ things that would move a turn off the subscription are all ruled out here:
 * **The run is stopped if the CLI says it is using an API key.** The first
   stream-json event (``system/init``) reports ``apiKeySource``; on a
   subscription login it is ``"none"``. Anything else ends the turn before a
-  request is made.
+  request is made. Before that, the answer to ``initialize`` (which comes
+  before the message is written) has an ``account`` that's checked too, so
+  a key is caught before anything is sent (billing.account_problem, #658).
+
+On API credits (#658)
+---------------------
+A chat made to be charged to an API key (``TurnRunner(billing="api")``)
+gets the key only through ``apiKeyHelper`` in its one ``--settings``, never
+in an environment, and a ``--max-budget-usd`` reserved from the spend
+ledger. Its message goes only once initialize's ``account`` says the app's
+key at Anthropic's own API: no answer means no message. What each result
+adds to ``total_cost_usd`` is settled in the ledger: the total includes the
+cost state Claude Code restores on ``--resume``, so every turn of every
+chat records its last total as the chat's baseline (spend_ledger, "What a
+result cost"). See billing.py and spend_ledger.py.
 
 Never into a desktop session
 ----------------------------
@@ -71,6 +85,8 @@ from dataclasses import dataclass, field
 from typing import Callable, Collection, Dict, List, Optional
 
 from . import platform_paths
+from .billing import (ROUTE_API, account_problem, budget_flags, failure_text, normalize_route,
+                      scrub, source_problem)
 from .chat_options import ChatChoices, ChatOptions, choices_from_init
 from .transcript import compaction_text
 
@@ -173,6 +189,22 @@ MODELS = [
     ("haiku", "Haiku"),
 ]
 MODEL_LABELS = dict(MODELS)
+#: The choices for a chat on API credits (#658): Fable too. On an API key
+#: Fable is charged like any other model, at its own price, to the credits
+#: the chat was made to spend, so the reason it's left out above doesn't
+#: apply. Subscription chats never get it.
+API_MODELS = MODELS + [("fable", "Fable")]
+API_MODEL_LABELS = dict(API_MODELS)
+
+
+def models_for(billing: str) -> list:
+    """The model choices for a chat charged ``billing`` (billing.ROUTE_*)."""
+    return API_MODELS if billing == "api" else MODELS
+
+
+def model_allowed(model: str, billing: str) -> bool:
+    """Whether a chat charged ``billing`` may keep ``model``."""
+    return model in dict(models_for(billing))
 
 #: The effort choices for a session (#189): ``--effort`` value and what the
 #: picker says. Checked with Claude Code 2.1.296: ``-p`` takes ``--effort``
@@ -209,7 +241,7 @@ def model_matches(chosen: str, actual: str) -> bool:
         return True
     chosen = chosen.lower()
     actual = re.sub(r"\[[^\]]*\]$", "", actual.lower())  # "[1m]": the same model
-    if chosen in MODEL_LABELS:
+    if chosen in API_MODEL_LABELS:
         return chosen in actual
     return actual == chosen or actual.startswith(chosen + "-")
 
@@ -229,7 +261,7 @@ def model_spoken(model_id: str) -> str:
 
 def model_label(model: str) -> str:
     """How a session's model is named to Kelly."""
-    return MODEL_LABELS.get(model, model) if model else "the default model"
+    return API_MODEL_LABELS.get(model, model) if model else "the default model"
 
 
 def effort_label(effort: str) -> str:
@@ -1031,6 +1063,19 @@ class StreamParser:
                            if isinstance(m, dict) and isinstance(m.get("contextWindow"), int)]
                 if windows:
                     self.context_window = max(windows)
+            # What Claude Code says the process has cost so far (#658), and
+            # by model. On the subscription it's only what it would have
+            # cost; a turn on API credits settles its ledger with it.
+            cost = event.get("total_cost_usd")
+            reported = None
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+                model_costs = {name: m.get("costUSD") for name, m in models.items()
+                               if isinstance(name, str) and isinstance(m, dict)
+                               and isinstance(m.get("costUSD"), (int, float))
+                               and not isinstance(m.get("costUSD"), bool)} \
+                    if isinstance(models, dict) else {}
+                reported = {"reported_cost_usd": float(cost),
+                            "reported_model_costs": model_costs}
             denials = event.get("permission_denials")
             denial_text = [describe_denial(d) for d in denials] if isinstance(denials, list) else []
             is_error = bool(event.get("is_error")) or (subtype not in ("", "success"))
@@ -1042,7 +1087,8 @@ class StreamParser:
                 else:
                     text = "" if not is_error else f"The turn ended with an error ({subtype or 'unknown'})."
             return [TurnEvent("finished", text=text.strip(), session_id=self.session_id,
-                              is_error=is_error, denials=denial_text, raw_type=subtype)]
+                              is_error=is_error, denials=denial_text, raw_type=subtype,
+                              data=reported)]
         return []
 
 
@@ -1056,12 +1102,16 @@ def api_key_problem(source: Optional[str]) -> Optional[str]:
 
 
 def fable_problem(actual: str, chosen: str, sent: bool = False,
-                  midway: bool = False) -> Optional[str]:
+                  midway: bool = False, billing: str = "subscription") -> Optional[str]:
     """A message if the turn would run on Fable without it having been chosen
     (#58): Claude Code's default, or its fallback from the chosen model. Some
     plans bill Fable to usage credits, and in ``-p`` turns without asking.
     ``sent``: the message had already gone when this was found; ``midway``:
-    the turn was under way, moved to Fable by a fallback or the like (#468)."""
+    the turn was under way, moved to Fable by a fallback or the like (#468).
+    Never for a chat on API credits (#658): there Fable is charged to the
+    credits like any model, and the per-message limit bounds it."""
+    if billing == "api":
+        return None
     if "fable" not in (actual or "").lower() or "fable" in (chosen or "").lower():
         return None
     which = (f"instead of {model_label(chosen)}, the model this session chose" if chosen
@@ -1084,6 +1134,16 @@ BACKGROUND_DONE_WAIT = 60.0
 
 #: How long a turn's message waits for Claude Code to answer initialize.
 INIT_ANSWER_WAIT = 10.0
+#: How long Stop waits, on API credits, for the interrupted turn's result
+#: (and so its cost) before ending the process anyway (#658). It came in
+#: 0.4 seconds when checked.
+STOP_COST_WAIT = 3.0
+#: Said when an API turn's initialize went unanswered (#658): its account
+#: couldn't be checked, so the message wasn't sent.
+INIT_UNANSWERED_API = ("Claude Code didn't say how this message would be charged, so The Chat "
+                       "Place didn't send it on API credits. Nothing was sent, so nothing was "
+                       "charged. Try again; if it keeps happening, update Claude Code (in a "
+                       "terminal, run: claude update).")
 
 #: How long a live control request (Change Model, Stop Background Task, …)
 #: waits for its answer before it counts as refused (#468). They're
@@ -1110,6 +1170,65 @@ def chosen_model(command: List[str]) -> str:
         return command[command.index("--model") + 1]
     except (ValueError, IndexError):
         return ""
+
+
+def _session_of(command: List[str]) -> str:
+    """The chat a turn's command is for: its new ``--session-id``, or the one
+    it resumes. "" if neither."""
+    for flag in ("--session-id", "--resume"):
+        try:
+            return command[command.index(flag) + 1]
+        except (ValueError, IndexError):
+            continue
+    return ""
+
+
+def _resumed_of(command: List[str]) -> str:
+    """The chat whose cost state a turn's process restores (#658): the one it
+    ``--resume``s, which for a ``--fork-session`` is the source, not the new
+    ``--session-id``. "" for a new chat, which starts from nothing."""
+    try:
+        return command[command.index("--resume") + 1]
+    except (ValueError, IndexError):
+        return ""
+
+
+def cost_tracker_for(command: List[str], baselines=None, cap: Optional[float] = None):
+    """A CostTracker for one process (#658; spend_ledger, "What a result
+    cost"): a new chat starts from nothing; one that resumes or forks starts
+    from the baseline ``baselines`` (a SpendLedger) has for the chat it
+    restores, or from "not known" without one. ``cap``: the reservation."""
+    from .spend_ledger import CostTracker
+    source = _resumed_of(command)
+    if not source:
+        return CostTracker(start=0.0, cap=cap)
+    found = None
+    if baselines is not None:
+        try:
+            found = baselines.baseline(source)
+        except Exception:  # noqa: BLE001 - not known: counted up to the cap
+            found = None
+    if found is None:
+        return CostTracker(start=None, cap=cap)
+    return CostTracker(start=found[0], start_models=found[1], cap=cap)
+
+
+def build_key_test_command(executable: str) -> List[str]:
+    """Test Key (#658): one tiny request on Haiku, the cheapest model, run as
+    an API turn (TurnRunner with billing "api", purpose "test"), so it goes
+    through the same checks and its cost is in the tally. Nothing is kept
+    (``--no-session-persistence``), no tools, no MCP servers and no hooks or
+    slash commands, so the request is only the question."""
+    return [executable, "-p", "--input-format", "stream-json", "--output-format",
+            "stream-json", "--verbose", "--permission-mode", "manual",
+            "--permission-prompts", "none", "--model", "haiku", "--tools", "",
+            "--strict-mcp-config", "--disable-slash-commands",
+            "--settings", json.dumps({"disableAllHooks": True}),
+            "--no-session-persistence"]
+
+
+#: What Test Key asks.
+KEY_TEST_PROMPT = "Reply with the single word OK."
 
 
 # ---------------------------------------------------------------------------
@@ -1170,8 +1289,42 @@ class TurnRunner:
                  timer: Callable[..., threading.Timer] = threading.Timer,
                  task_list: bool = False, mcp_config: Optional[str] = None,
                  disabled_mcp: Collection[str] = (),
-                 context_usage: bool = False) -> None:
+                 context_usage: bool = False,
+                 billing: str = "subscription", api_key_name: str = "",
+                 ledger=None, chat_id: str = "", purpose: str = "turn",
+                 cost_baselines=None) -> None:
         self.command = command
+        #: How this turn is charged (#658): billing.ROUTE_SUBSCRIPTION or
+        #: ROUTE_API, fixed for the process. Anything but "api" is the
+        #: subscription.
+        self.billing = normalize_route(billing)
+        #: The kept secret an API turn's apiKeyHelper prints.
+        self.api_key_name = api_key_name or platform_paths.CLAUDE_API_KEY_SECRET
+        #: The spend ledger an API turn reserves from and settles to.
+        if self.billing == ROUTE_API and ledger is None:
+            from .spend_ledger import default_ledger
+            ledger = default_ledger()
+        self.ledger = ledger
+        #: Where each chat's last reported cost is kept (a SpendLedger), so
+        #: the next process for it counts only what it adds (#658). Every
+        #: turn the window runs has one, subscription chats too; the
+        #: ledger's own for an API turn.
+        self.baselines = cost_baselines if cost_baselines is not None else ledger
+        self.chat_id = chat_id or _session_of(command)
+        self.purpose = purpose
+        #: This turn's reservation (an API turn's, once it's started).
+        self.reservation = None
+        #: What this process has cost so far, from its results (#658); made
+        #: again when the process starts, from the chat's baseline.
+        from .spend_ledger import CostTracker
+        self.costs = CostTracker()
+        #: Stopped because Claude Code never answered initialize, on API
+        #: credits, where the message only goes once the account is checked.
+        self._init_refused = False
+        #: False from writing a message until a result has said what
+        #: everything so far cost; an API turn that ends while it's False
+        #: keeps the rest of its reservation counted (spend_ledger).
+        self._cost_known = True
         #: MCP servers this chat turns off (#468), kept out of this turn's
         #: process with ``--settings`` (claude_mcp.settings_args).
         self.disabled_mcp = list(disabled_mcp or ())
@@ -1215,7 +1368,9 @@ class TurnRunner:
         self.prompt = prompt
         self.images = list(images or [])
         #: {"name": …, "reattach": …} to turn on Remote Control, or None.
-        self.remote_control = remote_control
+        #: Never on API credits (#658): Remote Control is a claude.ai
+        #: feature, so it fails closed there whatever the caller asked.
+        self.remote_control = remote_control if self.billing != ROUTE_API else None
         self.on_event = on_event
         self._popen = popen
         #: Makes the turn's timers (the idle ceiling, the initialize wait), so
@@ -1369,6 +1524,7 @@ class TurnRunner:
         message_id = str(uuid.uuid4())
         ok = self._write_raw(message_line(prompt, images, message_id))
         if ok:
+            self._cost_known = False  # until its result says what it cost
             self._unanswered += 1
             self._untaken.append([kind, prompt, late, message_id])
         return ok
@@ -1454,7 +1610,7 @@ class TurnRunner:
             # What the default is isn't known until initialize is answered.
             return False
         resolved = resolved_model(self.parser.resolved_models, model)
-        if fable_problem(resolved, model):
+        if fable_problem(resolved, model, billing=self.billing):
             return False
 
         def done(ok, response, error):
@@ -1665,8 +1821,26 @@ class TurnRunner:
             self._thread.join(timeout)
 
     def cancel(self) -> None:
+        """Stop the turn. On API credits, with requests not yet costed, it's
+        interrupted first (#658): checked with Claude Code 2.1.325, an
+        interrupted turn sends its result, with ``total_cost_usd``, within
+        half a second. That settles the ledger with what was really spent,
+        rather than keeping the whole reservation counted; the result's
+        handling ends the process, and STOP_COST_WAIT ends it regardless."""
         with self._lock:
             self._cancelled = True
+            process = self._process
+            graceful = (self.billing == ROUTE_API and not self._cost_known
+                        and process is not None and process.poll() is None
+                        and self._write_line({
+                            "type": "control_request",
+                            "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
+                            "request": {"subtype": "interrupt"}}))
+        if graceful:
+            ender = self._timer(STOP_COST_WAIT, self._kill)
+            ender.daemon = True
+            ender.start()
+            return
         self._kill()
 
     @property
@@ -1686,9 +1860,82 @@ class TurnRunner:
             pass
 
     def _emit(self, event: TurnEvent) -> None:
+        if event.is_error or event.kind in ("failed", "retry"):
+            # Error text can quote Claude Code's stderr or an API error:
+            # never a key in the window, a log or a bug report (#658).
+            event.text, event.detail = scrub(event.text), scrub(event.detail)
         try:
             self.on_event(event)
         except Exception:  # noqa: BLE001 - a UI bug must not wedge the worker
+            pass
+
+    def _api_command(self, command: List[str]) -> List[str]:
+        """An API turn's command (#658): the key's helper merged into its one
+        ``--settings``, and the budget reserved for it. Raises _Refused, with
+        nothing started, if the ledger won't give one."""
+        from .billing import api_settings
+        from .claude_mcp import merge_settings
+        from .spend_ledger import SpendRefused
+        command = merge_settings(command, api_settings(self.api_key_name))
+        try:
+            self.reservation = self.ledger.reserve(self.chat_id, self.purpose)
+        except SpendRefused as exc:
+            raise _Refused(str(exc)) from None
+        return command + budget_flags(self.reservation.amount)
+
+    def _settle(self, event: TurnEvent) -> None:
+        """A result on API credits: what it added to the tally, and the
+        turn's cost so far on the event for the window (#658). Over the
+        budget, out of credit or a refused key said in words."""
+        data = event.data or {}
+        added, by_model = self.costs.add(data.get("reported_cost_usd"),
+                                         data.get("reported_model_costs"))
+        if self.reservation is not None and (added or by_model):
+            self.ledger.settle(self.reservation, added, by_model)
+        if event.is_error:
+            plain = failure_text(event.raw_type, event.text, self.costs.total,
+                                 self.reservation.amount if self.reservation else None)
+            if plain:
+                event.text = plain
+
+    def _note_baseline(self, event: TurnEvent) -> None:
+        """After every result, whatever the chat is charged to: what Claude
+        Code reported it has cost, the baseline its next process (or a copy
+        of it) counts from (#658). Not for a process that saves nothing."""
+        if self.baselines is None or "--no-session-persistence" in self.command:
+            return
+        data = event.data or {}
+        if "reported_cost_usd" not in data:
+            return
+        chat = self.parser.session_id or event.session_id or _session_of(self.command)
+        try:
+            self.baselines.set_baseline(chat, data.get("reported_cost_usd"),
+                                        data.get("reported_model_costs"))
+        except Exception:  # noqa: BLE001 - a lost baseline is counted up to the cap
+            pass
+
+    def _cost_data(self, event: TurnEvent) -> None:
+        """The turn's cost and route on its last event (#658)."""
+        if self.billing != ROUTE_API:
+            return
+        event.data = {**(event.data or {}), "billing": ROUTE_API,
+                      "cost_usd": round(self.costs.total, 6),
+                      "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()}}
+        if event.is_error and event.kind == "failed":
+            plain = failure_text(event.raw_type, event.text, self.costs.total,
+                                 self.reservation.amount if self.reservation else None)
+            if plain:
+                event.text = plain
+
+    def _close_reservation(self) -> None:
+        """The process is over: free what's left of the reservation if its
+        whole cost is known, else keep it counted (spend_ledger)."""
+        if self.reservation is None or self.ledger is None:
+            return
+        try:
+            self.ledger.close(self.reservation,
+                              complete=self._cost_known and not self.background_tasks)
+        except Exception:  # noqa: BLE001 - left open is counted: the safe way
             pass
 
     def _run(self) -> None:
@@ -1708,6 +1955,15 @@ class TurnRunner:
                 # second --settings would replace the first (#468).
                 from .claude_mcp import with_settings
                 command = with_settings(command, self.disabled_mcp)
+            if self.billing == ROUTE_API:
+                # After the servers, so the key's helper is merged last and
+                # wins; before --mcp-config, which must stay last.
+                command = self._api_command(command)
+            # Counted from the chat's baseline, as Claude Code's totals
+            # include the cost state it restores (#658).
+            self.costs = cost_tracker_for(
+                self.command, self.baselines,
+                self.reservation.amount if self.reservation is not None else None)
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.
@@ -1733,7 +1989,8 @@ class TurnRunner:
                 try:
                     for raw in iter(process.stderr.readline, b""):
                         if len(stderr_lines) < 200:
-                            stderr_lines.append(_decode(raw).rstrip())
+                            # Never a key past here (#658).
+                            stderr_lines.append(scrub(_decode(raw).rstrip()))
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -1822,18 +2079,38 @@ class TurnRunner:
                 self._send_prompt()
                 return True
 
+            def refuse_unanswered() -> None:
+                """On API credits, no answer to initialize means no account to
+                check, so the message never goes (#658): fail closed."""
+                nonlocal message_sent
+                with sent_lock:
+                    if message_sent:
+                        return
+                    message_sent = True
+                self._init_refused = True
+                self.stopped_before_answer = True
+                self._kill()
+
             # A Claude Code that never answers initialize still gets the
-            # message (the system/init check still stands behind it).
-            unanswered = self._timer(INIT_ANSWER_WAIT, send_message)
+            # message on the subscription (the system/init check still
+            # stands behind it); on API credits it's stopped instead.
+            api = self.billing == ROUTE_API
+            unanswered = self._timer(INIT_ANSWER_WAIT,
+                                     refuse_unanswered if api else send_message)
             unanswered.daemon = True
             unanswered.start()
 
             for raw in iter(process.stdout.readline, b""):
                 for event in self.parser.feed(_decode(raw)):
                     if event.kind == "initialized" and not message_sent:
-                        problem = fable_problem(
+                        # How the message would be charged, checked before
+                        # it's written (#658), then the model (#58).
+                        account = account_problem(self.billing, self.parser.init_body)
+                        if account:
+                            self._stopped_for_key = True
+                        problem = account or fable_problem(
                             resolved_model(self.parser.resolved_models, self.chosen),
-                            self.chosen)
+                            self.chosen, billing=self.billing)
                         if problem:
                             with sent_lock:
                                 stopping = not message_sent
@@ -1881,7 +2158,7 @@ class TurnRunner:
                         # A fallback mid-turn gets no new system/init, so the
                         # Fable check (#58) is made here too (#468).
                         problem = fable_problem((event.data or {}).get("fallback_model", ""),
-                                                self.chosen, midway=True)
+                                                self.chosen, midway=True, billing=self.billing)
                         if problem:
                             self.stopped_mid_turn = True
                             self._kill()
@@ -1895,7 +2172,7 @@ class TurnRunner:
                         # Whatever wrote this, Fable unchosen is stopped
                         # (#58), however it came to be the model (#468).
                         problem = fable_problem(self.parser.reply_model, self.chosen,
-                                                midway=True)
+                                                midway=True, billing=self.billing)
                         if problem:
                             self.stopped_mid_turn = True
                             self._kill()
@@ -1921,8 +2198,11 @@ class TurnRunner:
                     # (an older Claude Code): the message goes now. A state
                     # change isn't the conversation: "running" can come
                     # before initialize's answer, and must not skip the
-                    # model check.
-                    if event.kind not in ("state", "background") and send_message():
+                    # model check. On API credits only initialize's answer,
+                    # checked above, lets it go (#658).
+                    if (event.kind not in ("state", "background")
+                            and (not api or self.parser.init_body is not None)
+                            and send_message()):
                         unanswered.cancel()
                     if event.kind == "initialized":
                         continue
@@ -1930,8 +2210,9 @@ class TurnRunner:
                         self.session_started = True
                         if event.text:
                             self._mode = normalize_permission_mode(event.text)
-                        problem = (api_key_problem(self.parser.api_key_source)
-                                   or fable_problem(self.parser.model, self.chosen, sent=True))
+                        problem = (source_problem(self.billing, self.parser.api_key_source)
+                                   or fable_problem(self.parser.model, self.chosen, sent=True,
+                                                    billing=self.billing))
                         if problem:
                             self._stopped_for_key = True
                             self.stopped_before_answer = True
@@ -1944,6 +2225,7 @@ class TurnRunner:
                         # long it takes, not a stuck finish: the next result
                         # starts the ceiling again.
                         carrying_on = True
+                        self._cost_known = False  # more requests, not yet in a result
                         disarm_ceiling()
                     if event.kind == "tool":
                         self.last_activity = f"using {event.text}"
@@ -2022,6 +2304,9 @@ class TurnRunner:
                         elif event.text == "requires_action":
                             disarm_ceiling()  # waiting for you, however long
                         elif event.text == "running" and final is not None:
+                            # Claude is at work again, on requests no result
+                            # has counted yet (#658).
+                            self._cost_known = False
                             with self._lock:
                                 self.waiting_on_background = False
                                 self._answered = False
@@ -2049,6 +2334,19 @@ class TurnRunner:
                         # runs as its own result), so the turn waits for idle;
                         # an older Claude Code without them ends here.
                         replaced = self._result_came()
+                        if api:
+                            self._settle(event)
+                        self._note_baseline(event)  # every turn's, every result (#658)
+                        if not self._unanswered:
+                            # Every message so far has its result, and so
+                            # its cost (#658).
+                            self._cost_known = True
+                        if api and self._cancelled:
+                            # Stop on API credits: the interrupt's result has
+                            # said what the turn cost, so now it ends (#658).
+                            self._cost_known = True
+                            self._kill()
+                            break
                         if replaced and event.raw_type == "error_during_execution":
                             # The work Send Now stopped: not the turn
                             # failing, and the message is still to come. The
@@ -2125,6 +2423,14 @@ class TurnRunner:
                     final = TurnEvent("finished", session_id=final.session_id,
                                       raw_type=final.raw_type,
                                       data={"after_background": True})
+            if self._cancelled and final is not None and final.is_error \
+                    and final.raw_type == "error_during_execution":
+                # The result Stop's interrupt brought (#658): the turn was
+                # stopped, not failed.
+                final = None
+            if self._init_refused and not self._cancelled:
+                final = TurnEvent("failed", text=INIT_UNANSWERED_API, is_error=True,
+                                  session_id=self.parser.session_id)
             if final is None:
                 if self._cancelled:
                     final = TurnEvent("failed", text="Stopped.", is_error=True,
@@ -2136,6 +2442,11 @@ class TurnRunner:
                                       session_id=self.parser.session_id)
         except _Cancelled:
             final = TurnEvent("failed", text="Stopped.", is_error=True)
+        except _Refused as exc:
+            # The ledger wouldn't give an API turn a budget (#658): nothing
+            # started, and the message goes back to the reply box.
+            self.stopped_before_answer = True
+            final = TurnEvent("failed", text=str(exc), is_error=True)
         except FileNotFoundError as exc:
             final = TurnEvent("failed", text=str(exc) or "The claude command was not found.",
                               is_error=True)
@@ -2146,8 +2457,10 @@ class TurnRunner:
             with self._lock:
                 self.pending.clear()
             self._fail_controls()  # before the final event: their callers hear first
+            self._close_reservation()
         if not final.session_id:
             final.session_id = self.parser.session_id
+        self._cost_data(final)
         self._emit(final)
 
     def _refuse_unsupported(self) -> None:
@@ -2164,6 +2477,10 @@ class TurnRunner:
 
 class _Cancelled(Exception):
     pass
+
+
+class _Refused(Exception):
+    """An API turn the spend ledger wouldn't start (#658)."""
 
 
 def _decode(raw) -> str:

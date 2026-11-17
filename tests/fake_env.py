@@ -171,6 +171,13 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "load_backup_secret", lambda: secret.get("pw"))
     patch(platform_paths, "save_backup_secret", lambda text: secret.__setitem__("pw", text))
     patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
+    # Nor a real API key (#658): named secrets in memory too.
+    named = {}
+    patch(platform_paths, "secrets_available", lambda: True)
+    patch(platform_paths, "has_secret", lambda name: name in named)
+    patch(platform_paths, "load_secret", lambda name: named.get(name))
+    patch(platform_paths, "save_secret", lambda name, text: named.__setitem__(name, text))
+    patch(platform_paths, "delete_secret", lambda name: named.pop(name, None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)
@@ -284,8 +291,13 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False):
+                 task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False,
+                 billing="subscription", api_key_name="", ledger=None, chat_id="",
+                 purpose="turn", cost_baselines=None):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
+        # How the turn is charged (#658), as the window asked.
+        self.billing, self.ledger, self.chat_id, self.purpose = billing, ledger, chat_id, purpose
+        self.cost_baselines = cost_baselines
         self.mcp_config = mcp_config
         self.disabled_mcp = list(disabled_mcp or ())
         self.context_usage = context_usage

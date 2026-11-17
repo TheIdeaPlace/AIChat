@@ -681,6 +681,28 @@ def s_main_compacted(frame, env):
     frame._rebuild_chat_list(focus_newest=True)
 
 
+def s_main_api_chat(frame, env):
+    """A chat on API credits loaded (#658): its row, the heading and title
+    say so, and the status bar shows what it and the app have spent."""
+    import fake_env
+    from records import assistant_block, text_block, user_text
+    from thechatplace import spend_ledger
+    from thechatplace.own_store import OwnSession
+    cwd = env["folders"]["Scratch"]
+    fake_env.add_transcript(env, cwd, "probe-api", [
+        user_text("Summarize the release notes."),
+        assistant_block(text_block("Three fixes and one new feature."), "m1")])
+    frame.store.add(OwnSession("probe-api", "Release notes on credits", cwd,
+                               last_activity_ms=fake_env.now_ms(), billing="api"))
+    ledger = spend_ledger.default_ledger()
+    held = ledger.reserve("probe-api")
+    ledger.settle(held, 0.42, {"claude-opus-5-5": 0.42})
+    ledger.close(held, complete=True)
+    frame.refresh_sessions(force=True)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+    _open(frame, "Release notes on credits")
+
+
 def s_main_own_working(frame, env):
     _open(frame, "Visual probe")
     for text in ("Now run the whole suite.", "And then open a PR."):
@@ -1280,6 +1302,17 @@ def d_new_session_branch_in_use(frame, env):
     dialog._read_repo = described
     dialog._repo_for = ""
     dialog.refresh_repo()
+    return lambda: frame._modal(dialog)
+
+
+def d_new_session_api_credits(frame, env):
+    """New Session with Charge to (#658): API credits chosen, so the note
+    says so and the model list offers Fable, which is chosen."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, env["folders"]["Scratch"], api_key=True)
+    dialog.charge.SetSelection(1)
+    dialog._on_charge()
+    dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
     return lambda: frame._modal(dialog)
 
 
@@ -2235,6 +2268,36 @@ def d_backup_schedule(frame, env):
                                                      has_passphrase=True))
 
 
+def d_api_keys(frame, env):
+    """Tools, API Keys (#658) as it first opens: no key, the default limits
+    and nothing spent. The key store is fake_env's, in memory."""
+    from thechatplace import spend_ledger
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    ledger = spend_ledger.SpendLedger(env["tmp"] / "appdata")
+    return lambda: frame._modal(ApiKeysDialog(frame, ledger=ledger))
+
+
+def d_api_keys_with_key(frame, env):
+    """API Keys with a made-up key kept (so the button reads Replace Key and
+    Test Key and Remove Key are on), some spending, a message still running
+    (held), and a test's answer in the result box."""
+    from thechatplace import billing, spend_ledger
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    billing.save_api_key("sk-ant-probe-" + "0" * 28 + "7Q2x",
+                         now=time.mktime((2026, 11, 16, 12, 0, 0, 0, 0, -1)))
+    ledger = spend_ledger.SpendLedger(env["tmp"] / "appdata")
+    done = ledger.reserve("own-1")
+    ledger.settle(done, 12.34)
+    ledger.close(done, complete=True)
+    ledger.reserve("own-1")
+
+    def show():
+        dialog = ApiKeysDialog(frame, ledger=ledger)
+        dialog.result.SetValue("Your key works. That test cost less than a cent.")
+        return frame._modal(dialog)
+    return show
+
+
 def d_restore_chooser(frame, env):
     """Restore from Backup's chooser (#450): a backup's chats, one skipped."""
     from thechatplace.ui.dialogs import RestoreChooserDialog
@@ -2345,6 +2408,9 @@ SURFACES = {
                        "Compaction and command output remain visible with tool activity off."),
     "main-start": ("window", s_main_start, "Main window as it opens: session list, no session loaded"),
     "main-own": ("window", s_main_own, "An own session loaded: messages and the reply box"),
+    "main-api-chat": ("window", s_main_api_chat,
+                      "A chat on API credits loaded: its row, heading and title say so, and "
+                      "the status bar shows what's been spent (#658)"),
     "main-agents": ("window", s_main_agents, "An agent conversation loaded: both agents' "
                                              "messages, and a reply waiting to be handed on"),
     "main-own-working": ("window", s_main_own_working,
@@ -2409,6 +2475,9 @@ SURFACES = {
     "settings-speech-problem": ("dialog", d_settings_speech_problem,
                                 "Settings after an announcement wasn't spoken: the reason box"),
     "new-session": ("dialog", d_new_session, "File, New Session"),
+    "new-session-api-credits": ("dialog", d_new_session_api_credits,
+                                "New Session once a Claude API key is added, with Charge to "
+                                "on API credits and Fable chosen (#658)"),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
     "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
@@ -2515,6 +2584,9 @@ SURFACES = {
     "restore-chooser": ("dialog", d_restore_chooser, "Restore from Backup, choosing chats"),
     "export-chats": ("dialog", d_export_chats, "Export Chats, choosing chats and a format"),
     "backup-schedule": ("dialog", d_backup_schedule, "Backup Schedule, daily, after a failure"),
+    "api-keys": ("dialog", d_api_keys, "Tools, API Keys with no key and nothing spent"),
+    "api-keys-with-key": ("dialog", d_api_keys_with_key,
+                          "Tools, API Keys with a key, some spending and a test's answer"),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "rewind": ("dialog", d_rewind, "Retry from Here on your first message: Conversation only chosen"),
     "rewind-files": ("dialog", d_rewind_files,
@@ -2564,6 +2636,7 @@ DIALOG_CLASSES = {
     "settings-copilot": "SettingsDialog",
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
+    "new-session-api-credits": "NewSessionDialog",
     "new-session-worktree": "NewSessionDialog",
     "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
@@ -2647,6 +2720,8 @@ DIALOG_CLASSES = {
     "restore-chooser": "RestoreChooserDialog",
     "export-chats": "ExportChatsDialog",
     "backup-schedule": "BackupScheduleDialog",
+    "api-keys": "ApiKeysDialog",
+    "api-keys-with-key": "ApiKeysDialog",
     "relay": "RelayDialog",
     "rewind": "RewindDialog",
     "rewind-files": "RewindDialog",

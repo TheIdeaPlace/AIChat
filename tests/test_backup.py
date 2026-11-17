@@ -949,6 +949,19 @@ def test_the_protected_passphrase_file_isnt_backed_up(homes):
     assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json"}
 
 
+def test_no_secret_file_is_backed_up_whatever_its_name(homes):
+    # The API key (#658), a half-written copy, and any secret added later.
+    for name in ("claude-api-key.dpapi", "claude-api-key.dpapi.tmp",
+                 "backup-passphrase.dpapi.tmp", "some-later-secret.dpapi",
+                 "sub/nested.dpapi"):
+        write(homes["data"] / name, "protected")
+    write(homes["data"] / "a.json", "{}")
+    write(homes["data"] / "api-spend.jsonl", "{}\n")   # the tally is history: kept
+    assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json",
+                                             "thechatplace/data/api-spend.jsonl"}
+    assert any("API key" in line for line in backup.tcp_inventory().skipped)
+
+
 def test_a_whole_chats_open_page_isnt_backed_up(tmp_path, monkeypatch):
     # A copy, gone when it's closed: closing it mid-backup would count as a failure.
     from thechatplace import platform_paths

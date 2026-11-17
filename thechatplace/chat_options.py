@@ -193,10 +193,12 @@ class Agent:
 _CREDIT_MODELS = ("fable", "[1m]")
 
 
-def agent_problem(agent: Optional[Agent], chat_model: str = "") -> str:
+def agent_problem(agent: Optional[Agent], chat_model: str = "",
+                  billing: str = "subscription") -> str:
     """Why a chat on ``chat_model`` can't run as ``agent``, or "". The chat
-    having chosen that model itself makes it fine."""
-    if agent is None:
+    having chosen that model itself makes it fine, and so does a chat on API
+    credits (#658), where every model is charged to the credits it chose."""
+    if agent is None or billing == "api":
         return ""
     model, chosen = agent.own_model.lower(), (chat_model or "").lower()
     if not any(mark in model and mark not in chosen for mark in _CREDIT_MODELS):

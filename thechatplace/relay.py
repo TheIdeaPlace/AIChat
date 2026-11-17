@@ -122,13 +122,23 @@ class Problem(NamedTuple):
     full: str
 
 
+#: Why a chat on API credits can't be in an agent conversation (#658): for
+#: now they stay on the subscription, so the agents' hand-offs never spend.
+_API_CREDITS_WHY = ("agent conversations are only for chats on your Claude subscription for "
+                    "now")
+
+
 def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
-                  working: bool, blocked: str = "") -> Optional[Problem]:
+                  working: bool, blocked: str = "",
+                  api_credits: bool = False) -> Optional[Problem]:
     """Why the chat a reply came from can't start an agent conversation with
     the chat it goes to, or None. ``blocked`` is why conversations can't be
-    saved at all."""
+    saved at all; ``api_credits``: the chat is charged to API credits."""
     if blocked:
         return Problem("agent conversations can't be saved", blocked)
+    if api_credits:
+        return Problem("this chat is on API credits",
+                       f"{source.title} is on API credits, and {_API_CREDITS_WHY}")
     if source.is_own and can_edit and source.provider not in NEW_KINDS:
         # Started here, but its provider can't be in one.
         return Problem("this chat can't be in one",
@@ -146,13 +156,17 @@ def joint_problem(source: SessionInfo, *, can_edit: bool, in_conversation: bool,
 
 
 def joint_target_problem(target: SessionInfo, in_conversation: bool,
-                         working: bool = False) -> Optional[Problem]:
+                         working: bool = False, api_credits: bool = False) -> Optional[Problem]:
     """Why ``target`` can't be the other half of an agent conversation. A
     working one would end its turn inside the conversation, and that
-    unrelated reply would be taken as its answer."""
+    unrelated reply would be taken as its answer. ``api_credits``: it's
+    charged to API credits (#658)."""
     if target.provider not in NEW_KINDS:
         return Problem("that chat can't join one",
                        "agent conversations are for Claude, Codex and Copilot chats")
+    if api_credits:
+        return Problem("that chat is on API credits",
+                       f"{target.title} is on API credits, and {_API_CREDITS_WHY}")
     if in_conversation:
         return Problem("that chat is already in one",
                        f"{target.title} is already in an agent conversation")

@@ -63,8 +63,8 @@
     "Model of the latest reply: Opus 5.5",
     "Model chosen: the default model",
     "Effort: Default (your Claude Code setting)",
-    "Agent: none",
-    "Output style: your setting"
+    "Charged to: Claude subscription",
+    "Agent: none"
    ],
    "selection": 0
   },

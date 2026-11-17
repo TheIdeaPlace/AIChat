@@ -364,6 +364,29 @@ job.
 - **Raise the effort** when details are easy to miss, such as a bug in code you didn't write, and
   lower it for quick jobs.
 
+### You want to use API credits instead of your plan
+
+If you have prepaid credit on an Anthropic API key, a Claude chat can spend that instead of
+your Claude subscription.
+
+1. Add the key in **Tools, API Keys** (Alt+T, P): paste it in the Claude API key box and choose
+   **Add Key**. **Test Key** checks it with a request that costs less than a cent. The same
+   dialog sets the limits: The Chat Place stops API chats once it has spent $190, and stops any
+   one message at about $5, until you change them. On a Mac, the first message on API credits
+   may bring up a keychain question for "security": choose **Always Allow**.
+2. In **New Session** (Ctrl+N) choose **API credits** under **Charge to**. Fable is offered for
+   these chats. To carry on a chat you already have, use **Chat, Continue on API Credits**: it
+   makes a new chat that picks up from the old one, whose first message costs more because the
+   whole conversation goes again.
+
+You always know when a message is on API credits: the chat's row and the window's title say
+"API credits", each message you send is followed by "Sent on API credits" (always said, even
+when announcements are off), the first one in each
+chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply says what it cost, and
+the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
+changed once it's made. Claude.ai connectors and Remote Control aren't available on API
+credits, and Codex and Copilot chats can't use them yet.
+
 ### You want several chats or agents working at once
 
 - **Several jobs:** start another chat with **Ctrl+N** and leave the first working. You hear when each
