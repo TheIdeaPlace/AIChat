@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    858
+    938
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -439,7 +439,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Usage and Context"
+   "about": "Tools, Usage and Context"
   },
   "properties": {
    "kind": "dialog",
@@ -453,7 +453,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Properties of a session"
+   "about": "Session, Properties of a session"
   },
   "about-you": {
    "kind": "dialog",
@@ -561,7 +561,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    843
+    923
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1065,7 +1065,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    883
+    963
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1233,7 +1233,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    910
+    990
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1938,6 +1938,62 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Change Key: the longest reason a key can't be used (AltGr)"
+  },
+  "main-api-chat": {
+   "kind": "window",
+   "png": "main-api-chat-light-100.png",
+   "json": "main-api-chat-light-100.json",
+   "title": "Release notes on credits, API credits — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A chat on API credits loaded: its row, heading and title say so, and the status bar shows what's been spent (#658)"
+  },
+  "new-session-api-credits": {
+   "kind": "dialog",
+   "png": "new-session-api-credits-light-100.png",
+   "json": "new-session-api-credits-light-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    637
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session once a Claude API key is added, with Charge to on API credits and Fable chosen (#658)"
+  },
+  "api-keys": {
+   "kind": "dialog",
+   "png": "api-keys-light-100.png",
+   "json": "api-keys-light-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, API Keys with no key and nothing spent"
+  },
+  "api-keys-with-key": {
+   "kind": "dialog",
+   "png": "api-keys-with-key-light-100.png",
+   "json": "api-keys-with-key-light-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, API Keys with a key, some spending and a test's answer"
   }
  },
  "seconds": 278.6

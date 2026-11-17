@@ -1,0 +1,464 @@
+{
+ "title": "API Keys",
+ "class": "ApiKeysDialog",
+ "size": [
+  600,
+  680
+ ],
+ "client": [
+  584,
+  641
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Key status:",
+   "rect": [
+    8,
+    8,
+    57,
+    16
+   ],
+   "best": [
+    57,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Key status",
+   "label": "Claude: key ending in 7Q2x, added November 16",
+   "rect": [
+    10,
+    26,
+    568,
+    30
+   ],
+   "best": [
+    127,
+    53
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude: key ending in 7Q2x, added November 16"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Claude API &key:",
+   "rect": [
+    8,
+    62,
+    83,
+    16
+   ],
+   "best": [
+    83,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Claude API key",
+   "label": "",
+   "rect": [
+    10,
+    80,
+    478,
+    23
+   ],
+   "best": [
+    110,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Replace Key",
+   "rect": [
+    492,
+    78,
+    84,
+    23
+   ],
+   "best": [
+    84,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Test Key",
+   "rect": [
+    8,
+    109,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&move Key...",
+   "rect": [
+    89,
+    109,
+    95,
+    23
+   ],
+   "best": [
+    95,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Test result:",
+   "rect": [
+    8,
+    140,
+    58,
+    16
+   ],
+   "best": [
+    58,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Test result",
+   "label": "Test Key sends one short request on your key to check that it works, and counts what it cost in the tally.",
+   "rect": [
+    10,
+    158,
+    568,
+    112
+   ],
+   "best": [
+    127,
+    98
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Your key works. That test cost less than a cent."
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Spending limits",
+   "rect": [
+    8,
+    276,
+    568,
+    191
+   ],
+   "best": [
+    100,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Stop API chats once The Chat Place has &spent $",
+   "rect": [
+    19,
+    302,
+    250,
+    16
+   ],
+   "best": [
+    250,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Stop API chats once The Chat Place has spent, in dollars",
+   "label": "190.00",
+   "rect": [
+    457,
+    301,
+    110,
+    23
+   ],
+   "best": [
+    113,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "190.00"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Stop any &one message at about $",
+   "rect": [
+    19,
+    331,
+    175,
+    16
+   ],
+   "best": [
+    175,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Stop any one message at about, in dollars",
+   "label": "5.00",
+   "rect": [
+    457,
+    330,
+    110,
+    23
+   ],
+   "best": [
+    113,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "5.00"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Tally:",
+   "rect": [
+    19,
+    357,
+    29,
+    16
+   ],
+   "best": [
+    29,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Tally",
+   "label": "",
+   "rect": [
+    21,
+    375,
+    546,
+    54
+   ],
+   "best": [
+    127,
+    54
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Spent since the tally was reset: $12.34. Held for running messages: $5.00. Left: $172.66."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sa&ve Limits",
+   "rect": [
+    19,
+    433,
+    80,
+    23
+   ],
+   "best": [
+    80,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "R&eset Tally...",
+   "rect": [
+    105,
+    433,
+    86,
+    23
+   ],
+   "best": [
+    86,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Release &Held...",
+   "rect": [
+    197,
+    433,
+    97,
+    23
+   ],
+   "best": [
+    97,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About spending:",
+   "rect": [
+    8,
+    475,
+    89,
+    16
+   ],
+   "best": [
+    89,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About spending",
+   "label": "The Chat Place counts only its own spending. Your Anthropic account may have less left if other apps use the same key, and a limit can be passed by one request.",
+   "rect": [
+    10,
+    493,
+    568,
+    111
+   ],
+   "best": [
+    127,
+    143
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The Chat Place counts only its own spending. Your Anthropic account may have less left if other apps use the same key, and a limit can be passed by one request."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Billing Page",
+   "rect": [
+    8,
+    610,
+    83,
+    23
+   ],
+   "best": [
+    83,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    501,
+    610,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
