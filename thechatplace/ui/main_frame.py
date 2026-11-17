@@ -5540,7 +5540,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 effort = getattr(dialog, 'effort', lambda: '')()
                 policy = getattr(dialog, 'codex_policy', lambda: {})()
                 chat_options, more_folders = getattr(dialog, 'chat_options', _no_options)()
-                route = dialog.billing()
+                route = getattr(dialog, "billing", lambda: "subscription")()
             finally:
                 dialog.Destroy()
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}

@@ -1075,14 +1075,15 @@ def test_codex_cost_and_failure_are_spoken_with_announcements_off(frame, env, fo
     frame.speech.api_say_cost = True
     frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={
         'sent': True, 'cost_words': 'estimated 3 cents'}))
-    assert 'Paid Codex: the cost is estimated at 3 cents.' in env['spoken']
-    assert (env['spoken'][-1], record.to_info().key) in env['about']
+    assert not frame.speech.enabled  # this bypasses ordinary announcement gating
+    assert 'Paid Codex: the cost is estimated at 3 cents.' in env['feedback']
+    assert (env['feedback'][-1], record.to_info().key) in env['about']
     frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={'failure': 'connection_dropped'}))
-    assert "OpenAI's connection dropped" in env['spoken'][-1]
+    assert "OpenAI's connection dropped" in env['feedback'][-1]
     frame.speech.api_say_cost = False
-    before = list(env['spoken'])
+    before = list(env['feedback'])
     frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={'sent': True, 'cost_words': 'estimated 3 cents'}))
-    assert env['spoken'] == before
+    assert env['feedback'] == before
 
 
 def test_api_bundled_smoke_report_imports_api_backend(tmp_path):

@@ -610,8 +610,19 @@ def test_usage_after_completion_grace_is_settled(connect, tmp_path):
     assert conn.ledger.totals().held == 0
 
 
-def test_late_old_usage_does_not_restore_active_turn_baseline_or_double_charge(connect, tmp_path):
+def test_late_old_usage_does_not_restore_active_turn_baseline_or_double_charge(connect, tmp_path, monkeypatch):
     conn, events = connect('late-usage')
+    import threading
+    closing, release = threading.Event(), threading.Event()
+    original_close = conn.ledger.close
+    def close(reservation, complete):
+        if complete and conn.ledger.totals().spent >= .000122:
+            # Force the snapshot CI observed: settlement is appended, but
+            # the reservation has not closed. Spending alone isn't completion.
+            closing.set()
+            assert release.wait(8), 'Test did not release the final close'
+        return original_close(reservation, complete)
+    monkeypatch.setattr(conn.ledger, 'close', close)
     proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Overlap', model='gpt-5-nano')
     runner = CodexTurnExecutor(conn)
     runner.start(proof, 'First')
@@ -622,9 +633,14 @@ def test_late_old_usage_does_not_restore_active_turn_baseline_or_double_charge(c
     # turn two has not yet received usage or ended its accounting window.
     wait(lambda: conn.ledger.totals().spent > 0)
     assert proof.native_id not in json.loads(conn._baseline_path.read_text())
-    wait(lambda: conn.ledger.totals().spent >= .000122)
+    try:
+        wait(closing.is_set)
+        intermediate = conn.ledger.totals()
+        assert intermediate.spent == pytest.approx(.000122) and intermediate.held > 0
+    finally:
+        release.set()
+    wait(lambda: conn.ledger.totals().held == 0)
     assert conn.ledger.totals().spent == pytest.approx(.000122)
-    assert conn.ledger.totals().held == 0
 
 
 def test_slow_stop_can_send_again_while_other_chat_is_still_running(connect, tmp_path):

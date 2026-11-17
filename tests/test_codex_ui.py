@@ -1026,7 +1026,7 @@ def test_saved_rule_inventory_ignores_stale_and_closed_dialog_callbacks():
     from thechatplace.ui.dialogs import NewSessionDialog
     calls, updates = [], []
     dialog = SimpleNamespace(
-        IsBeingDeleted=lambda: False, provider=lambda: 'codex', folder=Text('/first'),
+        IsBeingDeleted=lambda: False, provider=lambda: 'codex', billing=lambda: 'subscription', folder=Text('/first'),
         _load_rules=lambda folder, done: calls.append((folder, done)),
         _rules_for=None, _rule_count=8, _rules_error='',
         _on_provider=lambda: updates.append(True))
@@ -1390,14 +1390,22 @@ def test_api_copy_cannot_route_back_through_subscription_fork():
         action()
 
 
-def test_api_cancel_keeps_only_user_message_and_says_not_sent():
+@pytest.mark.parametrize('loaded', [True, False])
+def test_api_cancel_keeps_only_user_message_and_says_not_sent(loaded):
     w = Window()
     w.record.provider, w.record.billing = 'codex-api', 'api'
     w.record.api_context = 'Quoted history that must remain hidden.'
+    if loaded:
+        w._open = w.record.to_info()  # match the API chat whose Send was cancelled
     w._api_send_problem = lambda key: ''
     w._send_codex_owned(w.record, 'My message')
     assert w.said[-1] == 'Not sent. Your message is in the reply box.'
-    assert w.reply_text.value.startswith('My message')
+    if loaded:
+        assert w.reply_text.value == 'My message\n\nNew draft'
+        assert w._codex_drafts[w.record.to_info().key] == w.reply_text.value
+    else:
+        assert w.reply_text.value == 'New draft'  # the other chat stays untouched
+        assert w._codex_drafts[w.record.to_info().key] == 'My message'
     assert w.record.api_context not in w.reply_text.value
     assert not w.work
 
@@ -1456,3 +1464,43 @@ def test_api_returned_first_message_does_not_dump_hidden_context_into_draft():
     state = CodexChatState('owned', 'idle', unsent=('Quoted history.\n\nMy message',))
     w._on_owned_update('codex-api', state)
     assert w._codex_drafts[key] == 'My message'
+
+
+def test_saved_rule_inventory_never_loads_subscription_rules_for_api():
+    from thechatplace.ui.dialogs import NewSessionDialog
+    calls = []
+    dialog = SimpleNamespace(
+        IsBeingDeleted=lambda: False, provider=lambda: 'codex', billing=lambda: 'api',
+        _load_rules=lambda *args: calls.append(args))
+    NewSessionDialog._refresh_rules(dialog)
+    assert calls == []
+
+
+@pytest.mark.parametrize('billing', [None, 'api'])
+def test_continue_selection_defaults_legacy_billing_and_honors_explicit_route(monkeypatch, billing):
+    from thechatplace.sessions import SessionInfo
+    from thechatplace.ui import main_frame
+    source = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+    w = Window()
+    w._selected_session = lambda: source
+    w._require_capability = lambda *a: True
+    w._other_provider_said = lambda info: False
+    w._has_api_key = lambda *a: True
+    calls = []
+    w._create_codex_owned = lambda *a, **k: calls.append((a, k))
+    class Selection:
+        def __init__(self, *a, **k):
+            pass
+        def ShowModal(self):
+            return main_frame.wx.ID_OK
+        def values(self):
+            return '/workspace', 'Copy', '', 'My message', 'gpt-5-nano'
+        def Destroy(self):
+            pass
+    if billing is not None:
+        Selection.billing = lambda self: billing
+    monkeypatch.setattr(main_frame, 'NewSessionDialog', Selection)
+    main_frame.MainFrame.on_continue_here(w)
+    assert calls[0][1]['provider'] == ('codex-api' if billing == 'api' else 'codex')
+    assert calls[0][1]['source'] is source
+    assert calls[0][0][2] == 'My message'
