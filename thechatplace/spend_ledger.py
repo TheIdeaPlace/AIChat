@@ -436,8 +436,9 @@ class CostTracker:
 
 class SpendLedger:
     def __init__(self, folder: Optional[Path] = None,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, defaults: Optional[Limits] = None) -> None:
         self._folder = Path(folder) if folder is not None else None
+        self._defaults = defaults or Limits()
         self._clock = clock
         #: Reservations made in this process and not yet closed: Reset keeps
         #: them, and Release Held leaves them be.
@@ -608,7 +609,7 @@ class SpendLedger:
         try:
             raw = json.loads(self.limits_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return Limits(), ""
+            return self._defaults, ""
         except (OSError, ValueError, RecursionError) as exc:
             return Limits(), (f"The Chat Place couldn't read its API spending limits ({exc}), "
                               "so it won't spend API credits until they're set again in "
@@ -917,12 +918,20 @@ class SpendLedger:
 
 
 _DEFAULT: Optional[SpendLedger] = None
+_OPENAI_DEFAULT: Optional[SpendLedger] = None
 
 
-def default_ledger() -> SpendLedger:
+def default_ledger(provider='claude') -> SpendLedger:
     """The ledger in the app's folder, one for the whole process."""
-    global _DEFAULT
+    global _DEFAULT, _OPENAI_DEFAULT
     with _LOCK:
+        if provider == 'openai':
+            if _OPENAI_DEFAULT is None:
+                _OPENAI_DEFAULT = SpendLedger(platform_paths.app_data_dir() / 'openai-billing',
+                                               defaults=Limits(5.00, 0.50))
+            return _OPENAI_DEFAULT
+        if provider != 'claude':
+            raise ValueError('Unknown API-credit provider')
         if _DEFAULT is None:
             _DEFAULT = SpendLedger()
         return _DEFAULT

@@ -132,7 +132,7 @@ class OwnSession:
             unread=self.unread,
             provider=self.provider,
             continued_from=self.forked_from,
-            api_credits=self.provider == "claude" and self.billing == "api",  # #658
+            api_credits=self.billing == "api" and self.provider in ('claude', 'codex-api'),
         )
 
 
@@ -140,10 +140,10 @@ _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
 #: Every provider a record may name.
-PROVIDERS = ("claude", "codex", "copilot")
+PROVIDERS = ("claude", "codex", "copilot", "codex-api")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
-SEPARATE_PROVIDERS = ("copilot",)
+SEPARATE_PROVIDERS = ("copilot", "codex-api")
 #: The name Claude's API-credit chats' own file goes by (#663), in the
 #: place a separate provider's would.
 API_CHATS = "claude-api"
@@ -202,7 +202,7 @@ def _unknown_fields(item: dict) -> dict:
                if name not in _FIELDS and name != "provider_extras"}
     extras = item.get("provider_extras")
     if "provider_extras" in item:
-        if item.get("provider", "claude") != "codex" or not isinstance(extras, dict):
+        if item.get("provider", "claude") not in ("codex", "codex-api") or not isinstance(extras, dict):
             unknown["provider_extras"] = extras
         else:
             later = {name: value for name, value in extras.items() if name not in CODEX_EXTRAS}
@@ -277,7 +277,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             ok = True
         values[name] = value if ok else _DEFAULTS[name]
     extras = item.get("provider_extras")
-    if provider == "codex" and isinstance(extras, dict):
+    if provider in ("codex", "codex-api") and isinstance(extras, dict):
         # A hand edit that isn't valid is dropped, which only leaves the chat
         # in Default mode with no extra tools, rather than refusing the file.
         kept_extras = {k: extras[k] for k in CODEX_EXTRAS
@@ -322,7 +322,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             values[name] = ""
         values["prompt_fresh"] = False
         # API credits are Claude's only, for now (#658).
-        values["billing"] = "subscription"
+        values["billing"] = "api" if provider == 'codex-api' else "subscription"
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
@@ -513,7 +513,7 @@ class OwnSessionStore:
         item = _stored_record(session)
         record = {**kept, **item}
         later = kept.get("provider_extras")
-        if session.provider == "codex" and isinstance(later, dict):
+        if session.provider in ("codex", "codex-api") and isinstance(later, dict):
             record["provider_extras"] = {**later, **item.get("provider_extras", {})}
         return record
 

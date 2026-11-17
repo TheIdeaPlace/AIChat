@@ -197,9 +197,10 @@ def scrub(text):
     """``text`` with anything that looks like an API key hidden. Applied to
     Claude Code's stderr and error text before it reaches the window, a log or
     a bug report. Anything but a string is given back as it is."""
-    if not isinstance(text, str) or "sk-ant-" not in text.lower():
+    if not isinstance(text, str):
         return text
-    return _KEY_ANYWHERE.sub(HIDDEN_KEY, text)
+    text = _KEY_ANYWHERE.sub(HIDDEN_KEY, text)
+    return re.sub(r'sk-(?!ant-)[A-Za-z0-9_-]+', 'sk-(hidden)', text, flags=re.IGNORECASE)
 
 
 # -- The settings an API chat's turns get --------------------------------------

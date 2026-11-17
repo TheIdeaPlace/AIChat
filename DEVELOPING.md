@@ -147,6 +147,39 @@ It's skipped otherwise, and never runs in CI. The other API-credit tests use a f
 Code, which is only as right as what we believe the real one says: #662 reached a test build
 because every fake reported a key the way the real one doesn't.
 
+OpenAI's separate `codex-api` backend (#661) has windowless tests in
+`tests/test_codex_api.py` and opt-in real app-server checks in `tests/test_live_openai.py`:
+
+```powershell
+$env:TCP_LIVE_OPENAI='1'
+$env:TCP_LIVE_OPENAI_KEY_FILE='C:\Users\kelly\OneDrive\testing\idt\keys\openai.txt'
+& 'C:\Users\kelly\GitHub\AIChat\.venv\Scripts\python.exe' -m pytest -q -s tests/test_live_openai.py
+```
+
+Run paid checks outside the coding agent's network sandbox; don't add CA overrides for
+its TLS failure. The tests use temporary homes and memory-only login, never the default
+Codex home or the saved system-store secret. They print token counters and estimated
+costs, never the key. For the free real-CLI redirect check alone, set
+`TCP_LIVE_OPENAI_FREE=1` and use `-k redirect` without enabling the paid flag.
+
+OpenAI's ledger lives in `openai-billing/`, separate from Claude's unchanged files. Its
+defaults are $5 overall and about $0.50 per message. The API runtime home `codex-api/`
+is excluded from backups. The app's single-instance guard remains part of spending
+safety: the ledger lock protects concurrent chats within that app process.
+
+API route invariants are applied after all per-thread settings. In CLI 0.163 the
+`turn/start` schema has no `config` field; sending a matching field there is not proof
+of server enforcement. Safety depends on the verified start/resume/fork configuration,
+fresh route checks, and the transport's strict turn-field validation. A caller cannot
+submit a different endpoint through the API transport. Hosted search, connected services,
+automatic review, native compaction/goals, and subagents are blocked until their costs
+can be accounted for. Side questions and copies cut at an earlier turn are not enabled
+for this backend yet. A full-history copy requires a known source usage baseline.
+Before sending, the durable token baseline is invalidated; only a completed turn
+with valid usage restores it. After uncertain usage, continuation is refused until
+a trustworthy cumulative snapshot is available; starting a new API chat is safe.
+Releasing held credit does not make an unknown token baseline trustworthy.
+
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an
 accessibility bus), with no person, sound or VM:
@@ -249,6 +282,8 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
 | `thechatplace/billing.py` | How a Claude chat is charged (#658): the subscription or API credits, the check of initialize's `account` before anything is sent, the key's `apiKeyHelper` settings, budgets, the key scrubber and the words for API failures |
 | `thechatplace/spend_ledger.py` | What API credits have cost (#658): `api-spend.jsonl` (reservations, settlements, resets, appended only) and `api-limits.json`, under one lock so two chats can't spend the same money |
+| `thechatplace/openai_billing.py`, `thechatplace/openai_prices.py` | OpenAI's named system secret and one dated table for estimated standard text-token costs (#661) |
+| `thechatplace/providers/codex_api.py`, `codex_billing.py` | The isolated API-credit Codex backend: ephemeral login, route checks and pins, send events, provider-specific reservations, token settlement and bounded Stop (#661) |
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
