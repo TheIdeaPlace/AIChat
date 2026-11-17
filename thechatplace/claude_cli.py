@@ -1216,7 +1216,7 @@ def cost_tracker_for(command: List[str], baselines=None, cap: Optional[float] = 
 def build_key_test_command(executable: str) -> List[str]:
     """Test Key (#658): one tiny request on Haiku, the cheapest model, run as
     an API turn (TurnRunner with billing "api", purpose "test"), so it goes
-    through the same checks and its cost is in the tally. Nothing is kept
+    through the same checks and its cost is in the total. Nothing is kept
     (``--no-session-persistence``), no tools, no MCP servers and no hooks or
     slash commands, so the request is only the question."""
     return [executable, "-p", "--input-format", "stream-json", "--output-format",
@@ -1884,7 +1884,7 @@ class TurnRunner:
         return command + budget_flags(self.reservation.amount)
 
     def _settle(self, event: TurnEvent) -> None:
-        """A result on API credits: what it added to the tally, and the
+        """A result on API credits: what it added to the total, and the
         turn's cost so far on the event for the window (#658). Over the
         budget, out of credit or a refused key said in words."""
         data = event.data or {}

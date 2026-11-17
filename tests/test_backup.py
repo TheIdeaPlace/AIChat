@@ -956,7 +956,7 @@ def test_no_secret_file_is_backed_up_whatever_its_name(homes):
                  "sub/nested.dpapi"):
         write(homes["data"] / name, "protected")
     write(homes["data"] / "a.json", "{}")
-    write(homes["data"] / "api-spend.jsonl", "{}\n")   # the tally is history: kept
+    write(homes["data"] / "api-spend.jsonl", "{}\n")   # the total is history: kept
     assert names(backup.tcp_inventory()) == {"thechatplace/data/a.json",
                                              "thechatplace/data/api-spend.jsonl"}
     assert any("API key" in line for line in backup.tcp_inventory().skipped)

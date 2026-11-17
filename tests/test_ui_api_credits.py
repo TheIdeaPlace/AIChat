@@ -186,7 +186,7 @@ def test_a_damaged_tally_stops_an_aside_too(frame, env, monkeypatch):
     ledger.path.write_text("not a ledger line\n", encoding="utf-8")
 
     def opened(*args, **kwargs):
-        pytest.fail("Ask Aside opened on a damaged tally")
+        pytest.fail("Ask Aside opened on a damaged total")
     monkeypatch.setattr(claude_extras, "AskAsideDialog", opened)
     select(frame, "Paid")
     frame.on_ask_aside()

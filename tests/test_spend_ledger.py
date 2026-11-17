@@ -1,4 +1,4 @@
-"""The API credits tally and its limits (#658). Windowless; each test has its
+"""The API credits total and its limits (#658). Windowless; each test has its
 own folder and a clock it sets."""
 import json
 import threading
@@ -323,7 +323,7 @@ def test_baselines_are_kept_across_runs_and_resets(tmp_path):
     assert again.baseline("chat-2") == (pytest.approx(1.5), {})
     again.set_baseline("chat-1", 0.002)
     assert again.baseline("chat-1")[0] == pytest.approx(0.002)
-    # Not spending: the tally doesn't see them.
+    # Not spending: the total doesn't see them.
     assert again.totals().spent == 0 and again.can_spend() is None
 
 

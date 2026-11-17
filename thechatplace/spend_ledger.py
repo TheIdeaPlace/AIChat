@@ -1,7 +1,7 @@
 """What The Chat Place has spent on API credits (#658), and the limits on it.
 
 The API can't tell the app what's left on an account (other tools, IDT among
-them, spend from the same key), so the app keeps its own tally and its own
+them, spend from the same key), so the app keeps its own total and its own
 limits: an overall one ("stop API chats once The Chat Place has spent $190")
 and a per-message one ("stop any one message at about $5").
 
@@ -21,7 +21,7 @@ written. Each line is one of:
   sent got its result, so what was settled is the whole cost; otherwise
   (Stop mid-reply, a crash) the cost of the requests made since the last
   result isn't known, and the reservation stays counted.
-* ``reset``: Reset in API Keys starts a new tally. Earlier lines are kept,
+* ``reset``: Reset in API Keys starts a new total. Earlier lines are kept,
   for Usage's today and last 7 days.
 * ``release``: Release Held in API Keys lets go of reservations no running
   turn holds (left by an earlier run, a crash, or a Stop whose cost wasn't
@@ -144,7 +144,7 @@ class _Open:
 
 @dataclass
 class Totals:
-    """The tally, as Usage and the status bar show it."""
+    """The total, as Usage and the status bar show it."""
 
     #: Settled spending since the last Reset.
     spent: float = 0.0
@@ -161,7 +161,7 @@ class Totals:
     #: Settled spending by chat across Resets: what each chat has cost in
     #: all (Properties and the status bar, #658).
     chat_all_time: Dict[str, float] = field(default_factory=dict)
-    #: When the tally was last reset (epoch seconds), or 0 for never.
+    #: When the total was last reset (epoch seconds), or 0 for never.
     reset_at: float = 0.0
     #: Why nothing may be spent (a damaged line, unreadable limits), or "".
     problem: str = ""
@@ -331,7 +331,7 @@ class SpendLedger:
 
     def set_baseline(self, chat_id: str, total, models=None) -> None:
         """Record what Claude Code reported for ``chat_id`` after a result.
-        Not part of the tally (Reset leaves it), and a failure to write is
+        Not part of the total (Reset leaves it), and a failure to write is
         let go: the next turn then counts its first result up to its cap."""
         total = _money(total)
         if not chat_id or total is None:
@@ -460,7 +460,7 @@ class SpendLedger:
         if damage:
             totals.problem = totals.problem or (
                 f"The Chat Place's record of API spending is damaged ({damage} of "
-                f"{LEDGER_FILE}), so it won't spend API credits until you reset the tally in "
+                f"{LEDGER_FILE}), so it won't spend API credits until you reset the total in "
                 "Tools, API Keys.")
         return totals, reservations
 
@@ -514,7 +514,7 @@ class SpendLedger:
             from .billing import money
             return (f"The Chat Place has reached your limit of {money(totals.limits.overall)} "
                     "for API credits, so it didn't send this message. Nothing was sent. Raise "
-                    "the limit or reset the tally in Tools, API Keys.")
+                    "the limit or reset the total in Tools, API Keys.")
         return None
 
     # -- writing ----------------------------------------------------------------
@@ -539,7 +539,7 @@ class SpendLedger:
 
     def reserve(self, chat_id: str = "", purpose: str = "turn") -> Reservation:
         """Hold the most the next API process may spend, or raise SpendRefused.
-        Reading the tally and writing the reservation are one step under the
+        Reading the total and writing the reservation are one step under the
         lock, so another chat can't be given the same money."""
         with _LOCK:
             totals = self._replay()[0]
@@ -590,7 +590,7 @@ class SpendLedger:
             self._live.discard(reservation.id)
 
     def reset(self) -> None:
-        """Start a new tally (Tools, API Keys, Reset). Raises OSError if it
+        """Start a new total (Tools, API Keys, Reset). Raises OSError if it
         can't be recorded."""
         with _LOCK:
             self._append({"type": "reset", "keep": sorted(self._live)})

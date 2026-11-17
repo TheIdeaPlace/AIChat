@@ -2092,7 +2092,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _api_send_problem(self, session_id: str, ask: bool = True) -> Optional[str]:
         """Why a message can't go into this chat now because of API credits
-        (#658): no key kept, the spending limit reached or the tally
+        (#658): no key kept, the spending limit reached or the total
         damaged, or "" when you chose Cancel at "Send on API credits?". None
         for a subscription chat, or once it may go. ``ask``:
         the first send this run in the chat is confirmed (Settings can turn
@@ -2102,7 +2102,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return None
         if not self._has_api_key():
             return NO_API_KEY
-        # A reached limit or a damaged tally is said now, before "Send on API
+        # A reached limit or a damaged total is said now, before "Send on API
         # credits?" is asked or "Sent on API credits" said, with the message
         # still in the reply box; the turn's own reservation checks again.
         from ..spend_ledger import default_ledger
@@ -5468,7 +5468,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Tools, API Keys (#658): the Claude API key and the spending limits."""
         from .api_keys_dialog import ApiKeysDialog
         self._modal(ApiKeysDialog(self, speak=self._feedback))
-        # The key or the tally may have changed: what's shown follows.
+        # The key or the total may have changed: what's shown follows.
         self._api_totals_cache = None
         self._update_status_api()
 
@@ -6119,7 +6119,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 else:
                     reply = announce.first_sentence(event.text) if event.text else ""
                     self._status(f"{title} finished{', ' + cost if cost else ''}. {reply}".strip())
-            self._api_totals_cache = None  # the tally changed (#658)
+            self._api_totals_cache = None  # the total changed (#658)
             if is_open:
                 self._update_status_api()
             if signature and signature not in command_state['spoken']:

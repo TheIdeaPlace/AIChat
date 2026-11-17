@@ -480,10 +480,10 @@ yet.
   credits may bring up a keychain question for "security" (the command that hands Claude Code
   the key): choose **Always Allow**, or it asks again each time.
 - **Spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
-  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Tally
+  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Total
   box right after them says what's been spent since the last reset, what's held for messages
   still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
-  saved asks first. **Reset Tally** (Alt+E) starts counting again from nothing, after asking.
+  saved asks first. **Reset Total** (Alt+E) starts counting again from nothing, after asking.
   **Release Held** (Alt+H) is on only when something is held for messages that are no longer
   running (left by an earlier run, a crash, or a message you stopped before Claude Code said
   what it cost): after asking, it lets that go, since those messages may have spent up to that
@@ -519,13 +519,13 @@ yet.
   reply" (Alt+V), both on at first.
 - **Before anything is sent** The Chat Place checks with Claude Code that the message will be
   charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
-  spending limit is reached or the tally is damaged, the message isn't sent, stays in the reply
+  spending limit is reached or the total is damaged, the message isn't sent, stays in the reply
   box, and you hear why, before any "Send on API credits?". A chat on the subscription
   is checked the same way the other round: it never uses a key. A message that reaches its
   per-message limit stops, says so and what it cost; one refused for no credit or a bad key
   says that plainly.
 - **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
-  today, the last 7 days, since the tally was reset, what's held, what's left of the limit, and
+  today, the last 7 days, since the total was reset, what's held, what's left of the limit, and
   spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
   credits" or "Claude subscription", and for API credits what the chat has spent.
 
