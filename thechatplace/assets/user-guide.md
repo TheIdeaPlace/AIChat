@@ -1894,12 +1894,14 @@ with **Chat Options** (Alt+H) in New Session or Continue Here, or for a Claude o
 started here, with **Chat, Chat Settings, Chat Options** (Alt+C, N, O). For Claude, the dialog has:
 
 - **Run as agent** (Alt+A): None (Claude Code's default), or one of the agents Claude Code knows for the
-  chat's folder, such as your code-reviewer, each with the start of its description. The chat
+  chat's folder, such as your code-reviewer, each listed by name. The chat
   then runs as that agent, with its instructions and tools. An agent with a model of its own uses
   that model whatever the chat's is, and the list says so, such as "code-reviewer (uses its own
   model, opus)"; the chat's heading still names the chat's model. OK refuses, and says why, an
   agent whose own model can bill usage credits: a 1M context model, or Fable unless the chat is
   on Fable too.
+- **Agent description** (Alt+P): a read-only box with the whole description of the agent chosen
+  above, to read by line. It changes as you choose another agent.
 - **Output style** (Alt+S): your setting (named, such as "Your setting (Proactive)"), or one of
   the styles Claude Code offers, yours included. It changes how Claude writes its replies.
 - **Instructions for this chat** (Alt+I): anything Claude should always do in this chat, such as

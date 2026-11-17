@@ -326,12 +326,14 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
         assert "Run as &agent:" in labels
         # Before Claude Code answers: the chat's own agent is still there.
         assert dialog.agent.GetStringSelection() == "gone-agent"
+        assert dialog.agent_about.GetValue() == (
+            "No description: this folder's agents aren't known yet.")
         assert pump(lambda: dialog.agent.GetCount() > 2)
         assert list(dialog.agent.GetStrings()) == [
-            "None (Claude Code's default)",
-            "code-reviewer (uses its own model, opus): Independent review of a change.",
-            "Explore: Read-only search agent.", "gone-agent (not found in this folder)"]
+            "None (Claude Code's default)", "code-reviewer (uses its own model, opus)",
+            "Explore", "gone-agent (not found in this folder)"]
         assert dialog.agent.GetStringSelection() == "gone-agent (not found in this folder)"
+        assert dialog.agent_about.GetValue().startswith("No description: Claude Code didn't")
         assert list(dialog.style.GetStrings()) == [
             "Your setting (Default)", "Default", "Concise", "Explanatory"]
         dialog.agent.SetSelection(1)
@@ -379,6 +381,37 @@ def test_ok_refuses_an_agent_whose_model_can_bill_credits(frame, folder):
         dialog.agent.SetSelection(2)
         dialog.on_ok()
         assert dialog.GetReturnCode() == wx.ID_OK
+    finally:
+        dialog.Destroy()
+
+
+def test_agent_description_box_shows_the_chosen_agents_whole_description(frame, folder):
+    # Cut to fit the list, a screen reader read "...searching for c…".
+    description = ("General-purpose agent for researching complex questions, searching for "
+                   "code, and executing multi-step tasks. " * 4).strip()
+    dialog = _agent_dialog(frame, folder, [], [{"name": "general-purpose",
+                                                "description": description},
+                                               {"name": "quiet"}])
+    try:
+        assert dialog.agent_about.GetValue() == "The chat runs as Claude Code's own agent."
+        for index, about in ((1, description), (2, "quiet has no description.")):
+            dialog.agent.SetSelection(index)
+            dialog.agent.ProcessWindowEvent(wx.CommandEvent(wx.EVT_CHOICE.typeId,
+                                                            dialog.agent.GetId()))
+            assert dialog.agent.GetString(index) == ("general-purpose", "quiet")[index - 1]
+            assert dialog.agent_about.GetValue() == about
+    finally:
+        dialog.Destroy()
+
+
+def test_agent_description_box_for_an_agent_the_folder_no_longer_lists(frame, folder):
+    from thechatplace.chat_options import ChatOptions, choices_from_init
+    from thechatplace.ui.dialogs import ChatOptionsDialog
+    dialog = ChatOptionsDialog(frame, "Mine", folder, options=ChatOptions(agent="gone"),
+                               choices=choices_from_init({"agents": []}))
+    try:
+        assert dialog.agent.GetStringSelection() == "gone (not found in this folder)"
+        assert dialog.agent_about.GetValue().startswith("No description: Claude Code didn't")
     finally:
         dialog.Destroy()
 

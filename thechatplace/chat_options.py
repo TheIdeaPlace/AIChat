@@ -54,6 +54,10 @@ _SAFE_AGENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,99}")
 _SAFE_STYLE = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
 
 AGENT_NONE_LABEL = "None (Claude Code's default)"
+#: The Agent Description box for None.
+AGENT_NONE_ABOUT = "The chat runs as Claude Code's own agent."
+#: ...for an agent the chat has that the folder no longer lists.
+AGENT_UNKNOWN_ABOUT = "No description: Claude Code didn't list this agent for the folder."
 STYLE_DEFAULT_LABEL = "Your setting"
 
 
@@ -175,16 +179,18 @@ class Agent:
         model = " ".join(self.model.split())
         return "" if model.lower() == "inherit" else model
 
-    def label(self, limit: int = 90) -> str:
-        """For the Agent choice: its name, its own model if it has one, and the
-        start of its description."""
-        text = self.name
+    def label(self) -> str:
+        """For the Agent choice: its name, and its own model if it has one.
+        The description is in the Agent Description box below it, whole: cut
+        to fit the list, it stopped mid-word ("searching for c…")."""
         if self.own_model:
-            text += f" (uses its own model, {self.own_model})"
-        description = " ".join(self.description.split())
-        if description:
-            text += ": " + description
-        return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+            return f"{self.name} (uses its own model, {self.own_model})"
+        return self.name
+
+    def about(self) -> str:
+        """For the Agent Description box: the description as Claude Code gives
+        it, line breaks kept, or a line saying it has none."""
+        return _tidied(self.description) or f"{self.name} has no description."
 
 
 #: In a model's name, what could bill usage credits (as ``claude_cli``'s
