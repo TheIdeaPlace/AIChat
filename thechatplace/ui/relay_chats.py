@@ -100,12 +100,20 @@ class RelayChats:
         blocked = store.load_error if store.load_error and store._save_blocked else ""
         return relay.joint_problem(
             info, can_edit=self._can_edit(info), working=working, blocked=blocked,
-            in_conversation=store.containing(info.provider, info.cli_session_id) is not None)
+            in_conversation=store.containing(info.provider, info.cli_session_id) is not None,
+            api_credits=self._relay_on_api_credits(info))
 
     def _relay_target_problem(self, target):
         return relay.joint_target_problem(
             target, self.agents.containing(target.provider, target.cli_session_id) is not None,
-            working=self._relay_source_working(target))
+            working=self._relay_source_working(target),
+            api_credits=self._relay_on_api_credits(target))
+
+    def _relay_on_api_credits(self, info) -> bool:
+        """Whether ``info`` is a chat of the app's own charged to API credits
+        (#658): agent conversations stay on the subscription for now."""
+        return (info is not None and info.provider == "claude"
+                and self._api_own(info.cli_session_id) is not None)
 
     def _relay_new(self, came, provider, text, joint_title):
         """Start a new chat with the reply as its first message (#378):

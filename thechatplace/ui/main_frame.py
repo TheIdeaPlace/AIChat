@@ -147,6 +147,13 @@ APP_NAME = "The Chat Place"
 #: An API chat with no key kept (#658): the message stays in the reply box.
 NO_API_KEY = ("This chat is charged to API credits, but there's no Claude API key. Add one "
               "with Tools, API Keys.")
+#: Said with every send into a chat on API credits (#658), always.
+API_SENT_WORDS = "Sent on API credits."
+#: Remote Control (and Other Machines, which uses it) in a chat on API
+#: credits (#658): it's a claude.ai feature, so it's never turned on there.
+REMOTE_NOT_ON_API = ("Remote Control isn't available in chats on API credits, so {title} "
+                     "can't be reached from claude.ai or your other devices. It works in chats "
+                     "on your Claude subscription.")
 
 
 def _dollars(amount: float) -> str:
@@ -2085,8 +2092,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _api_send_problem(self, session_id: str, ask: bool = True) -> Optional[str]:
         """Why a message can't go into this chat now because of API credits
-        (#658): no key kept, or "" when you chose Cancel at "Send on API
-        credits?". None for a subscription chat, or once it may go. ``ask``:
+        (#658): no key kept, the spending limit reached or the tally
+        damaged, or "" when you chose Cancel at "Send on API credits?". None
+        for a subscription chat, or once it may go. ``ask``:
         the first send this run in the chat is confirmed (Settings can turn
         it off); a queued message going on its own isn't asked again."""
         own = self._api_own(session_id)
@@ -2094,6 +2102,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return None
         if not self._has_api_key():
             return NO_API_KEY
+        # A reached limit or a damaged tally is said now, before "Send on API
+        # credits?" is asked or "Sent on API credits" said, with the message
+        # still in the reply box; the turn's own reservation checks again.
+        from ..spend_ledger import default_ledger
+        try:
+            refusal = default_ledger().can_spend()
+        except Exception as exc:  # noqa: BLE001 - unknown is "no", never "yes"
+            refusal = f"The Chat Place couldn't check its record of API spending ({exc})."
+        if refusal:
+            return refusal
         if ask and self.speech.api_confirm_first and session_id not in self._api_confirmed:
             if not self._confirm_api_send(own.title):
                 return ""
@@ -2113,18 +2131,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _say_api_sent(self, session_id: str, on_its_own: bool = False) -> None:
         """Every send into an API chat says so (#658): spoken, or its own
-        sound when Settings asks for one and this build has it."""
+        sound when Settings asks for one and this build has it. Spoken even
+        with announcements set to Silent, as it's the feature's promise that
+        no message is charged unheard; queued behind other speech rather
+        than cutting it off, and not made the last announcement, so Repeat
+        Last Announcement still repeats what was sent."""
         if self._api_own(session_id) is None:
             return
         if self.speech.api_send_notice == API_NOTICE_SOUND and sound_events.has_api_sent_sound():
             self._sound(sound_events.API_SENT, self._own_key(session_id), on_its_own=on_its_own)
         else:
-            self._feedback("Sent on API credits.")
+            self._status(API_SENT_WORDS)
+            self._speak_announcement(API_SENT_WORDS, interrupt=False)
 
     def _api_cost_words(self, event) -> str:
         """What a finished turn on API credits cost, as said ("6 cents",
         "less than a cent"; never "0 cents"), or "" for the subscription or
-        with Settings' "Say each API-credit reply's cost" off (#658)."""
+        with Settings' "Announce what each API-credit reply cost" off (#658)."""
         data = getattr(event, "data", None) or {}
         if data.get("billing") != "api" or not self.speech.api_say_cost:
             return ""
@@ -2150,12 +2173,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return True
 
     def _billing_kwargs(self, session_id: str) -> dict:
-        """What a TurnRunner or AsideRunner for this chat is given about
-        billing (#658): nothing for the subscription (the runners' default),
-        and the route, the chat and the app's ledger for API credits."""
-        if self._api_own(session_id) is None:
-            return {}
+        """What a TurnRunner for this chat is given about billing (#658): the
+        route, the chat and the app's ledger for API credits; for the
+        subscription (the runner's default route) only where each chat's
+        last reported cost is kept, so that a copy of it made on API credits
+        later counts only what it adds (spend_ledger, "What a result
+        cost"). An aside takes the API kwargs without ``chat_id``."""
         from ..spend_ledger import default_ledger
+        if self._api_own(session_id) is None:
+            return {"cost_baselines": default_ledger()}
         return {"billing": "api", "chat_id": session_id, "ledger": default_ledger()}
 
     def _update_heading(self):
@@ -4230,7 +4256,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return f"own:{session_id}"
 
     def _remote_control_on(self, own) -> bool:
-        """This session's Remote Control: its own choice, or the default."""
+        """This session's Remote Control: its own choice, or the default.
+        Never for a chat on API credits (#658): it's a claude.ai feature, so
+        it fails closed there, whatever the chat or Settings chose."""
+        if getattr(own, "provider", "claude") == "claude" and getattr(own, "billing", "") == "api":
+            return False
         if own.remote_control in ("on", "off"):
             return own.remote_control == "on"
         return self.speech.remote_control
@@ -4258,6 +4288,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        if self._api_own(info.cli_session_id) is not None:
+            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Remote Control",
+                          wx.OK | wx.ICON_INFORMATION, self)
             return
         default = "on" if self.speech.remote_control else "off"
         values = ["", "on", "off"]
@@ -4309,6 +4343,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        if self._api_own(info.cli_session_id) is not None:
+            # Other Machines works through Remote Control (#658).
+            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Other Machines",
+                          wx.OK | wx.ICON_INFORMATION, self)
             return
         if not self._remote_control_on(own):
             wx.MessageBox(f"Remote Control is off for {info.title}, and Claude can only "
@@ -5486,7 +5525,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("No new chat was made.")
             return
         now = int(time.time() * 1000)
-        title = f"{info.title} (API credits)"[:MAX_TITLE]
+        # Named as Continue Here names a copy: the row and the window title
+        # already say "API credits", so it isn't in the name too.
+        title = f"{info.title} (continued)"[:MAX_TITLE]
         own = OwnSession(cli_session_id=new_session_id(), title=title, cwd=source.cwd,
                          permission_mode=source.permission_mode, started=False,
                          # Fable stays the subscription's to refuse; every

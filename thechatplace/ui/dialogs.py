@@ -1149,7 +1149,8 @@ class NewSessionDialog(wx.Dialog):
         dialog = ChatOptionsDialog(self, self.title_text.GetValue().strip(), folder,
                                    options=self._chat_options, folders=self._chat_folders,
                                    load_choices=self._load_chat_choices,
-                                   feedback=self._feedback, model=self.values()[4], provider=self.provider())
+                                   feedback=self._feedback, model=self.values()[4], provider=self.provider(),
+                                   billing=self.billing())  # #658
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 self._chat_options = dialog.options()
@@ -1496,7 +1497,7 @@ class SettingsDialog(wx.Dialog):
             self.api_confirm.SetValue(speech.api_confirm_first)
             credits.Add(self.api_confirm, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM
                         | (0 if self.api_notice is not None else wx.TOP), 6)
-            self.api_cost = wx.CheckBox(body, label="Say each API-credit reply's c&ost")
+            self.api_cost = wx.CheckBox(body, label="A&nnounce what each API-credit reply cost")
             self.api_cost.SetValue(speech.api_say_cost)
             credits.Add(self.api_cost, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(credits, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -6345,7 +6346,8 @@ class ChatOptionsDialog(wx.Dialog):
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
                  choices=None, load_choices=None, existing: bool = False, feedback=None,
-                 model: str = "", provider: str = "claude", busy=None):
+                 model: str = "", provider: str = "claude", busy=None,
+                 billing: str = "subscription"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
@@ -6357,6 +6359,9 @@ class ChatOptionsDialog(wx.Dialog):
             self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
+        #: How the chat is charged (#658): on API credits an agent's own
+        #: model is charged to the credits too, so it isn't refused.
+        self._billing = billing
         self._feedback = feedback or (lambda text: None)
         #: What to say instead of closing on OK, "" when it may close.
         self._busy = busy
@@ -6570,7 +6575,8 @@ class ChatOptionsDialog(wx.Dialog):
         name = self._agent_values[max(0, self.agent.GetSelection())]
         agents = self._choices.agents if self._choices is not None else ()
         agent = next((a for a in agents if a.name == name), None)
-        for problem, control in ((agent_problem(agent, self._chat_model), self.agent),
+        for problem, control in ((agent_problem(agent, self._chat_model, self._billing),
+                                  self.agent),
                                  (instructions_problem(self.instructions.GetValue()),
                                   self.instructions)):
             if problem:

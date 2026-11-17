@@ -44,9 +44,11 @@ A chat made to be charged to an API key (``TurnRunner(billing="api")``)
 gets the key only through ``apiKeyHelper`` in its one ``--settings``, never
 in an environment, and a ``--max-budget-usd`` reserved from the spend
 ledger. Its message goes only once initialize's ``account`` says the app's
-key at Anthropic's own API: no answer means no message. Each result's
-``total_cost_usd`` is settled in the ledger. See billing.py and
-spend_ledger.py.
+key at Anthropic's own API: no answer means no message. What each result
+adds to ``total_cost_usd`` is settled in the ledger: the total includes the
+cost state Claude Code restores on ``--resume``, so every turn of every
+chat records its last total as the chat's baseline (spend_ledger, "What a
+result cost"). See billing.py and spend_ledger.py.
 
 Never into a desktop session
 ----------------------------
@@ -1181,6 +1183,36 @@ def _session_of(command: List[str]) -> str:
     return ""
 
 
+def _resumed_of(command: List[str]) -> str:
+    """The chat whose cost state a turn's process restores (#658): the one it
+    ``--resume``s, which for a ``--fork-session`` is the source, not the new
+    ``--session-id``. "" for a new chat, which starts from nothing."""
+    try:
+        return command[command.index("--resume") + 1]
+    except (ValueError, IndexError):
+        return ""
+
+
+def cost_tracker_for(command: List[str], baselines=None, cap: Optional[float] = None):
+    """A CostTracker for one process (#658; spend_ledger, "What a result
+    cost"): a new chat starts from nothing; one that resumes or forks starts
+    from the baseline ``baselines`` (a SpendLedger) has for the chat it
+    restores, or from "not known" without one. ``cap``: the reservation."""
+    from .spend_ledger import CostTracker
+    source = _resumed_of(command)
+    if not source:
+        return CostTracker(start=0.0, cap=cap)
+    found = None
+    if baselines is not None:
+        try:
+            found = baselines.baseline(source)
+        except Exception:  # noqa: BLE001 - not known: counted up to the cap
+            found = None
+    if found is None:
+        return CostTracker(start=None, cap=cap)
+    return CostTracker(start=found[0], start_models=found[1], cap=cap)
+
+
 def build_key_test_command(executable: str) -> List[str]:
     """Test Key (#658): one tiny request on Haiku, the cheapest model, run as
     an API turn (TurnRunner with billing "api", purpose "test"), so it goes
@@ -1259,7 +1291,8 @@ class TurnRunner:
                  disabled_mcp: Collection[str] = (),
                  context_usage: bool = False,
                  billing: str = "subscription", api_key_name: str = "",
-                 ledger=None, chat_id: str = "", purpose: str = "turn") -> None:
+                 ledger=None, chat_id: str = "", purpose: str = "turn",
+                 cost_baselines=None) -> None:
         self.command = command
         #: How this turn is charged (#658): billing.ROUTE_SUBSCRIPTION or
         #: ROUTE_API, fixed for the process. Anything but "api" is the
@@ -1272,11 +1305,17 @@ class TurnRunner:
             from .spend_ledger import default_ledger
             ledger = default_ledger()
         self.ledger = ledger
+        #: Where each chat's last reported cost is kept (a SpendLedger), so
+        #: the next process for it counts only what it adds (#658). Every
+        #: turn the window runs has one, subscription chats too; the
+        #: ledger's own for an API turn.
+        self.baselines = cost_baselines if cost_baselines is not None else ledger
         self.chat_id = chat_id or _session_of(command)
         self.purpose = purpose
         #: This turn's reservation (an API turn's, once it's started).
         self.reservation = None
-        #: What this process has cost so far, from its results (#658).
+        #: What this process has cost so far, from its results (#658); made
+        #: again when the process starts, from the chat's baseline.
         from .spend_ledger import CostTracker
         self.costs = CostTracker()
         #: Stopped because Claude Code never answered initialize, on API
@@ -1329,7 +1368,9 @@ class TurnRunner:
         self.prompt = prompt
         self.images = list(images or [])
         #: {"name": …, "reattach": …} to turn on Remote Control, or None.
-        self.remote_control = remote_control
+        #: Never on API credits (#658): Remote Control is a claude.ai
+        #: feature, so it fails closed there whatever the caller asked.
+        self.remote_control = remote_control if self.billing != ROUTE_API else None
         self.on_event = on_event
         self._popen = popen
         #: Makes the turn's timers (the idle ceiling, the initialize wait), so
@@ -1857,6 +1898,22 @@ class TurnRunner:
             if plain:
                 event.text = plain
 
+    def _note_baseline(self, event: TurnEvent) -> None:
+        """After every result, whatever the chat is charged to: what Claude
+        Code reported it has cost, the baseline its next process (or a copy
+        of it) counts from (#658). Not for a process that saves nothing."""
+        if self.baselines is None or "--no-session-persistence" in self.command:
+            return
+        data = event.data or {}
+        if "reported_cost_usd" not in data:
+            return
+        chat = self.parser.session_id or event.session_id or _session_of(self.command)
+        try:
+            self.baselines.set_baseline(chat, data.get("reported_cost_usd"),
+                                        data.get("reported_model_costs"))
+        except Exception:  # noqa: BLE001 - a lost baseline is counted up to the cap
+            pass
+
     def _cost_data(self, event: TurnEvent) -> None:
         """The turn's cost and route on its last event (#658)."""
         if self.billing != ROUTE_API:
@@ -1902,6 +1959,11 @@ class TurnRunner:
                 # After the servers, so the key's helper is merged last and
                 # wins; before --mcp-config, which must stay last.
                 command = self._api_command(command)
+            # Counted from the chat's baseline, as Claude Code's totals
+            # include the cost state it restores (#658).
+            self.costs = cost_tracker_for(
+                self.command, self.baselines,
+                self.reservation.amount if self.reservation is not None else None)
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.
@@ -2274,6 +2336,7 @@ class TurnRunner:
                         replaced = self._result_came()
                         if api:
                             self._settle(event)
+                        self._note_baseline(event)  # every turn's, every result (#658)
                         if not self._unanswered:
                             # Every message so far has its result, and so
                             # its cost (#658).

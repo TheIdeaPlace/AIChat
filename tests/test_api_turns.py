@@ -225,7 +225,9 @@ def test_over_the_per_message_limit_is_said_plainly(tmp_path, book):
            errors=["Reached maximum budget"], total_cost_usd=5.03,
            modelUsage={"claude-opus-5-5": {"costUSD": 5.03}}),
     ])
-    _runner, events, _ = run(process, tmp_path, book)
+    # A new chat, so the whole total is this turn's, overrun and all.
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--session-id", "chat-1"])
     final = events[-1]
     assert final.is_error and "per-message limit of $5.00" in final.text
     assert "$5.03" in final.text and final.data["cost_usd"] == pytest.approx(5.03)
@@ -257,6 +259,73 @@ def test_several_results_in_one_process_settle_the_difference(tmp_path, book):
     _runner, events, _ = run(process, tmp_path, book)
     assert events[-1].data["cost_usd"] == pytest.approx(0.25)
     assert book.totals().spent == pytest.approx(0.25)
+
+
+def _turn_lines(cost, session="s1"):
+    return [init_answer(HELPER),
+            ev(type="system", subtype="init", session_id=session, apiKeySource="apiKeyHelper"),
+            ev(type="result", subtype="success", is_error=False, result="ok", session_id=session,
+               total_cost_usd=cost, modelUsage={"claude-haiku-5-5": {"costUSD": cost}})]
+
+
+def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp_path, book):
+    # Measured with Claude Code 2.1.325 on the real API (#658): a resumed
+    # turn's total_cost_usd includes the chat's earlier turns.
+    run(FakeProcess(_turn_lines(0.00125, "chat-1")), tmp_path, book,
+        command=["claude", "-p", "--session-id", "chat-1"])
+    assert book.baseline("chat-1")[0] == pytest.approx(0.00125)
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.00153, "chat-1")), tmp_path, book,
+                             command=["claude", "-p", "--resume", "chat-1"])
+    assert events[-1].data["cost_usd"] == pytest.approx(0.00028)
+    assert book.totals().spent == pytest.approx(0.00153)      # 0.00125 + 0.00028
+    assert book.baseline("chat-1")[0] == pytest.approx(0.00153)
+
+
+def test_a_fork_counts_from_its_sources_baseline(tmp_path, book):
+    book.set_baseline("source-1", 0.40, {"claude-haiku-5-5": 0.40})
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.43, "copy-1")), tmp_path, book,
+                             command=["claude", "-p", "--resume", "source-1", "--fork-session",
+                                      "--session-id", "copy-1"])
+    assert events[-1].data["cost_usd"] == pytest.approx(0.03)
+    assert book.totals().by_chat == {"copy-1": pytest.approx(0.03)}
+    # The copy has its own baseline now; the source's is untouched.
+    assert book.baseline("copy-1")[0] == pytest.approx(0.43)
+    assert book.baseline("source-1")[0] == pytest.approx(0.40)
+
+
+def test_a_turn_with_no_baseline_counts_up_to_its_reservation(tmp_path, book):
+    # Continue Here from a desktop session the app never ran: its whole
+    # history is in the first total, and only the budget bounds this turn.
+    book.set_limits(190, 2)
+    _runner, events, _ = run(FakeProcess(_turn_lines(7.5, "copy-2")), tmp_path, book,
+                             command=["claude", "-p", "--resume", "desktop-1", "--fork-session",
+                                      "--session-id", "copy-2"])
+    assert events[-1].data["cost_usd"] == pytest.approx(2.0)
+    assert book.totals().spent == pytest.approx(2.0)
+    assert book.baseline("copy-2")[0] == pytest.approx(7.5)   # the next turn counts from here
+
+
+def test_a_subscription_turn_sets_the_baseline_continue_on_api_credits_uses(tmp_path, book):
+    lines = [init_answer(SUBSCRIPTION),
+             ev(type="system", subtype="init", session_id="mine", apiKeySource="none"),
+             _turn_lines(0.9, "mine")[-1]]
+    _runner, events, _ = run(FakeProcess(lines), tmp_path, None, billing_route="subscription",
+                             command=["claude", "-p", "--resume", "mine"], cost_baselines=book)
+    assert events[-1].kind == "finished" and "cost_usd" not in events[-1].data
+    assert book.baseline("mine")[0] == pytest.approx(0.9)
+    assert book.totals().spent == 0 and not book.path.exists()   # never spending
+    # Continue on API Credits: a fork of it, charged to the key.
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.95, "paid")), tmp_path, book,
+                             command=["claude", "-p", "--resume", "mine", "--fork-session",
+                                      "--session-id", "paid"])
+    assert events[-1].data["cost_usd"] == pytest.approx(0.05)
+    assert book.totals().spent == pytest.approx(0.05)
+
+
+def test_a_process_that_saves_nothing_sets_no_baseline(tmp_path, book):
+    run(FakeProcess(_turn_lines(0.01, "t")), tmp_path, book,
+        command=["claude", "-p", "--no-session-persistence"])
+    assert book.baseline("t") is None
 
 
 def test_a_turn_that_dies_mid_reply_keeps_its_reservation_counted(tmp_path, book):
@@ -482,6 +551,56 @@ def test_an_aside_on_an_api_chat_is_charged_to_it(tmp_path, book):
         "chat-5": pytest.approx(0.0123)}
     reserve = json.loads(book.path.read_text(encoding="utf-8").splitlines()[0])
     assert reserve["purpose"] == "aside"
+
+
+def test_stop_on_an_api_aside_settles_what_it_really_cost(tmp_path, book):
+    # As a turn's Stop (#658): interrupted first, so only what the question
+    # cost is counted, not its whole reservation.
+    events, done = [], threading.Event()
+
+    def on_event(event):
+        events.append(event)
+        if event.kind in ("done", "failed"):
+            done.set()
+    runner = AsideRunner([sys.executable, str(FAKE_CLAUDE), "--resume", "chat-5",
+                          "--fork-session", "--no-session-persistence"],
+                         str(tmp_path), "What's the code word?", on_event,
+                         env=fake_env(tmp_path, FAKE_CLAUDE_ACCOUNT="api",
+                                      FAKE_CLAUDE_MODE="interruptible",
+                                      FAKE_CLAUDE_COST="0.0034"),
+                         billing="api", ledger=book)
+    runner.start()
+    log = tmp_path / "fake.log"
+
+    def logged():
+        try:
+            return json.loads(log.read_text(encoding="utf-8"))
+        except (OSError, ValueError):   # not there yet, or being written
+            return {}
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not logged().get("prompt"):
+        time.sleep(0.05)
+    assert logged()["prompt"] == "What's the code word?"   # the question went
+    stopped_at = time.monotonic()
+    runner.cancel()
+    assert done.wait(30)
+    runner.join(10)
+    assert events[-1].kind == "failed" and events[-1].text == "Stopped."
+    assert events[-1].cost_usd == pytest.approx(0.0034)
+    assert time.monotonic() - stopped_at < cli.STOP_COST_WAIT     # ended on the result
+    assert "interrupt" in logged().get("controls", [])
+    totals = book.totals()
+    assert totals.spent == pytest.approx(0.0034) and totals.held == 0
+
+
+def test_stop_on_a_subscription_aside_ends_it_at_once(tmp_path):
+    process = FakeProcess([])
+    runner = AsideRunner(["claude", "-p", "--resume", "chat-5"], str(tmp_path), "Q?",
+                         lambda event: None, popen=lambda cmd, **kw: process, env={"PATH": "x"})
+    runner._process = process
+    runner._cost_known = False
+    runner.cancel()
+    assert process.killed and not process.sent()
 
 
 def test_an_aside_on_an_api_chat_asks_nothing_on_the_wrong_account(tmp_path, book):

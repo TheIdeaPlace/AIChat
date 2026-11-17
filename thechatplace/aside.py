@@ -66,16 +66,17 @@ import os
 import re
 import subprocess
 import threading
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Collection, Dict, Iterable, List, Optional
 
 from . import platform_paths
 from .billing import (ROUTE_API, account_problem, api_settings, budget_flags, failure_text,
                       normalize_route, scrub, source_problem)
-from .claude_cli import (INIT_ANSWER_WAIT, INIT_UNANSWERED_API, ResumeRefused, StreamParser,
-                         child_environment, exit_message, fable_problem, initialize_line,
-                         is_safe_dir, is_safe_model, message_line, resolved_model, _decode,
-                         _session_of)
+from .claude_cli import (INIT_ANSWER_WAIT, INIT_UNANSWERED_API, STOP_COST_WAIT, ResumeRefused,
+                         StreamParser, child_environment, cost_tracker_for, exit_message,
+                         fable_problem, initialize_line, is_safe_dir, is_safe_model,
+                         message_line, resolved_model, _decode, _session_of)
 
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
@@ -318,7 +319,7 @@ class AsideEvent:
     cost_usd: Optional[float] = None
 
 
-_MISSING =("Claude Code couldn't find this chat's conversation on disk, so there's nothing "
+_MISSING = ("Claude Code couldn't find this chat's conversation on disk, so there's nothing "
             "to ask about yet.")
 
 
@@ -423,9 +424,42 @@ class AsideRunner:
             self._thread.join(timeout)
 
     def cancel(self) -> None:
+        """Stop the aside. On API credits, with the question sent and its
+        cost not yet known, it's interrupted first, as a turn is
+        (TurnRunner.cancel, #658): the interrupted result says what the
+        question really cost, rather than its whole reservation staying
+        counted. Its handling ends the process; STOP_COST_WAIT ends it
+        regardless."""
         with self._lock:
             self._cancelled = True
+            process = self._process
+            graceful = (self.billing == ROUTE_API and not self._cost_known
+                        and process is not None and process.poll() is None)
+        if graceful and self._try_write(json.dumps({
+                "type": "control_request",
+                "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
+                "request": {"subtype": "interrupt"}}).encode("utf-8") + b"\n"):
+            ender = self._timer(STOP_COST_WAIT, self._kill)
+            ender.daemon = True
+            ender.start()
+            return
         self._kill()
+
+    def _try_write(self, data: bytes) -> bool:
+        """Write without waiting: Stop runs on the UI thread, and a write
+        stuck on a Claude Code that isn't reading must not freeze it (the
+        kill that follows a False frees the stuck write)."""
+        process = self._process
+        if process is None or not self._write_lock.acquire(blocking=False):
+            return False
+        try:
+            process.stdin.write(data)
+            process.stdin.flush()
+            return True
+        except (OSError, ValueError):
+            return False
+        finally:
+            self._write_lock.release()
 
     def _kill(self) -> None:
         process = self._process
@@ -508,6 +542,10 @@ class AsideRunner:
                 except SpendRefused as exc:
                     raise _Refused(str(exc)) from None
                 command += budget_flags(self.reservation.amount)
+                # A fork of the chat: Claude Code's totals include the chat's
+                # restored cost, so it's counted from the chat's baseline.
+                self.costs = cost_tracker_for(self.command, self.ledger,
+                                              self.reservation.amount)
             process = self._popen(command, cwd=self.cwd, env=self._env,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE,
@@ -579,6 +617,11 @@ class AsideRunner:
                     elif event.kind == "finished":
                         if api:
                             self._settle(event)
+                        if api and self._cancelled:
+                            # Stop's interrupt brought the result, and so the
+                            # cost: now it ends (#658).
+                            self._kill()
+                            break
                         if event.is_error:
                             final = AsideEvent("failed", _missing_or(
                                 event.text or "Claude couldn't answer that."))

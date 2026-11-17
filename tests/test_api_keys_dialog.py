@@ -111,7 +111,7 @@ def _shown_text(dialog):
 def test_with_no_key_it_opens_on_the_key_box_with_test_and_remove_off(dialog):
     from thechatplace.ui import api_keys_dialog as akd
     assert dialog.GetTitle() == "API Keys"
-    assert dialog.status.GetLabel() == "Claude: No key"
+    assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
     assert dialog.first_control() is dialog.key_box
@@ -120,7 +120,7 @@ def test_with_no_key_it_opens_on_the_key_box_with_test_and_remove_off(dialog):
     assert dialog.about.GetValue() == akd.ABOUT_SPENDING
     assert dialog.overall.GetValue() == "190.00"
     assert dialog.per_message.GetValue() == "5.00"
-    assert dialog.totals.GetLabel() == ("Spent since the tally was reset: nothing. Held for "
+    assert dialog.totals.GetValue() == ("Spent since the tally was reset: nothing. Held for "
                                         "running messages: nothing. Left: $190.00.")
     assert not dialog.limits_edited()
 
@@ -132,7 +132,7 @@ def test_with_a_key_it_opens_on_test_key(parent, ledger, env):
         assert window.first_control() is window.test_btn
         assert window.add_btn.GetLabel() == "&Replace Key"
         assert window.test_btn.IsEnabled() and window.remove_btn.IsEnabled()
-        assert window.status.GetLabel().startswith("Claude: key ending in 7Q2x, added ")
+        assert window.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")
     finally:
         window.Destroy()
 
@@ -146,14 +146,16 @@ def test_opening_it_never_reads_the_key(parent, ledger, env, monkeypatch):
     monkeypatch.setattr(platform_paths, "load_secret", no)
     window = make(parent, ledger)
     try:
-        assert window.status.GetLabel().startswith("Claude: key ending in 7Q2x")
+        assert window.status.GetValue().startswith("Claude: key ending in 7Q2x")
     finally:
         window.Destroy()
 
 
 def test_every_box_is_named_and_labelled_and_tab_goes_in_order(dialog):
-    named = {dialog.key_box: ("Claude API key", "Claude API &key:"),
+    named = {dialog.status: ("Key status", "Key status:"),
+             dialog.key_box: ("Claude API key", "Claude API &key:"),
              dialog.result: ("Test result", "Test result:"),
+             dialog.totals: ("Tally", "Tally:"),
              dialog.overall: ("Stop API chats once The Chat Place has spent, in dollars",
                               "Stop API chats once The Chat Place has &spent $"),
              dialog.per_message: ("Stop any one message at about, in dollars",
@@ -165,15 +167,21 @@ def test_every_box_is_named_and_labelled_and_tab_goes_in_order(dialog):
         assert isinstance(before, wx.StaticText) and before.GetLabel() == label
     labels = {dialog.add_btn: "&Add Key", dialog.test_btn: "&Test Key",
               dialog.remove_btn: "Re&move Key...", dialog.save_limits_btn: "Sa&ve Limits",
-              dialog.reset_btn: "R&eset Tally...", dialog.billing_btn: "&Billing Page",
-              dialog.close_btn: "C&lose"}
+              dialog.reset_btn: "R&eset Tally...", dialog.release_btn: "Release &Held...",
+              dialog.billing_btn: "&Billing Page", dialog.close_btn: "C&lose"}
     for button, label in labels.items():
         assert button.GetLabel() == label
-    # Tab follows the order the controls were made in.
-    order = [dialog.key_box, dialog.add_btn, dialog.test_btn, dialog.remove_btn, dialog.result,
-             dialog.overall, dialog.per_message, dialog.save_limits_btn, dialog.reset_btn,
+    # Tab follows the order the controls were made in: the key status before
+    # the key box, the tally right after the limits (#658 review).
+    order = [dialog.status, dialog.key_box, dialog.add_btn, dialog.test_btn, dialog.remove_btn,
+             dialog.result, dialog.overall, dialog.per_message, dialog.totals,
+             dialog.save_limits_btn, dialog.reset_btn, dialog.release_btn,
              dialog.about, dialog.billing_btn, dialog.close_btn]
     assert [c for c in dialog.GetChildren() if c in order] == order
+    # The status and tally are read-only boxes Tab reaches, not static text.
+    for box in (dialog.status, dialog.totals):
+        # (wx gives a read-only text box the focus only when it's multi-line.)
+        assert isinstance(box, wx.TextCtrl) and not box.IsEditable() and box.IsMultiLine()
     # Escape closes through Close.
     assert dialog.close_btn.GetId() == wx.ID_CANCEL
     assert dialog.GetEscapeId() == wx.ID_CANCEL
@@ -186,7 +194,7 @@ def test_adding_a_key_keeps_it_empties_the_box_and_says_so(dialog, env):
     assert _add(dialog)
     assert dialog.key_box.GetValue() == ""
     assert platform_paths.load_secret(SECRET) == KEY
-    assert dialog.status.GetLabel().startswith("Claude: key ending in 7Q2x, added ")
+    assert dialog.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")
     assert dialog.add_btn.GetLabel() == "&Replace Key"
     assert dialog.test_btn.IsEnabled() and dialog.remove_btn.IsEnabled()
     assert dialog.said == ["Key saved."]
@@ -215,7 +223,7 @@ def test_something_that_isnt_a_key_is_refused_and_still_cleared(dialog, env, typ
     assert "sk-ant-" in akd.NOT_A_KEY
     assert dialog.key_box.GetValue() == ""
     assert not platform_paths.has_secret(SECRET)
-    assert dialog.status.GetLabel() == "Claude: No key" and dialog.said == []
+    assert dialog.status.GetValue() == "Claude: No key" and dialog.said == []
 
 
 def test_an_empty_box_says_to_paste_the_key(dialog, env):
@@ -248,7 +256,7 @@ def test_replacing_the_key(dialog):
     _add(dialog)
     assert _add(dialog, OTHER_KEY)
     assert platform_paths.load_secret(SECRET) == OTHER_KEY
-    assert dialog.status.GetLabel().startswith("Claude: key ending in 9zZ9")
+    assert dialog.status.GetValue().startswith("Claude: key ending in 9zZ9")
     assert dialog.said == ["Key saved.", "Key saved."]
 
 
@@ -265,7 +273,7 @@ def test_removing_the_key_asks_first(dialog, env, monkeypatch):
     assert dialog.on_remove()
     assert not platform_paths.has_secret(SECRET)
     assert not (env["tmp"] / "appdata" / billing.API_KEY_INFO_FILE).exists()
-    assert dialog.status.GetLabel() == "Claude: No key"
+    assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
     assert dialog.said[-1] == "Key removed."
@@ -389,7 +397,7 @@ def test_saving_limits(dialog, ledger):
     assert dialog.per_message.GetValue() == "7.50"
     assert not dialog.limits_edited()
     assert dialog.said == ["Limits saved."]
-    assert dialog.totals.GetLabel().endswith("Left: $250.00.")
+    assert dialog.totals.GetValue().endswith("Left: $250.00.")
     # The same amount typed another way isn't a change.
     dialog.overall.SetValue("250")
     assert not dialog.limits_edited()
@@ -421,7 +429,7 @@ def test_the_tally_line_says_spent_held_and_left(parent, ledger):
     ledger.reserve("chat-2")  # still running: its $5.00 is held
     window = make(parent, ledger)
     try:
-        assert window.totals.GetLabel() == ("Spent since the tally was reset: $3.21. Held for "
+        assert window.totals.GetValue() == ("Spent since the tally was reset: $3.21. Held for "
                                             "running messages: $5.00. Left: $181.79.")
     finally:
         window.Destroy()
@@ -432,8 +440,8 @@ def test_the_tally_line_says_why_nothing_may_be_spent(parent, ledger):
     ledger.path.write_text("not a ledger line\n", encoding="utf-8")
     window = make(parent, ledger)
     try:
-        assert window.totals.GetLabel() == ledger.totals().problem
-        assert "damaged" in window.totals.GetLabel()
+        assert window.totals.GetValue() == ledger.totals().problem
+        assert "damaged" in window.totals.GetValue()
     finally:
         window.Destroy()
 
@@ -453,11 +461,72 @@ def test_resetting_the_tally_asks_first(parent, ledger, monkeypatch):
         monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.YES)
         assert window.on_reset()
         assert ledger.totals().spent == 0
-        assert window.totals.GetLabel() == ("Spent since the tally was reset: nothing. Held "
+        assert window.totals.GetValue() == ("Spent since the tally was reset: nothing. Held "
                                             "for running messages: nothing. Left: $190.00.")
         assert window.said == ["Tally reset."]
     finally:
         window.Destroy()
+
+
+def test_release_held_is_off_with_nothing_left_over(dialog, ledger):
+    assert not dialog.release_btn.IsEnabled()
+    ledger.reserve("running")                  # this run's, still going
+    dialog._refresh()
+    assert not dialog.release_btn.IsEnabled()
+    assert not dialog.on_release_held()
+
+
+def test_release_held_lets_go_of_old_holds_after_asking(parent, ledger, env, monkeypatch):
+    from thechatplace.ui import api_keys_dialog as akd
+    crashed = spend_ledger.SpendLedger(ledger.folder)       # an earlier run that crashed
+    old = crashed.reserve("old")
+    crashed.settle(old, 1.5)
+    running = ledger.reserve("running")
+    window = make(parent, ledger)
+    try:
+        assert window.release_btn.IsEnabled()
+        assert window.totals.GetValue() == (
+            "Spent since the tally was reset: $1.50. Held: $8.50, $3.50 of it for messages "
+            "no longer running. Left: $180.00.")
+        asked = []
+        monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.NO)
+        assert not window.on_release_held()
+        assert asked[0][0] == akd.RELEASE_QUESTION.format(amount="$3.50")
+        assert "may have spent up to $3.50 that won't be counted" in asked[0][0]
+        assert asked[0][2] & wx.YES_NO and asked[0][2] & wx.NO_DEFAULT
+        assert ledger.totals().held == pytest.approx(8.5)
+        monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.YES)
+        assert window.on_release_held()
+        totals = ledger.totals()
+        assert totals.held == pytest.approx(5.0) and totals.spent == pytest.approx(1.5)
+        assert not window.release_btn.IsEnabled()
+        assert window.totals.GetValue() == (
+            "Spent since the tally was reset: $1.50. Held for running messages: $5.00. "
+            "Left: $183.50.")
+        assert window.said == ["Released $3.50."]
+        ledger.close(running, complete=False)  # a Stop whose cost wasn't known
+        window._refresh()
+        assert window.release_btn.IsEnabled()
+    finally:
+        window.Destroy()
+
+
+def test_the_status_and_tally_follow_every_action(dialog, ledger, monkeypatch):
+    _add(dialog)
+    assert dialog.status.GetValue().startswith("Claude: key ending in 7Q2x")
+    # Spending from elsewhere (a chat) shows after the next action here.
+    held = ledger.reserve("chat-1")
+    ledger.settle(held, 2.0)
+    ledger.close(held, complete=True)
+    dialog.overall.SetValue("100")
+    assert dialog.on_save_limits()
+    assert dialog.totals.GetValue().startswith("Spent since the tally was reset: $2.00.")
+    assert dialog.totals.GetValue().endswith("Left: $98.00.")
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    assert dialog.on_remove()
+    assert dialog.status.GetValue() == "Claude: No key"
+    assert dialog.on_reset()
+    assert dialog.totals.GetValue().startswith("Spent since the tally was reset: nothing.")
 
 
 def test_close_asks_about_limits_typed_and_not_saved(dialog, ledger, monkeypatch):

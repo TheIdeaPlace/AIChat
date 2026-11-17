@@ -251,11 +251,146 @@ def test_cumulative_totals_settle_the_difference():
     assert tracker.models == {"opus": pytest.approx(0.20), "haiku": pytest.approx(0.05)}
 
 
-def test_a_total_that_goes_down_is_a_fresh_amount_never_negative():
+def test_a_total_that_shrinks_within_a_process_adds_nothing_and_rebaselines():
     tracker = CostTracker(cumulative=True)
     tracker.add(0.30)
-    added, _ = tracker.add(0.05)           # per-result after all: counted, not subtracted
-    assert added == pytest.approx(0.05) and tracker.total == pytest.approx(0.35)
+    added, models = tracker.add(0.05)
+    assert added == 0 and models == {} and tracker.total == pytest.approx(0.30)
+    added, _ = tracker.add(0.08)           # carries on from the smaller total
+    assert added == pytest.approx(0.03) and tracker.total == pytest.approx(0.33)
+
+
+# -- the chat's baseline (#658: totals include restored cost state) --------------------------
+
+
+def test_a_resumed_process_counts_only_what_it_added_to_the_baseline():
+    # Measured with Claude Code 2.1.325: turn 1 0.00125, turn 2 (resumed) 0.00153.
+    tracker = CostTracker(start=0.00125, start_models={"haiku": 0.00125}, cap=5.0)
+    added, models = tracker.add(0.00153, {"haiku": 0.00153})
+    assert added == pytest.approx(0.00028) and models == {"haiku": pytest.approx(0.00028)}
+    added, _ = tracker.add(0.00200, {"haiku": 0.00200})      # a second result, same process
+    assert added == pytest.approx(0.00047) and tracker.total == pytest.approx(0.00075)
+
+
+def test_a_model_this_turn_didnt_use_still_fits_its_baseline(tmp_path):
+    # Restored, an unused model's cost is its baseline exactly; kept exactly,
+    # so it's never read as smaller and the history counted again.
+    book = ledger(tmp_path)
+    book.set_baseline("c", 0.0012345678901234, {"opus": 0.0011111111111111,
+                                                "haiku": 0.0001234567790123})
+    total, models = book.baseline("c")
+    tracker = CostTracker(start=total, start_models=models, cap=5.0)
+    added, by_model = tracker.add(0.0012345678901234 + 0.002,
+                                  {"opus": 0.0011111111111111 + 0.002,
+                                   "haiku": 0.0001234567790123})
+    assert added == pytest.approx(0.002) and by_model == {"opus": pytest.approx(0.002)}
+
+
+def test_an_unknown_baseline_counts_the_first_result_up_to_the_reservation():
+    tracker = CostTracker(start=None, cap=5.0)
+    added, models = tracker.add(12.0, {"opus": 9.0, "haiku": 3.0})    # a long desktop chat
+    assert added == pytest.approx(5.0)
+    assert models == {"opus": pytest.approx(3.75), "haiku": pytest.approx(1.25)}
+    added, _ = tracker.add(12.5, {"opus": 9.4, "haiku": 3.1})         # then the growth
+    assert added == pytest.approx(0.5) and tracker.total == pytest.approx(5.5)
+    small = CostTracker(start=None, cap=5.0)
+    assert small.add(0.02)[0] == pytest.approx(0.02)
+
+
+@pytest.mark.parametrize("total,models", [
+    (0.30, {"opus": 0.30}),                    # smaller than the baseline
+    (0.90, {"haiku": 0.90}),                   # the baseline's model has gone
+])
+def test_a_baseline_claude_code_didnt_restore_is_the_processs_own_cost(total, models):
+    # Another chat in the folder can run between two turns, and then Claude
+    # Code restores nothing: the whole total is this process's, up to the cap.
+    tracker = CostTracker(start=0.80, start_models={"opus": 0.80}, cap=5.0)
+    added, _ = tracker.add(total, models)
+    assert added == pytest.approx(total)
+    assert tracker.add(total + 0.1, {m: c + 0.1 for m, c in models.items()})[0] == \
+        pytest.approx(0.1)
+
+
+def test_baselines_are_kept_across_runs_and_resets(tmp_path):
+    book = ledger(tmp_path)
+    assert book.baseline("chat-1") is None
+    book.set_baseline("chat-1", 0.00153, {"claude-haiku-5-5": 0.00153})
+    book.set_baseline("chat-2", 1.5)
+    book.reset()
+    again = ledger(tmp_path)
+    assert again.baseline("chat-1") == (pytest.approx(0.00153),
+                                        {"claude-haiku-5-5": pytest.approx(0.00153)})
+    assert again.baseline("chat-2") == (pytest.approx(1.5), {})
+    again.set_baseline("chat-1", 0.002)
+    assert again.baseline("chat-1")[0] == pytest.approx(0.002)
+    # Not spending: the tally doesn't see them.
+    assert again.totals().spent == 0 and again.can_spend() is None
+
+
+@pytest.mark.parametrize("bad", ["{oops", "[1]", '{"chat-1": {"total": -1}}',
+                                 '{"chat-1": {"total": "lots"}}'])
+def test_a_damaged_baseline_is_not_known(tmp_path, bad):
+    (tmp_path / spend_ledger.BASELINES_FILE).write_text(bad, encoding="utf-8")
+    book = ledger(tmp_path)
+    assert book.baseline("chat-1") is None
+    book.set_baseline("chat-1", 0.5)           # and writing one mends it
+    assert book.baseline("chat-1")[0] == pytest.approx(0.5)
+
+
+def test_odd_baselines_are_not_recorded(tmp_path):
+    book = ledger(tmp_path)
+    for chat, total in (("", 1.0), ("c", None), ("c", -1), ("c", True), ("c", float("inf"))):
+        book.set_baseline(chat, total)
+    assert not (tmp_path / spend_ledger.BASELINES_FILE).exists()
+
+
+# -- a torn last line, and Release Held ------------------------------------------------------
+
+
+def test_a_torn_last_line_can_still_be_reset(tmp_path):
+    book = ledger(tmp_path)
+    book.reserve("chat-1")
+    with open(tmp_path / spend_ledger.LEDGER_FILE, "ab") as handle:
+        handle.write(b'{"v":1,"type":"sett')   # a crash mid-write
+    assert "damaged" in book.can_spend()
+    book.reset()                               # its own line, not the torn one's end
+    assert book.can_spend() is None
+    held = book.reserve("chat-2")
+    assert held.amount == 5.0
+    raw = (tmp_path / spend_ledger.LEDGER_FILE).read_bytes().split(b"\n")
+    assert raw[1] == b'{"v":1,"type":"sett'    # left as it was, on a line of its own
+
+
+def test_release_held_lets_go_of_old_holds_but_not_running_ones_or_spending(tmp_path):
+    clock = Clock()
+    crashed = SpendLedger(tmp_path, clock=clock)         # an earlier run
+    old = crashed.reserve("old")
+    crashed.settle(old, 1.0)
+    book = SpendLedger(tmp_path, clock=clock)            # this run
+    running = book.reserve("running")
+    stopped = book.reserve("stopped")
+    book.settle(stopped, 0.5)
+    book.close(stopped, complete=False)                  # Stop, cost not known
+    assert json.loads((tmp_path / spend_ledger.LEDGER_FILE).read_text(
+        encoding="utf-8").splitlines()[0])["run"] == crashed.run_id
+    totals = book.totals()
+    assert totals.held == pytest.approx(4.0 + 5.0 + 4.5)
+    assert totals.releasable == pytest.approx(4.0 + 4.5)
+    assert book.release_held() == pytest.approx(8.5)
+    totals = book.totals()
+    assert totals.held == pytest.approx(5.0) and totals.releasable == 0
+    assert totals.spent == pytest.approx(1.5)            # spending stays counted
+    assert book.release_held() == 0                      # nothing more to let go
+    book.settle(running, 0.2)
+    book.close(running, complete=True)
+    assert book.totals().held == 0 and book.totals().spent == pytest.approx(1.7)
+    assert SpendLedger(tmp_path, clock=clock).totals().held == 0    # and in the next run
+
+
+def test_a_damaged_release_line_is_damage(tmp_path):
+    (tmp_path / spend_ledger.LEDGER_FILE).write_bytes(
+        b'{"v":1,"at":1,"type":"release","ids":[1]}\n')
+    assert "damaged" in ledger(tmp_path).can_spend()
 
 
 def test_per_result_costs_when_not_cumulative():

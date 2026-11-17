@@ -12,6 +12,12 @@ Test Key runs one tiny request as an API turn (claude_cli.TurnRunner with
 billing "api" and purpose "test"), so it goes through the same checks as a
 chat and its cost is in the tally. The limits and the tally are the spend
 ledger's (spend_ledger); a limit typed and not saved is asked about on Close.
+Release Held lets go of what's held for messages no longer running (an
+earlier run's or a crash's), after asking, without touching what was spent.
+
+The key status and the tally are read-only text boxes in the Tab order (the
+status before the key box, the tally right after the limits), refreshed
+after every action, so they can be reached and read again by line.
 """
 from __future__ import annotations
 
@@ -23,7 +29,7 @@ import wx
 
 from .. import billing, claude_cli, platform_paths, spend_ledger
 from .a11y import set_accessible_name
-from .dialogs import WrappingText, _fit_width, _read_only_text, press_focused_button_on_a_mac
+from .dialogs import _fit_width, _read_only_text, press_focused_button_on_a_mac
 from .sizes import dialog_size, dip
 
 TITLE = "API Keys"
@@ -41,6 +47,11 @@ REMOVE_QUESTION = ("Remove your Claude API key from The Chat Place? Chats on API
 RESET_QUESTION = ("Start a new tally of API spending? Spending since the last reset will no "
                   "longer count against the limit.")
 SAVE_LIMITS_QUESTION = "Save the new spending limits?"
+RELEASE_QUESTION = ("Release {amount} held for messages that are no longer running? These "
+                    "messages may have spent up to {amount} that won't be counted.")
+#: Release Held is on only for more than this held by no running message
+#: (a float's remainder isn't something to release).
+RELEASABLE_MIN = 0.000001
 NOT_A_KEY = (f"That isn't a Claude API key. A key starts with {billing.KEY_PREFIX}, followed by "
              "a long run of letters and numbers. Copy it again from the Anthropic Console and "
              "paste it here.")
@@ -69,6 +80,14 @@ def parse_limit(text: str) -> Optional[float]:
     return value if math.isfinite(value) else None
 
 
+def _set_read_only(box: wx.TextCtrl, text: str) -> None:
+    """New text in a read-only box, from its start; untouched if it's the
+    same, so a box being read isn't moved back to the top for nothing."""
+    if box.GetValue() != text:
+        box.ChangeValue(text)
+        box.SetInsertionPoint(0)
+
+
 def _amount(value: float) -> str:
     """Money in the tally line: "nothing" for none (billing.money would say
     "less than a cent", which isn't true of nothing)."""
@@ -80,8 +99,11 @@ def totals_text(totals) -> str:
     why nothing may be spent."""
     if totals.problem:
         return totals.problem
-    return (f"Spent since the tally was reset: {_amount(totals.spent)}. "
-            f"Held for running messages: {_amount(totals.held)}. "
+    held = f"Held for running messages: {_amount(totals.held)}. "
+    if totals.releasable > RELEASABLE_MIN:
+        held = (f"Held: {_amount(totals.held)}, {_amount(totals.releasable)} of it for "
+                "messages no longer running. ")
+    return (f"Spent since the tally was reset: {_amount(totals.spent)}. {held}"
             f"Left: {_amount(totals.left)}.")
 
 
@@ -92,7 +114,7 @@ class ApiKeysDialog(wx.Dialog):
 
     def __init__(self, parent, speak: Optional[Callable[[str], None]] = None, ledger=None,
                  find_claude=None, runner_factory=None):
-        super().__init__(parent, title=TITLE, size=dialog_size(parent, 600, 600),
+        super().__init__(parent, title=TITLE, size=dialog_size(parent, 600, 680),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._speak = speak or (lambda text: None)
         self._ledger = ledger if ledger is not None else spend_ledger.default_ledger()
@@ -105,10 +127,12 @@ class ApiKeysDialog(wx.Dialog):
         self._test_token = None
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # What's kept, never the key. A static line, so screen readers read
-        # it with the dialog as it opens.
-        self.status = WrappingText(self, billing.api_key_status())
-        sizer.Add(self.status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        # What's kept, never the key: read-only text in the Tab order before
+        # the key box, so it can be reached and read again by line.
+        sizer.Add(wx.StaticText(self, label="Key status:"), 0, wx.LEFT | wx.TOP, 8)
+        self.status = _read_only_text(self, billing.api_key_status(), "Key status",
+                                      min_height=30)
+        sizer.Add(self.status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         sizer.Add(wx.StaticText(self, label="Claude API &key:"), 0, wx.LEFT | wx.TOP, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -151,14 +175,18 @@ class ApiKeysDialog(wx.Dialog):
         self.per_message.SetMinSize(dip(self, 110, -1))
         grid.Add(self.per_message, 0)
         group.Add(grid, 0, wx.EXPAND | wx.ALL, 6)
+        # The tally, right after the limits: read-only text Tab reaches.
+        group.Add(wx.StaticText(self, label="Tally:"), 0, wx.LEFT | wx.RIGHT, 6)
+        self.totals = _read_only_text(self, "", "Tally", min_height=54)
+        group.Add(self.totals, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.save_limits_btn = wx.Button(self, label="Sa&ve Limits")
         self.reset_btn = wx.Button(self, label="R&eset Tally...")
+        self.release_btn = wx.Button(self, label="Release &Held...")
         row.Add(self.save_limits_btn, 0, wx.RIGHT, 6)
-        row.Add(self.reset_btn, 0)
+        row.Add(self.reset_btn, 0, wx.RIGHT, 6)
+        row.Add(self.release_btn, 0)
         group.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        self.totals = WrappingText(self, "")
-        group.Add(self.totals, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         sizer.Add(group, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
         #: The limits as last shown or saved, to tell whether Close should ask.
         self._shown_limits = (limits.overall, limits.per_message)
@@ -185,12 +213,12 @@ class ApiKeysDialog(wx.Dialog):
         self.remove_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_remove())
         self.save_limits_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_save_limits())
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_reset())
+        self.release_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_release_held())
         self.billing_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_billing_page())
         self.close_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_close())
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
-        self._sync()
-        self._show_totals()
+        self._refresh()
         wx.CallAfter(self._focus_start)
 
     # -- state ------------------------------------------------------------------
@@ -204,16 +232,25 @@ class ApiKeysDialog(wx.Dialog):
             self.first_control().SetFocus()
 
     def _sync(self):
-        """The status line and the buttons, from whether a key is kept."""
+        """The key status and the buttons, from whether a key is kept."""
         has = billing.has_api_key()
-        self.status.set_text(billing.api_key_status())
+        _set_read_only(self.status, billing.api_key_status())
         self.add_btn.SetLabel(REPLACE_LABEL if has else ADD_LABEL)
         self.test_btn.Enable(has and self._runner is None)
         self.remove_btn.Enable(has)
         self.Layout()
 
     def _show_totals(self):
-        self.totals.set_text(totals_text(self._ledger.totals()))
+        """The tally, and Release Held: on only while something is held that
+        no running message holds."""
+        totals = self._ledger.totals()
+        _set_read_only(self.totals, totals_text(totals))
+        self.release_btn.Enable(totals.releasable > RELEASABLE_MIN)
+
+    def _refresh(self):
+        """Everything shown, after anything that may change it."""
+        self._sync()
+        self._show_totals()
 
     def _tell(self, text: str, icon=wx.ICON_WARNING):
         wx.MessageBox(text, TITLE, wx.OK | icon, self)
@@ -248,7 +285,7 @@ class ApiKeysDialog(wx.Dialog):
             self._tell(f"The Chat Place couldn't keep the key: {billing.scrub(str(exc))}")
             self.key_box.SetFocus()
             return False
-        self._sync()
+        self._refresh()
         self._speak("Key saved.")
         return True
 
@@ -263,7 +300,7 @@ class ApiKeysDialog(wx.Dialog):
         # Focus first: Remove is about to be turned off, and a control
         # turned off with the focus on it leaves the focus nowhere.
         self.key_box.SetFocus()
-        self._sync()
+        self._refresh()
         self._speak("Key removed.")
         return True
 
@@ -312,8 +349,7 @@ class ApiKeysDialog(wx.Dialog):
             text = f"Your key works. That test cost {billing.money(cost)}."
         else:
             text = billing.scrub(event.text) or NO_RESULT_WORDS
-        self._sync()
-        self._show_totals()
+        self._refresh()
         self._show_result(text)
 
     def _show_result(self, text: str):
@@ -368,7 +404,7 @@ class ApiKeysDialog(wx.Dialog):
         self._shown_limits = (saved.overall, saved.per_message)
         self.overall.ChangeValue(limit_text(saved.overall))
         self.per_message.ChangeValue(limit_text(saved.per_message))
-        self._show_totals()
+        self._refresh()
         self._speak("Limits saved.")
         return True
 
@@ -381,9 +417,32 @@ class ApiKeysDialog(wx.Dialog):
         except OSError as exc:
             self._tell(f"The Chat Place couldn't reset the tally: {exc}")
             return False
-        self._show_totals()
+        self._refresh()
         self._speak("Tally reset.")
         return True
+
+    def on_release_held(self) -> bool:
+        """Release Held: let go of what's held for messages no longer
+        running (an earlier run's, a crash's, or a Stop whose cost wasn't
+        known), once you've agreed it may leave spending uncounted. What
+        was spent stays counted. True if anything was let go."""
+        totals = self._ledger.totals()
+        if totals.releasable <= RELEASABLE_MIN:
+            self._refresh()
+            return False
+        if not self._ask(RELEASE_QUESTION.format(amount=billing.money(totals.releasable))):
+            self.release_btn.SetFocus()
+            return False
+        try:
+            released = self._ledger.release_held()
+        except OSError as exc:
+            self._tell(f"The Chat Place couldn't release what was held: {exc}")
+            return False
+        # Focus first: Release Held is about to be turned off (see on_remove).
+        self.totals.SetFocus()
+        self._refresh()
+        self._speak(f"Released {billing.money(released)}." if released else "Nothing was held.")
+        return bool(released)
 
     def on_billing_page(self):
         platform_paths.open_url(billing.CONSOLE_BILLING_URL)

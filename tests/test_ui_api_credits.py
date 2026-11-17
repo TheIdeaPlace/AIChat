@@ -143,6 +143,90 @@ def test_the_first_send_is_asked_once_and_each_send_is_said(frame, env, monkeypa
     assert "Sent on API credits." in env["feedback"]
 
 
+def test_sent_on_api_credits_is_said_even_with_announcements_silent(frame, env, monkeypatch):
+    from thechatplace.speech import ANNOUNCE_SILENT
+    add_key()
+    asked(frame, monkeypatch)
+    frame.speech.announce = ANNOUNCE_SILENT
+    open_chat(frame, "api-1")
+    frame.reply_text.SetValue("Quietly")
+    frame.on_send()
+    assert len(FakeRunner.instances) == 1
+    # Said, queued behind other speech rather than interrupting it.
+    assert "Sent on API credits." in env["feedback"]
+    assert "Sent on API credits." not in env["spoken"]
+    # Repeat Last Announcement isn't taken over by it.
+    assert getattr(frame, "_last_announcement", "") != "Sent on API credits."
+
+
+def test_a_reached_limit_is_said_before_the_question_and_keeps_the_message(frame, env,
+                                                                          monkeypatch):
+    add_key()
+    titles = asked(frame, monkeypatch)
+    ledger = spend_ledger.default_ledger()
+    ledger.set_limits(5, 5)
+    held = ledger.reserve("api-1")
+    ledger.settle(held, 5.0)
+    ledger.close(held, complete=True)
+    open_chat(frame, "api-1")
+    frame.reply_text.SetValue("Over the limit")
+    frame.on_send()
+    assert env["boxes"][-1].startswith("The Chat Place has reached your limit of $5.00")
+    assert frame.reply_text.GetValue() == "Over the limit"
+    assert FakeRunner.instances == [] and titles == []
+    assert "Sent on API credits." not in env["feedback"]
+
+
+def test_a_damaged_tally_stops_an_aside_too(frame, env, monkeypatch):
+    from thechatplace.ui import claude_extras
+    add_key()
+    asked(frame, monkeypatch)
+    ledger = spend_ledger.default_ledger()
+    ledger.folder.mkdir(parents=True, exist_ok=True)
+    ledger.path.write_text("not a ledger line\n", encoding="utf-8")
+
+    def opened(*args, **kwargs):
+        pytest.fail("Ask Aside opened on a damaged tally")
+    monkeypatch.setattr(claude_extras, "AskAsideDialog", opened)
+    select(frame, "Paid")
+    frame.on_ask_aside()
+    assert "damaged" in env["boxes"][-1]
+
+
+def test_remote_control_is_never_on_in_an_api_chat(frame, env, monkeypatch):
+    from thechatplace.ui.main_frame import REMOTE_NOT_ON_API
+    add_key()
+    asked(frame, monkeypatch)
+    frame.speech.remote_control = True         # on by default in Settings
+    frame.store.update("api-1", remote_control="on")
+    frame.store.update("own-1", remote_control="on")
+    open_chat(frame, "api-1")
+    frame.reply_text.SetValue("Paid")
+    frame.on_send()
+    assert FakeRunner.instances[-1].remote_control is None
+    open_chat(frame, "own-1")
+    frame.reply_text.SetValue("Free")
+    frame.on_send()
+    assert FakeRunner.instances[-1].remote_control is not None   # the subscription's as before
+    # Session, Remote Control says why instead of offering it.
+    chosen = []
+    monkeypatch.setattr(frame, "_choose", lambda *a, **k: chosen.append(a) or None)
+    select(frame, "Paid")
+    frame.on_remote_control()
+    assert env["boxes"][-1] == REMOTE_NOT_ON_API.format(title="Paid")
+    assert "isn't available in chats on API credits" in env["boxes"][-1]
+    assert chosen == []
+
+
+def test_a_subscription_turn_keeps_its_chats_cost_baseline(frame, monkeypatch):
+    open_chat(frame, "own-1")
+    frame.reply_text.SetValue("Free")
+    frame.on_send()
+    runner = FakeRunner.instances[-1]
+    assert runner.billing == "subscription" and runner.ledger is None
+    assert runner.cost_baselines is spend_ledger.default_ledger()
+
+
 def test_cancel_at_the_question_keeps_the_message(frame, env, monkeypatch):
     add_key()
     asked(frame, monkeypatch, answer=False)
@@ -315,11 +399,35 @@ def test_continue_on_api_credits_makes_a_new_chat_and_leaves_the_old(frame, env,
     frame.on_continue_on_api_credits()
     assert questions == ["Mine"]
     assert len(frame.store.all()) == before + 1
-    made = next(s for s in frame.store.all() if s.title == "Mine (API credits)")
+    # Named as Continue Here would; the row and title add "API credits".
+    made = next(s for s in frame.store.all() if s.title == "Mine (continued)")
     assert made.billing == "api" and made.fork_source == "own-1" and not made.started
     assert frame.store.get("own-1").billing == "subscription"  # untouched
     assert frame._open.cli_session_id == made.cli_session_id
     assert FakeRunner.instances == []  # nothing is sent until you send
+
+
+def test_a_branch_of_an_api_chat_is_an_api_chat_and_keeps_fable(frame, env, monkeypatch):
+    add_key()
+    titles = asked(frame, monkeypatch)
+    frame.store.update("api-1", model="fable")
+    branch = frame._make_branch(frame.store.get("api-1").to_info(), "m1", "Paid (branch)", "")
+    assert branch.billing == "api" and branch.model == "fable"
+    assert branch.fork_source == "api-1" and frame.store.get(branch.cli_session_id) is not None
+    # Its first send goes the API way: asked, charged and said.
+    frame.reply_text.SetValue("Carry on from here")
+    frame.on_send()
+    runner = FakeRunner.instances[-1]
+    assert (runner.billing, runner.chat_id) == ("api", branch.cli_session_id)
+    assert "--fork-session" in runner.command
+    assert titles == ["Paid (branch)"] and "Sent on API credits." in env["feedback"]
+
+
+def test_a_branch_of_a_subscription_chat_stays_on_it(frame):
+    branch = frame._make_branch(frame.store.get("own-1").to_info(), "m1", "Mine (branch)", "")
+    assert branch.billing == "subscription" and branch.model == ""
+    retry = frame._make_branch(frame.store.get("own-1").to_info(), "", "Mine (retry)", "Hi")
+    assert retry.billing == "subscription"
 
 
 def test_continue_on_api_credits_cancelled_makes_nothing(frame, env, monkeypatch):

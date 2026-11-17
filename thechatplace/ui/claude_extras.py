@@ -123,7 +123,8 @@ class ClaudeExtras:
                                    folders=list(own.allowed_dirs),
                                    choices=self._chat_choices_cache().get(_folder_key(own.cwd)),
                                    load_choices=self._load_chat_choices, existing=True,
-                                   feedback=self._feedback, model=own.model)
+                                   feedback=self._feedback, model=own.model,
+                                   billing=own.billing)  # #658
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 _give_focus_back(returning_to)
