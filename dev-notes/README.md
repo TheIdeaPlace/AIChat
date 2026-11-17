@@ -43,6 +43,8 @@ shipped.
 
 - [Muse Code Chat menu plan](muse-code-chat-menu.md): making every Chat menu command either work for a Muse Code chat or say why not, starting with a sweep test (issue not yet assigned).
 
+- [The connect-agent skill](../.claude/skills/connect-agent/SKILL.md): the four Muse Code notes above, turned into a reusable process for connecting the next AI agent (issue not yet assigned). It's a Claude Code skill, so an assistant working in this repository picks it up when asked to add an agent, and people can follow it directly. It covers the same milestones in order (detection and sign-in, read-only history, chats of the app's own with native permissions, then every menu command) and the rule behind all of them: check each feature against the installed agent before building it, because the Muse Code schema promised things the installed build refused. Alongside the guide are what went wrong with Muse Code and how each was fixed ([lessons](../.claude/skills/connect-agent/references/lessons.md)), which files each milestone touches ([codebase map](../.claude/skills/connect-agent/references/codebase-map.md)), and three scripts to copy: a check of the methods and fields the app sends against the agent's schema, a harness for checking the real agent with made-up content, and the Chat menu sweep test.
+
 - [User guide review](user-guide-review.md): agreed corrections and improvements to the user guide, and decisions for Kelly, from a Claude and Codex review against 0.2.0.
 
 - [Backup history reader](backup-reader-436.md): the #436 UI contract and isolated Codex recovery.
