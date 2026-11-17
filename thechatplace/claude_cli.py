@@ -1542,6 +1542,9 @@ class TurnRunner:
         #: True once any echo has come. Until then (a Claude Code without
         #: the echo, or a test's fake), each result answers one message.
         self._echoes = False
+        #: Reading stopped at Stop's result, with output perhaps still unread
+        #: (``untaken_sure``).
+        self._read_cut_short = False
         #: True from a result until Claude Code says it's running again: a
         #: steer now is answered after, not taken into work in progress.
         self._answered = False
@@ -1651,6 +1654,16 @@ class TurnRunner:
         with self._lock:
             return [(m[0], m[1]) for m in self._untaken if m[0] in ("steer", "now")] + [
                 (kind, prompt) for kind, prompt in self._waiting if kind in ("steer", "now")]
+
+    @property
+    def untaken_sure(self) -> bool:
+        """Whether every message ``untaken`` lists certainly didn't go in
+        (#663 review 5). One never written certainly didn't. One written is
+        certain only with Claude Code's echoes, and only if reading wasn't
+        cut short at Stop, which leaves any echo after it unread."""
+        with self._lock:
+            written = any(m[0] in ("steer", "now") for m in self._untaken)
+            return not written or (self._echoes and not self._read_cut_short)
 
     @property
     def echoes(self) -> bool:
@@ -2616,6 +2629,9 @@ class TurnRunner:
                             # Nothing it wrote after is read: it's over.
                             self._kill()
                             stop_reading = True
+                            # An echo still in the pipe is never read, so a
+                            # message written may have gone in (#663 review 5).
+                            self._read_cut_short = True
                             break
                         if replaced and event.raw_type == "error_during_execution":
                             # The work Send Now stopped: not the turn

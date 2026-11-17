@@ -6250,9 +6250,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 unsent.extend(text for _kind, text in untaken)
                 self._sound(sound_events.NOT_SENT, self._own_key(session_id), on_its_own=True)
                 note = announce.untaken_text(title, [kind for kind, _text in untaken],
-                                             sure=bool(getattr(runner, "echoes", True)))
-                self._feedback(note)
-                self._last_announcement = note
+                                             sure=bool(getattr(runner, "untaken_sure",
+                                                               getattr(runner, "echoes", True))))
+                # Said after the turn's own ending ("…: the turn failed.
+                # Stopped."), which interrupts and would otherwise cut it
+                # off; and the last announcement then, so Repeat brings it
+                # back (#663 review 5).
+                wx.CallAfter(self._say_untaken, note)
             queued = self._take_queued(session_id)
             if queued and is_open:
                 self._rebuild_chat_list()  # sent, or given back: no longer queued
@@ -6364,6 +6368,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # Whatever happened there, a held-back reply sound isn't lost.
                 self._agent_pay_reply_sound("claude", session_id)
             self.refresh_sessions()
+
+    def _say_untaken(self, note: str) -> None:
+        """A message given back at a turn's end, said once the ending has
+        been (see the call in the turn's end)."""
+        self._feedback(note)
+        self._last_announcement = note
 
     @staticmethod
     def _untaken_messages(runner) -> List[tuple]:

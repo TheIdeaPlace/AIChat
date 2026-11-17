@@ -235,7 +235,7 @@ def test_a_turn_resumed_after_a_stop_is_counted_as_its_own_cost(world):
     _r, first = run_ok(claude_cli.build_new_command(exe, session, "Live stop-resume", "default",
                                                     model="haiku"),
                        folder, "Reply with the single word one.", ledger)
-    clean_total = ledger.baseline(session)[0]
+    clean_total = ledger.recorded_baseline(session)[0]
     resume = claude_cli.build_resume_command(exe, session, "default", {session}, set(),
                                              model="haiku")
     stopped = []
@@ -288,7 +288,7 @@ def test_two_chats_alternating_in_one_folder_are_each_counted_once(world):
         counted.append(added)
         assert 0 < added < 0.01, (name, added)
         assert final.data["cost_usd"] == pytest.approx(added, rel=0.01)
-        total = ledger.baseline(session)[0]
+        total = ledger.recorded_baseline(session)[0]
         if name in last:
             # Restored, as checked: what's counted is what this chat's own
             # total grew by, this message alone, not its history again.
@@ -309,13 +309,13 @@ def test_the_apps_fork_path_counts_only_the_copys_own_message(world):
     source, copy = str(uuid.uuid4()), str(uuid.uuid4())
     run_ok(claude_cli.build_new_command(exe, source, "Live source", "default", model="haiku"),
            folder, "Remember the word lantern. Reply OK.", ledger)
-    source_total = ledger.baseline(source)[0]
+    source_total = ledger.recorded_baseline(source)[0]
     before = ledger.totals().spent
     runner, final = run_ok(claude_cli.build_fork_command(exe, source, copy, "Live copy", "default",
                                                          model="haiku"),
                            folder, "What word did I ask you to remember? One word.", ledger)
     added = ledger.totals().spent - before
-    copy_total = ledger.baseline(copy)[0]
+    copy_total = ledger.recorded_baseline(copy)[0]
     assert runner.costs.restored is True
     assert added == pytest.approx(copy_total - source_total, rel=0.01)
     assert 0 < added < copy_total

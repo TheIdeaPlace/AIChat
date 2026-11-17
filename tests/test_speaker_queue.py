@@ -669,6 +669,25 @@ def test_a_notice_never_handed_over_keeps_its_place_whatever_cuts_in(tmp_path, m
 
 
 @windows_screen_readers
+def test_the_chats_own_news_doesnt_drop_a_notice_never_said(tmp_path, monkeypatch):
+    # Review 5 of #663: "Budget needs you." came while the notice was still
+    # waiting behind earlier speech, and the notice was thrown away, so a paid
+    # send went unannounced. Only a saying *again* is settled by the chat's news.
+    monkeypatch.setattr(speech, "SCREEN_READER_TIMEOUT", 15.0)
+    readers = GatedReaders()
+    s = make(tmp_path, monkeypatch, readers)
+    readers.gate.clear()
+    s.speak("Earlier news", SpeechSettings(), interrupt=False)
+    assert wait_until(lambda: len(readers.calls) == 1)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    s.speak("Budget needs you.", SpeechSettings(), about="budget-id")
+    readers.gate.set()
+    assert _said(s, readers, 3) == ["Earlier news", "Budget needs you.",
+                                    "Sent on API credits to Budget: Add the totals."]
+
+
+@windows_screen_readers
 def test_repeat_last_announcement_doesnt_bring_the_notice_back(tmp_path, monkeypatch):
     s, readers = _reader_speaker(tmp_path, monkeypatch)
     s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),

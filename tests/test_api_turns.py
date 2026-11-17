@@ -285,12 +285,12 @@ def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp
     # turn's total_cost_usd includes the chat's earlier turns.
     run(FakeProcess(_turn_lines(0.00125, "chat-1")), tmp_path, book,
         command=["claude", "-p", "--session-id", "chat-1"])
-    assert book.baseline("chat-1")[0] == pytest.approx(0.00125)
+    assert book.recorded_baseline("chat-1")[0] == pytest.approx(0.00125)
     _runner, events, _ = run(FakeProcess(_turn_lines(0.00153, "chat-1", restored=900)),
                              tmp_path, book, command=["claude", "-p", "--resume", "chat-1"])
     assert events[-1].data["cost_usd"] == pytest.approx(0.00028)
     assert book.totals().spent == pytest.approx(0.00153)      # 0.00125 + 0.00028
-    assert book.baseline("chat-1")[0] == pytest.approx(0.00153)
+    assert book.recorded_baseline("chat-1")[0] == pytest.approx(0.00153)
 
 
 def test_a_fork_counts_from_its_sources_baseline(tmp_path, book):
@@ -302,8 +302,8 @@ def test_a_fork_counts_from_its_sources_baseline(tmp_path, book):
     assert events[-1].data["cost_usd"] == pytest.approx(0.03)
     assert book.totals().by_chat == {"copy-1": pytest.approx(0.03)}
     # The copy has its own baseline now; the source's is untouched.
-    assert book.baseline("copy-1")[0] == pytest.approx(0.43)
-    assert book.baseline("source-1")[0] == pytest.approx(0.40)
+    assert book.recorded_baseline("copy-1")[0] == pytest.approx(0.43)
+    assert book.recorded_baseline("source-1")[0] == pytest.approx(0.40)
 
 
 def test_a_turn_with_no_baseline_counts_up_to_its_reservation(tmp_path, book):
@@ -322,7 +322,7 @@ def test_a_turn_with_no_baseline_counts_up_to_its_reservation(tmp_path, book):
     assert events[-1].data["cost_complete"] is False
     assert billing.cost_words(events[-1].data["cost_usd"],
                               events[-1].data["cost_complete"]) == "cost not known"
-    assert book.baseline("copy-2")[0] == pytest.approx(7.5)   # the next turn counts from here
+    assert book.recorded_baseline("copy-2")[0] == pytest.approx(7.5)   # the next turn counts from here
 
 
 def _resume(session):
@@ -401,7 +401,7 @@ def test_a_legacy_baseline_stays_legacy_through_a_stopped_turn(tmp_path, book):
     book.baselines_path.write_text(json.dumps({"chat-x": {"total": 0.30}}), encoding="utf-8")
     run(FakeProcess(_turn_lines(0.50, "chat-x", restored=900), returncode=-9), tmp_path, book,
         command=_resume("chat-x"))
-    assert book.baseline("chat-x")[0] == pytest.approx(0.50)   # recorded,
+    assert book.recorded_baseline("chat-x")[0] == pytest.approx(0.50)   # recorded,
     assert book.baselines("chat-x") is None                     # but not counted from
 
 
@@ -421,7 +421,7 @@ def test_a_subscription_turn_sets_the_baseline_continue_on_api_credits_uses(tmp_
     _runner, events, _ = run(FakeProcess(lines), tmp_path, None, billing_route="subscription",
                              command=["claude", "-p", "--resume", "mine"], cost_baselines=book)
     assert events[-1].kind == "finished" and "cost_usd" not in events[-1].data
-    assert book.baseline("mine")[0] == pytest.approx(0.9)
+    assert book.recorded_baseline("mine")[0] == pytest.approx(0.9)
     assert book.totals().spent == 0 and not book.path.exists()   # never spending
     # Continue on API Credits: a fork of it, charged to the key.
     _runner, events, _ = run(FakeProcess(_turn_lines(0.95, "paid", restored=8000)),
@@ -435,7 +435,7 @@ def test_a_subscription_turn_sets_the_baseline_continue_on_api_credits_uses(tmp_
 def test_a_process_that_saves_nothing_sets_no_baseline(tmp_path, book):
     run(FakeProcess(_turn_lines(0.01, "t")), tmp_path, book,
         command=["claude", "-p", "--no-session-persistence"])
-    assert book.baseline("t") is None
+    assert book.recorded_baseline("t") is None
 
 
 def test_a_turn_that_dies_mid_reply_keeps_its_reservation_counted(tmp_path, book):
@@ -1372,3 +1372,18 @@ def test_an_api_turns_permission_request_is_shown_without_the_key(tmp_path, book
     assert FAKE_KEY not in seen["activity"]
     answer = next(m for m in process.sent() if m.get("type") == "control_response")
     assert answer["response"]["response"]["updatedInput"] == {"command": f"echo {FAKE_KEY}"}
+
+
+def test_given_back_messages_are_said_for_certain_only_when_they_are(tmp_path):
+    # #663 review 5: "wasn't taken in" only when that's known; "may not have
+    # been" when a written message's echo could be unread or never comes.
+    runner = TurnRunner(["claude", "-p", "--resume", "chat-1"], str(tmp_path), "Hello",
+                        lambda event: None, env={"PATH": "x"}, timer=timers())
+    runner._waiting.append(("now", "never written"))
+    assert runner.untaken_sure                      # never written: certainly not in
+    runner._untaken.append(["now", "written", False, "m1"])
+    assert not runner.untaken_sure                  # written, no echoes: may have gone in
+    runner._echoes = True
+    assert runner.untaken_sure                      # echoes say it wasn't taken in
+    runner._read_cut_short = True
+    assert not runner.untaken_sure                  # Stop: its echo may be unread

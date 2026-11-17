@@ -875,7 +875,7 @@ def test_a_renamed_chat_takes_its_spending_with_it(frame, env, monkeypatch):
     assert frame.store.get("api-2").billing == "api"
     totals = ledger.totals()
     assert totals.chat_all_time == {"api-2": pytest.approx(0.25)}
-    assert ledger.baseline("api-2")[0] == pytest.approx(0.25)
+    assert ledger.recorded_baseline("api-2")[0] == pytest.approx(0.25)
     assert "api-2" in frame._api_confirmed
 
 
@@ -957,8 +957,10 @@ def test_a_send_now_not_taken_in_comes_back_on_stop(frame, env, monkeypatch):
     runner.cancelled = True
     ended(frame, kind="failed", text="Stopped.", cost_usd=0.01, cost_complete=False)
     assert frame.reply_text.GetValue().endswith("Do this instead")
-    assert ("Your Send Now message for Paid wasn't taken in. It's back in the message box."
-            in env["feedback"])
+    note = "Your Send Now message for Paid wasn't taken in. It's back in the message box."
+    # Said after the turn's ending, which interrupts, so it isn't cut off (#663).
+    assert pump(lambda: note in env["feedback"])
+    assert frame._last_announcement == note
 
 
 def test_without_echoes_a_steer_given_back_may_have_gone_in(frame, env, monkeypatch):
@@ -968,5 +970,5 @@ def test_without_echoes_a_steer_given_back_may_have_gone_in(frame, env, monkeypa
     runner.cancelled = True
     ended(frame, kind="failed", text="Stopped.", cost_usd=0.01, cost_complete=False)
     assert frame.reply_text.GetValue().endswith("Change course")
-    assert ("Your steered message for Paid may not have been taken in. "
-            "It's back in the message box." in env["feedback"])
+    assert pump(lambda: "Your steered message for Paid may not have been taken in. "
+                "It's back in the message box." in env["feedback"])

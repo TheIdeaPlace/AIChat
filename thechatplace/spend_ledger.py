@@ -503,10 +503,12 @@ class SpendLedger:
                 kept[chat] = latest
         return kept
 
-    def baseline(self, chat_id: str) -> Optional[Tuple[float, Dict[str, float]]]:
+    def recorded_baseline(self, chat_id: str) -> Optional[Tuple[float, Dict[str, float]]]:
         """(total, {model: cost}) Claude Code last reported for ``chat_id``,
         or None if it isn't known: what's recorded, a legacy entry's too.
-        What a turn counts from is ``baselines``."""
+        For looking at only (tests, diagnostics): never count from it, as a
+        legacy or stopped entry's total under-counts (#663 review 5). What a
+        turn counts from is ``baselines``."""
         if not chat_id:
             return None
         with _LOCK:

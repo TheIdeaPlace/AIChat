@@ -1088,8 +1088,12 @@ class Speaker:
             if cancel_now:
                 self._kept.clear()
             else:
+                # A saying again about the interrupting chat is settled by
+                # it; an original never yet said isn't: it keeps its place,
+                # or a paid send would go unannounced (#663 review 5).
                 waiting = [kept for _command, _request, kept in self._queue
-                           if kept is not None and kept.about != about]
+                           if kept is not None
+                           and not (kept.resay and about and kept.about == about)]
                 survivors.extend(waiting)
                 if resay:
                     for owed in list(self._kept.values()):

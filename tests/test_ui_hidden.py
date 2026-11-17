@@ -15629,8 +15629,9 @@ def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_r
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("failed", text="Stopped.", is_error=True))
     assert frame.reply_text.GetValue() == "Also update the README\n\nhalf typed"
-    assert any("steered message for Hub probe wasn't taken in" in text
-               for text in env["feedback"])
+    # Said once the turn's ending has been, so that doesn't cut it off (#663).
+    assert pump(lambda: any("steered message for Hub probe wasn't taken in" in text
+                            for text in env["feedback"]))
 
 
 def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):
