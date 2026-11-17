@@ -265,8 +265,11 @@ STEPS = [
          expect=["Turn Off for New Chats"]),
     Step("Connected Tools closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Ask Aside (#468): it opens on the question box; Escape closes it.
-    Step("Ask Aside", ["ctrl+shift+y"], expect=["Ask Aside about Visual probe", "Your question"]),
+    # Ask Aside (#468): it opens on the question box; Escape closes it. From
+    # the Chat menu, not Ctrl+Shift+Y: that key's Y could land in the question
+    # box once the dialog had focus, so Orca said "Y" instead of the box's
+    # name (a race lost every run once #658's steps ran first).
+    Step("Ask Aside", ["alt+c", "i"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Chat, Chat Settings (#596), by its access key: the submenu opens on
