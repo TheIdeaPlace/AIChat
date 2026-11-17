@@ -2,6 +2,7 @@
 the second check on system/init, the key's settings, budgets, the scrubber
 and the plain words for API failures. Windowless; keys are made up."""
 import json
+import time
 
 import pytest
 
@@ -165,6 +166,111 @@ def test_scrub_hides_anything_shaped_like_a_key():
     assert scrubbed.count(billing.HIDDEN_KEY) == 2
     assert billing.scrub("nothing here") == "nothing here"
     assert billing.scrub(None) is None and billing.scrub(5) == 5
+
+
+# -- the kept key, for Tools, API Keys ----------------------------------------------------
+
+
+NOV_16 = time.mktime((2026, 11, 16, 12, 0, 0, 0, 0, -1))
+OTHER_KEY = "sk-ant-test-1111111111111111111111117Q2x"
+
+
+@pytest.fixture
+def kept(tmp_path, monkeypatch):
+    """The key store in memory and the app's folder in tmp_path, as fake_env
+    does: no real keychain, keyring or %APPDATA%."""
+    named = {}
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path / "appdata")
+    monkeypatch.setattr(platform_paths, "has_secret", lambda name: name in named)
+    monkeypatch.setattr(platform_paths, "load_secret", lambda name: named.get(name))
+    monkeypatch.setattr(platform_paths, "save_secret",
+                        lambda name, text: named.__setitem__(name, text))
+    monkeypatch.setattr(platform_paths, "delete_secret", lambda name: named.pop(name, None))
+    return named
+
+
+def _info(tmp_path):
+    return tmp_path / "appdata" / billing.API_KEY_INFO_FILE
+
+
+def test_saving_a_key_keeps_it_in_the_key_store_and_only_its_ending_in_a_file(kept, tmp_path):
+    assert not billing.has_api_key()
+    assert billing.api_key_status(NOV_16) == "Claude: No key"
+    billing.save_api_key("  " + OTHER_KEY + "\n", now=NOV_16)
+    assert kept == {platform_paths.CLAUDE_API_KEY_SECRET: OTHER_KEY}
+    assert billing.has_api_key()
+    text = _info(tmp_path).read_text(encoding="utf-8")
+    assert json.loads(text) == {"ending": "7Q2x", "added": "2026-11-16"}
+    assert "sk-ant" not in text and "1111" not in text
+    assert billing.api_key_status(NOV_16) == "Claude: key ending in 7Q2x, added November 16"
+    # A key added in another year says which.
+    next_year = time.mktime((2027, 2, 1, 12, 0, 0, 0, 0, -1))
+    assert billing.api_key_status(next_year) == \
+        "Claude: key ending in 7Q2x, added November 16, 2026"
+
+
+def test_replacing_a_key_replaces_its_ending(kept, tmp_path):
+    billing.save_api_key(OTHER_KEY, now=NOV_16)
+    billing.save_api_key(FAKE_KEY, now=NOV_16 + 86400)
+    assert kept[platform_paths.CLAUDE_API_KEY_SECRET] == FAKE_KEY
+    assert billing.api_key_status(NOV_16) == "Claude: key ending in 0000, added November 17"
+
+
+@pytest.mark.parametrize("text", ["", "   ", "sk-proj-0000000000000000000000000000",
+                                  "sk-ant-short", FAKE_KEY + " extra"])
+def test_a_key_that_isnt_one_is_refused_and_nothing_is_kept(kept, tmp_path, text):
+    with pytest.raises(ValueError, match="sk-ant-"):
+        billing.save_api_key(text)
+    assert kept == {} and not _info(tmp_path).exists()
+
+
+def test_a_key_the_store_wont_keep_writes_nothing_about_it(kept, tmp_path, monkeypatch):
+    def refuse(name, text):
+        raise OSError("The keychain didn't keep it (error -25308).")
+    monkeypatch.setattr(platform_paths, "save_secret", refuse)
+    with pytest.raises(OSError):
+        billing.save_api_key(FAKE_KEY)
+    assert not _info(tmp_path).exists()
+    assert billing.api_key_status() == "Claude: No key"
+
+
+@pytest.mark.parametrize("contents", [None, "not json", "[]", '{"ending": "7Q2x"}',
+                                      '{"ending": "sk-ant-api03-whole", "added": "2026-11-16"}',
+                                      '{"ending": 5, "added": "2026-11-16"}',
+                                      '{"ending": "7Q2x", "added": "16 November"}'])
+def test_a_key_with_a_missing_or_damaged_info_file_is_just_added(kept, tmp_path, contents):
+    billing.save_api_key(OTHER_KEY, now=NOV_16)
+    if contents is None:
+        _info(tmp_path).unlink()
+    else:
+        _info(tmp_path).write_text(contents, encoding="utf-8")
+    assert billing.api_key_status(NOV_16) == "Claude: key added"
+
+
+def test_an_info_file_without_a_key_says_no_key(kept, tmp_path):
+    # Restored from another computer's backup, which never holds the key.
+    _info(tmp_path).parent.mkdir(parents=True)
+    _info(tmp_path).write_text('{"ending": "7Q2x", "added": "2026-11-16"}', encoding="utf-8")
+    assert billing.api_key_status(NOV_16) == "Claude: No key"
+
+
+def test_removing_the_key_forgets_it_and_its_ending(kept, tmp_path):
+    billing.save_api_key(OTHER_KEY, now=NOV_16)
+    billing.remove_api_key()
+    assert kept == {} and not _info(tmp_path).exists()
+    assert billing.api_key_status(NOV_16) == "Claude: No key"
+    billing.remove_api_key()  # nothing to remove: no error
+
+
+def test_the_status_never_reads_the_key(kept, monkeypatch):
+    # Reading it can raise a keychain prompt on a Mac (#658).
+    billing.save_api_key(OTHER_KEY, now=NOV_16)
+
+    def no(name):
+        raise AssertionError("load_secret was called")
+    monkeypatch.setattr(platform_paths, "load_secret", no)
+    assert billing.api_key_status(NOV_16).startswith("Claude: key ending in")
+    assert billing.has_api_key()
 
 
 # -- what's said ------------------------------------------------------------------------

@@ -121,6 +121,15 @@ NOTIFY_LABELS = {
     NOTIFY_OFF: "Off",
 }
 
+#: How a send on API credits says so (#658).
+API_NOTICE_SPEECH = "speech"
+API_NOTICE_SOUND = "sound"
+API_NOTICES = [API_NOTICE_SPEECH, API_NOTICE_SOUND]
+API_NOTICE_LABELS = {
+    API_NOTICE_SPEECH: "Say \"Sent on API credits\"",
+    API_NOTICE_SOUND: "Play the API credits sound",
+}
+
 _SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover", "orca"}
 #: Seconds a JAWS or NVDA call may take before the screen reader is treated
 #: as not answering. Both take the text in well under a tenth of a second.
@@ -249,6 +258,15 @@ class SpeechSettings:
     #: leaves only Help, Check for Updates. The same name and default as
     #: 0.4.1's, which added it, so a choice made there is kept here.
     check_updates_at_start: bool = True
+    #: Chats on API credits (#658). How each send says it's on API credits:
+    #: API_NOTICE_SPEECH ("Sent on API credits") or API_NOTICE_SOUND (its
+    #: own sound, once Sounds has one; until then it's said).
+    api_send_notice: str = API_NOTICE_SPEECH
+    #: Ask "Send on API credits?" before the first message in each API chat
+    #: each time the app runs.
+    api_confirm_first: bool = True
+    #: Say what each reply on API credits cost ("Reply finished, 6 cents").
+    api_say_cost: bool = True
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -348,6 +366,11 @@ class SpeechSettings:
                                  else sound_events.OTHERS_ALL)
         settings.sound_silent_notifications = raw.get("sound_silent_notifications") is True
         settings.check_updates_at_start = raw.get("check_updates_at_start") is not False
+        # API credits (#658): anything unreadable keeps the side that says more.
+        notice = raw.get("api_send_notice")
+        settings.api_send_notice = notice if notice in API_NOTICES else API_NOTICE_SPEECH
+        settings.api_confirm_first = raw.get("api_confirm_first") is not False
+        settings.api_say_cost = raw.get("api_say_cost") is not False
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are

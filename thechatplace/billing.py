@@ -35,8 +35,11 @@ provider. ``source_problem`` repeats the check on ``system/init``'s
 """
 from __future__ import annotations
 
+import datetime
+import json
 import math
 import re
+import time
 from typing import Optional
 
 ROUTE_SUBSCRIPTION = "subscription"
@@ -78,6 +81,91 @@ def key_ending(key: str) -> str:
     """The last four characters, to name a key by ("Key ending in 7Q2x")."""
     key = (key or "").strip()
     return key[-4:] if len(key) >= 8 else ""
+
+
+# -- The kept key, for Tools, API Keys ------------------------------------------
+#
+# The key itself is only ever in the system's key store (platform_paths'
+# named secrets). What API Keys shows about it (its last four characters and
+# the day it was added) is kept beside the app's other files in a plain JSON
+# file, so opening the dialog never has to read the key: on a Mac that can
+# raise a keychain prompt (#658).
+
+#: The plain file with the key's ending and when it was added; never the key.
+API_KEY_INFO_FILE = "claude-api-key-info.json"
+
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+           "September", "October", "November", "December")
+
+
+def _info_path():
+    from . import platform_paths
+    return platform_paths.app_data_dir() / API_KEY_INFO_FILE
+
+
+def has_api_key() -> bool:
+    """Whether a Claude API key is kept, without reading it."""
+    from . import platform_paths
+    return platform_paths.has_secret(platform_paths.CLAUDE_API_KEY_SECRET)
+
+
+def save_api_key(key: str, now: Optional[float] = None) -> None:
+    """Keep ``key`` in the system's key store, replacing any kept before.
+    Raises ValueError if it isn't shaped like a key, OSError if the key store
+    won't keep it. The key's ending and today's date go in the info file; a
+    failure to write that is let go, as the status then says "key added"."""
+    from . import platform_paths
+    key = (key or "").strip()
+    if not looks_like_key(key):
+        raise ValueError(f"A Claude API key starts with {KEY_PREFIX}.")
+    platform_paths.save_secret(platform_paths.CLAUDE_API_KEY_SECRET, key)
+    day = datetime.date.fromtimestamp(time.time() if now is None else now)
+    try:
+        from .provider_storage import atomic_write_json
+        atomic_write_json(_info_path(), {"ending": key_ending(key), "added": day.isoformat()})
+    except OSError:
+        pass
+
+
+def remove_api_key() -> None:
+    """Forget the kept key and what was noted about it."""
+    from . import platform_paths
+    platform_paths.delete_secret(platform_paths.CLAUDE_API_KEY_SECRET)
+    try:
+        _info_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _key_info() -> Optional[tuple]:
+    """(ending, date added) from the info file, or None if it's missing or
+    damaged."""
+    try:
+        raw = json.loads(_info_path().read_text(encoding="utf-8"))
+        ending, added = raw["ending"], datetime.date.fromisoformat(raw["added"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(ending, str) or not re.fullmatch(r"[A-Za-z0-9_-]{4}", ending):
+        return None
+    return ending, added
+
+
+def api_key_status(now: Optional[float] = None) -> str:
+    """API Keys' line about the Claude key: "Claude: No key", "Claude: key
+    ending in 7Q2x, added November 16" (with the year when it isn't this
+    one), or "Claude: key added" when the info file is missing or damaged.
+    Never the key."""
+    if not has_api_key():
+        return "Claude: No key"
+    info = _key_info()
+    if info is None:
+        return "Claude: key added"
+    ending, added = info
+    today = datetime.date.fromtimestamp(time.time() if now is None else now)
+    day = f"{_MONTHS[added.month - 1]} {added.day}"
+    if added.year != today.year:
+        day += f", {added.year}"
+    return f"Claude: key ending in {ending}, added {day}"
 
 
 def scrub(text):

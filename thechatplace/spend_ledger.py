@@ -130,6 +130,9 @@ class Totals:
     #: Since the last Reset, by chat and by model.
     by_chat: Dict[str, float] = field(default_factory=dict)
     by_model: Dict[str, float] = field(default_factory=dict)
+    #: Settled spending by chat across Resets: what each chat has cost in
+    #: all (Properties and the status bar, #658).
+    chat_all_time: Dict[str, float] = field(default_factory=dict)
     #: When the tally was last reset (epoch seconds), or 0 for never.
     reset_at: float = 0.0
     #: Why nothing may be spent (a damaged line, unreadable limits), or "".
@@ -304,6 +307,7 @@ class SpendLedger:
                 chat = record.get("chat") or (entry.chat_id if entry else "")
                 if chat:
                     totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + cost
+                    totals.chat_all_time[chat] = totals.chat_all_time.get(chat, 0.0) + cost
                 for model, amount in (record.get("models") or {}).items():
                     totals.by_model[model] = totals.by_model.get(model, 0.0) + amount
                 if record["at"] >= midnight:

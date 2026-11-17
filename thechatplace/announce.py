@@ -49,14 +49,17 @@ def first_sentence(text: str, limit: int = 200) -> str:
     return _cut_at_word(stripped, limit) + "…"
 
 
-def reply_text(title: str, reply: str, level: str) -> Optional[str]:
-    """A session's reply. None means say nothing."""
+def reply_text(title: str, reply: str, level: str, cost: str = "") -> Optional[str]:
+    """A session's reply. None means say nothing. ``cost``: what a reply on
+    API credits cost, in words ("6 cents", billing.money), said before the
+    reply so a long one doesn't hide it (#658)."""
     if level == ANNOUNCE_SILENT or not (reply or "").strip():
         return None
+    head = f"{title} replied, {cost}" if cost else f"{title} replied"
     if level == ANNOUNCE_SUMMARY:
         words = len(reply.split())
-        return f"{title} replied: {first_sentence(reply)} {words} words."
-    return f"{title} replied. {reply.strip()}"
+        return f"{head}: {first_sentence(reply)} {words} words."
+    return f"{head}. {reply.strip()}"
 
 
 def aside_text(answer: str, level: str) -> Optional[str]:

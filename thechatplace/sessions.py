@@ -147,6 +147,9 @@ class SessionInfo:
     #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
     #: Copilot copy's first message carries the history (#423).
     continued_from: str = ""
+    #: One of The Chat Place's own Claude chats charged to API credits
+    #: (#658): its row says so after the name.
+    api_credits: bool = False
 
     #: Only set by the Claude adapter after the original has disappeared.
     kept_transcript: Optional[Path] = None
@@ -244,6 +247,8 @@ class SessionInfo:
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
+        if self.api_credits and FIELD_TITLE not in order:
+            parts.insert(0, "API credits")  # said whatever the columns (#658)
         return ", ".join(parts) or values[FIELD_TITLE]
 
     def field_values(self, now_ms: Optional[int] = None) -> Dict[str, str]:
@@ -254,7 +259,9 @@ class SessionInfo:
             groups = (("group " if len(self.groups) == 1 else "groups ")
                       + ", ".join(self.groups))
         return {
-            FIELD_TITLE: self.title or "Untitled session",
+            # A chat on API credits says so after its name (#658).
+            FIELD_TITLE: (self.title or "Untitled session")
+            + (", API credits" if self.api_credits else ""),
             FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,

@@ -91,14 +91,16 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
                        transcript_path: Optional[str] = None, transcript_size: int = 0,
                        own=None, reported_window: int = 0,
                        now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
-                       subagent_count: Optional[int] = None, running_model: str = "") -> List[str]:
+                       subagent_count: Optional[int] = None, running_model: str = "",
+                       api_spent: Optional[float] = None) -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
     context window Claude Code reported for its model, 0 if none;
     ``subagent_count`` how many subagents' transcripts it has (#468), None
     when that isn't known; ``running_model`` the model a Codex chat is on
-    now, named for one that follows Codex's default (#596)."""
+    now, named for one that follows Codex's default (#596); ``api_spent``
+    what a chat on API credits has spent in all (#658)."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
     name = info.provider_label or info.provider.capitalize()
@@ -123,6 +125,14 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     if own is not None and info.provider == "claude":
         lines.append(f"Model chosen: {model_label(own.model)}")
         lines.append(f"Effort: {EFFORT_LABELS.get(own.effort, own.effort)}")
+        # How the chat is charged, fixed when it was made (#658).
+        from .billing import money, route_label
+        billing = getattr(own, "billing", "subscription")
+        lines.append(f"Charged to: {route_label(billing)}")
+        if billing == "api":
+            lines.append("Spent on API credits by this chat: "
+                         + (money(api_spent) if api_spent and api_spent >= 0.00005
+                            else "nothing"))
         # Chat Options (#468); instructions in full, a line to read or copy.
         lines.append(f"Agent: {own.agent or 'none'}")
         lines.append(f"Output style: {own.output_style or 'your setting'}")

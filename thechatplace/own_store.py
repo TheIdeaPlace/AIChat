@@ -124,6 +124,7 @@ class OwnSession:
             unread=self.unread,
             provider=self.provider,
             continued_from=self.forked_from,
+            api_credits=self.provider == "claude" and self.billing == "api",  # #658
         )
 
 

@@ -211,12 +211,29 @@ class ClaudeExtras:
                            "so Claude can't be asked about it.")
             return
         from . import main_frame
+        # An aside about a chat on API credits is charged as the chat is
+        # (#658): the same key, ledger and limits, and said like any send.
+        api = own is not None and self._api_own(own.cli_session_id) is not None
+        if api:
+            problem = self._api_send_problem(own.cli_session_id)
+            if problem is not None:
+                if problem:
+                    wx.MessageBox(problem, "Ask Aside", wx.OK | wx.ICON_WARNING, self)
+                else:
+                    self._feedback("Not asked.")
+                return
+        billing = ({k: v for k, v in self._billing_kwargs(own.cli_session_id).items()
+                    if k != "chat_id"}  # an aside's chat is its command's
+                   if api else {})
 
         def ask(question, on_event):
             def start(at):
                 runner = main_frame.AsideRunner(at, cwd, question,
-                                                lambda event: wx.CallAfter(on_event, event))
+                                                lambda event: wx.CallAfter(on_event, event),
+                                                **billing)
                 runner.start()
+                if api:
+                    self._say_api_sent(own.cli_session_id)
                 return runner
             # Where the copy ends is decided from the transcript as each
             # question is asked (#559): not from whether a turn looks to be

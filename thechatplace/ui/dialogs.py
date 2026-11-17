@@ -15,11 +15,11 @@ from theideaplace_appkit import difftext
 
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
-                          PERMISSION_MODES)
+                          PERMISSION_MODES, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
                         WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
-from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
-                      SpeechSettings)
+from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
+                      NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS, SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
                        mark_access_key,
@@ -61,6 +61,13 @@ def permission_note() -> str:
 
 #: The note with the default keys, as tests have it.
 PERMISSION_NOTE = permission_note()
+
+#: New Session's Charge to choices (#658): (billing route, label).
+CHARGE_CHOICES = [("subscription", "Claude subscription"), ("api", "API credits")]
+#: Said above the permission note when API credits are chosen (#658).
+API_CREDITS_NOTE = ("Every message in this chat is charged to your Claude API key, and "
+                    "Fable is offered. Claude.ai connectors aren't available on API "
+                    "credits. A chat's charging can't be changed once it's made.")
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -207,7 +214,8 @@ class NewSessionDialog(wx.Dialog):
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
-                 copilot_plan: bool = True, load_chat_choices=None):
+                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False):
+        """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -344,6 +352,23 @@ class NewSessionDialog(wx.Dialog):
         grid.Add(self.title_text, 1, wx.EXPAND)
         if continue_from:
             self.folder.SetMinSize((-1, self.title_text.GetBestSize().height))
+
+        # How a Claude chat is charged (#658), fixed once it's made: offered
+        # only once a Claude API key has been added. A choice, not radio
+        # buttons, so Tab always stops on it with one chosen (#428). No
+        # access key: every letter of "Charge to" is taken in this dialog.
+        self._api_key = bool(api_key)
+        self.charge_label = wx.StaticText(self, label="Charge to:")
+        grid.Add(self.charge_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.charge = wx.Choice(self, choices=[label for _v, label in CHARGE_CHOICES])
+        self.charge.SetSelection(0)  # the subscription, always the default
+        set_accessible_name(self.charge, "Charge to")
+        grid.Add(self.charge, 1, wx.EXPAND)
+        self.charge.Bind(wx.EVT_CHOICE, lambda e: self._on_charge())
+        if not (self._api_key and self._provider == "claude"):
+            for control in (self.charge_label, self.charge):
+                control.Hide()
+                control.Disable()
 
         self.model_label = wx.StaticText(self, label="Mo&del:")
         grid.Add(self.model_label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -953,7 +978,8 @@ class NewSessionDialog(wx.Dialog):
         mode = PERMISSION_MODES[index][0] if 0 <= index < len(PERMISSION_MODES) \
             else DEFAULT_PERMISSION_MODE
         index = self.model.GetSelection()
-        model = MODELS[index][0] if 0 <= index < len(MODELS) else ""
+        models = models_for(self.billing())  # Fable too on API credits (#658)
+        model = models[index][0] if 0 <= index < len(models) else ""
         if self.provider() == "codex":
             mode = DEFAULT_PERMISSION_MODE
             index = self.model.GetSelection() - 1
@@ -984,6 +1010,42 @@ class NewSessionDialog(wx.Dialog):
     def provider(self):
         return (self._providers[self.provider_choice.GetSelection()]
                 if self.provider_choice is not None else self._provider)
+
+    def billing(self) -> str:
+        """How the new chat is charged (#658): "api" only for a Claude chat
+        with API credits chosen; otherwise the subscription."""
+        if not self._api_key or self.provider() != "claude":
+            return "subscription"
+        index = self.charge.GetSelection()
+        return CHARGE_CHOICES[index][0] if 0 <= index < len(CHARGE_CHOICES) else "subscription"
+
+    def _sync_charge(self):
+        """Charge to is there only for Claude, once a key exists (#658).
+        Disabled too when hidden, as the other fields are."""
+        shown = self._api_key and self.provider() == "claude"
+        if self.charge.IsShown() != shown or self.charge_label.IsShown() != shown:
+            for control in (self.charge_label, self.charge):
+                control.Show(shown)
+                control.Enable(shown)
+            self.Layout()
+
+    def _claude_note(self) -> str:
+        note = (CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing \
+            else permission_note()
+        if self.billing() == "api":
+            note = API_CREDITS_NOTE + "\n\n" + note
+        return note
+
+    def _on_charge(self):
+        """API credits offer Fable; the subscription doesn't (#658). The
+        model chosen stays chosen if it's on both lists."""
+        models = models_for(self.billing())
+        index = self.model.GetSelection()
+        before = self.model.GetString(index) if 0 <= index < self.model.GetCount() else ""
+        labels = [label for _v, label in models]
+        self.model.Set(labels)
+        self.model.SetSelection(labels.index(before) if before in labels else 0)
+        self.note.SetValue(self._claude_note())
 
     def _on_provider(self, _event=None):
         wx.CallAfter(self._refresh_rules)
@@ -1047,14 +1109,15 @@ class NewSessionDialog(wx.Dialog):
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())
         else:
             for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
-                    ([label for value, label in MODELS], [label for value, label in EFFORTS],
+                    ([label for value, label in models_for(self.billing())],
+                     [label for value, label in EFFORTS],
                      [label for value, label in PERMISSION_MODES]), self._claude_choices or (0, 0, 0)):
                 control.Set(choices)
-                control.SetSelection(selected)
+                control.SetSelection(min(selected, len(choices) - 1))
                 control.Enable()
-            self.note.SetValue((CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing
-                               else permission_note())
+            self.note.SetValue(self._claude_note())
         self._control_provider = provider
+        self._sync_charge()
         self._sync_access_keys()
         if not self.continuing:
             self._sync_start_from()  # Claude's own worktree.baseRef can change its default
@@ -1408,6 +1471,36 @@ class SettingsDialog(wx.Dialog):
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(messages, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Chats on API credits (#658): how each send says so, the question
+        # before a chat's first one, and each reply's cost. Siblings of the
+        # group box, as above.
+        from .. import sound_events
+        with wx.LogNull():
+            credits = wx.StaticBoxSizer(wx.VERTICAL, body, "API credits")
+            self.api_notice = None
+            if sound_events.has_api_sent_sound():
+                # Only once Sounds has the API credits sound: until then
+                # every send on API credits is said.
+                row = wx.BoxSizer(wx.HORIZONTAL)
+                row.Add(wx.StaticText(body, label="On API credits, &say each send by:"), 0,
+                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+                self.api_notice = wx.Choice(body, choices=[API_NOTICE_LABELS[n]
+                                                           for n in API_NOTICES])
+                set_accessible_name(self.api_notice, "On API credits, say each send by")
+                self.api_notice.SetSelection(API_NOTICES.index(speech.api_send_notice)
+                                             if speech.api_send_notice in API_NOTICES else 0)
+                row.Add(self.api_notice, 0)
+                credits.Add(row, 0, wx.ALL, 6)
+            self.api_confirm = wx.CheckBox(
+                body, label="Ask &before the first API-credit message in each chat")
+            self.api_confirm.SetValue(speech.api_confirm_first)
+            credits.Add(self.api_confirm, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM
+                        | (0 if self.api_notice is not None else wx.TOP), 6)
+            self.api_cost = wx.CheckBox(body, label="Say each API-credit reply's c&ost")
+            self.api_cost.SetValue(speech.api_say_cost)
+            credits.Add(self.api_cost, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        outer.Add(credits, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # The choices share one grid, and the rate's note sits beside it, not
         # on a row of its own: that's the room the changed-lines choice (#174)
         # takes, so Settings still fits a 768-high screen without scrolling.
@@ -1710,7 +1803,14 @@ class SettingsDialog(wx.Dialog):
                                    check_updates_at_start=self.check_updates.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    change_marks=self._marks_style(),
-                                   recent_folder_limit=self.recent_limit.GetValue())
+                                   recent_folder_limit=self.recent_limit.GetValue(),
+                                   # API credits (#658)
+                                   api_send_notice=(
+                                       API_NOTICES[max(self.api_notice.GetSelection(), 0)]
+                                       if self.api_notice is not None
+                                       else self._original.api_send_notice),
+                                   api_confirm_first=self.api_confirm.GetValue(),
+                                   api_say_cost=self.api_cost.GetValue())
 
 
 class MessageDialog(wx.Dialog):
