@@ -132,9 +132,13 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(main_frame, "fetch_chat_choices", lambda exe, cwd: fake_chat_choices())
     spoken = []
     feedback = []
+    #: What was spoken kept, so an interruption can't lose it (#663).
+    kept = []
 
-    def speak(text, settings, interrupt=True):
+    def speak(text, settings, interrupt=True, keep=False):
         (spoken if interrupt else feedback).append(text)
+        if keep:
+            kept.append(text)
     patch(speech.speaker, "speak", speak)
     # The frame points the shared speaker at itself (#98); put it back after,
     # so no later test reaches a destroyed frame through it.
@@ -253,6 +257,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     from thechatplace.ui import mac_a11y
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
+            "kept": kept,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}

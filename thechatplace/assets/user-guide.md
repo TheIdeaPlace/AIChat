@@ -380,12 +380,15 @@ your Claude subscription.
    whole conversation goes again.
 
 You always know when a message is on API credits: the chat's row and the window's title say
-"API credits", each message you send is followed by "Sent on API credits" (always said, even
-when announcements are off), the first one in each
-chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply says what it cost, and
+"API credits", each message you send is followed by "Sent on API credits" once Claude Code has
+it (always said, even when announcements are off), the first one in each
+chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
+Ask Aside answer says what it cost, and
 the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
-changed once it's made. Claude.ai connectors and Remote Control aren't available on API
-credits, and Codex and Copilot chats can't use them yet.
+changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
+key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
+available on API credits, and Codex and Copilot chats can't use them yet. Older releases of
+The Chat Place don't list chats on API credits.
 
 ### You want several chats or agents working at once
 

@@ -658,7 +658,21 @@ class Speaker:
     For screen-reader routes the interrupt also happens at the API level —
     ``SayString(text, true)`` / ``nvdaController_cancelSpeech()`` — because
     killing our process cannot silence speech the reader already queued.
+
+    A *kept* utterance (``speak(keep=True)``, "Sent on API credits", #663)
+    waits its turn like any non-interrupting one, but an interrupting
+    announcement doesn't lose it: if it's still waiting, being spoken by a
+    system voice, or was handed to a screen reader less than
+    ``KEEP_HEARD_AFTER`` seconds before (the reader may still be saying it,
+    and the interrupt cuts the reader off too), it's spoken again after the
+    interrupting announcement. Only ``stop()`` (closing the app) drops it.
     """
+
+    #: How long after a kept utterance went to a screen reader it may still
+    #: be cut off by an interrupting one, and so is said again. "Sent on API
+    #: credits" takes a screen reader about a second and a half at usual
+    #: rates; this leaves room for slower ones and a busy reader.
+    KEEP_HEARD_AFTER = 4.0
 
     def __init__(self, popen=subprocess.Popen, screen_readers=None):
         self._popen = popen
@@ -689,6 +703,11 @@ class Speaker:
         #: Linux: ``(text, interrupt) -> bool``, which the window sets so
         #: Orca can be reached through it while it's active (orca.py).
         self.window_announcer: Optional[Callable[[str, bool], bool]] = None
+        #: The kept utterance (text, settings) a system voice is saying now,
+        #: and the last one handed to a screen reader, with when (#663).
+        self._kept_speaking: Optional[tuple] = None
+        self._kept_handed: Optional[tuple] = None
+        self._clock = time.monotonic
 
     def _readers(self):
         if self._screen_readers is None:
@@ -732,25 +751,33 @@ class Speaker:
             ]
         return None
 
-    def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True) -> bool:
+    def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True,
+              keep: bool = False) -> bool:
         """Queue ``text``; returns False when speech is unavailable.
 
         Never raises and never blocks. ``interrupt=True`` stops whatever is
         being said or waiting first; ``interrupt=False`` (The Chat Place's short
         confirmations) waits for it, and asks a screen reader to queue rather
-        than cut itself off.
+        than cut itself off. ``keep`` (never with ``interrupt``): a later
+        interrupting announcement doesn't lose it (see the class).
         """
         spoken = strip_for_speech(text)
         if not spoken:
             return False
+        survivors = []
         if interrupt:
-            self._stop(cancel_now=False)
-        queued = self._queue_utterance(spoken, settings, interrupt)
+            survivors = self._stop(cancel_now=False)
+        queued = self._queue_utterance(spoken, settings, interrupt,
+                                       keep=keep and not interrupt)
         if not queued:
             self._cancel_if_owed()
+        for again, again_settings in survivors:
+            # After the announcement that cut in, and still kept.
+            self._queue_utterance(again, again_settings, False, keep=True)
         return queued
 
-    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool) -> bool:
+    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool,
+                         keep: bool = False) -> bool:
         try:
             # One file pair per utterance: two utterances close together
             # must not overwrite each other's text before it is read. The
@@ -796,7 +823,7 @@ class Speaker:
             return False
         self._log(spoken, settings, interrupt)
         with self._lock:
-            self._queue.append((command, request))
+            self._queue.append((command, request, (spoken, settings) if keep else None))
             if self._worker is None or not self._worker.is_alive():
                 self._worker = threading.Thread(target=self._drain, name="speech",
                                                 daemon=True)
@@ -812,9 +839,12 @@ class Speaker:
                 if not self._queue:
                     self._worker = None
                     return
-                command, request = self._queue.popleft()
+                command, request, kept = self._queue.popleft()
                 generation = self._generation
                 cancel, self._cancel_owed = self._cancel_owed, False
+                # Out of the queue but not yet heard: an interrupt now must
+                # still find it (#663).
+                self._kept_speaking = kept
             if cancel:
                 # Before this utterance reaches Orca or speech-dispatcher,
                 # so the cancel can't land on it.
@@ -824,6 +854,11 @@ class Speaker:
                 if generation != self._generation:
                     continue  # stop() ran after it left the queue
                 if self._to_screen_reader(request):
+                    with self._lock:
+                        if kept is not None and self._kept_speaking is kept:
+                            # The reader has it, and may still be saying it.
+                            self._kept_handed = (self._clock(), kept)
+                        self._kept_speaking = None
                     continue
             kwargs = {}
             if sys.platform == "win32":
@@ -839,6 +874,9 @@ class Speaker:
                                       stderr=subprocess.DEVNULL,
                                       stdin=subprocess.DEVNULL, **kwargs)
             except Exception:
+                with self._lock:
+                    if self._kept_speaking is kept:
+                        self._kept_speaking = None  # no voice: nothing to say again
                 continue
             with self._lock:
                 if generation != self._generation:
@@ -858,6 +896,8 @@ class Speaker:
             with self._lock:
                 if process in self._running:
                     self._running.remove(process)
+                    if self._kept_speaking is kept:
+                        self._kept_speaking = None  # said in full
 
     def _to_screen_reader(self, request) -> bool:
         """Hand an announcement to the running screen reader. True when that
@@ -976,9 +1016,23 @@ class Speaker:
         speech-dispatcher's cancel stops every client's speech, Orca's too.
         An interrupting announcement leaves the cancel to the speech thread
         (``cancel_now=False``), which makes it before the next utterance,
-        never after."""
+        never after.
+
+        Returns the kept utterances (text, settings) the interrupt may cut
+        off, oldest first, for ``speak`` to say again after it (#663);
+        ``stop`` drops them."""
         with self._lock:
             self._generation += 1
+            survivors = []
+            if not cancel_now:
+                handed = self._kept_handed
+                if handed is not None and self._clock() - handed[0] < self.KEEP_HEARD_AFTER:
+                    survivors.append(handed[1])
+                if self._kept_speaking is not None:
+                    survivors.append(self._kept_speaking)
+                survivors += [kept for _command, _request, kept in self._queue
+                              if kept is not None]
+            self._kept_handed = self._kept_speaking = None
             self._queue.clear()
             running, self._running = self._running, []
             if running and IS_LINUX and not self._voice_beside_orca:
@@ -987,6 +1041,12 @@ class Speaker:
             _kill_quietly(process)
         if cancel_now:
             self._cancel_if_owed()
+        # The same words once each, however they were found.
+        unique = []
+        for kept in survivors:
+            if all(kept[0] != seen[0] for seen in unique):
+                unique.append(kept)
+        return unique
 
     def _cancel_if_owed(self) -> None:
         with self._lock:

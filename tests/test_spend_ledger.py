@@ -263,10 +263,16 @@ def test_a_total_that_shrinks_within_a_process_adds_nothing_and_rebaselines():
 # -- the chat's baseline (#658: totals include restored cost state) --------------------------
 
 
+#: (the result's own tokens, modelUsage's): restored (more in modelUsage) or not
+#: (#663; checked with Claude Code 2.1.325).
+RESTORED, OWN_ONLY = (120, 5400), (120, 120)
+
+
 def test_a_resumed_process_counts_only_what_it_added_to_the_baseline():
     # Measured with Claude Code 2.1.325: turn 1 0.00125, turn 2 (resumed) 0.00153.
     tracker = CostTracker(start=0.00125, start_models={"haiku": 0.00125}, cap=5.0)
-    added, models = tracker.add(0.00153, {"haiku": 0.00153})
+    added, models = tracker.add(0.00153, {"haiku": 0.00153}, RESTORED)
+    assert tracker.restored is True
     assert added == pytest.approx(0.00028) and models == {"haiku": pytest.approx(0.00028)}
     added, _ = tracker.add(0.00200, {"haiku": 0.00200})      # a second result, same process
     assert added == pytest.approx(0.00047) and tracker.total == pytest.approx(0.00075)
@@ -274,7 +280,7 @@ def test_a_resumed_process_counts_only_what_it_added_to_the_baseline():
 
 def test_a_model_this_turn_didnt_use_still_fits_its_baseline(tmp_path):
     # Restored, an unused model's cost is its baseline exactly; kept exactly,
-    # so it's never read as smaller and the history counted again.
+    # so it isn't counted again.
     book = ledger(tmp_path)
     book.set_baseline("c", 0.0012345678901234, {"opus": 0.0011111111111111,
                                                 "haiku": 0.0001234567790123})
@@ -282,33 +288,70 @@ def test_a_model_this_turn_didnt_use_still_fits_its_baseline(tmp_path):
     tracker = CostTracker(start=total, start_models=models, cap=5.0)
     added, by_model = tracker.add(0.0012345678901234 + 0.002,
                                   {"opus": 0.0011111111111111 + 0.002,
-                                   "haiku": 0.0001234567790123})
+                                   "haiku": 0.0001234567790123}, RESTORED)
     assert added == pytest.approx(0.002) and by_model == {"opus": pytest.approx(0.002)}
 
 
-def test_an_unknown_baseline_counts_the_first_result_up_to_the_reservation():
+@pytest.mark.parametrize("tokens", [RESTORED, None])
+def test_an_unknown_baseline_counts_the_first_result_up_to_the_reservation(tokens):
+    # Restored with nothing to take off (a desktop chat continued here), or
+    # no tokens to tell by: no more than the process itself can spend.
     tracker = CostTracker(start=None, cap=5.0)
-    added, models = tracker.add(12.0, {"opus": 9.0, "haiku": 3.0})    # a long desktop chat
+    added, models = tracker.add(12.0, {"opus": 9.0, "haiku": 3.0}, tokens)
     assert added == pytest.approx(5.0)
     assert models == {"opus": pytest.approx(3.75), "haiku": pytest.approx(1.25)}
     added, _ = tracker.add(12.5, {"opus": 9.4, "haiku": 3.1})         # then the growth
     assert added == pytest.approx(0.5) and tracker.total == pytest.approx(5.5)
     small = CostTracker(start=None, cap=5.0)
-    assert small.add(0.02)[0] == pytest.approx(0.02)
+    assert small.add(0.02, None, tokens)[0] == pytest.approx(0.02)
 
 
-@pytest.mark.parametrize("total,models", [
-    (0.30, {"opus": 0.30}),                    # smaller than the baseline
-    (0.90, {"haiku": 0.90}),                   # the baseline's model has gone
-])
-def test_a_baseline_claude_code_didnt_restore_is_the_processs_own_cost(total, models):
-    # Another chat in the folder can run between two turns, and then Claude
-    # Code restores nothing: the whole total is this process's, up to the cap.
-    tracker = CostTracker(start=0.80, start_models={"opus": 0.80}, cap=5.0)
-    added, _ = tracker.add(total, models)
-    assert added == pytest.approx(total)
-    assert tracker.add(total + 0.1, {m: c + 0.1 for m, c in models.items()})[0] == \
-        pytest.approx(0.1)
+def test_a_restored_total_below_its_baseline_is_counted_up_to_the_reservation():
+    # The baseline can't be what was restored: some of the total is still
+    # someone else's, so the reservation bounds it.
+    tracker = CostTracker(start=0.80, start_models={"opus": 0.80}, cap=0.50, resumed=True)
+    assert tracker.add(0.70, {"opus": 0.70}, RESTORED)[0] == pytest.approx(0.50)
+
+
+@pytest.mark.parametrize("total", [0.30, 0.82, 1.40, 7.0])
+def test_a_total_that_wasnt_restored_is_counted_in_full_whatever_its_size(total):
+    # The review's case (#663): another chat ran in between, so Claude Code
+    # restored nothing. A total above the baseline was taken as restored and
+    # only its growth counted; the tokens say it's all this process's, and
+    # it's counted in full, past the reservation too (a request's overrun).
+    tracker = CostTracker(start=0.80, start_models={"opus": 0.80}, cap=5.0, resumed=True)
+    added, models = tracker.add(total, {"opus": total}, OWN_ONLY)
+    assert tracker.restored is False
+    assert added == pytest.approx(total) and models == {"opus": pytest.approx(total)}
+    assert tracker.add(total + 0.1, {"opus": total + 0.1})[0] == pytest.approx(0.1)
+
+
+def test_two_chats_alternating_in_a_folder_are_each_counted_once():
+    # The review's numbers: unrestored totals each above the last baseline
+    # were counted as $0.60 against a real $3.47. With the tokens, it's $3.47.
+    costs = [0.30, 0.32, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
+    baselines, counted = {}, 0.0
+    for turn, cost in enumerate(costs):
+        chat = "A" if turn % 2 == 0 else "B"
+        start = baselines.get(chat)
+        tracker = CostTracker(start=start if start is not None else 0.0, cap=5.0,
+                              resumed=start is not None)
+        counted += tracker.add(cost, {"m": cost}, OWN_ONLY)[0]
+        baselines[chat] = cost
+    assert counted == pytest.approx(sum(costs))
+
+
+def test_a_new_chat_restores_nothing_whatever_the_tokens_say():
+    # Side requests can make modelUsage bigger; a new chat has nothing to restore.
+    tracker = CostTracker(start=0.0, cap=0.10)
+    assert tracker.add(0.30, {"m": 0.30}, RESTORED)[0] == pytest.approx(0.30)
+
+
+@pytest.mark.parametrize("tokens", [(1, 2, 3), ("1", 2), (-1, 5), (True, 5), [5], "x"])
+def test_odd_token_counts_are_no_evidence(tokens):
+    tracker = CostTracker(start=0.5, cap=0.2, resumed=True)
+    assert tracker.add(0.9, None, tokens)[0] == pytest.approx(0.2)
+    assert tracker.restored is None
 
 
 def test_baselines_are_kept_across_runs_and_resets(tmp_path):
@@ -391,6 +434,132 @@ def test_a_damaged_release_line_is_damage(tmp_path):
     (tmp_path / spend_ledger.LEDGER_FILE).write_bytes(
         b'{"v":1,"at":1,"type":"release","ids":[1]}\n')
     assert "damaged" in ledger(tmp_path).can_spend()
+
+
+# -- damage that must never free spending or break the ledger (#663) ------------------------
+
+
+def _ledger_with(tmp_path, *lines):
+    book = ledger(tmp_path)
+    held = book.reserve("chat-1")
+    with open(tmp_path / spend_ledger.LEDGER_FILE, "ab") as handle:
+        for line in lines:
+            handle.write(line.replace(b"RID", held.id.encode()) + b"\n")
+    return book, held
+
+
+@pytest.mark.parametrize("complete", [b'"false"', b'"true"', b"1", b"0", b"null", b"[]"])
+def test_a_close_that_isnt_exactly_true_keeps_its_hold(tmp_path, complete):
+    book, held = _ledger_with(
+        tmp_path, b'{"v":1,"at":1,"type":"close","id":"RID","complete":' + complete + b"}")
+    totals = book.totals()
+    assert totals.held == pytest.approx(held.amount) and totals.problem == ""
+    book2, held2 = _ledger_with(tmp_path / "x", b'{"v":1,"at":1,"type":"close","id":"RID"}')
+    assert book2.totals().held == pytest.approx(held2.amount)
+
+
+@pytest.mark.parametrize("line", [
+    b'{"v":1,"at":' + b"9" * 401 + b',"type":"settle","id":"RID","cost":1}',   # overflow
+    b'{"v":1,"at":1e400,"type":"settle","id":"RID","cost":1}',
+    b'{"v":1,"at":NaN,"type":"settle","id":"RID","cost":1}',
+    b'{"v":1,"at":Infinity,"type":"reserve","id":"x","amount":1}',
+    b'{"v":1,"at":1e15,"type":"settle","id":"RID","cost":1}',                 # no time at all
+    b'{"v":1,"at":1,"type":"settle","id":"RID","cost":' + b"9" * 401 + b"}",
+    b'{"v":1,"at":1,"type":"settle","id":"RID","cost":NaN}',
+    b'{"v":1,"at":1,"type":"settle","id":"RID","cost":1e300}',                 # absurd
+    b'{"v":1,"at":1,"type":"settle","id":"RID","cost":0.5,"models":{"m":1e300}}',
+    b'{"v":1,"at":1,"type":"settle","id":"RID","cost":0.5,"models":{"m":-1}}',
+    b'{"v":1,"at":1,"type":"reserve","id":"y","amount":1e300}',
+    b'{"v":1,"at":1,"type":"reserve","id":"y","amount":' + b"9" * 401 + b"}",
+    b'{"v":1,"at":1,"type":"reset","keep":[1]}',
+    b'{"v":1,"at":1,"type":"rename","from":"a"}',
+    b'{"v":1,"at":1,"type":"rename","from":"a","to":7}',
+    b"[" * 100000 + b"]" * 100000,                                            # too deep
+])
+def test_any_damaged_line_stops_spending_and_reset_always_recovers(tmp_path, line):
+    book, held = _ledger_with(tmp_path, line)
+    totals = book.totals()                                # never raises
+    assert "damaged" in totals.problem and "damaged" in book.can_spend()
+    assert totals.held == pytest.approx(held.amount)      # nothing freed
+    with pytest.raises(SpendRefused):
+        book.reserve("chat-2")
+    book.reset()
+    assert book.can_spend() is None
+    assert book.reserve("chat-2").amount == pytest.approx(5.0)
+
+
+def test_a_replay_that_would_raise_is_damage_and_reset_recovers(tmp_path, monkeypatch):
+    book, _held = _ledger_with(tmp_path, b'{"v":1,"at":1,"type":"settle","id":"RID","cost":1}')
+    real = SpendLedger._replay_line
+
+    def broken(*args):
+        raise OverflowError("anything at all")
+    monkeypatch.setattr(SpendLedger, "_replay_line", staticmethod(broken))
+    assert "damaged" in book.totals().problem
+    book.reset()
+    assert book.can_spend() is None           # the reset line itself replays fine
+    monkeypatch.setattr(SpendLedger, "_replay_line", staticmethod(real))
+
+
+def test_a_failed_settlement_write_keeps_the_reservation_counted(tmp_path, monkeypatch):
+    # The review's case (#663): reserve $5, spend $4, the settle append fails
+    # once, the close succeeds. The hold must stay: nothing was recorded.
+    book = ledger(tmp_path)
+    held = book.reserve("chat-1")
+    real = SpendLedger._append
+    failing = {"settle": True}
+
+    def flaky(self, record):
+        if record["type"] == "settle" and failing.pop("settle", False):
+            raise OSError("disk full for a moment")
+        return real(self, record)
+    monkeypatch.setattr(SpendLedger, "_append", flaky)
+    assert book.settle(held, 4.0) is False
+    book.close(held, complete=True)
+    totals = book.totals()
+    assert totals.spent == 0 and totals.held == pytest.approx(5.0)
+    assert totals.counted == pytest.approx(5.0)
+    close = json.loads((tmp_path / spend_ledger.LEDGER_FILE).read_text(
+        encoding="utf-8").splitlines()[-1])
+    assert close["type"] == "close" and close["complete"] is False
+    # A later reservation's close isn't affected.
+    other = book.reserve("chat-2")
+    assert book.settle(other, 0.1) is True
+    book.close(other, complete=True)
+    assert book.totals().held == pytest.approx(5.0)
+
+
+def test_settle_refuses_a_cost_that_isnt_one(tmp_path):
+    book = ledger(tmp_path)
+    held = book.reserve("chat-1")
+    for odd in (None, float("nan"), -1.0, float("inf"), "1"):
+        assert book.settle(held, odd) is False
+    book.close(held, complete=True)
+    assert book.totals().held == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -0.01, "0.1", True])
+def test_valid_cost_is_a_finite_number_not_below_zero(value):
+    assert spend_ledger.valid_cost(value) is False
+    assert spend_ledger.valid_cost(0) and spend_ledger.valid_cost(0.25)
+
+
+def test_a_renamed_chat_keeps_its_spending_and_baseline(tmp_path):
+    # Claude Code gave the chat another id than the one asked for (#663).
+    book = ledger(tmp_path)
+    held = book.reserve("old-id")
+    book.settle(held, 0.4)
+    book.set_baseline("old-id", 0.4, {"m": 0.4})
+    book.rename_chat("old-id", "new-id")
+    book.settle(held, 0.1)                    # the running turn's reservation names the old id
+    book.close(held, complete=True)
+    totals = book.totals()
+    assert totals.by_chat == {"new-id": pytest.approx(0.5)}
+    assert totals.chat_all_time == {"new-id": pytest.approx(0.5)}
+    assert book.baseline("new-id")[0] == pytest.approx(0.4) and book.baseline("old-id") is None
+    book.rename_chat("new-id", "new-id")      # nothing to do
+    book.rename_chat("", "x")
+    assert ledger(tmp_path).totals().by_chat == {"new-id": pytest.approx(0.5)}
 
 
 def test_per_result_costs_when_not_cumulative():

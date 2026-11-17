@@ -144,7 +144,8 @@ def test_an_api_turn_gets_the_key_only_through_its_one_settings(tmp_path, book):
     settings = json.loads(cmd[cmd.index("--settings") + 1])
     assert settings == {"outputStyle": "Concise",
                         "deniedMcpServers": [{"serverName": "github"}],
-                        "apiKeyHelper": platform_paths.api_key_helper_command()}
+                        "apiKeyHelper": platform_paths.api_key_helper_command(),
+                        "env": billing.API_ENV}        # where the key may go (#663)
     assert cmd[cmd.index("--max-budget-usd") + 1] == "5.00"
     assert cmd[-2:] == ["--mcp-config", '{"mcpServers": {}}']  # still last
     assert runner.command == command                              # the turn's own, unchanged
@@ -261,11 +262,16 @@ def test_several_results_in_one_process_settle_the_difference(tmp_path, book):
     assert book.totals().spent == pytest.approx(0.25)
 
 
-def _turn_lines(cost, session="s1"):
+def _turn_lines(cost, session="s1", restored=0):
+    """A turn's lines. ``restored``: tokens modelUsage has beyond the
+    result's own usage, as Claude Code 2.1.325 reports a restored chat's
+    cost state (#663); 0 for a turn that restored nothing."""
     return [init_answer(HELPER),
             ev(type="system", subtype="init", session_id=session, apiKeySource="apiKeyHelper"),
             ev(type="result", subtype="success", is_error=False, result="ok", session_id=session,
-               total_cost_usd=cost, modelUsage={"claude-haiku-5-5": {"costUSD": cost}})]
+               total_cost_usd=cost, usage={"input_tokens": 100, "output_tokens": 5},
+               modelUsage={"claude-haiku-5-5": {"costUSD": cost, "inputTokens": 100 + restored,
+                                                "outputTokens": 5}})]
 
 
 def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp_path, book):
@@ -274,8 +280,8 @@ def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp
     run(FakeProcess(_turn_lines(0.00125, "chat-1")), tmp_path, book,
         command=["claude", "-p", "--session-id", "chat-1"])
     assert book.baseline("chat-1")[0] == pytest.approx(0.00125)
-    _runner, events, _ = run(FakeProcess(_turn_lines(0.00153, "chat-1")), tmp_path, book,
-                             command=["claude", "-p", "--resume", "chat-1"])
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.00153, "chat-1", restored=900)),
+                             tmp_path, book, command=["claude", "-p", "--resume", "chat-1"])
     assert events[-1].data["cost_usd"] == pytest.approx(0.00028)
     assert book.totals().spent == pytest.approx(0.00153)      # 0.00125 + 0.00028
     assert book.baseline("chat-1")[0] == pytest.approx(0.00153)
@@ -283,7 +289,8 @@ def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp
 
 def test_a_fork_counts_from_its_sources_baseline(tmp_path, book):
     book.set_baseline("source-1", 0.40, {"claude-haiku-5-5": 0.40})
-    _runner, events, _ = run(FakeProcess(_turn_lines(0.43, "copy-1")), tmp_path, book,
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.43, "copy-1", restored=5000)),
+                             tmp_path, book,
                              command=["claude", "-p", "--resume", "source-1", "--fork-session",
                                       "--session-id", "copy-1"])
     assert events[-1].data["cost_usd"] == pytest.approx(0.03)
@@ -297,7 +304,8 @@ def test_a_turn_with_no_baseline_counts_up_to_its_reservation(tmp_path, book):
     # Continue Here from a desktop session the app never ran: its whole
     # history is in the first total, and only the budget bounds this turn.
     book.set_limits(190, 2)
-    _runner, events, _ = run(FakeProcess(_turn_lines(7.5, "copy-2")), tmp_path, book,
+    _runner, events, _ = run(FakeProcess(_turn_lines(7.5, "copy-2", restored=90000)),
+                             tmp_path, book,
                              command=["claude", "-p", "--resume", "desktop-1", "--fork-session",
                                       "--session-id", "copy-2"])
     assert events[-1].data["cost_usd"] == pytest.approx(2.0)
@@ -315,7 +323,8 @@ def test_a_subscription_turn_sets_the_baseline_continue_on_api_credits_uses(tmp_
     assert book.baseline("mine")[0] == pytest.approx(0.9)
     assert book.totals().spent == 0 and not book.path.exists()   # never spending
     # Continue on API Credits: a fork of it, charged to the key.
-    _runner, events, _ = run(FakeProcess(_turn_lines(0.95, "paid")), tmp_path, book,
+    _runner, events, _ = run(FakeProcess(_turn_lines(0.95, "paid", restored=8000)),
+                             tmp_path, book,
                              command=["claude", "-p", "--resume", "mine", "--fork-session",
                                       "--session-id", "paid"])
     assert events[-1].data["cost_usd"] == pytest.approx(0.05)
@@ -437,7 +446,7 @@ def test_a_real_api_turn_settles_what_claude_code_reports(tmp_path, book):
     assert log["prompt"] == "Hello" and not log["key_in_env"] and log["claude_env"] == []
     args = log["args"]
     assert json.loads(args[args.index("--settings") + 1]) == {
-        "apiKeyHelper": platform_paths.api_key_helper_command()}
+        "apiKeyHelper": platform_paths.api_key_helper_command(), "env": billing.API_ENV}
     assert args[args.index("--max-budget-usd") + 1] == "5.00"
     assert book.totals().spent == pytest.approx(0.0123)
 
@@ -544,7 +553,8 @@ def test_an_aside_on_an_api_chat_is_charged_to_it(tmp_path, book):
     assert args.count("--settings") == 1
     settings = json.loads(args[args.index("--settings") + 1])
     assert settings == {"disableAllHooks": True,
-                        "apiKeyHelper": platform_paths.api_key_helper_command()}
+                        "apiKeyHelper": platform_paths.api_key_helper_command(),
+                        "env": billing.API_ENV}
     assert "--max-budget-usd" in args and not log["key_in_env"]
     totals = book.totals()
     assert totals.spent == pytest.approx(0.0123) and totals.by_chat == {
@@ -680,13 +690,66 @@ def test_other_providers_are_never_on_api_credits():
     assert session.billing == "subscription"
 
 
-def test_an_older_release_keeps_billing_but_runs_on_the_subscription(tmp_path):
+def test_an_older_release_never_sees_an_api_chat(tmp_path):
+    # It reads sessions.json without knowing billing, and would run the chat
+    # on the subscription; the chat is kept where it never looks (#663).
     from legacy_016_own_store import OwnSessionStore as OldStore
     store = OwnSessionStore(tmp_path / "sessions.json")
     store.add(OwnSession("aaaa-5", "t", str(tmp_path), billing="api", model="fable"))
-    old = OldStore(tmp_path / "sessions.json").get("aaaa-5")
-    assert old is not None and old.model == ""             # no Fable for it
-    assert not hasattr(old, "billing")                     # it doesn't know the field
+    store.add(OwnSession("aaaa-6", "plan", str(tmp_path)))
+    old = OldStore(tmp_path / "sessions.json")
+    assert old.get("aaaa-5") is None and old.get("aaaa-6") is not None
+    assert "aaaa-5" not in (tmp_path / "sessions.json").read_text(encoding="utf-8")
+    kept = json.loads((tmp_path / "provider-sessions-claude-api.json").read_text(encoding="utf-8"))
+    assert [s["cli_session_id"] for s in kept["sessions"]] == ["aaaa-5"]
+    # The older release saving its list leaves the API chat as it was.
+    old.add(old.get("aaaa-6").__class__("aaaa-7", "older", str(tmp_path)))
+    again = OwnSessionStore(tmp_path / "sessions.json")
+    assert again.load_error == ""
+    assert again.get("aaaa-5").billing == "api" and again.get("aaaa-5").model == "fable"
+    assert again.get("aaaa-7") is not None
+
+
+def test_an_api_chat_written_into_sessions_json_is_moved_out(tmp_path):
+    # As a build before #663 wrote it: in the file older releases read.
+    path = tmp_path / "sessions.json"
+    path.write_text(json.dumps({"version": 1, "sessions": [
+        {"cli_session_id": "aaaa-8", "title": "paid", "cwd": str(tmp_path), "billing": "api",
+         "model": "fable", "later_field": 7},
+        {"cli_session_id": "aaaa-9", "title": "plan", "cwd": str(tmp_path)}]}),
+        encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert store.load_error == "" and store.migration_backup is not None
+    assert store.get("aaaa-8").billing == "api"
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    assert [s["cli_session_id"] for s in legacy["sessions"]] == ["aaaa-9"]
+    kept = json.loads((tmp_path / "provider-sessions-claude-api.json").read_text(encoding="utf-8"))
+    assert kept["sessions"][0]["later_field"] == 7          # a newer release's field kept
+    assert OwnSessionStore(path).get("aaaa-8").model == "fable"
+
+
+@pytest.mark.parametrize("entry", [
+    {"cli_session_id": "aaaa-1", "title": "t", "cwd": "c"},             # not an API chat
+    {"cli_session_id": "aaaa-1", "title": "t", "cwd": "c", "billing": "api", "provider": "codex"},
+    "not a record"])
+def test_a_wrong_record_in_the_api_chats_file_blocks_saving(tmp_path, entry):
+    (tmp_path / "provider-sessions-claude-api.json").write_text(
+        json.dumps({"version": 2, "sessions": [entry]}), encoding="utf-8")
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    assert "claude-api" in store.load_error
+    with pytest.raises(OSError):
+        store.add(OwnSession("bbbb-1", "t", str(tmp_path)))
+
+
+def test_an_api_chats_rename_and_removal_stay_in_its_file(tmp_path):
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    store.add(OwnSession("aaaa-1", "t", str(tmp_path), billing="api"))
+    store.rename_id("aaaa-1", "aaaa-2")
+    again = OwnSessionStore(tmp_path / "sessions.json")
+    assert again.get("aaaa-1") is None and again.get("aaaa-2").billing == "api"
+    again.remove("aaaa-2")
+    kept = json.loads((tmp_path / "provider-sessions-claude-api.json").read_text(encoding="utf-8"))
+    assert kept["sessions"] == []
 
 
 # -- bug reports ------------------------------------------------------------------------------
@@ -722,3 +785,355 @@ def test_the_version_check_gets_no_key(monkeypatch):
     assert bugreport.cli_version("claude") == "2.1.325 (Claude Code)"
     assert "ANTHROPIC_API_KEY" not in seen["env"]
     assert FAKE_KEY not in json.dumps(seen["env"])
+
+
+# -- the review's findings (#663) -------------------------------------------------------------
+
+STARTED = ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper")
+
+
+def _bad_cost_result(cost):
+    record = {"type": "result", "subtype": "success", "is_error": False, "result": "ok",
+              "session_id": "s1", "modelUsage": {"claude-opus-5-5": {"costUSD": 0.01}}}
+    if cost != "missing":
+        record["total_cost_usd"] = cost
+    return json.dumps(record)
+
+
+BAD_COSTS = ["missing", None, float("nan"), float("inf"), -0.5, 10 ** 400, "0.05", True]
+
+
+@pytest.mark.parametrize("cost", BAD_COSTS)
+def test_a_result_without_a_usable_cost_keeps_the_reservation_held(tmp_path, book, cost):
+    process = FakeProcess([init_answer(HELPER), STARTED, _bad_cost_result(cost)])
+    runner, events, _ = run(process, tmp_path, book)
+    final = events[-1]
+    assert final.kind == "finished" and not runner.cost_complete
+    assert final.data["cost_complete"] is False and final.data["sent"] is True
+    totals = book.totals()
+    assert totals.spent == 0 and totals.held == pytest.approx(5.0)
+    assert book.can_spend() is None          # held, not damaged
+
+
+def run_fake_aside(tmp_path, book, lines, billing_route="api", on_event=None):
+    process = FakeProcess(lines)
+    events, done = [], threading.Event()
+
+    def got(event):
+        events.append(event)
+        if on_event:
+            on_event(event)
+        if event.kind in ("done", "failed"):
+            done.set()
+    runner = AsideRunner(["claude", "-p", "--resume", "chat-5", "--fork-session"],
+                         str(tmp_path), "Q?", got, popen=lambda cmd, **kw: process,
+                         env={"PATH": "x"}, timer=timers(), billing=billing_route, ledger=book)
+    runner.start()
+    assert done.wait(10)
+    runner.join(10)
+    return runner, events, process
+
+
+@pytest.mark.parametrize("cost", BAD_COSTS)
+def test_an_aside_without_a_usable_cost_keeps_its_reservation_held(tmp_path, book, cost):
+    _runner, events, _ = run_fake_aside(tmp_path, book, [init_answer(HELPER), STARTED,
+                                                         _bad_cost_result(cost)])
+    assert events[-1].kind == "done" and events[-1].cost_complete is False
+    assert book.totals().held == pytest.approx(5.0) and book.totals().spent == 0
+
+
+def test_an_api_turn_never_shows_a_key_in_anything_it_says(tmp_path, book):
+    # A <synthetic> error and Claude's own text can quote a key (#663).
+    process = FakeProcess([
+        init_answer(HELPER), STARTED,
+        ev(type="assistant", message={"model": "<synthetic>", "content": [
+            {"type": "text", "text": f"Invalid API key {FAKE_KEY}"}]}),
+        ev(type="assistant", message={"model": "claude-opus-5-5", "content": [
+            {"type": "text", "text": f"The file says {FAKE_KEY}."},
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": f"echo {FAKE_KEY}"}}]}),
+        ev(type="system", subtype="api_retry", attempt=1, max_retries=10, retry_delay_ms=5,
+           error_status=529, error=f"overloaded {FAKE_KEY}"),
+        result(f"Done with {FAKE_KEY}", cost=0.01),
+    ])
+    _runner, events, _ = run(process, tmp_path, book)
+    shown = json.dumps([[e.kind, e.text, e.detail, e.denials, e.data] for e in events])
+    assert FAKE_KEY not in shown and billing.HIDDEN_KEY in shown
+    assert {e.kind for e in events} >= {"text", "tool", "retry", "finished"}
+
+
+def test_a_subscription_turn_leaves_claudes_own_text_alone(tmp_path):
+    process = FakeProcess([init_answer(SUBSCRIPTION),
+                           ev(type="system", subtype="init", session_id="s1", apiKeySource="none"),
+                           ev(type="assistant", message={"content": [
+                               {"type": "text", "text": "sk-ant-example in the docs"}]}),
+                           result("ok")])
+    _runner, events, _ = run(process, tmp_path, billing_route="subscription")
+    assert [e.text for e in events if e.kind == "text"] == ["sk-ant-example in the docs"]
+
+
+def test_an_api_aside_never_shows_a_key(tmp_path, book):
+    delta = ev(type="stream_event", event={"type": "content_block_delta", "delta": {
+        "type": "text_delta", "text": f"It is {FAKE_KEY}"}})
+    _runner, events, _ = run_fake_aside(tmp_path, book, [
+        init_answer(HELPER), STARTED, delta, result(f"It is {FAKE_KEY}", cost=0.01)])
+    shown = json.dumps([[e.kind, e.text] for e in events])
+    assert FAKE_KEY not in shown and billing.HIDDEN_KEY in shown
+    assert any(e.kind == "text" for e in events)
+
+
+def test_sent_on_api_credits_comes_only_once_the_message_is_written(tmp_path, book):
+    process = FakeProcess([init_answer(HELPER), STARTED, result("ok", cost=0.01)])
+    _runner, events, _ = run(process, tmp_path, book)
+    kinds = [e.kind for e in events]
+    assert kinds.count("api_sent") == 1 and kinds.index("api_sent") < kinds.index("started")
+    assert events[kinds.index("api_sent")].data == {"kind": "prompt"}
+    assert events[-1].data["sent"] is True
+
+
+@pytest.mark.parametrize("account", [SUBSCRIPTION, None])
+def test_a_refused_api_turn_never_says_sent(tmp_path, book, account):
+    _runner, events, _ = run(FakeProcess([init_answer(account), STARTED, result("x")]),
+                             tmp_path, book)
+    assert "api_sent" not in [e.kind for e in events]
+    assert events[-1].data["sent"] is False
+
+
+def test_a_subscription_turn_never_says_sent_on_api_credits(tmp_path):
+    process = FakeProcess([init_answer(SUBSCRIPTION),
+                           ev(type="system", subtype="init", session_id="s1", apiKeySource="none"),
+                           result("ok")])
+    _runner, events, _ = run(process, tmp_path, billing_route="subscription")
+    assert "api_sent" not in [e.kind for e in events]
+
+
+def _live_runner(tmp_path, book, events, billing_route="api"):
+    """A runner whose process is up, as mid-turn, to send into."""
+    process = FakeProcess([])
+    runner = TurnRunner(["claude", "-p", "--resume", "chat-1"], str(tmp_path), "Hello",
+                        events.append, popen=lambda cmd, **kw: process, env={"PATH": "x"},
+                        timer=timers(), billing=billing_route, ledger=book)
+    runner._process, runner._stdin_open = process, True
+    return runner, process
+
+
+def test_every_way_a_message_goes_in_says_sent_once_written(tmp_path, book):
+    events = []
+    runner, process = _live_runner(tmp_path, book, events)
+    assert runner.steer("early") and events == []          # waiting for initialize
+    runner._send_prompt()                                   # the account was checked
+    assert [e.data["kind"] for e in events] == ["prompt", "steer"]
+    assert runner.steer("steered") and runner.send_now("now")
+    runner.waiting_on_background = True
+    assert runner.send_follow_up("follow")
+    assert [e.data["kind"] for e in events if e.kind == "api_sent"] == [
+        "prompt", "steer", "steer", "now", "follow_up"]
+    assert runner.messages_written == 5
+    process.stdin.close()                                   # Claude Code gone
+    runner.waiting_on_background = True
+    assert not runner.send_follow_up("lost") and len(events) == 5
+
+
+def test_waiting_for_background_work_carries_the_cost_so_far(tmp_path, book):
+    process = FakeProcess([
+        init_answer(HELPER), STARTED,
+        ev(type="system", subtype="session_state_changed", state="running"),
+        ev(type="system", subtype="background_tasks_changed",
+           tasks=[{"task_id": "b1", "description": "the build"}]),
+        ev(type="assistant", message={"content": [{"type": "text", "text": "Started it."}]}),
+        result("Started it.", cost=0.02),
+        ev(type="system", subtype="session_state_changed", state="idle"),
+    ])
+    _runner, events, _ = run(process, tmp_path, book)
+    [waiting] = [e for e in events if e.kind == "waiting"]
+    assert waiting.data["billing"] == "api" and waiting.data["cost_usd"] == pytest.approx(0.02)
+    assert waiting.data["tasks"] == ["the build"] and waiting.data["sent"] is True
+
+
+class _StuckStdin:
+    """A pipe Claude Code has stopped reading: a write waits until the
+    process is killed."""
+
+    def __init__(self, process):
+        self.process, self.writing = process, threading.Event()
+
+    def write(self, data):
+        self.writing.set()
+        while not self.process.killed:
+            time.sleep(0.01)
+        raise OSError("broken pipe")
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def _recording_timers(started):
+    def make(interval, function):
+        class Timer:
+            daemon = False
+
+            def start(self):
+                started.append((interval, function))
+
+            def cancel(self):
+                pass
+        return Timer()
+    return make
+
+
+def test_stop_never_blocks_even_with_a_write_stuck(tmp_path, book):
+    started = []
+    process = FakeProcess([])
+    runner = TurnRunner(["claude", "-p"], str(tmp_path), "Hello", lambda e: None,
+                        popen=lambda *a, **k: process, env={"PATH": "x"},
+                        timer=_recording_timers(started), billing="api", ledger=book)
+    runner._process, runner._stdin_open, runner._cost_known = process, True, False
+    process.stdin = _StuckStdin(process)
+    # Another write is stuck holding the lock (a Send Now into a full pipe).
+    holder = threading.Thread(target=lambda: runner.send_now("x"), daemon=True)
+    runner._prompt_sent = True
+    holder.start()
+    assert process.stdin.writing.wait(5)
+    at = time.monotonic()
+    runner.cancel()
+    assert time.monotonic() - at < 0.5 and runner.cancelled
+    assert [interval for interval, _ in started] == [cli.STOP_COST_WAIT]
+    started[0][1]()                                 # the timer ends it
+    assert process.killed
+    holder.join(5)
+    assert not holder.is_alive()
+
+
+def test_an_asides_stop_never_blocks_either(tmp_path, book):
+    started = []
+    process = FakeProcess([])
+    runner = AsideRunner(["claude", "-p", "--resume", "c"], str(tmp_path), "Q?", lambda e: None,
+                         popen=lambda *a, **k: process, env={"PATH": "x"},
+                         timer=_recording_timers(started), billing="api", ledger=book)
+    runner._process, runner._cost_known = process, False
+    process.stdin = _StuckStdin(process)
+    at = time.monotonic()
+    runner.cancel()
+    assert time.monotonic() - at < 0.5
+    assert [interval for interval, _ in started] == [cli.STOP_COST_WAIT]
+    assert process.stdin.writing.wait(5)            # the interrupt, off the caller's thread
+    started[0][1]()
+    assert process.killed
+
+
+def test_stop_after_send_now_waits_for_the_new_messages_result(tmp_path, book):
+    # The first result after Stop can be the replaced work's (#663): taken
+    # as the interrupt's, the new message's request went uncounted.
+    holder = {}
+
+    def on_text(event):
+        if event.kind == "text" and "stopped" not in holder:
+            holder["stopped"] = True
+            assert holder["runner"].send_now("Do this instead")
+            holder["runner"].cancel()
+    process = FakeProcess([
+        init_answer(HELPER), STARTED,
+        ev(type="assistant", message={"content": [{"type": "text", "text": "working"}]}),
+        result("", cost=0.02, subtype="error_during_execution", is_error=True),
+    ])
+    events, done = [], threading.Event()
+
+    def got(event):
+        events.append(event)
+        on_text(event)
+        if event.kind in ("finished", "failed"):
+            done.set()
+    runner = TurnRunner(["claude", "-p", "--resume", "chat-1"], str(tmp_path), "Hello", got,
+                        popen=lambda cmd, **kw: process, env={"PATH": "x"}, timer=timers(),
+                        billing="api", ledger=book)
+    holder["runner"] = runner
+    runner.start()
+    assert done.wait(10)
+    runner.join(10)
+    assert events[-1].text == "Stopped." and events[-1].data["cost_complete"] is False
+    totals = book.totals()
+    assert totals.spent == pytest.approx(0.02)
+    assert totals.held == pytest.approx(5.0 - 0.02)   # the new message's cost isn't known
+
+
+AUTH_RETRY = ev(type="system", subtype="api_retry", attempt=3, max_retries=10,
+                retry_delay_ms=2432, error_status=401, error="authentication_failed")
+
+
+def test_a_refused_key_stops_the_turn_at_once(tmp_path, book):
+    # Checked with 2.1.325 and a made-up key (#663): api_retry with 401 and
+    # "authentication_failed", then ten retries over about four minutes.
+    process = FakeProcess([init_answer(HELPER), STARTED, AUTH_RETRY, AUTH_RETRY,
+                           result("Invalid API key · Fix external API key", cost=0,
+                                  is_error=True)])
+    runner, events, _ = run(process, tmp_path, book)
+    assert process.killed and events[-1].kind == "failed"
+    assert events[-1].text == billing.KEY_REFUSED
+    assert runner.stopped_before_answer               # the message goes back to you
+    assert [e.kind for e in events].count("retry") == 0
+    totals = book.totals()
+    assert totals.held == 0 and totals.spent == 0
+
+
+def test_a_key_refused_after_claude_answered_keeps_the_hold(tmp_path, book):
+    # A request went through first, uncounted by any result: held.
+    process = FakeProcess([
+        init_answer(HELPER), STARTED,
+        ev(type="assistant", message={"model": "claude-opus-5-5", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "a"}}]}),
+        AUTH_RETRY])
+    runner, events, _ = run(process, tmp_path, book)
+    assert events[-1].text == billing.KEY_REFUSED and runner.stopped_mid_turn
+    assert not runner.stopped_before_answer and book.totals().held == pytest.approx(5.0)
+
+
+def test_other_retries_are_left_to_claude_code(tmp_path, book):
+    process = FakeProcess([init_answer(HELPER), STARTED,
+                           ev(type="system", subtype="api_retry", attempt=1, max_retries=10,
+                              retry_delay_ms=500, error_status=529, error="overloaded"),
+                           result("ok", cost=0.01)])
+    _runner, events, _ = run(process, tmp_path, book)
+    assert events[-1].kind == "finished" and not process.killed
+    assert "retry" in [e.kind for e in events]
+
+
+def test_a_subscription_turn_waits_out_auth_retries_as_before(tmp_path):
+    process = FakeProcess([init_answer(SUBSCRIPTION),
+                           ev(type="system", subtype="init", session_id="s1", apiKeySource="none"),
+                           AUTH_RETRY, result("ok")])
+    _runner, events, _ = run(process, tmp_path, billing_route="subscription")
+    assert events[-1].kind == "finished" and not process.killed
+
+
+def test_an_aside_with_a_refused_key_stops_at_once(tmp_path, book):
+    _runner, events, process = run_fake_aside(tmp_path, book, [
+        init_answer(HELPER), STARTED, AUTH_RETRY, AUTH_RETRY])
+    assert events[-1].kind == "failed" and "refused your Claude API key" in events[-1].text
+    assert "then ask again" in events[-1].text and process.killed
+    assert book.totals().held == 0
+
+
+def test_an_aside_says_sent_once_its_question_is_written(tmp_path, book):
+    _runner, events, _ = run_fake_aside(tmp_path, book, [init_answer(HELPER), STARTED,
+                                                         result("ZEPHYR", cost=0.01)])
+    kinds = [e.kind for e in events]
+    assert kinds == ["sent", "done"] and events[-1].sent is True
+    _runner, events, _ = run_fake_aside(tmp_path, book, [init_answer(SUBSCRIPTION), STARTED,
+                                                         result("x")])
+    assert "sent" not in [e.kind for e in events] and events[-1].sent is False
+
+
+def test_fable_runs_on_the_key_on_api_credits(tmp_path, book):
+    # Checked live with 2.1.325 (#663): Fable 5.2 answers through apiKeyHelper.
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", model="claude-fable-5-2",
+           apiKeySource="apiKeyHelper"),
+        ev(type="assistant", message={"model": "claude-fable-5-2", "content": [
+            {"type": "text", "text": "hi"}]}),
+        result("hi", cost=0.03)])
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--model", "fable", "--session-id", "f1"])
+    assert events[-1].kind == "finished" and book.totals().spent == pytest.approx(0.03)

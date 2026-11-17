@@ -474,7 +474,8 @@ yet.
   `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
   The key is kept by the system: protected with your Windows sign-in on Windows, in the
   Keychain on a Mac, and with `secret-tool` on Linux. It's never in a backup, a bug report, a
-  log or a command line. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
+  log or a command line. Like any saved password, a program running as you can read it from
+  there. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
   works. That test cost less than a cent.", or why it didn't. **Replace Key** puts in another,
   and **Remove Key** (Alt+M) forgets it after asking. On a Mac, the first message on API
   credits may bring up a keychain question for "security" (the command that hands Claude Code
@@ -510,20 +511,31 @@ yet.
   named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
   chat $0.42, The Chat Place $12.30 of $190" (Enter there opens Tools, API Keys). Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is followed by
-  "Sent on API credits", always said, even when announcements are off. The first message in
-  each such chat each time The Chat Place starts
-  asks "Send on API credits?" first: Enter sends, Escape keeps the message in the reply box.
-  When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents." (or "less than
-  a cent"). Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask
-  before the first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit
-  reply" (Alt+V), both on at first.
+  "Sent on API credits" once Claude Code has it, always said, even when announcements are off.
+  If something else is announced over it, it's said again after. The first message in each
+  such chat each time The Chat Place starts asks "Send on API credits?" first: Enter sends,
+  Escape keeps the message in the reply box. If that message isn't sent after all, the next one
+  asks again. When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents."
+  (or "less than a cent", or "at no cost"). A message you stop, one that fails after it was
+  sent, an answer that leaves work running in the background, and an Ask Aside answer say
+  what they cost too; "at least 6 cents" means Claude Code didn't say what the last part cost.
+  Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask before the
+  first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit reply"
+  (Alt+V), both on at first. The cost is said even when announcements are off, unless you turn
+  that setting off.
 - **Before anything is sent** The Chat Place checks with Claude Code that the message will be
   charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
   spending limit is reached or the total is damaged, the message isn't sent, stays in the reply
-  box, and you hear why, before any "Send on API credits?". A chat on the subscription
-  is checked the same way the other round: it never uses a key. A message that reaches its
-  per-message limit stops, says so and what it cost; one refused for no credit or a bad key
-  says that plainly.
+  box, and you hear why, before any "Send on API credits?". The key only ever goes to
+  Anthropic's API (`https://api.anthropic.com`), even if a settings file of yours or a
+  project's points Claude Code somewhere else. A chat on the subscription is checked the same
+  way the other round: it never uses a key, or any sign-in but your Claude subscription's. A
+  message that reaches its per-message limit stops, says so and what it cost; one refused for no
+  credit says that plainly, and a key Anthropic refuses is said within seconds, with the message
+  back in the reply box, rather than after minutes of Claude Code trying again.
+- **Older releases.** Chats on API credits are kept in a file of their own, which releases of
+  The Chat Place from before API credits don't read: they don't list those chats at all, rather
+  than run them on your subscription.
 - **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
   today, the last 7 days, since the total was reset, what's held, what's left of the limit, and
   spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
@@ -1973,10 +1985,14 @@ input stays open for the turn so The Chat Place can answer what Claude asks; it'
 turn's result arrives. That runs under the same login as the desktop app, never an API key; it
 uses the plan's Agent SDK credit, as any `claude -p` does. The exception is a chat you made on
 API credits: its turns get your key only through Claude Code's `apiKeyHelper` setting, a
-command that reads the kept key and prints it for Claude Code (never in an environment
-variable, so the tools Claude runs don't see it), and a `--max-budget-usd` reserved from the
-spending limits. Its message goes only once Claude Code's answer to `initialize` says the turn
-will use that key at Anthropic's own API.
+command that reads the kept key and prints it for Claude Code, and a `--max-budget-usd`
+reserved from the spending limits. The key is never in an environment variable, so the
+commands Claude runs (Bash), hooks and MCP servers don't get it in their environment; like any
+saved password, though, a program running as you can read it from the system's key store. The
+same `--settings` sets `ANTHROPIC_BASE_URL` to `https://api.anthropic.com`, with TLS
+certificates checked and no extra certificate authority, which overrides any settings file
+that points elsewhere. Its message goes only once Claude Code's answer to `initialize` says
+the turn will use that key at Anthropic's own API.
 
 - It never uses `--bare`, which needs an API key.
 - It needs the native `claude.exe`. The npm install's `claude.cmd` is never run, because Windows
@@ -1996,8 +2012,9 @@ will use that key at Anthropic's own API.
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and the Bedrock, Vertex and
   Foundry switches. Both lists are in `claude_cli.py`.
 - Before the message is written, Claude Code's answer to `initialize` says how the turn would
-  be charged; a subscription chat that would use any API key, or another provider, is stopped
-  there, with nothing sent. As a second check, `claude` reports where its credentials came from
+  be charged; a subscription chat that would use any API key, any sign-in token other than your
+  claude.ai login (an `ANTHROPIC_AUTH_TOKEN` or `CLAUDE_CODE_OAUTH_TOKEN` in a settings file),
+  or another provider, is stopped there, with nothing sent. As a second check, `claude` reports where its credentials came from
   before it sends anything. If that's an API key rather than the subscription login, The Chat
   Place stops the run and says so. (A chat on API credits is checked the other way round.)
 

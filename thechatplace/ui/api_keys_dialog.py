@@ -89,9 +89,9 @@ def _set_read_only(box: wx.TextCtrl, text: str) -> None:
 
 
 def _amount(value: float) -> str:
-    """Money in the total line: "nothing" for none (billing.money would say
-    "less than a cent", which isn't true of nothing)."""
-    return "nothing" if value <= 0 else billing.money(value)
+    """Money in the total line: "nothing" for none, as billing.money says
+    too (#663)."""
+    return billing.money(max(0.0, value))
 
 
 def totals_text(totals) -> str:

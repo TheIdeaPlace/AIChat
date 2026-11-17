@@ -6619,15 +6619,19 @@ class AskAsideDialog(wx.Dialog):
     speaks an answer (the answer to a key press), ``copy(text)`` copies.
     ``history`` is the chat's list of ``aside.AsideItem``, kept by the window
     while the app is open, so closing and coming back finds them; the dialog
-    adds to it and clears it in place."""
+    adds to it and clears it in place. ``cost_words(event)``: what an aside
+    on API credits cost, as said, or "" (#663); given to ``say`` as
+    ``cost=`` when there is one, and said with "Stopped asking"."""
 
-    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude', history=None):
+    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude', history=None,
+                 cost_words=None):
         super().__init__(parent, title=f"Ask Aside about {chat_title}",
                          size=dialog_size(parent, 680, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._ask = ask
         self.provider = provider
-        self._say = say or (lambda text, failed=False: None)
+        self._cost_words = cost_words or (lambda event: "")
+        self._say = say or (lambda text, failed=False, **_cost: None)
         self._copy = copy or (lambda text: True)
         self._feedback = feedback or (lambda text: None)
         self.items = [] if history is None else history
@@ -6834,6 +6838,8 @@ class AskAsideDialog(wx.Dialog):
         """An ``aside.AsideEvent`` for ``item``, on the UI thread."""
         if not self or self.IsBeingDeleted():
             return
+        if event.kind == "sent":
+            return  # the window says "Sent on API credits" (#663)
         if event.kind == "text":
             if item.asking:
                 item.answer = event.text
@@ -6859,14 +6865,18 @@ class AskAsideDialog(wx.Dialog):
         self._show_selected()
         if self._closed:
             return  # closed while it was being answered: nothing to say
+        cost = self._cost_words(event)
         if item.failed and item.answer == "Stopped.":
-            self._feedback("Stopped asking.")
+            self._feedback(f"Stopped asking. It cost {cost}." if cost else "Stopped asking.")
             return
         # The answer to a key press: said, and in the Answer box to read by
         # line, where focus goes, unless you've started the next question.
         if not self.question.GetValue().strip():
             self._focus_answer()
-        self._say(item.answer, failed=item.failed)
+        if cost:
+            self._say(item.answer, failed=item.failed, cost=cost)
+        else:
+            self._say(item.answer, failed=item.failed)
 
     def stop(self):
         """Stop the question being answered, if one is."""

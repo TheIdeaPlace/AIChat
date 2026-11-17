@@ -17,10 +17,14 @@ written. Each line is one of:
 * ``settle``: what Claude Code said a result cost (``total_cost_usd``), by
   model too. A turn can have several (Send Now, follow-ups), each the cost
   since the one before.
-* ``close``: the turn's process is over. ``complete`` when every message
-  sent got its result, so what was settled is the whole cost; otherwise
-  (Stop mid-reply, a crash) the cost of the requests made since the last
-  result isn't known, and the reservation stays counted.
+* ``close``: the turn's process is over. ``complete`` (exactly ``true``)
+  when every message sent got its result, so what was settled is the whole
+  cost; otherwise (Stop mid-reply, a crash, a result without a usable cost,
+  a settlement that couldn't be written) the cost isn't all known, and the
+  reservation stays counted.
+* ``rename``: Claude Code gave a chat another id than the one asked for
+  (#663); its spending so far, and anything recorded under the old id
+  later, counts under the new one.
 * ``reset``: Reset in API Keys starts a new total. Earlier lines are kept,
   for Usage's today and last 7 days.
 * ``release``: Release Held in API Keys lets go of reservations no running
@@ -35,8 +39,11 @@ Counting is conservative everywhere, because it decides whether money may be
 spent: a reservation that's open, or closed incomplete, counts at its full
 amount (less what was settled against it) until Reset. One left by a crashed
 run is still counted when the app starts again. A line that can't be read
-stops all API spending, with a reason, until Reset; it can never free
-spending up. Reset clears every reservation except those of turns running in
+(not JSON, a field of the wrong kind, a number that isn't finite or is far
+past any limit, a time that isn't one) stops all API spending, with a
+reason, until Reset; it can never free spending up, and nothing in a line
+can make reading the ledger fail, so Reset always gets the ledger going
+again. Reset clears every reservation except those of turns running in
 this process, which settle as usual afterwards.
 
 One lock for the whole process covers reading the ledger, deciding and
@@ -66,19 +73,32 @@ unaffected.
 So the app keeps, for every chat it runs, the last total Claude Code
 reported for it (its *baseline*, ``claude-cost-baselines.json`` beside the
 ledger), recorded after every result of every turn, subscription chats
-included (for them it's only ever a baseline, never spending). A process's
-``CostTracker`` starts from the baseline of the chat it resumes (a fork's
-source), and each result adds what the total grew by.
+included (for them it's only ever a baseline, never spending). Each result
+after a process's first adds what the total grew by.
 
-Claude Code restores that cost state only sometimes (another chat in the
-same folder can run in between), so a first result that doesn't fit the
-baseline (a smaller total, or a model's cost below its baseline) is taken
-as the process's own spending, as is one with no baseline at all (Continue
-Here from a desktop session, a lost record): its whole total, but no more
-than the turn's reservation, since ``--max-budget-usd`` bounds what the
-process itself can spend. Within one process a total never shrinks; if it
-does, that result adds nothing and the tracker starts again from it.
-``CUMULATIVE_COST`` False would take each total as that result's own cost.
+Whether the first result's total includes restored cost is read from its
+tokens, not from how big the total is (#663; the review found two chats
+alternating in a folder under-counted by comparing totals). Checked with
+2.1.325: a result's ``usage`` holds that turn's own tokens and
+``modelUsage`` the cumulative ones, restored included, so a result whose
+modelUsage tokens are more than its own were restored. Two chats
+alternating in one folder each restored their own cost every time, and so
+did a fork (from its source). Then:
+
+* Not restored (or a new chat, which has nothing to restore): its whole
+  total is this process's, counted in full, however big.
+* Restored, with the chat's baseline known: the total less the baseline.
+* Restored with no baseline (a lost record, Continue Here from a desktop
+  session, a fork of a chat run elsewhere), a baseline the total is below,
+  or no tokens to tell by (an older Claude Code): the total, but no more
+  than the turn's reservation. The restored part is spending the app can't
+  see, and ``--max-budget-usd`` keeps what this process itself spends to
+  the reservation (give or take one request), so that's the most it can
+  have added that's known to be this process's.
+
+Within one process a total never shrinks; if it does, that result adds
+nothing and the tracker starts again from it. ``CUMULATIVE_COST`` False
+would take each total as that result's own cost.
 """
 from __future__ import annotations
 
@@ -184,8 +204,37 @@ class Totals:
 def _money(value) -> Optional[float]:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    value = float(value)
+    try:
+        value = float(value)
+    except (OverflowError, ValueError):  # an integer too big for a float
+        return None
     return value if math.isfinite(value) and value >= 0 else None
+
+
+#: The most a ledger line may say anything cost or held: far past any limit
+#: (MAX_LIMIT), so a bigger one can only be damage.
+_MOST = MAX_LIMIT * 10
+#: The latest time a line may carry (the year 5138): later is damage.
+_LATEST = 1e11
+
+
+def _amount(value) -> Optional[float]:
+    """A ledger line's dollars, or None if they can't be (#663)."""
+    value = _money(value)
+    return value if value is not None and value <= _MOST else None
+
+
+def _when(value) -> Optional[float]:
+    """A ledger line's time, or None if it isn't one."""
+    value = _money(value)
+    return value if value is not None and value <= _LATEST else None
+
+
+def valid_cost(value) -> bool:
+    """Whether a result's ``total_cost_usd`` can be counted (#663): a
+    finite number, not negative. Missing, null, NaN or infinite leaves the
+    cost unknown, and the reservation held."""
+    return _money(value) is not None
 
 
 def _limit(value) -> Optional[float]:
@@ -214,32 +263,50 @@ def _model_costs(model_costs) -> Dict[str, float]:
     return clean
 
 
+def _tokens(tokens) -> Optional[Tuple[int, int]]:
+    """(this turn's own tokens, cumulative tokens) from a result, checked;
+    None when there's nothing to tell by (claude_cli.result_tokens)."""
+    if not isinstance(tokens, (tuple, list)) or len(tokens) != 2:
+        return None
+    own, everything = tokens
+    if type(own) is not int or type(everything) is not int or own < 0 or everything < 0:
+        return None
+    return own, everything
+
+
 class CostTracker:
     """Turns one process's ``total_cost_usd`` (and modelUsage's ``costUSD``)
     into what each result added (see "What a result cost" above).
 
     ``start``: the baseline of the chat the process resumes or forks (0.0
     for a new chat, None when it isn't known), and ``start_models`` its
-    costs by model. ``cap``: the turn's reservation, the most a first result
-    that doesn't fit the baseline is counted at; None for no cap (a
-    subscription turn, which spends nothing)."""
+    costs by model. ``resumed``: the process restores a chat's cost state
+    (``--resume``, a fork's included); by default, when ``start`` isn't
+    0.0. ``cap``: the turn's reservation, the most a restored first result
+    with no usable baseline is counted at; None for no cap (a subscription
+    turn, which spends nothing)."""
 
     def __init__(self, cumulative: Optional[bool] = None, start: Optional[float] = 0.0,
                  start_models: Optional[Dict[str, float]] = None,
-                 cap: Optional[float] = None) -> None:
+                 cap: Optional[float] = None, resumed: Optional[bool] = None) -> None:
         self.cumulative = CUMULATIVE_COST if cumulative is None else cumulative
+        self.resumed = (start != 0.0) if resumed is None else bool(resumed)
         start = _money(start) if start is not None else None
         self._last_total: Optional[float] = start
         self._last_models: Dict[str, float] = _model_costs(start_models) \
             if start is not None else {}
         self._first = True
         self.cap = _money(cap) if cap is not None else None
+        #: What the first result showed: True restored, False not, None no
+        #: tokens to tell by (or no result yet).
+        self.restored: Optional[bool] = None
         #: Everything this process has cost so far, and by model.
         self.total = 0.0
         self.models: Dict[str, float] = {}
 
-    def add(self, total_cost, model_costs=None):
-        """(cost added, {model: cost added}) for one result."""
+    def add(self, total_cost, model_costs=None, tokens=None):
+        """(cost added, {model: cost added}) for one result. ``tokens``:
+        (its own tokens, modelUsage's cumulative tokens), or None."""
         total = _money(total_cost)
         if total is None:
             return 0.0, {}
@@ -248,23 +315,45 @@ class CostTracker:
         base = self._last_total
         if not self.cumulative:
             delta, by_model = total, dict(models)
-        elif base is not None and total >= base - _SAME and (not first or all(
-                models.get(m, 0.0) >= c - _SAME for m, c in self._last_models.items())):
-            # It grew from the baseline (or the last result): the growth.
-            delta = max(0.0, total - base)
-            by_model = {m: max(0.0, c - self._last_models.get(m, 0.0))
-                        for m, c in models.items()}
-        elif first:
-            # No baseline, or Claude Code didn't restore it (the total or a
-            # model's cost is below it): the whole total is this process's
-            # own spending, which --max-budget-usd keeps within the cap.
-            delta = total if self.cap is None else min(total, self.cap)
-            scale = delta / total if total > 0 else 0.0
-            by_model = {m: c * scale for m, c in models.items()}
+        elif not first:
+            if base is not None and total >= base - _SAME:
+                # The growth since this process's last result.
+                delta = max(0.0, total - base)
+                by_model = {m: max(0.0, c - self._last_models.get(m, 0.0))
+                            for m, c in models.items()}
+            else:
+                # A running total that shrank within one process: nothing
+                # is known to be added; carry on from it.
+                delta, by_model = 0.0, {}
         else:
-            # A running total that shrank within one process: nothing is
-            # known to be added; carry on from it.
-            delta, by_model = 0.0, {}
+            counted = _tokens(tokens)
+            if not self.resumed:
+                restored = False  # a new chat has nothing to restore
+            elif counted is None:
+                restored = None
+            else:
+                restored = counted[1] > counted[0]
+            self.restored = restored
+            if restored is False:
+                # Nothing restored: the whole total is this process's own,
+                # counted in full, even past the reservation (a turn can run
+                # over --max-budget-usd by one request).
+                delta, by_model = total, dict(models)
+            elif restored and base is not None and total >= base - _SAME:
+                # The chat's own cost restored: what this process added.
+                delta = max(0.0, total - base)
+                by_model = {m: max(0.0, c - self._last_models.get(m, 0.0))
+                            for m, c in models.items()}
+            else:
+                # Restored with no baseline to take off (or one the total is
+                # below, so it isn't what was restored), or no tokens to tell
+                # by: some of the total is earlier spending the app can't
+                # see. --max-budget-usd keeps this process's own spending to
+                # the reservation (give or take one request), so the total is
+                # counted up to that, and never more.
+                delta = total if self.cap is None else min(total, self.cap)
+                scale = delta / total if total > 0 else 0.0
+                by_model = {m: c * scale for m, c in models.items()}
         self._last_total = total
         self._last_models = models
         self.total += delta
@@ -281,6 +370,9 @@ class SpendLedger:
         #: Reservations made in this process and not yet closed: Reset keeps
         #: them, and Release Held leaves them be.
         self._live: set = set()
+        #: Reservations with a settlement that couldn't be written (#663):
+        #: their close is never "complete", so they stay counted.
+        self._unrecorded: set = set()
         #: This app run's id, written with each reservation it makes.
         self.run_id = uuid.uuid4().hex
 
@@ -307,7 +399,7 @@ class SpendLedger:
         known, which counts each first result in full up to its cap."""
         try:
             raw = json.loads(self.baselines_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             return {}
         if not isinstance(raw, dict):
             return {}
@@ -328,6 +420,27 @@ class SpendLedger:
         with _LOCK:
             entry = self._read_baselines().get(chat_id)
         return (entry["total"], dict(entry["models"])) if entry else None
+
+    def rename_chat(self, old_id: str, new_id: str) -> None:
+        """Claude Code gave the chat ``old_id`` the id ``new_id`` (#663;
+        own_store.rename_id): its spending and its baseline go with it, so
+        Usage doesn't list it under chats no longer listed. Let go if it
+        can't be written: the spending still counts in the total."""
+        if not old_id or not new_id or old_id == new_id:
+            return
+        from .provider_storage import atomic_write_json
+        with _LOCK:
+            try:
+                self._append({"type": "rename", "from": old_id, "to": new_id})
+            except OSError:
+                pass
+            baselines = self._read_baselines()
+            if old_id in baselines:
+                baselines[new_id] = baselines.pop(old_id)
+                try:
+                    atomic_write_json(self.baselines_path, baselines)
+                except OSError:
+                    pass
 
     def set_baseline(self, chat_id: str, total, models=None) -> None:
         """Record what Claude Code reported for ``chat_id`` after a result.
@@ -357,7 +470,7 @@ class SpendLedger:
             raw = json.loads(self.limits_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return Limits(), ""
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, RecursionError) as exc:
             return Limits(), (f"The Chat Place couldn't read its API spending limits ({exc}), "
                               "so it won't spend API credits until they're set again in "
                               "Tools, API Keys.")
@@ -408,55 +521,40 @@ class SpendLedger:
         lines = data.split(b"\n")
         if lines and lines[-1] == b"":
             lines.pop()
+        #: Chats renamed (#663): old id -> new id.
+        renamed: Dict[str, str] = {}
+
+        def chat_of(chat: str) -> str:
+            seen = set()
+            while chat in renamed and chat not in seen:
+                seen.add(chat)
+                chat = renamed[chat]
+            return chat
         for number, raw in enumerate(lines, 1):
             record = self._parse(raw)
             if record is None:
                 damage = damage or f"line {number}"
                 continue
-            kind = record["type"]
-            if kind == "reset":
-                keep = record.get("keep") or []
-                reservations = {rid: entry for rid, entry in reservations.items()
-                                if rid in keep and not entry.closed}
-                totals.spent, totals.by_chat, totals.by_model = 0.0, {}, {}
-                totals.reset_at = record["at"]
-                damage = ""  # Reset is how damage is put behind you
-                continue
-            if kind == "release":
-                for rid in record["ids"]:
-                    reservations.pop(rid, None)
-                continue
-            rid = record["id"]
-            if kind == "reserve":
-                reservations[rid] = _Open(record["amount"], record.get("chat", ""))
-                continue
-            entry = reservations.get(rid)
-            if kind == "settle":
-                cost = record["cost"]
-                totals.spent += cost
-                chat = record.get("chat") or (entry.chat_id if entry else "")
-                if chat:
-                    totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + cost
-                    totals.chat_all_time[chat] = totals.chat_all_time.get(chat, 0.0) + cost
-                for model, amount in (record.get("models") or {}).items():
-                    totals.by_model[model] = totals.by_model.get(model, 0.0) + amount
-                if record["at"] >= midnight:
-                    totals.today += cost
-                if record["at"] >= week_start:
-                    totals.last_7_days += cost
-                if entry is not None:
-                    entry.settled += cost
-                continue
-            if kind == "close" and entry is not None:
-                if record.get("complete"):
-                    reservations.pop(rid, None)
-                else:
-                    entry.closed = True
+            try:
+                if record["type"] == "reset":
+                    keep = record.get("keep", [])
+                    reservations = {rid: entry for rid, entry in reservations.items()
+                                    if rid in keep and not entry.closed}
+                    totals.spent, totals.by_chat, totals.by_model = 0.0, {}, {}
+                    totals.reset_at = record["at"]
+                    damage = ""  # Reset is how damage is put behind you
+                    continue
+                self._replay_line(record, reservations, totals, renamed, chat_of,
+                                  midnight, week_start)
+            except Exception:  # noqa: BLE001 - a line can only ever be damage (#663)
+                damage = damage or f"line {number}"
         # Settlements before a reset still count in today and the last 7
         # days, which are kept across resets: worked out apart.
         totals.held = sum(max(0.0, e.amount - e.settled) for e in reservations.values())
         totals.releasable = sum(max(0.0, e.amount - e.settled)
                                 for rid, e in reservations.items() if rid not in self._live)
+        if not (math.isfinite(totals.held) and math.isfinite(totals.spent)):
+            damage = damage or "its totals"
         if damage:
             totals.problem = totals.problem or (
                 f"The Chat Place's record of API spending is damaged ({damage} of "
@@ -465,35 +563,91 @@ class SpendLedger:
         return totals, reservations
 
     @staticmethod
+    def _replay_line(record, reservations, totals, renamed, chat_of, midnight,
+                     week_start) -> None:
+        """One checked line other than a reset, into the totals."""
+        kind = record["type"]
+        if kind == "release":
+            for rid in record["ids"]:
+                reservations.pop(rid, None)
+            return
+        if kind == "rename":
+            old, new = record["from"], chat_of(record["to"])
+            if old == new:
+                return
+            renamed[old] = new
+            for book in (totals.by_chat, totals.chat_all_time):
+                if old in book:
+                    book[new] = book.get(new, 0.0) + book.pop(old)
+            for entry in reservations.values():
+                if entry.chat_id == old:
+                    entry.chat_id = new
+            return
+        rid = record["id"]
+        if kind == "reserve":
+            reservations[rid] = _Open(record["amount"], chat_of(record.get("chat", "")))
+            return
+        entry = reservations.get(rid)
+        if kind == "settle":
+            cost = record["cost"]
+            totals.spent += cost
+            chat = chat_of(record.get("chat") or (entry.chat_id if entry else ""))
+            if chat:
+                totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + cost
+                totals.chat_all_time[chat] = totals.chat_all_time.get(chat, 0.0) + cost
+            for model, amount in (record.get("models") or {}).items():
+                totals.by_model[model] = totals.by_model.get(model, 0.0) + amount
+            if record["at"] >= midnight:
+                totals.today += cost
+            if record["at"] >= week_start:
+                totals.last_7_days += cost
+            if entry is not None:
+                entry.settled += cost
+            return
+        if kind == "close" and entry is not None:
+            # Only exactly true frees the rest (#663): "false", 1 or a
+            # missing field keeps it counted.
+            if record.get("complete") is True:
+                reservations.pop(rid, None)
+            else:
+                entry.closed = True
+
+    @staticmethod
     def _parse(raw: bytes) -> Optional[dict]:
-        """A ledger line, checked, or None if it's damaged."""
+        """A ledger line, checked, or None if it's damaged: anything a line
+        could hold that the replay can't take (#663)."""
         try:
             record = json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
             return None
-        if not isinstance(record, dict) or _money(record.get("at")) is None:
+        if not isinstance(record, dict) or _when(record.get("at")) is None:
             return None
         kind = record.get("type")
         if kind == "reset":
             keep = record.get("keep", [])
-            return record if isinstance(keep, list) else None
+            return record if isinstance(keep, list) and all(
+                isinstance(x, str) for x in keep) else None
         if kind == "release":
             ids = record.get("ids")
             return record if isinstance(ids, list) and all(
                 isinstance(x, str) for x in ids) else None
+        if kind == "rename":
+            old, new = record.get("from"), record.get("to")
+            return record if isinstance(old, str) and old and isinstance(new, str) \
+                and new else None
         if kind not in ("reserve", "settle", "close") or not isinstance(record.get("id"), str) \
                 or not record["id"]:
             return None
         if not isinstance(record.get("chat", ""), str):
             return None
-        if kind == "reserve" and _money(record.get("amount")) is None:
+        if kind == "reserve" and _amount(record.get("amount")) is None:
             return None
         if kind == "settle":
-            if _money(record.get("cost")) is None:
+            if _amount(record.get("cost")) is None:
                 return None
             models = record.get("models", {})
             if not isinstance(models, dict) or any(
-                    not isinstance(m, str) or _money(c) is None for m, c in models.items()):
+                    not isinstance(m, str) or _amount(c) is None for m, c in models.items()):
                 return None
         return record
 
@@ -565,29 +719,41 @@ class SpendLedger:
             return reservation
 
     def settle(self, reservation: Reservation, cost: float,
-               models: Optional[Dict[str, float]] = None) -> None:
-        """Record what one result cost (already the difference, CostTracker)."""
+               models: Optional[Dict[str, float]] = None) -> bool:
+        """Record what one result cost (already the difference, CostTracker).
+        False if it couldn't be written (or wasn't a cost): the reservation
+        is then never closed complete (``close``), so it stays counted in
+        full, less only what was recorded (#663)."""
         cost = _money(cost)
-        if cost is None or cost == 0 and not models:
-            return
+        if cost is None:
+            with _LOCK:
+                self._unrecorded.add(reservation.id)
+            return False
+        if cost == 0 and not models:
+            return True
         clean = {m: round(c, 6) for m, c in (models or {}).items()
                  if isinstance(m, str) and _money(c) is not None}
         with _LOCK:
             try:
                 self._append({"type": "settle", "id": reservation.id, "cost": round(cost, 6),
                               "chat": reservation.chat_id, "models": clean})
+                return True
             except OSError:
-                pass  # the reservation stays held: counted, never freed
+                self._unrecorded.add(reservation.id)
+                return False
 
     def close(self, reservation: Reservation, complete: bool) -> None:
         """The process is over. ``complete``: its whole cost was settled (or
-        nothing was ever sent), so the rest of the reservation is freed."""
+        nothing was ever sent), so the rest of the reservation is freed;
+        never if a settlement for it couldn't be written (#663)."""
         with _LOCK:
+            complete = complete is True and reservation.id not in self._unrecorded
             try:
-                self._append({"type": "close", "id": reservation.id, "complete": bool(complete)})
+                self._append({"type": "close", "id": reservation.id, "complete": complete})
             except OSError:
                 pass  # left open: still counted
             self._live.discard(reservation.id)
+            self._unrecorded.discard(reservation.id)
 
     def reset(self) -> None:
         """Start a new total (Tools, API Keys, Reset). Raises OSError if it

@@ -31,13 +31,31 @@ which comes before the message goes) has ``account``. Checked with 2.1.325:
   ``initialize`` names it only as the token's source. ``key_source`` reads
   both.
 * With only the subscription: ``{"email", "organization", "subscriptionType",
-  "apiProvider": "firstParty"}`` and no ``apiKeySource``.
+  "apiProvider": "firstParty"}`` and no ``apiKeySource`` or ``tokenSource``.
+* Other sign-ins, checked with 2.1.325 under a scratch ``CLAUDE_CONFIG_DIR``
+  (only initialize sent, made-up values; #663): a settings file's
+  ``env.ANTHROPIC_AUTH_TOKEN`` gives ``tokenSource: "ANTHROPIC_AUTH_TOKEN"``,
+  ``CLAUDE_CODE_OAUTH_TOKEN`` (settings or environment) gives
+  ``tokenSource: "CLAUDE_CODE_OAUTH_TOKEN"``, a settings ``ANTHROPIC_API_KEY``
+  gives ``apiKeySource``, and no sign-in at all ``tokenSource: "none"``. Every
+  one of them says ``apiProvider: "firstParty"``.
 
 ``account_problem`` reads that before the message is written, both ways: an
 API chat must be on the app's own key (apiKeyHelper) at Anthropic itself
-(firstParty), and a subscription chat must not report any key or another
-provider. ``source_problem`` repeats the check on ``system/init``'s
-``apiKeySource``, as the app always has.
+(firstParty), and a subscription chat must not report any key, any token but
+the claude.ai sign-in, or another provider. ``source_problem`` repeats the
+check on ``system/init``'s ``apiKeySource``, as the app always has.
+
+Where the key goes
+------------------
+``firstParty`` doesn't say which host: checked with 2.1.325, a settings
+file's ``env.ANTHROPIC_BASE_URL`` (the user's, a project's, or
+``CLAUDE_CONFIG_DIR``'s) sent an API turn, key and all, to that host while
+initialize still said firstParty. So an API turn's own ``--settings`` pins
+the address (``api_settings``): its ``env`` sets ``ANTHROPIC_BASE_URL`` to
+Anthropic's API, which overrides every other settings file (checked: a
+local listener named in user settings got nothing, and the turn was
+answered by Anthropic), and keeps TLS checking on.
 """
 from __future__ import annotations
 
@@ -186,12 +204,24 @@ def scrub(text):
 # -- The settings an API chat's turns get --------------------------------------
 
 
+#: Where an API turn's requests, and so the key, may go (#663).
+API_BASE_URL = "https://api.anthropic.com"
+
+#: The environment an API turn's ``--settings`` sets, overriding any other
+#: settings file's (see "Where the key goes"): Anthropic's own address, TLS
+#: certificates checked, and no extra certificate authority, so a proxy
+#: that decrypts traffic can't be trusted into reading the key.
+API_ENV = {"ANTHROPIC_BASE_URL": API_BASE_URL, "NODE_TLS_REJECT_UNAUTHORIZED": "1",
+           "NODE_EXTRA_CA_CERTS": ""}
+
+
 def api_settings(name: Optional[str] = None) -> dict:
     """What an API chat's turn merges into its single ``--settings``
-    (claude_mcp.merge_settings): the command that prints the kept key."""
+    (claude_mcp.merge_settings): the command that prints the kept key, and
+    the address it may be sent to (``API_ENV``)."""
     from . import platform_paths
     return {"apiKeyHelper": platform_paths.api_key_helper_command(
-        name or platform_paths.CLAUDE_API_KEY_SECRET)}
+        name or platform_paths.CLAUDE_API_KEY_SECRET), "env": dict(API_ENV)}
 
 
 #: The smallest per-message budget passed: Claude Code checks the budget
@@ -233,11 +263,29 @@ def key_source(account: dict):
     """Where initialize's ``account`` says the key comes from, or None for
     none. ``apiKeySource`` when there is one; otherwise a ``tokenSource`` of
     apiKeyHelper, which is how a helper's key is reported (#662). Other
-    token sources (claude.ai, or a subscription token from ``claude
-    setup-token``) are the subscription's sign-in, not a key."""
+    token sources aren't keys; ``token_problem`` decides about them."""
     source = account.get("apiKeySource")
     if _no_source(source) and account.get("tokenSource") == HELPER_SOURCE:
         return HELPER_SOURCE
+    return source
+
+
+#: The token source of the subscription's own sign-in (Claude Code reports
+#: it beside an API key; with the sign-in alone there's no tokenSource).
+CLAUDE_AI_SOURCE = "claude.ai"
+
+
+def token_problem_source(account: dict):
+    """A ``tokenSource`` a subscription chat mustn't send with, or None
+    (#663). Missing, "none" or claude.ai is the subscription's sign-in (or
+    no sign-in, which Claude Code refuses itself). Anything else, such as
+    ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN from a settings file's
+    ``env`` (checked with 2.1.325), is a token The Chat Place didn't choose
+    and can't check the billing of, so it stops the message; apiKeyHelper
+    is caught as a key first (``key_source``)."""
+    source = account.get("tokenSource")
+    if _no_source(source) or source == CLAUDE_AI_SOURCE:
+        return None
     return source
 
 
@@ -251,7 +299,8 @@ def account_problem(route: str, init_body) -> Optional[str]:
     API all stop the message.
 
     The subscription stops for any ``apiKeySource`` (a key in the environment
-    or a user's own apiKeyHelper) or another provider. An answer with no
+    or a user's own apiKeyHelper), any token but the claude.ai sign-in
+    (``token_problem_source``), or another provider. An answer with no
     ``account`` at all is let through, as every turn was before #658: Claude
     Code versions older than the account field (it isn't in 2.1.286's
     answer) would otherwise never send anything, and ``source_problem`` on
@@ -288,6 +337,12 @@ def account_problem(route: str, init_body) -> Optional[str]:
                 "subscription login, so The Chat Place didn't send your message. "
                 + _NOTHING_SENT + " Remove that key from the environment or settings that set "
                 "it, then try again.")
+    token = token_problem_source(account)
+    if token is not None:
+        return (f"Claude Code would have signed in with another token ({_safe_word(token)}) "
+                "instead of your subscription login, so The Chat Place didn't send your "
+                "message. " + _NOTHING_SENT + " Remove that token from the environment or "
+                "settings that set it, then try again.")
     provider = account.get("apiProvider")
     if provider is not None and provider != FIRST_PARTY:
         return (f"Claude Code is set up to use {_provider_words(provider)} instead of your "
@@ -332,8 +387,33 @@ def _provider_words(provider) -> str:
 # -- What went wrong on API credits, in words -----------------------------------
 
 _CREDIT_LOW = re.compile(r"credit balance is too low", re.IGNORECASE)
-_BAD_KEY = re.compile(r"invalid (x-)?api[ -]key|authentication_error|invalid bearer token",
-                      re.IGNORECASE)
+_BAD_KEY = re.compile(r"invalid (x-)?api[ -]key|authentication_error|authentication_failed|"
+                      r"invalid bearer token", re.IGNORECASE)
+
+#: Said when Anthropic refuses the key: in a result's text, or as soon as
+#: Claude Code starts retrying a refused request (``key_refused``).
+KEY_REFUSED = ("Anthropic refused your Claude API key. Replace it in Tools, API Keys, then "
+               "send again.")
+
+#: The HTTP statuses of a refused key.
+_REFUSED_STATUSES = (401, 403)
+_AUTH_WORDS = re.compile(r"auth|invalid (x-)?api[ -]key|permission", re.IGNORECASE)
+
+
+def key_refused(retry: Optional[dict]) -> bool:
+    """Whether an ``api_retry`` (claude_cli's "retry" event data) is
+    Anthropic refusing the key. Checked with Claude Code 2.1.325 and a
+    made-up key: ``{"error_status": 401, "error": "authentication_failed"}``
+    with no text, first after about three seconds, and Claude Code then
+    retries about ten times over four minutes before giving up (#663). A
+    status of 401 or 403, or an error that says authentication, is enough."""
+    if not isinstance(retry, dict):
+        return False
+    status = retry.get("error_status")
+    if type(status) is int and status in _REFUSED_STATUSES:
+        return True
+    error = retry.get("error")
+    return isinstance(error, str) and bool(_AUTH_WORDS.search(error))
 
 
 def failure_text(subtype: str, text: str, cost_usd: Optional[float] = None,
@@ -352,15 +432,30 @@ def failure_text(subtype: str, text: str, cost_usd: Optional[float] = None,
                 "been charged. Add credit at console.anthropic.com, or carry on in a new chat "
                 "on your Claude subscription.")
     if _BAD_KEY.search(text):
-        return ("Anthropic refused your Claude API key. Replace it in Tools, API Keys, then "
-                "send again.")
+        return KEY_REFUSED
     return None
 
 
+def cost_words(amount: Optional[float], complete: bool = True) -> str:
+    """What an API turn cost, as said after it (#663): "6 cents", "nothing",
+    "at least 6 cents" when a request after the last result wasn't costed
+    (a Stop that didn't get its result, say), and "an amount that isn't
+    known" when nothing about it is."""
+    if amount is None or not isinstance(amount, (int, float)) or isinstance(amount, bool) \
+            or not math.isfinite(amount) or amount < 0:
+        return "an amount that isn't known"
+    if not complete:
+        return f"at least {money(amount)}" if amount >= 0.005 else "an amount that isn't known"
+    return money(amount)
+
+
 def money(amount: Optional[float]) -> str:
-    """Dollars as said: "$4.20", "6 cents", "less than a cent" (never "0 cents")."""
+    """Dollars as said: "$4.20", "6 cents", "less than a cent", and
+    "nothing" for exactly none (never "0 cents")."""
     if amount is None or not isinstance(amount, (int, float)) or not math.isfinite(amount):
         return "an unknown amount"
+    if amount <= 0:
+        return "nothing"
     if amount < 0.005:
         return "less than a cent"
     # Half a cent up, as people round (round() would make 0.005 "0 cents"),

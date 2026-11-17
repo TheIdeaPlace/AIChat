@@ -497,3 +497,89 @@ def test_the_first_call_gets_longer_for_its_one_time_setup(tmp_path, monkeypatch
     s.speak("first", SpeechSettings())
     assert wait_until(lambda: s.last_route == "spoke through NVDA")
     assert problems == []
+
+
+# --- kept: "Sent on API credits" survives an interruption (#663) ---------------
+
+
+def test_a_kept_utterance_waiting_its_turn_survives_an_interruption(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("Sent to Budget: a long read-back", settings, interrupt=False)
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("Other chat replied", settings, interrupt=True)       # clears the queue
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: len(FakeEngine.started) >= 3)
+    assert [text_of(e) for e in FakeEngine.started] == [
+        "Sent to Budget: a long read-back", "Other chat replied", "Sent on API credits"]
+    FakeEngine.started[2].done.set()
+    assert wait_until(lambda: not s.busy())
+
+
+def test_a_kept_utterance_cut_off_mid_speech_is_said_again(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("Needs you", settings, interrupt=True)
+    assert FakeEngine.started[0].killed
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: len(FakeEngine.started) >= 3)
+    assert text_of(FakeEngine.started[2]) == "Sent on API credits"
+    FakeEngine.started[2].done.set()
+    assert wait_until(lambda: not s.busy())
+    # Heard in full now: a later interruption doesn't bring it back.
+    s.speak("Later news", settings, interrupt=True)
+    assert wait_until(lambda: len(FakeEngine.started) >= 4)
+    FakeEngine.started[3].done.set()
+    assert wait_until(lambda: not s.busy())
+    assert len(FakeEngine.started) == 4
+
+
+def test_an_ordinary_utterance_is_still_dropped_by_an_interruption(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("first", settings, interrupt=False)
+    s.speak("second", settings, interrupt=False)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("news", settings, interrupt=True)
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: not s.busy())
+    assert [text_of(e) for e in FakeEngine.started] == ["first", "news"]
+
+
+def test_stop_drops_a_kept_utterance_too(tmp_path, monkeypatch):
+    # Closing the app: nothing more is said.
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("first", settings, interrupt=False)
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.stop()
+    assert wait_until(lambda: not s.busy())
+    assert [text_of(e) for e in FakeEngine.started] == ["first"]
+
+
+@windows_screen_readers
+def test_a_kept_announcement_a_screen_reader_may_still_be_saying_is_said_again(
+        tmp_path, monkeypatch):
+    readers = FakeReaders(Outcome(spoke="nvda", running=["nvda"]))
+    s = make(tmp_path, monkeypatch, readers)
+    clock = [100.0]
+    s._clock = lambda: clock[0]
+    s.speak("Sent on API credits", SpeechSettings(), interrupt=False, keep=True)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    clock[0] += 1.0                                  # NVDA may still be saying it
+    s.speak("Budget replied", SpeechSettings(), interrupt=True)
+    assert wait_until(lambda: len(readers.calls) == 3 and not s.busy())
+    assert [c[0] for c in readers.calls] == ["Sent on API credits", "Budget replied",
+                                             "Sent on API credits"]
+    assert readers.calls[2][2] is False              # queued, not cutting in
+    clock[0] += Speaker.KEEP_HEARD_AFTER + 1         # long since said
+    s.speak("Later", SpeechSettings(), interrupt=True)
+    assert wait_until(lambda: len(readers.calls) == 4 and not s.busy())
+    assert readers.calls[3][0] == "Later"

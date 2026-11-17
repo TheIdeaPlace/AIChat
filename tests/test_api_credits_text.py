@@ -50,6 +50,12 @@ def test_a_reply_says_its_cost_before_the_reply():
         "Fix replied, less than a cent: All done. 3 words."
     # Without a cost, as it always was.
     assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL) == "Fix replied. All done."
+    # Nothing is "at no cost", never "replied, nothing" (#663).
+    assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL, cost="nothing") == \
+        "Fix replied at no cost. All done."
+    assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL, cost="at least 6 cents") == \
+        "Fix replied, at least 6 cents. All done."
+    assert announce.cost_after("") == ""
 
 
 def test_the_row_says_api_credits_after_the_name():

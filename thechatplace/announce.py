@@ -49,13 +49,22 @@ def first_sentence(text: str, limit: int = 200) -> str:
     return _cut_at_word(stripped, limit) + "…"
 
 
+def cost_after(cost: str) -> str:
+    """What goes after "Paid replied" for an API-credit cost (#663): ", 6
+    cents", " at no cost" for nothing ("replied, nothing" reads as no
+    reply), or "" for none to say."""
+    if not cost:
+        return ""
+    return " at no cost" if cost == "nothing" else f", {cost}"
+
+
 def reply_text(title: str, reply: str, level: str, cost: str = "") -> Optional[str]:
     """A session's reply. None means say nothing. ``cost``: what a reply on
-    API credits cost, in words ("6 cents", billing.money), said before the
-    reply so a long one doesn't hide it (#658)."""
+    API credits cost, in words ("6 cents", billing.cost_words), said before
+    the reply so a long one doesn't hide it (#658)."""
     if level == ANNOUNCE_SILENT or not (reply or "").strip():
         return None
-    head = f"{title} replied, {cost}" if cost else f"{title} replied"
+    head = f"{title} replied{cost_after(cost)}"
     if level == ANNOUNCE_SUMMARY:
         words = len(reply.split())
         return f"{head}: {first_sentence(reply)} {words} words."
