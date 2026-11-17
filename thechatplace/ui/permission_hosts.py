@@ -222,7 +222,10 @@ class CodexPermissions:
                 else:
                     done(text)
             self.frame._codex_work(lambda: self.frame.sessions.owned_action('review_history', self.record), history_ready)
-        self.frame._load_codex_saved_rules(self.record.cwd, listed)
+        if self.info.provider == 'codex-api':
+            self.frame._codex_work(lambda: self.frame.sessions.saved_rules('codex-api', self.record.cwd), listed)
+        else:
+            self.frame._load_codex_saved_rules(self.record.cwd, listed)
 
 
 #: What Restart Copilot says.

@@ -169,16 +169,17 @@ def test_paid_stop(native, tmp_path, key):
             runner.drain()
             return bool(runner.snapshot(proof).replies)
         wait(output)
+        payment = conn._payments[proof.native_id]
         runner.interrupt(proof)
         state, report = finished(conn, runner, proof, events)
         assert state.status == 'interrupted'
-        assert report['cost_usd'] is None or report['cost_usd'] < .01
-        if not report['cost_complete']:
-            assert conn.ledger.totals().held > 0
-        else:
-            assert report['cost_upper_bound'] and report['cost_usd'] < .08
-            assert report['cost_words'].startswith('estimated, at most ')
-            assert conn.ledger.totals().held == 0
+        from thechatplace.openai_prices import request_ceiling
+        expected = payment.accounted + request_ceiling(payment.model, payment.context_window)
+        assert report['cost_complete'] and report['cost_upper_bound']
+        assert report['cost_usd'] == pytest.approx(expected, abs=.000001)
+        assert report['cost_words'].startswith('estimated, at most ')
+        assert conn.ledger.totals().held == 0
+        assert conn.ledger.totals().spent == pytest.approx(expected, abs=.000001)
         runner.start(proof, 'Do not use tools. Reply with exactly resumed.')
         state, report = finished(conn, runner, proof, events, 2)
         assert state.status == 'completed' and report['cost_complete']
@@ -204,23 +205,49 @@ def test_bad_key_at_real_openai(native, tmp_path):
         conn.close()
 
 
-@pytest.mark.skipif(not PAID, reason='Paid fork and tool environment checks are opt-in')
-def test_paid_fork_and_tools_environment(native, tmp_path, key, monkeypatch):
+@pytest.mark.skipif(not PAID, reason='Paid tool environment checks are opt-in')
+def test_paid_tools_environment(native, tmp_path, key, monkeypatch):
+    if os.name != 'nt':
+        pytest.skip('This live tool-environment check requires Windows cmd /c set')
     monkeypatch.setenv('OPENAI_API_KEY', key)  # ambient key must be stripped too
     events = []
     conn = connection(native, tmp_path, key, events)
     try:
-        proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Tool environment', model='gpt-5-nano',
-                                            sandbox='read-only', approval_policy='never')
         runner = CodexTurnExecutor(conn)
-        runner.start(proof, 'Run cmd /c set once to inspect the environment. Do not repeat its output in your answer. Then reply done.')
+        # Ascending prices from the dated table. Never count an answer without
+        # an executed command and real environment output as a passing check.
+        for n, model in enumerate(('gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.4-mini'), 1):
+            proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Tool environment', model=model,
+                                                sandbox='read-only', approval_policy='never')
+            runner.start(proof, 'Run exactly this shell command and nothing else: cmd /c set')
+            state, report = finished(conn, runner, proof, events, n)
+            assert state.status == 'completed' and report['cost_complete']
+            thread = conn.request('thread/read', {'threadId': proof.native_id, 'includeTurns': True})['thread']
+            commands = [item for turn in thread['turns'] for item in turn['items'] if item.get('type') == 'commandExecution']
+            output = '\n'.join(item.get('aggregatedOutput', '') for item in commands)
+            if commands and output.strip():
+                assert any('cmd' in item.get('command', '').lower() and '/c' in item.get('command', '').lower()
+                           and 'set' in item.get('command', '').lower() for item in commands)
+                assert key not in output and 'OPENAI_API_KEY' not in output.upper()
+                print(json.dumps({'environment_tool_model': model}))
+                break
+        else:
+            pytest.skip('No priced nano or mini model ran cmd /c set and returned environment output; tool isolation remains unverified')
+    finally:
+        conn.close()
+        assert_no_disk_key(tmp_path, key)
+
+
+@pytest.mark.skipif(not PAID, reason='Paid fork check is opt-in')
+def test_paid_fork(native, tmp_path, key):
+    events = []
+    conn = connection(native, tmp_path, key, events)
+    try:
+        proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Fork source', model='gpt-5-nano')
+        runner = CodexTurnExecutor(conn)
+        runner.start(proof, 'Do not use tools. Reply with exactly original.')
         state, report = finished(conn, runner, proof, events)
         assert state.status == 'completed' and report['cost_complete']
-        thread = conn.request('thread/read', {'threadId': proof.native_id, 'includeTurns': True})['thread']
-        commands = [item for turn in thread['turns'] for item in turn['items'] if item.get('type') == 'commandExecution']
-        assert commands, 'The model did not run the environment command'
-        output = '\n'.join(item.get('aggregatedOutput', '') for item in commands)
-        assert key not in output and 'OPENAI_API_KEY=' not in output.upper()
         copy = CodexOwnedThreads(conn).fork(proof.record().to_info(), 'Live fork', model='gpt-5-nano')
         before = dict(conn._totals[copy.native_id])
         runner.start(copy, 'Do not use tools. Reply with exactly forked.')
@@ -231,6 +258,33 @@ def test_paid_fork_and_tools_environment(native, tmp_path, key, monkeypatch):
         assert conn.ledger.totals().held == 0
     finally:
         conn.close()
+        assert_no_disk_key(tmp_path, key)
+
+
+@pytest.mark.skipif(not PAID, reason='Paid application Test Key check is opt-in')
+def test_paid_application_key_test(native, tmp_path, key, monkeypatch):
+    from thechatplace.providers.codex_api import OpenAiKeyTestRunner
+    monkeypatch.setattr(platform_paths, 'codex_api_home', lambda: tmp_path / 'codex-api')
+    ledger = spend_ledger.SpendLedger(tmp_path / 'billing', defaults=spend_ledger.Limits(5, .5))
+    results = []
+    def factory(**kwargs):
+        return CodexApiConnection(native, home=tmp_path / 'codex-api', key_loader=lambda: key, **kwargs)
+    runner = OpenAiKeyTestRunner(results.append, ledger=ledger, connection_factory=factory)
+    try:
+        runner.start()
+        wait(lambda: results, timeout=90)
+        event = results[-1]
+        if 'usage limit' in event.text.lower():
+            pytest.exit('USAGE LIMIT', returncode=2)
+        assert event.kind == 'finished' and not event.is_error
+        assert event.data['cost_words'].startswith('estimated ')
+        assert 0 < event.data['cost_usd'] < .01 and ledger.totals().held == 0
+        print(json.dumps({'application_key_test_estimated_usd': event.data['cost_usd']}))
+    finally:
+        runner.cancel()
+        conn = runner._connection
+        if conn:
+            conn.close()
         assert_no_disk_key(tmp_path, key)
 
 

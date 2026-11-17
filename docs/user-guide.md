@@ -28,7 +28,8 @@ You need:
 
 - Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
   new as Ubuntu 24.04, Debian 13 or Fedora 40, with Orca for speech.
-- For Codex chats: a native Codex CLI signed in to ChatGPT. Codex chats are listed once Codex is
+- For Codex chats: a native Codex CLI and either a ChatGPT sign-in or an OpenAI API key
+  for chats on API credits. Codex chats are listed once Codex is
   found; Settings, Include Codex chats turns them off or on. Claude Code is not required.
 - For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
   `copilot login` to a GitHub account that has Copilot, and **Include GitHub Copilot CLI chats**
@@ -53,12 +54,13 @@ once to sign in:
 Or let The Chat Place do it: Tools, Sign In, Claude Code offers to install Claude Code when it
 can't find it, and to sign you in when it isn't signed in.
 
-The Chat Place never uses an API key. Reading chats costs nothing, because everything it reads
-is on your own computer. Each message you send, and the work the AI does to answer it, is a
-**turn**. Codex turns use your ChatGPT sign-in. In Claude chats started here, each turn is a
-Claude Code turn, which counts against your plan's monthly Agent SDK credit; past that credit,
-turns stop unless you've turned on extra usage, which is billed. Tools, Usage and Context
-(Ctrl+Shift+U) shows where you stand.
+Reading chats costs nothing, because everything the app reads is on your own computer. Each
+message you send, and the work the AI does to answer it, is a **turn**. Subscription Codex turns
+use your ChatGPT sign-in. Subscription Claude turns count against your plan's monthly Agent SDK
+credit; past that credit, turns stop unless you've turned on extra usage, which is billed.
+You can instead choose API credits for a new Claude or Codex chat and charge turns to that
+provider's key. Tools, Usage and Context (Ctrl+Shift+U) shows where you stand; API costs are
+estimated. See Chats on API credits for setup and limits.
 
 ### Installing
 
@@ -366,6 +368,34 @@ job.
 
 ### You want to use API credits instead of your plan
 
+For **Codex**, open **Tools, API Keys** (Alt+T, P), choose **Codex (OpenAI)** under
+**Provider** (Alt+P), paste your OpenAI key into the masked box, and choose **Add Key**.
+**Test Key** checks it with a small paid request. Each provider has its own limits and total:
+OpenAI starts at $5 overall and about $0.50 a message. **Save Limits**, **Reset Total** and
+**Release Held** apply to the provider selected here. Release Held asks first, because the
+released money may represent spending that could not be counted.
+
+In **New Session**, choose **Codex**, then **API credits** under **Charge to**. The subscription
+is the default and a chat's billing never changes. The app uses a separate Codex home and
+keeps your ChatGPT sign-in separate. **Continue on API Credits** makes a new chat with a text
+copy of the earlier conversation; that first message may cost more.
+
+Every OpenAI cost says **estimated**, using a price table dated November 17, 2026. Only priced
+models are offered. A missing model or service price stops the send. The row, title, messages,
+reply box and status bar say API credits; every paid send says **Sent on API credits to** the
+chat's name, even with announcements off. The first message in each chat per app run asks
+before sending. Usage and Context (Ctrl+Shift+U) and Properties (Alt+Enter) show estimated
+spending, or **cost not known** when usage is missing. A limit can be passed by one request.
+
+**Stop** counts reported usage and, when possible, adds a ceiling for one interrupted request:
+**estimated, at most**. Missing usage or a stream error can keep credit held. Release Held
+becomes available once that message is no longer running. A refused key releases the unused
+hold; replace it in API Keys and send again. Connected services, hosted search, automatic
+review, subagents, compaction, goals, Ask Aside and copies cut at an earlier turn are not
+available on OpenAI credits. Human approvals and full-history API copies are available.
+
+For **Claude**, the existing Anthropic API options work as follows.
+
 If you have prepaid credit on an Anthropic API key, a Claude chat can spend that instead of
 your Claude subscription.
 
@@ -390,7 +420,7 @@ Ask Aside answer says what it cost, and
 the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
 changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
 key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
-available on API credits, and Codex and Copilot chats can't use them yet. Older releases of
+available in Claude API chats. Copilot chats cannot use API credits. Older releases of
 The Chat Place don't list chats on API credits.
 
 ### You want several chats or agents working at once
@@ -1348,7 +1378,7 @@ The parts of this guide that describe each feature say the same.
 Codex chats are listed once The Chat Place finds a native Codex CLI: the Codex app's copy on
 Windows, the copy bundled with the ChatGPT app on a Mac, or the copy Codex's own installer keeps
 in your `.codex` folder. Existing chats are listed even when Codex isn't signed in; starting
-chats, sending and usage need the sign-in. Settings offers
+chats, sending and usage need the sign-in for subscription chats. API-credit chats use their separate OpenAI key. Settings offers
 **Include Codex chats (restart required)** to turn them off or on, and your choice is kept. If
 Codex isn't found, that option says to install the Codex app or CLI, then restart. Turning the
 option off and restarting hides Codex chats without deleting anything.
@@ -3387,11 +3417,12 @@ Codex app's copy, the copy in the ChatGPT app on a Mac, or a Codex CLI you insta
 Settings (Ctrl+Comma), check **Include Codex chats (restart required)** (Alt+X), save and
 restart. If Codex isn't found, that option says to install the Codex app or CLI, then restart.
 Existing chats are listed even when Codex isn't signed in; only starting chats, sending and
-usage need the sign-in.
+usage need the sign-in for subscription chats. API-credit chats use their separate OpenAI key.
 
 **I'm not sure Codex is signed in.** Choose Tools, Sign In, Codex. It says whether Codex is signed
 in to ChatGPT and, if it isn't or uses another kind of credential, offers to open `codex login`
-in its own window. Codex chats here are sent only with your ChatGPT sign-in.
+in its own window. This checks subscription chats. For API-credit chats, use Tools, API Keys,
+Codex (OpenAI), Test Key.
 
 **A Codex chat is read-only and can't edit its folder.** On Windows, Codex can edit a folder only
 after its Windows sandbox is set up: choose Set up Agent sandbox in the Codex app, or add

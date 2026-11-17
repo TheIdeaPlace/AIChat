@@ -194,6 +194,9 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
     # Nor a real API key (#658): named secrets in memory too.
     named = {}
+    from thechatplace import spend_ledger
+    patch(spend_ledger, '_DEFAULT', None)
+    patch(spend_ledger, '_OPENAI_DEFAULT', None)
     patch(platform_paths, "secrets_available", lambda: True)
     patch(platform_paths, "has_secret", lambda name: name in named)
     patch(platform_paths, "load_secret", lambda name: named.get(name))

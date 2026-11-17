@@ -52,11 +52,14 @@ class CodexApiConnection(CodexExecutionConnection):
     METHODS = CodexExecutionConnection.METHODS | {'account/login/start'}
 
     def __init__(self, executable=None, *, ledger=None, on_event=lambda e: None,
-                 key_loader=None, home=None, **kwargs):
+                 key_loader=None, home=None, purpose='turn', **kwargs):
         self.ledger = ledger if ledger is not None else default_ledger('openai')
+        self._has_custom_key = key_loader is not None
         self._api_event = on_event
+        self._purpose = purpose
         self._key_loader = key_loader or (lambda: platform_paths.load_secret(platform_paths.OPENAI_API_KEY_SECRET))
         self._api_logged_in = False
+        self._credential_generation = None
         self._payments_lock = threading.RLock()
         self._payments = {}
         self._api_draining = False
@@ -78,18 +81,26 @@ class CodexApiConnection(CodexExecutionConnection):
             config = self.request('config/read', {'includeLayers': False}).get('config')
             if not config_matches(self, config):
                 raise CodexRpcError('Codex could not verify ephemeral OpenAI API settings.')
-            key = self._key_loader()
-            if not isinstance(key, str) or not key.strip():
-                raise CodexRpcError('Add an OpenAI API key in Tools, API Keys before sending.')
-            # Neither key nor login request is retained on this object.
-            result = super()._request('account/login/start', {'type': 'apiKey', 'apiKey': key.strip()})
-            del key
-            if result.get('type') != 'apiKey' or not account_matches(self, self.request('account/read', {})):
-                raise CodexRpcError('Codex could not confirm OpenAI API-key sign-in.')
-            self._api_logged_in = True
+            from ..openai_billing import credentials_lock
+            with credentials_lock:
+                self._login_api()
         except Exception:
             self.close()
             raise CodexRpcError('OpenAI API-key sign-in could not be verified. Nothing was sent.') from None
+
+    def _login_api(self):
+        from ..openai_billing import key_generation
+        key = self._key_loader()
+        if not isinstance(key, str) or not key.strip():
+            self._api_logged_in = False
+            raise ApiCreditsRefused('Add an OpenAI API key in Tools, API Keys before sending. Nothing was sent.')
+        result = super()._request('account/login/start', {'type': 'apiKey', 'apiKey': key.strip()})
+        del key
+        if result.get('type') != 'apiKey' or not account_matches(self, self.request('account/read', {})):
+            self._api_logged_in = False
+            raise CodexRpcError('Codex could not confirm OpenAI API-key sign-in.')
+        self._api_logged_in = True
+        self._credential_generation = key_generation()
 
     @staticmethod
     def _valid_counters(value):
@@ -98,6 +109,19 @@ class CodexApiConnection(CodexExecutionConnection):
                 and value['cachedInputTokens'] <= value['inputTokens']
                 and value['reasoningOutputTokens'] <= value['outputTokens']
                 and value.get('cacheWriteInputTokens', 0) == 0)
+
+    def accept_key_test(self, proof):
+        # Like the separate aside executor, but only for a tiny paid key test.
+        # Ordinary ephemeral permission probes remain non-executable.
+        if (self._purpose != 'test' or proof.connection is not self or not proof.ephemeral
+                or proof.model != 'gpt-5-nano' or proof.allowed_tools
+                or proof.policy.sandbox != 'read-only' or proof.policy.approval != 'never'
+                or proof.policy.reviewer != 'user'):
+            raise CodexRpcError('Invalid OpenAI key test configuration')
+        with self._runtime_lock:
+            if self._runtime_threads:
+                raise CodexRpcError('An OpenAI key test can only run once per process')
+            self._runtime_threads[proof.native_id] = proof
 
     def _emit_api(self, kind, tid, **data):
         from ..claude_cli import TurnEvent
@@ -122,6 +146,17 @@ class CodexApiConnection(CodexExecutionConnection):
         return super().request(method, params)
 
     def _request(self, method, params, on_sent=None, on_written=None):
+        if method in ('turn/start', 'turn/steer'):
+            from ..openai_billing import credentials_lock, key_generation
+            # Serialize key changes with preflight and the actual paid write,
+            # including automatically advanced queued messages.
+            with credentials_lock:
+                if self._credential_generation != key_generation():
+                    self._login_api()
+                return self._request_api(method, params, on_sent, on_written)
+        return self._request_api(method, params, on_sent, on_written)
+
+    def _request_api(self, method, params, on_sent=None, on_written=None):
         if method == 'account/login/start':
             raise CodexRpcError('Only the API backend may supply its credential.')
         params = dict(params)
@@ -203,7 +238,7 @@ class CodexApiConnection(CodexExecutionConnection):
             if self._api_draining:
                 raise ApiCreditsRefused('The API connection is stopping. Send again after it closes. Nothing was sent.')
             try:
-                reservation = self.ledger.reserve('codex-api:' + tid)
+                reservation = self.ledger.reserve('codex-api:' + tid, purpose=self._purpose)
             except SpendRefused as error:
                 raise ApiCreditsRefused(str(error)) from None
             # Invalidate the durable baseline BEFORE a possible paid write.
@@ -324,6 +359,8 @@ class CodexApiConnection(CodexExecutionConnection):
                         except ValueError:
                             payment.uncertain = True
                             payment.inconsistent = True
+                    if payment.cost >= payment.reservation.amount and not payment.stopping:
+                        self._emit_api('api_error', tid, failure='message_limit', limit=payment.reservation.amount)
                     if payment.cost >= payment.reservation.amount or payment.uncertain:
                         self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'model/rerouted':
@@ -392,6 +429,7 @@ class CodexApiConnection(CodexExecutionConnection):
             if not payment.reported:
                 payment.reported = True
                 self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.usage else None,
+                    outcome=payment.terminal,
                     cost_complete=complete, cost_upper_bound=upper_bound, price_date=PRICE_DATE,
                     cost_words=self._cost_words(payment, complete, upper_bound))
             if not keep and self._payments and all(p.timed_out for p in self._payments.values()):
@@ -457,6 +495,7 @@ class CodexApiProvider(CodexProvider):
         runtime.permission_store = CodexPermissionStore(permissions)
         runtime.review_store = CodexReviewStore(permissions)
         connection = ManagedCodexConnection(executable, factory=factory)
+        self._has_custom_key = key_loader is not None
         self.ledger = ledger if ledger is not None else default_ledger('openai')
         super().__init__(connection, runtime=runtime)
 
@@ -464,25 +503,104 @@ class CodexApiProvider(CodexProvider):
         from dataclasses import replace
         # Side questions still use the subscription-only aside runner. Never
         # advertise that path for API chats until it has paid accounting.
-        return replace(super().capabilities(session), aside=False)
+        return replace(super().capabilities(session), aside=False, branch=False, rewind_files=False)
 
     def create_owned(self, cwd, title, *, model='gpt-5-nano', **kwargs):
         return super().create_owned(cwd, title, model=model, **kwargs)
 
     def collect(self):
         from dataclasses import replace
+        from ..openai_billing import has_api_key
+        from .base import Snapshot
+        if not self._has_custom_key and not has_api_key():
+            return Snapshot()
         snapshot = super().collect()
-        snapshot.sessions = [replace(info, provider=self.provider_id,
+        snapshot.sessions = [replace(info, provider=self.provider_id, provider_label='Codex',
             key=f'{self.provider_id}:{info.cli_session_id}', api_credits=True) for info in snapshot.sessions]
         return snapshot
+
+    def model_choices(self):
+        from ..openai_prices import model_choices
+        return model_choices()
 
     def usage_lines(self, session):
         self._check(session)
         totals = self.ledger.totals()
+        from ..openai_billing import chat_cost_words
         return [f'OpenAI API credits: estimated spending ${totals.spent:.6f} of ${totals.limits.overall:.2f}.',
+                f'This chat: {chat_cost_words(self.ledger, session.key)}. Prices dated {PRICE_DATE}.',
                 f'Held ${totals.held:.2f}; estimated remaining ${totals.left:.6f}.',
                 'Limits are approximate; one request can pass a limit.']
 
     def usage_warnings(self, session):
         self._check(session)
         return []
+
+
+class OpenAiKeyTestRunner:
+    """One tiny, cancellable test through the normal API backend; no wx."""
+    def __init__(self, on_event, *, ledger=None, connection_factory=CodexApiConnection):
+        self.on_event, self.ledger = on_event, ledger
+        self.factory = connection_factory
+        self._cancelled = threading.Event()
+        self._connection = None
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def cancel(self):
+        self._cancelled.set()
+        conn = self._connection
+        if conn is not None:
+            def close():
+                try:
+                    conn.close()
+                except CodexRpcError:
+                    pass
+            threading.Thread(target=close, daemon=True).start()
+
+    def _run(self):
+        from dataclasses import replace
+        from ..claude_cli import TurnEvent
+        from .codex_owned import CodexOwnedThreads
+        from .codex_execution import CodexTurnExecutor
+        from ..codex_diagnostics import safe_reason
+        done = threading.Event()
+        result = []
+        failures = []
+        def observe(event):
+            if event.kind == 'api_error':
+                failures.append((event.data or {}).get('failure'))
+            if event.kind == 'finished':
+                result.append(event)
+                done.set()
+        try:
+            conn = self.factory(ledger=self.ledger, on_event=observe, purpose='test')
+            self._connection = conn
+            if self._cancelled.is_set():
+                return
+            proof = CodexOwnedThreads(conn).start(str(platform_paths.codex_api_home()), 'Test OpenAI key',
+                ephemeral=True, model='gpt-5-nano', effort='low', approval_policy='never')
+            conn.accept_key_test(proof)
+            runner = CodexTurnExecutor(conn)
+            runner.start(proof, 'Do not use tools. Reply with exactly OK.')
+            while not done.wait(.05):
+                if self._cancelled.is_set():
+                    return
+                runner.drain()
+            if not self._cancelled.is_set():
+                event = result[-1]
+                failed = bool(failures) or event.data.get('outcome') != 'completed'
+                words = ('OpenAI refused your key. Replace it and test again.' if 'key_refused' in failures
+                         else 'OpenAI reported a usage limit.' if 'usage_limit' in failures
+                         else 'The OpenAI key test did not complete.' if failed else '')
+                self.on_event(replace(event, is_error=failed, text=words))
+        except Exception as error:
+            if not self._cancelled.is_set():
+                self.on_event(TurnEvent('failed', text=safe_reason(error) or 'Could not complete the OpenAI key test.', is_error=True))
+        finally:
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except CodexRpcError:
+                    pass

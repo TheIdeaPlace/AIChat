@@ -500,3 +500,86 @@ def test_immediate_resend_rechecks_draining_after_previous_settlement(connect, t
         conn.request('turn/start', {'threadId': second.native_id, 'model': 'gpt-5-nano'})
     assert closed.wait(2)
     monkeypatch.setattr(conn, 'close', original_close)
+
+
+def test_key_replacement_reauthenticates_existing_connection_and_removal_blocks_send(connect, tmp_path, monkeypatch):
+    kept = {}
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    monkeypatch.setattr(platform_paths, 'save_secret', lambda name, key: kept.update({name: key}))
+    monkeypatch.setattr(platform_paths, 'delete_secret', lambda name: kept.pop(name, None))
+    openai_billing.save_api_key(FAKE)
+    conn, events = connect()
+    loaded = []
+    def key_loader():
+        key = kept.get(platform_paths.OPENAI_API_KEY_SECRET)
+        loaded.append(key)
+        return key
+    conn._key_loader = key_loader
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Changed key', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'First')
+    wait(lambda: len([e for e in events if e.kind == 'finished']) == 1)
+    runner.drain()
+    other = 'sk-proj-' + '2' * 30
+    openai_billing.save_api_key(other)
+    runner.start(proof, 'Replacement key')
+    wait(lambda: len([e for e in events if e.kind == 'finished']) == 2)
+    runner.drain()
+    assert loaded == [other]
+    openai_billing.remove_api_key()
+    with pytest.raises(ApiCreditsRefused, match='Add an OpenAI API key'):
+        runner.start(proof, 'Must not send with a removed key')
+    assert len([e for e in events if e.kind == 'api_sent']) == 2
+    assert conn.ledger.totals().held == 0
+
+
+def test_api_model_change_uses_priced_catalog_when_native_catalog_is_empty(connect, tmp_path):
+    from thechatplace.providers.codex_runtime import CodexChatRuntime
+    conn, _ = connect()
+    runtime = CodexChatRuntime(factory=lambda exe: conn)
+    runtime.provider_id = 'codex-api'
+    try:
+        record = runtime.create(str(tmp_path), 'Priced models', model='gpt-5-nano')
+        change = runtime.prepare_settings(record, 'gpt-5.4-nano', None)
+        assert change.record().provider_options['model'] == 'gpt-5.4-nano'
+    finally:
+        runtime.close()
+
+
+def test_unknown_and_known_chat_cost_words_use_reservations(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits(5, .5))
+    chat = 'codex-api:unknown'
+    held = ledger.reserve(chat)
+    ledger.close(held, complete=False)
+    assert openai_billing.chat_cost_words(ledger, chat) == 'cost not known'
+    ledger.settle(held, .06)
+    assert openai_billing.chat_cost_words(ledger, chat) == 'estimated at least 6 cents'
+    ledger.close(held, complete=True)
+    assert openai_billing.chat_cost_words(ledger, chat) == 'estimated 6 cents'
+
+
+def test_key_test_runs_normal_backend_and_counts_its_estimated_cost(connect, tmp_path, monkeypatch):
+    from thechatplace.providers.codex_api import OpenAiKeyTestRunner
+    monkeypatch.setattr(platform_paths, 'codex_api_home', lambda: tmp_path)
+    conn, _ = connect()
+    results = []
+    def factory(**kwargs):
+        conn._api_event = kwargs['on_event']
+        conn._purpose = kwargs['purpose']
+        return conn
+    runner = OpenAiKeyTestRunner(results.append, ledger=conn.ledger, connection_factory=factory)
+    runner.start()
+    wait(lambda: results)
+    assert results[-1].kind == 'finished' and not results[-1].is_error, results[-1].text
+    assert results[-1].data['cost_words'].startswith('estimated ')
+    assert conn.ledger.totals().spent > 0 and conn.ledger.totals().held == 0
+    assert '"purpose":"test"' in conn.ledger.path.read_text()
+
+
+def test_ephemeral_permission_probe_cannot_become_a_normal_paid_chat(connect, tmp_path):
+    conn, _ = connect()
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Probe', ephemeral=True,
+        model='gpt-5-nano', approval_policy='never')
+    with pytest.raises(CodexRpcError, match='key test configuration'):
+        conn.accept_key_test(proof)
+    assert not conn.owns_runtime(proof)

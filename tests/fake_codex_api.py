@@ -49,6 +49,7 @@ for line in sys.stdin:
         thread = {'id': tid, 'createdAt': 100, 'cwd': params['cwd'], 'modelProvider': 'openai',
                   'ephemeral': params.get('ephemeral', False), 'status': {'type': 'idle'}}
         result = {'thread': thread, 'cwd': params['cwd'], 'model': threads[tid]['model'],
+                  'reasoningEffort': params.get('config', {}).get('model_reasoning_effort'),
                   'modelProvider': 'openai', 'serviceTier': None, 'approvalPolicy': params['approvalPolicy'],
                   'approvalsReviewer': 'user', 'sandbox': {'type': 'readOnly'}}
     elif method == 'thread/read':
@@ -67,7 +68,7 @@ for line in sys.stdin:
         emit({'id': msg['id'], 'result': {'turn': {'id': turn, 'status': 'inProgress'}}})
         event('turn/started', {'threadId': tid, 'turn': {'id': turn, 'status': 'inProgress'}})
         if scenario in ('401', 'unauthorized') and t['count'] == 1:
-            info = {'httpConnectionFailed': {'httpStatusCode': 401}} if scenario == '401' else 'unauthorized'
+            info = {'responseStreamDisconnected': {'httpStatusCode': 401}} if scenario == '401' else 'unauthorized'
             event('error', {'threadId': tid, 'turnId': turn, 'willRetry': False,
                             'error': {'codexErrorInfo': info}})
             t['status'] = 'idle'

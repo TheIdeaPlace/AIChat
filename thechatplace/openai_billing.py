@@ -2,6 +2,14 @@
 from . import platform_paths
 from . import billing
 import re
+import threading
+
+credentials_lock = threading.RLock()
+_generation = 0
+
+
+def key_generation():
+    return _generation
 
 KEY_PREFIX = 'sk-'
 CONSOLE_BILLING_URL = 'https://platform.openai.com/settings/organization/billing/overview'
@@ -16,8 +24,11 @@ def _info_path():
 
 
 def save_api_key(key):
-    billing.save_named_api_key(key, platform_paths.OPENAI_API_KEY_SECRET, _info_path(),
-                              looks_like_key, 'OpenAI', KEY_PREFIX)
+    global _generation
+    with credentials_lock:
+        billing.save_named_api_key(key, platform_paths.OPENAI_API_KEY_SECRET, _info_path(),
+                                  looks_like_key, 'OpenAI', KEY_PREFIX)
+        _generation += 1
 
 
 def api_key_status(now=None):
@@ -30,8 +41,17 @@ def has_api_key():
 
 
 def remove_api_key():
-    platform_paths.delete_secret(platform_paths.OPENAI_API_KEY_SECRET)
-    try:
-        _info_path().unlink(missing_ok=True)
-    except OSError:
-        pass
+    global _generation
+    with credentials_lock:
+        platform_paths.delete_secret(platform_paths.OPENAI_API_KEY_SECRET)
+        _generation += 1
+        try:
+            _info_path().unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def chat_cost_words(ledger, chat_id):
+    cost, held, unknown = ledger.chat_cost(chat_id)
+    words = billing.cost_words(cost if cost or not unknown else None, complete=not unknown)
+    return words if words == billing.COST_NOT_KNOWN else 'estimated ' + words

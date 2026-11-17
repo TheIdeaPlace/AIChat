@@ -88,6 +88,57 @@ def written(frame, session_id="api-1", title="Paid", kind="prompt"):
 SENT_PAID = "Sent on API credits to Paid."
 
 
+def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.openai_prices import SOURCES
+    dialog = NewSessionDialog(frame, folder, providers=('claude', 'codex'), provider='codex', openai_key=True)
+    try:
+        assert dialog.charge.IsShown() and dialog.billing() == 'subscription'
+        assert dialog.charge.GetString(0) == 'ChatGPT subscription'
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert dialog.billing() == 'api'
+        assert dialog.model.GetStrings() == list(SOURCES)
+        assert dialog.values()[-1] == 'gpt-5-nano'
+        assert dialog.mode.GetCount() == 2
+        assert 'estimated' in dialog.note.GetValue()
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        assert dialog.billing() == 'subscription' and not dialog.charge.IsShown()
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_api_confirmation_and_sent_event_use_own_identity(frame, folder, monkeypatch, env):
+    record = OwnSession('openai-1', 'OpenAI paid', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    calls = []
+    monkeypatch.setattr(frame, '_confirm_api_send', lambda title, provider: calls.append((title, provider)) or True)
+    key = record.to_info().key
+    assert frame._api_send_problem(key) is None
+    assert calls == [('OpenAI paid', 'codex-api')]
+    assert key not in frame._api_confirmed
+    frame._on_codex_api_event(TurnEvent('api_sent', session_id=record.cli_session_id, data={'billing': 'api'}))
+    assert key in frame._api_confirmed
+    assert frame._api_send_problem(key) is None and len(calls) == 1
+
+
+def test_codex_api_unknown_cost_is_not_zero_in_status_and_properties(frame, folder):
+    from thechatplace import properties, openai_billing
+    record = OwnSession('unknown-openai', 'Unknown cost', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    key = record.to_info().key
+    ledger = spend_ledger.default_ledger('openai')
+    reservation = ledger.reserve(key)
+    ledger.close(reservation, complete=False)
+    assert 'this chat cost not known' in frame._api_spend_line(key)
+    words = openai_billing.chat_cost_words(ledger, key)
+    lines = properties.session_properties(record.to_info(), own=record, api_cost=words)
+    assert 'Spending on API credits by this chat: cost not known' in lines
+    assert frame._is_api_chat(record.to_info())
+
+
 def sent_said(said):
     """What was said of a message going on API credits into Paid: its
     read-back with "on API credits" in it, or the notice alone (#663)."""

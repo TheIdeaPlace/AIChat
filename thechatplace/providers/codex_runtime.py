@@ -478,7 +478,13 @@ class CodexChatRuntime:
                 # A null effective effort means the model default, not the
                 # old loaded thread's explicit override. Pin the catalog value.
                 from .codex_models import read_models
-                choice = next((m for m in read_models(connection) if m.model == checked.model), None)
+                from .codex_billing import is_api
+                if is_api(connection):
+                    from ..openai_prices import model_choices
+                    models = model_choices()
+                else:
+                    models = read_models(connection)
+                choice = next((m for m in models if m.model == checked.model), None)
                 if choice is None:
                     raise CodexRpcError('Codex model effort could not be verified')
                 checked = replace(checked, effort=choice.default_effort)

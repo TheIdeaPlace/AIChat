@@ -569,3 +569,92 @@ def test_enter_in_a_limit_box_saves_the_limits(dialog, ledger, monkeypatch):
 def test_billing_page_opens_the_console(dialog, env):
     dialog.on_billing_page()
     assert env["opened"] == [billing.CONSOLE_BILLING_URL]
+
+
+def test_openai_has_separate_key_limits_total_and_release(parent, env, monkeypatch):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    claude = spend_ledger.SpendLedger(env['tmp'] / 'claude')
+    openai = spend_ledger.SpendLedger(env['tmp'] / 'openai', defaults=spend_ledger.Limits(5, .5))
+    held = openai.reserve('codex-api:test')
+    openai.close(held, complete=False)
+    window = ApiKeysDialog(parent, ledger=claude, openai_ledger=openai)
+    try:
+        window.provider_choice.SetSelection(1)
+        assert window.on_provider()
+        assert window.status.GetValue() == 'OpenAI: No key'
+        assert window.key_box.GetName() == 'OpenAI API key'
+        assert window.overall.GetValue() == '5.00' and window.per_message.GetValue() == '0.50'
+        assert 'Estimated' in window.totals.GetValue() and window.release_btn.IsEnabled()
+        window.key_box.SetValue('sk-proj-' + '0' * 30)
+        assert window.on_add() and window.key_box.GetValue() == ''
+        assert fake_env.pump(lambda: not window._key_change_pending)
+        assert openai_billing.has_api_key() and not billing.has_api_key()
+        monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.YES)
+        assert window.on_release_held() and openai.totals().held == 0
+        window.on_billing_page()
+        assert env['opened'][-1] == openai_billing.CONSOLE_BILLING_URL
+        window.provider_choice.SetSelection(0)
+        assert window.on_provider()
+        assert window.overall.GetValue() == '190.00' and window.status.GetValue() == 'Claude: No key'
+    finally:
+        window.Destroy()
+
+
+def test_provider_switch_cancel_preserves_limits_and_clears_no_secret(dialog, monkeypatch):
+    dialog.overall.SetValue('12')
+    monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.CANCEL)
+    dialog.provider_choice.SetSelection(1)
+    assert not dialog.on_provider()
+    assert dialog.provider_choice.GetSelection() == 0 and dialog.overall.GetValue() == '12'
+
+
+def test_openai_test_result_is_estimated_and_late_event_is_ignored(parent, env):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    openai_billing.save_api_key('sk-proj-' + '0' * 30)
+    made = []
+    class Runner:
+        def __init__(self, done, **kwargs):
+            self.done, self.cancelled = done, False
+            made.append(self)
+        def start(self):
+            pass
+        def cancel(self):
+            self.cancelled = True
+    window = ApiKeysDialog(parent, openai_runner_factory=Runner)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        assert window.on_test() and window.testing
+        token = window._test_token
+        window._test_done(token, TurnEvent('finished', data={'cost_usd': .00001, 'cost_words': 'estimated less than a cent'}))
+        assert window.result.GetValue() == 'Your key works. That test cost estimated less than a cent.'
+        assert window.on_test()
+        token = window._test_token
+        window.provider_choice.SetSelection(0)
+        window.on_provider()
+        assert made[-1].cancelled
+        before = window.result.GetValue()
+        window._test_done(token, TurnEvent('failed', text='late failure'))
+        assert window.result.GetValue() == before
+    finally:
+        window.Destroy()
+
+
+def test_openai_key_save_does_not_wait_on_the_ui_thread(parent, env):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    window = ApiKeysDialog(parent)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        with openai_billing.credentials_lock:
+            window.key_box.SetValue('sk-proj-' + '0' * 30)
+            assert window.on_add()
+            assert window._key_change_pending and not window.provider_choice.IsEnabled()
+            assert not openai_billing.has_api_key()
+        assert fake_env.pump(lambda: not window._key_change_pending)
+        assert openai_billing.has_api_key()
+    finally:
+        window.Destroy()

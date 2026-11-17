@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import math
 import os
+import threading
 from typing import Callable, Optional
 
 import wx
 
-from .. import billing, claude_cli, platform_paths, spend_ledger
+from .. import billing, claude_cli, platform_paths, spend_ledger, openai_billing
 from .a11y import set_accessible_name
 from .dialogs import _fit_width, _read_only_text, press_focused_button_on_a_mac
 from .sizes import dialog_size, dip
@@ -113,11 +114,17 @@ class ApiKeysDialog(wx.Dialog):
     ``runner_factory`` are there for the tests and the visual probe."""
 
     def __init__(self, parent, speak: Optional[Callable[[str], None]] = None, ledger=None,
-                 find_claude=None, runner_factory=None):
+                 find_claude=None, runner_factory=None, openai_ledger=None,
+                 openai_runner_factory=None):
         super().__init__(parent, title=TITLE, size=dialog_size(parent, 600, 680),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._speak = speak or (lambda text: None)
         self._ledger = ledger if ledger is not None else spend_ledger.default_ledger()
+        self._ledgers = (self._ledger, openai_ledger if openai_ledger is not None else spend_ledger.default_ledger('openai'))
+        self._provider_index = 0
+        self._key_change_pending = False
+        self._keys = billing
+        self._openai_runner_factory = openai_runner_factory
         self._find_claude = find_claude or platform_paths.find_claude
         self._runner_factory = runner_factory or claude_cli.TurnRunner
         #: The running Test Key turn, and the token its events must carry to
@@ -126,15 +133,22 @@ class ApiKeysDialog(wx.Dialog):
         self._runner = None
         self._test_token = None
         sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label='&Provider:'), 0, wx.LEFT | wx.TOP, 8)
+        self.provider_choice = wx.Choice(self, choices=['Claude (Anthropic)', 'Codex (OpenAI)'])
+        self.provider_choice.SetSelection(0)
+        set_accessible_name(self.provider_choice, 'Provider')
+        sizer.Add(self.provider_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self.provider_choice.Bind(wx.EVT_CHOICE, lambda e: self.on_provider())
 
         # What's kept, never the key: read-only text in the Tab order before
         # the key box, so it can be reached and read again by line.
         sizer.Add(wx.StaticText(self, label="Key status:"), 0, wx.LEFT | wx.TOP, 8)
-        self.status = _read_only_text(self, billing.api_key_status(), "Key status",
+        self.status = _read_only_text(self, self._keys.api_key_status(), "Key status",
                                       min_height=30)
         sizer.Add(self.status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
-        sizer.Add(wx.StaticText(self, label="Claude API &key:"), 0, wx.LEFT | wx.TOP, 8)
+        self.key_label = wx.StaticText(self, label="Claude API &key:")
+        sizer.Add(self.key_label, 0, wx.LEFT | wx.TOP, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
         # Masked, and emptied after every Add, so the key isn't left on screen.
         self.key_box = wx.TextCtrl(self, style=wx.TE_PASSWORD)
@@ -233,19 +247,51 @@ class ApiKeysDialog(wx.Dialog):
 
     def _sync(self):
         """The key status and the buttons, from whether a key is kept."""
-        has = billing.has_api_key()
-        _set_read_only(self.status, billing.api_key_status())
+        has = self._keys.has_api_key()
+        _set_read_only(self.status, self._keys.api_key_status())
         self.add_btn.SetLabel(REPLACE_LABEL if has else ADD_LABEL)
-        self.test_btn.Enable(has and self._runner is None)
-        self.remove_btn.Enable(has)
+        self.test_btn.Enable(has and self._runner is None and not self._key_change_pending)
+        self.remove_btn.Enable(has and not self._key_change_pending)
+        self.add_btn.Enable(not self._key_change_pending)
+        self.provider_choice.Enable(not self._key_change_pending)
         self.Layout()
 
     def _show_totals(self):
         """The total, and Release Held: on only while something is held that
         no running message holds."""
         totals = self._ledger.totals()
-        _set_read_only(self.totals, totals_text(totals))
+        _set_read_only(self.totals, ('Estimated OpenAI costs. ' if self._provider_index else '') + totals_text(totals))
         self.release_btn.Enable(totals.releasable > RELEASABLE_MIN)
+
+    def on_provider(self):
+        index = self.provider_choice.GetSelection()
+        if self._key_change_pending:
+            self.provider_choice.SetSelection(self._provider_index)
+            return False
+        if index == self._provider_index:
+            return True
+        if self.limits_edited():
+            answer = wx.MessageBox(SAVE_LIMITS_QUESTION, TITLE, wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION, self)
+            if answer == wx.CANCEL or (answer == wx.YES and not self.on_save_limits()):
+                self.provider_choice.SetSelection(self._provider_index)
+                return False
+        self._stop_test()
+        self.key_box.SetValue('')
+        self._provider_index = index
+        self._keys = (billing, openai_billing)[index]
+        self._ledger = self._ledgers[index]
+        name = 'OpenAI' if index else 'Claude'
+        self.key_label.SetLabel(name + ' API &key:')
+        set_accessible_name(self.key_box, name + ' API key')
+        limits = self._ledger.limits()
+        self._shown_limits = (limits.overall, limits.per_message)
+        self.overall.ChangeValue(limit_text(limits.overall))
+        self.per_message.ChangeValue(limit_text(limits.per_message))
+        self.result.SetValue(TEST_INTRO)
+        self.about.SetValue(ABOUT_SPENDING.replace('Anthropic', 'OpenAI') if index else ABOUT_SPENDING)
+        self._refresh()
+        self._speak(name + ': separate key, spending limits and total.' + (' Costs are estimated.' if index else ''))
+        return True
 
     def _refresh(self):
         """Everything shown, after anything that may change it."""
@@ -265,22 +311,28 @@ class ApiKeysDialog(wx.Dialog):
     def on_add(self) -> bool:
         """Keep the key in the box. The box is emptied whatever happens, so
         a key never stays in it. True if it was kept."""
+        if self._key_change_pending:
+            return False
         typed = self.key_box.GetValue()
         self.key_box.SetValue("")
         if not typed.strip():
-            self._tell(NO_KEY_TYPED, wx.ICON_INFORMATION)
+            self._tell('Paste your OpenAI API key in the OpenAI API key box first.' if self._provider_index else NO_KEY_TYPED, wx.ICON_INFORMATION)
             self.key_box.SetFocus()
             return False
-        if not billing.looks_like_key(typed):
-            self._tell(NOT_A_KEY)
+        if not self._keys.looks_like_key(typed):
+            self._tell('That is not an OpenAI API key. Copy the full key starting with sk-.' if self._provider_index else NOT_A_KEY)
             self.key_box.SetFocus()
             return False
         if not platform_paths.secrets_available():
             self._tell(CANT_PROTECT)
             self.key_box.SetFocus()
             return False
+        if self._provider_index:
+            save = self._keys.save_api_key
+            self._change_openai_key(lambda: save(typed), 'Key saved.')
+            return True
         try:
-            billing.save_api_key(typed)
+            self._keys.save_api_key(typed)
         except (OSError, ValueError) as exc:
             self._tell(f"The Chat Place couldn't keep the key: {billing.scrub(str(exc))}")
             self.key_box.SetFocus()
@@ -290,13 +342,19 @@ class ApiKeysDialog(wx.Dialog):
         return True
 
     def on_remove(self) -> bool:
-        if not billing.has_api_key():
+        if self._key_change_pending:
+            return False
+        if not self._keys.has_api_key():
             self._sync()
             return False
-        if not self._ask(REMOVE_QUESTION):
+        if not self._ask(REMOVE_QUESTION.replace('Claude', 'OpenAI') if self._provider_index else REMOVE_QUESTION):
             self.remove_btn.SetFocus()
             return False
-        billing.remove_api_key()
+        if self._provider_index:
+            self.key_box.SetFocus()
+            self._change_openai_key(self._keys.remove_api_key, 'Key removed.')
+            return True
+        self._keys.remove_api_key()
         # Focus first: Remove is about to be turned off, and a control
         # turned off with the focus on it leaves the focus nowhere.
         self.key_box.SetFocus()
@@ -304,10 +362,44 @@ class ApiKeysDialog(wx.Dialog):
         self._speak("Key removed.")
         return True
 
+    def _change_openai_key(self, action, success):
+        # A paid request serializes its final write with key mutations. Never
+        # wait for that mutex (or the system key store) on the UI thread.
+        self._key_change_pending = True
+        self._sync()
+        self.result.SetValue('Updating the OpenAI key. Please wait...')
+        def done(problem):
+            if not self or self.IsBeingDeleted():
+                return
+            self._key_change_pending = False
+            self._refresh()
+            self._show_result(problem or success)
+        def change():
+            problem = ''
+            try:
+                action()
+            except Exception as error:
+                problem = 'The OpenAI key could not be updated: ' + billing.scrub(str(error))
+            wx.CallAfter(done, problem)
+        threading.Thread(target=change, daemon=True).start()
+
     def on_test(self) -> bool:
         """Start Test Key. True if a test started."""
-        if self._runner is not None or not billing.has_api_key():
+        if self._runner is not None or self._key_change_pending or not self._keys.has_api_key():
             return False
+        if self._provider_index:
+            from ..providers.codex_api import OpenAiKeyTestRunner
+            token = object()
+            def completed(event):
+                wx.CallAfter(self._test_done, token, event)
+            factory = self._openai_runner_factory or OpenAiKeyTestRunner
+            self._runner = factory(completed, ledger=self._ledger)
+            self._test_token = token
+            self.result.SetValue(TESTING)
+            self.result.SetFocus()
+            self.test_btn.Disable()
+            self._runner.start()
+            return True
         lookup = self._find_claude()
         if not lookup.path:
             self._show_result(lookup.problem or "Claude Code wasn't found.")
@@ -346,7 +438,8 @@ class ApiKeysDialog(wx.Dialog):
         self._runner = self._test_token = None
         if event.kind == "finished" and not event.is_error:
             cost = (event.data or {}).get("cost_usd")
-            text = f"Your key works. That test cost {billing.money(cost)}."
+            words = (event.data or {}).get('cost_words', 'cost not known') if self._provider_index else billing.money(cost)
+            text = f"Your key works. That test cost {words}."
         else:
             text = billing.scrub(event.text) or NO_RESULT_WORDS
         self._refresh()
@@ -445,7 +538,7 @@ class ApiKeysDialog(wx.Dialog):
         return bool(released)
 
     def on_billing_page(self):
-        platform_paths.open_url(billing.CONSOLE_BILLING_URL)
+        platform_paths.open_url(self._keys.CONSOLE_BILLING_URL)
 
     # -- closing --------------------------------------------------------------------
 

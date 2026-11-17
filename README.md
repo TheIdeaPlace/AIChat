@@ -463,12 +463,45 @@ too).
 
 ### Chats on API credits
 
-A Claude chat can be charged to an Anthropic API key (prepaid API credits) instead of your
-Claude subscription. Nothing changes until you add a key and choose API credits for a chat;
-every new chat still starts on the subscription. Codex and Copilot chats can't use API credits
-yet.
+Claude chats can use an Anthropic API key and Codex chats can use an OpenAI API key
+instead of the corresponding subscription. Nothing changes until you add a key and choose
+API credits for a new chat. The subscription is still the default. Copilot chats cannot use
+API credits.
 
-- **Add a key** with Tools, API Keys (Alt+T, P). Its Key status box, first in the Tab order,
+- **Codex on OpenAI credits.** In **Tools, API Keys**, choose **Codex (OpenAI)** under
+  **Provider** (Alt+P). Add your OpenAI key, starting with `sk-`, in the masked key box.
+  **Test Key** sends a tiny request and counts its estimated cost. Each provider has its own
+  key, limits, total, **Reset Total** and **Release Held**. OpenAI starts at $5 overall and
+  about $0.50 per message; Claude keeps its existing defaults. Save limits before switching
+  providers, or answer the unsaved-changes question. Release Held warns that spending may
+  be left uncounted and never releases money reserved by running messages.
+- **Choose Codex, then API credits** under **Charge to** in New Session. Only models in the
+  dated price table are offered: currently gpt-5-nano, gpt-5.4-nano and gpt-5.4-mini. A missing
+  model or service price stops the send, naming what cannot be priced. Every OpenAI cost is
+  **estimated**, from token counts and the table dated November 17, 2026. Prices can change;
+  OpenAI's billing page is authoritative. Usage and Context and Properties show this chat's
+  spending; the status bar and announcements also say estimated. Unknown cost says **cost
+  not known**, rather than zero. Limits are approximate and can be exceeded by one request.
+- **Stop in an OpenAI chat** counts reported usage and, when possible, an estimated maximum
+  for one interrupted request: **estimated, at most**. For gpt-5-nano that request ceiling is
+  about seven cents. Missing or inconsistent usage and stream failures can leave credit held;
+  Release Held is available after the message is no longer running. You can send again after
+  Stop or replace a refused key and continue. A refused request releases its unused hold.
+- **OpenAI chat isolation.** Codex runs in an app-owned home, separate from your ChatGPT
+  sign-in. Each process receives the protected key through stdin with ephemeral sign-in;
+  the app-owned home is excluded from backups. No key is put in tools' environments or on
+  command lines. Process and thread checks pin OpenAI's address; a conflicting provider is
+  refused. Hosted search, connected services, automatic approval review, subagents,
+  compaction, goals, Ask Aside and copies cut at an earlier turn are unavailable on OpenAI
+  credits. Human approvals and full-history copies within the API backend remain available.
+  Continue Here or Continue on API Credits from a subscription chat makes a new API chat
+  whose first message includes a text copy of the conversation. Billing never changes on the
+  original chat. Agent conversations remain on subscriptions.
+
+The following details describe Claude API chats; the shared send notice, first-message
+question, cost setting and API-credit labels also apply to Codex:
+
+- **Add a Claude key** with Tools, API Keys (Alt+T, P), with Provider on Claude (Anthropic). Its Key status box
   says "Claude: No key", or "Claude: key ending in 7Q2x, added November 16"; it never shows the
   key. Paste the key (it starts with
   `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
@@ -480,7 +513,7 @@ yet.
   and **Remove Key** (Alt+M) forgets it after asking. On a Mac, the first message on API
   credits may bring up a keychain question for "security" (the command that hands Claude Code
   the key): choose **Always Allow**, or it asks again each time.
-- **Spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
+- **Claude spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
   (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Total
   box right after them says what's been spent since the last reset, what's held for messages
   still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
@@ -1711,7 +1744,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 ## Install
 
 You need Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview; see
-**Linux** below). For Codex chats, you need a native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+**Linux** below). For Codex chats, you need a native Codex CLI and either a ChatGPT sign-in or an OpenAI API key for chats on API credits. Claude Code is not required for Codex chats.
 
 For GitHub Copilot CLI chats (a preview), you need the native GitHub Copilot CLI
 (`winget install GitHub.Copilot` on Windows, `brew install copilot-cli` or GitHub's install

@@ -131,6 +131,7 @@ class OwnSession:
             permission_mode=self.permission_mode,
             unread=self.unread,
             provider=self.provider,
+            provider_label='Codex' if self.provider == 'codex-api' else '',
             continued_from=self.forked_from,
             api_credits=self.billing == "api" and self.provider in ('claude', 'codex-api'),
         )

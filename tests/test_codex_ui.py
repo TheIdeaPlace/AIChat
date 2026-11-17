@@ -1319,3 +1319,41 @@ def test_no_turn_id_back_is_not_taken_for_another_turn():
     w._steer_codex_owned(w.record, 'Also the docs')
     _run_work(w)
     assert not getattr(w, 'turn_over', [])
+
+
+@pytest.mark.parametrize('event_first', [True, False])
+def test_api_sent_and_send_done_produce_one_credit_notice(event_first):
+    from thechatplace.claude_cli import TurnEvent
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._api_send_problem = lambda key, **kwargs: None
+    w._api_notice_spoken = lambda key: True
+    w._say_or_hold_read_back = lambda key, text, *a: w._api_read_back.update({key: text})
+    w._api_message_sent = lambda key, **kwargs: w.said.append(w._api_read_back.pop(key, 'Sent on API credits to My chat.'))
+    w._send_codex_owned(w.record, 'Hello')
+    action, done = w.work.pop()
+    action()
+    event = TurnEvent('api_sent', session_id='owned', data={})
+    if event_first:
+        w._on_codex_api_event(event)
+    done(False, False)
+    if not event_first:
+        w._on_codex_api_event(event)
+    assert len([text for text in w.said if text.startswith('Sent on API credits')]) == 1
+
+
+def test_api_sound_mode_never_says_sent_before_a_refused_write():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._api_send_problem = lambda key, **kwargs: None
+    w._api_notice_spoken = lambda key: False
+    w._say_or_hold_read_back = lambda *a: pytest.fail('No sent speech before a write in sound mode')
+    w._send_codex_owned(w.record, 'Never sent')
+    assert w.said == []
+    action, done = w.work.pop()
+    done('Preflight refused. Nothing was sent.', True)
+    assert not any(text.startswith('Sent') for text in w.said)

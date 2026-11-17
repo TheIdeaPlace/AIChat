@@ -36,7 +36,7 @@ STATUS_UNAVAILABLE = "status unavailable"
 #: Backends whose chats come from the other app's own list (#184, #352): only
 #: an explicit idle finishes a turn there, and their history is read in that
 #: app's terms ("Reply in Copilot CLI"), never as a Claude transcript.
-LISTED_PROVIDERS = ("codex", "copilot")
+LISTED_PROVIDERS = ("codex", "codex-api", "copilot")
 #: Backends whose owned chats run through a provider runtime that the window
 #: drives with SessionController.owned_action (send, stop, answer, prepare,
 #: live state updates). Adding one means at least (#352, #370):
@@ -51,9 +51,9 @@ LISTED_PROVIDERS = ("codex", "copilot")
 #:   file of their own if older releases would refuse them).
 #: Codex-only features (permission modes, saved rules, plans, Continue Here,
 #: agent conversations) stay Codex's until each is built for another.
-RUNTIME_PROVIDERS = ("codex", "copilot")
+RUNTIME_PROVIDERS = ("codex", "codex-api", "copilot")
 #: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
-HOME_APPS = {"codex": "Codex", "copilot": "Copilot CLI"}
+HOME_APPS = {"codex": "Codex", "codex-api": "The Chat Place", "copilot": "Copilot CLI"}
 
 
 def home_app(provider: str) -> str:
@@ -475,7 +475,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return False
     if view in (VIEW_CLAUDE, VIEW_CODEX, VIEW_COPILOT):
         wanted = view.removeprefix("provider:")
-        return info.provider == wanted or wanted in info.member_providers
+        return (info.provider == wanted or wanted in info.member_providers
+                or wanted == 'codex' and info.provider == 'codex-api')
     if view == VIEW_ACTIVE:
         return info.state in (NEEDS_YOU, WORKING)
     if view == VIEW_NEEDS_YOU:

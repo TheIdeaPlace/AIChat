@@ -795,6 +795,15 @@ class SpendLedger:
         with _LOCK:
             return self._replay(now)[0]
 
+    def chat_cost(self, chat_id):
+        """Recorded amount, retained hold, and whether any cost is unresolved."""
+        with _LOCK:
+            totals, reservations = self._replay()
+            pending = [entry for entry in reservations.values() if entry.chat_id == chat_id]
+            return (totals.chat_all_time.get(chat_id, 0.0),
+                    sum(max(0, entry.amount-entry.settled) for entry in pending),
+                    bool(pending) or bool(totals.problem))
+
     def can_spend(self) -> Optional[str]:
         """Why an API message can't start now, or None."""
         with _LOCK:

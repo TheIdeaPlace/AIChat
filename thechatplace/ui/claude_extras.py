@@ -124,7 +124,7 @@ class ClaudeExtras:
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.provider == "codex":
+        if info.provider in ('codex', 'codex-api'):
             self._change_codex_settings(info, "chat options")
             return
         if ((info.provider != "claude" or info.source == "kept")
@@ -194,7 +194,7 @@ class ClaudeExtras:
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.provider == 'codex':
+        if info.provider in ('codex', 'codex-api'):
             self._codex_ask_aside(info)
             return
         if info.provider == "claude" and info.cowork:

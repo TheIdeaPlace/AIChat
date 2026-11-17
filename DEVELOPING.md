@@ -153,14 +153,14 @@ OpenAI's separate `codex-api` backend (#661) has windowless tests in
 ```powershell
 $env:TCP_LIVE_OPENAI='1'
 $env:TCP_LIVE_OPENAI_KEY_FILE='C:\Users\kelly\OneDrive\testing\idt\keys\openai.txt'
-& 'C:\Users\kelly\GitHub\AIChat\.venv\Scripts\python.exe' -m pytest -q -s tests/test_live_openai.py
+& 'C:\Users\kelly\GitHub\AIChat\.venv\Scripts\python.exe' -m pytest -q -x -s -p no:cacheprovider tests/test_live_openai.py
 ```
 
 Run paid checks outside the coding agent's network sandbox; don't add CA overrides for
 its TLS failure. The tests use temporary homes and memory-only login, never the default
 Codex home or the saved system-store secret. They print token counters and estimated
-costs, never the key. For the free real-CLI redirect check alone, set
-`TCP_LIVE_OPENAI_FREE=1` and use `-k redirect` without enabling the paid flag.
+costs, never the key. For the free real-CLI redirect and dropped-stream checks, set
+`TCP_LIVE_OPENAI_FREE=1` and use `-k "redirect or cut_stream"` without enabling the paid flag.
 
 OpenAI's ledger lives in `openai-billing/`, separate from Claude's unchanged files. Its
 defaults are $5 overall and about $0.50 per message. The API runtime home `codex-api/`
@@ -185,6 +185,43 @@ maximum of recorded usage plus one request's context and maximum output, using t
 dated table; if that exceeds the reservation, the remaining hold stays.
 A timed-out Stop retains its tracker while other chats run; process cleanup claims
 a draining state before rejecting new sends and closing, so it cannot kill a new turn.
+
+Checkpoint 3 exposes these routes in Tools, API Keys with a Provider choice and in
+New Session's Charge to. OpenAI key updates run off the UI thread; each paid write
+checks the key generation, so replacement affects existing processes and removal
+blocks queued messages. Model changes use the priced API catalog, not ChatGPT's.
+Unknown per-chat spending is read from reservations, never displayed as zero.
+
+The visual probe includes `new-session-openai`, `openai-keys-empty`,
+`openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
+`openai-keys-updating`, `openai-send-confirm`, `openai-properties`, and
+`openai-usage`. Each uses made-up keys and fake data. Run them through the existing
+VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
+and inspect the other variants for wrapping and focus. Window tests and these
+surfaces run in CI; do not run window tests on Kelly's PC during this work.
+
+Orca's automated steps switch API Keys to OpenAI and check the key box, limits and
+estimated total. Run `tools/orca_speech.sh --keep /tmp/tcp-openai-orca` in the existing
+isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
+
+1. Open Tools, API Keys (Alt+T, P), use Alt+P, and choose Codex (OpenAI). Listen for
+   Provider, OpenAI, Key status, and the masked OpenAI API key field. Tab through
+   limits, Total and Release Held; a live reservation must not be releasable.
+2. Add a test key, then Test Key. Listen for Testing and its result with estimated
+   cost, or the refusal. Replace or remove the key while a request is delayed;
+   the dialog must remain usable and say the update is pending before it finishes.
+3. In New Session choose Codex, then API credits. Confirm that only priced models
+   and human approval modes are offered. Cancel the first-send question: the
+   message stays in the reply box. Send it, then listen for one guaranteed
+   Sent on API credits notice, including with ordinary announcements off.
+4. Read the row, window title, messages name, reply field, Properties and Usage.
+   All identify API credits; costs say estimated, or cost not known for missing
+   usage. Stop a reply, check the estimated maximum or retained hold, and send
+   again. Check a second chat can continue while the first Stop is delayed.
+
+Real tool-environment and fork semantics require the paid suite outside the agent
+sandbox. Tool isolation tries priced nano models then mini, and skips explicitly
+if no actual environment output was returned. Fork is tested independently of it.
 
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an

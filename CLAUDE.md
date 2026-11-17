@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The Chat Place: a wxPython desktop app for Windows, macOS and Linux (Windows came first) that is a keyboard- and screen-reader-friendly
 home for AI sessions in one list, with Claude and Codex now and more providers planned. It shows
 arrowable conversations, announces replies and drives sessions of its own through provider
-adapters. Claude uses `claude -p`; Codex uses app-server with ChatGPT sign-in. Neither uses an
-API key. Shared UI and guide text must be neutral or name the provider. Provider is which AI;
+adapters. Claude uses `claude -p`; Codex uses app-server. Subscription chats keep their
+subscription sign-in; API-credit chats use separate provider keys and app-owned homes. Shared UI and guide text must be neutral or name the provider. Provider is which AI;
 Kind is where the session started. Preserve legacy Claude storage/defaults only at its adapter
 and compatibility boundaries. Accessibility with
 JAWS and NVDA (VoiceOver on a Mac, Orca on Linux) is the point of the app, so every UI change has

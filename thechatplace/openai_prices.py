@@ -32,6 +32,12 @@ def request_ceiling(model, context_window=None):
     return float((context * inp + output * out) / 1_000_000)
 
 
+def model_choices():
+    from .providers.codex_models import CodexModel
+    return tuple(CodexModel(model, model, ('low', 'medium', 'high'), 'low', i == 0)
+                 for i, model in enumerate(SOURCES))
+
+
 class Unpriced(ValueError):
     """Safe, user-readable reason a paid request cannot start."""
 
