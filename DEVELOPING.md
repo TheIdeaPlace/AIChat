@@ -201,8 +201,10 @@ attachment parts survive the prefix. The writer event clears the deferred contex
 
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
-`openai-keys-updating`, `openai-send-confirm`, `openai-properties`, and
-`openai-usage`. Each uses made-up keys and fake data. Run them through the existing
+`openai-keys-updating`, `openai-properties`, and
+`openai-usage`. Each uses made-up keys and fake data. The first-send question is
+a native `wx.MessageDialog`, not an app-defined dialog surface: native message
+boxes do not use the probe's modal capture hook. Run them through the existing
 VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
 and inspect the other variants for wrapping and focus. Window tests and these
 surfaces run in CI; do not run window tests on Kelly's PC during this work.

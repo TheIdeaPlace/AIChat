@@ -2334,7 +2334,7 @@ def _openai_keys(frame, env, state):
     elif state == 'failed':
         dialog.result.SetValue('OpenAI refused your key. Replace it and test again. No charge was made for the refused request.')
     elif state == 'held':
-        dialog.result.SetValue('Your key works. That test cost estimated less than a cent.')
+        dialog.result.SetValue('Your key works. That test was estimated at less than a cent.')
     return lambda: frame._modal(dialog)
 
 
@@ -2356,10 +2356,6 @@ def d_openai_keys_failed(frame, env):
 
 def d_openai_keys_updating(frame, env):
     return _openai_keys(frame, env, 'updating')
-
-
-def d_openai_send_confirm(frame, env):
-    return lambda: frame._confirm_api_send('OpenAI budget', 'codex-api')
 
 
 def d_openai_properties(frame, env):
@@ -2677,7 +2673,6 @@ SURFACES = {
     'openai-keys-testing': ('dialog', d_openai_keys_testing, 'OpenAI API Keys while testing a made-up key'),
     'openai-keys-failed': ('dialog', d_openai_keys_failed, 'OpenAI API Keys after key refusal'),
     'openai-keys-updating': ('dialog', d_openai_keys_updating, 'OpenAI API Keys while replacing a key'),
-    'openai-send-confirm': ('dialog', d_openai_send_confirm, 'First paid OpenAI send confirmation'),
     'openai-properties': ('dialog', d_openai_properties, 'Codex API Properties with unknown spending'),
     'openai-usage': ('dialog', d_openai_usage, 'OpenAI Usage with estimated maximum and unknown spending'),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
@@ -2821,7 +2816,6 @@ DIALOG_CLASSES = {
     'openai-keys-testing': 'ApiKeysDialog',
     'openai-keys-failed': 'ApiKeysDialog',
     'openai-keys-updating': 'ApiKeysDialog',
-    'openai-send-confirm': 'MessageDialog',
     'openai-properties': 'PropertiesDialog',
     'openai-usage': 'UsageDialog',
     "relay": "RelayDialog",
