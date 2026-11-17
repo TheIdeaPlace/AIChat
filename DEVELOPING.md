@@ -239,6 +239,8 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/prompts.py` | Your saved prompts |
 | `thechatplace/about_you.py` | Finding Claude and Codex local customization files |
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
+| `thechatplace/billing.py` | How a Claude chat is charged (#658): the subscription or API credits, the check of initialize's `account` before anything is sent, the key's `apiKeyHelper` settings, budgets, the key scrubber and the words for API failures |
+| `thechatplace/spend_ledger.py` | What API credits have cost (#658): `api-spend.jsonl` (reservations, settlements, resets, appended only) and `api-limits.json`, under one lock so two chats can't spend the same money |
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |

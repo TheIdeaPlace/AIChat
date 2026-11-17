@@ -293,23 +293,41 @@ def with_settings(command: List[str], disabled: Collection[str]) -> List[str]:
     extra = settings_args(disabled)
     if not extra:
         return list(command)
+    return merge_settings(command, json.loads(extra[1]))
+
+
+#: Flags a turn's or an aside's command gives one value to: a ``--settings``
+#: right after one of these is that flag's value, not a flag.
+_TAKES_VALUE = frozenset({
+    "--name", "--model", "--effort", "--permission-mode", "--agent",
+    "--session-id", "--resume", "--resume-session-at", "--settings",
+    "--system-prompt-snapshot", "--input-format", "--output-format",
+    "--permission-prompts", "--permission-prompt-tool", "--tools", "--max-budget-usd"})
+
+
+def merge_settings(command: List[str], extra: dict) -> List[str]:
+    """``command`` with ``extra`` merged into its one ``--settings`` JSON, or
+    a ``--settings`` added at the end if it has none (see with_settings: a
+    second one would replace the first). The values in ``extra`` win: an API
+    chat's apiKeyHelper (#658) goes in this way, so no other setting on the
+    command can name another one. A ``--settings`` whose value isn't a JSON
+    object is left alone and the merged one is added after it, so it's the
+    last, which is the one Claude Code keeps."""
     command = list(command)
-    takes_value = {"--name", "--model", "--effort", "--permission-mode", "--agent",
-                   "--session-id", "--resume", "--resume-session-at", "--settings",
-                   "--system-prompt-snapshot", "--input-format", "--output-format",
-                   "--permission-prompts", "--permission-prompt-tool"}
+    if not extra:
+        return command
     for i, part in enumerate(command[:-1]):
-        if part != "--settings" or (i and command[i - 1] in takes_value):
+        if part != "--settings" or (i and command[i - 1] in _TAKES_VALUE):
             continue
         try:
             current = json.loads(command[i + 1])
         except ValueError:
             continue
         if isinstance(current, dict):
-            current.update(json.loads(extra[1]))
+            current.update(extra)
             command[i + 1] = json.dumps(current, ensure_ascii=False)
             return command
-    return command + extra
+    return command + ["--settings", json.dumps(extra, ensure_ascii=False)]
 
 
 def init_servers(event_servers) -> List[Tuple[str, str]]:

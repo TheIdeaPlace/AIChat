@@ -41,21 +41,45 @@ if "--rewind-files" in sys.argv:
     sys.stdout.write(f"Files rewound to state at message {target}\n")
     sys.exit(0)
 
+#: How the turn would be charged, as initialize's ``account`` says it
+#: (#658), shaped as Claude Code 2.1.325 answers: FAKE_CLAUDE_ACCOUNT=
+#: subscription (the default), api (the app's apiKeyHelper), apikey_env (a
+#: key in the environment), bedrock, or none (no account: an older Claude Code).
+ACCOUNTS = {
+    "subscription": {"email": "someone@example.com", "organization": "Example",
+                     "subscriptionType": "max", "apiProvider": "firstParty"},
+    "api": {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty",
+            "tokenSource": "claude.ai"},
+    "apikey_env": {"apiKeySource": "ANTHROPIC_API_KEY", "apiProvider": "firstParty",
+                   "tokenSource": "claude.ai"},
+    "bedrock": {"apiProvider": "bedrock"},
+}
+account_kind = os.environ.get("FAKE_CLAUDE_ACCOUNT", "subscription")
+#: system/init's apiKeySource, following the account unless FAKE_CLAUDE_SOURCE says.
+init_source = os.environ.get("FAKE_CLAUDE_SOURCE") or {
+    "api": "apiKeyHelper", "apikey_env": "ANTHROPIC_API_KEY"}.get(account_kind, "none")
+
 received = []
 prompt = None
 for raw in iter(sys.stdin.buffer.readline, b""):
     message = json.loads(raw.decode("utf-8"))
     received.append(message)
     if message.get("type") == "control_request" \
-            and message.get("request", {}).get("subtype") == "initialize":
+            and message.get("request", {}).get("subtype") == "initialize" \
+            and os.environ.get("FAKE_CLAUDE_MODE") != "no-init":
         # As the real CLI does, at once, before any message.
+        body = {"commands": [], "models": [
+            {"value": "default", "resolvedModel":
+                os.environ.get("FAKE_CLAUDE_DEFAULT", "claude-opus-5-5")},
+            {"value": "opus", "resolvedModel": "claude-opus-5-5"},
+            {"value": "fable", "resolvedModel": "claude-fable-5-2"}]}
+        if account_kind in ACCOUNTS:
+            body["account"] = ACCOUNTS[account_kind]
+        if account_kind in ("api", "apikey_env"):
+            body["auth_conflict"] = {"message": "Both a subscription and an API key are set."}
         sys.stdout.buffer.write(json.dumps({"type": "control_response", "response": {
             "subtype": "success", "request_id": message.get("request_id"),
-            "response": {"commands": [], "models": [
-                {"value": "default", "resolvedModel":
-                    os.environ.get("FAKE_CLAUDE_DEFAULT", "claude-opus-5-5")},
-                {"value": "opus", "resolvedModel": "claude-opus-5-5"}]}}}).encode("utf-8")
-            + b"\n")
+            "response": body}}).encode("utf-8") + b"\n")
         sys.stdout.buffer.flush()
     if message.get("type") == "user":
         prompt = message["message"]["content"]
@@ -70,6 +94,8 @@ def log(**extra):
                        "received": [m.get("type") for m in received],
                        "claude_env": sorted(k for k in os.environ
                                             if k.upper() in ("CLAUDECODE", "ANTHROPIC_API_KEY")),
+                       # Whether any variable holds something shaped like a key (#658).
+                       "key_in_env": any("sk-ant-" in value for value in os.environ.values()),
                        "checkpoints": os.environ.get("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", ""),
                        **extra}, handle)
 
@@ -80,8 +106,35 @@ def out(**data):
 
 
 log()
-out(type="system", subtype="init", session_id="abc-1", apiKeySource="none")
+out(type="system", subtype="init", session_id="abc-1", apiKeySource=init_source)
 mode = os.environ.get("FAKE_CLAUDE_MODE")
+#: What the result says the process cost (#658), as Claude Code reports it:
+#: total_cost_usd, and modelUsage's costUSD by model.
+cost = float(os.environ.get("FAKE_CLAUDE_COST", "0.0123"))
+COST = {"total_cost_usd": cost, "modelUsage": {"claude-haiku-5-5": {
+    "inputTokens": 12, "outputTokens": 3, "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 34000, "costUSD": cost}}}
+if mode == "max-budget":
+    # Over --max-budget-usd, checked after a request: it can run over.
+    out(type="result", subtype="error_max_budget_usd", is_error=True, session_id="abc-1",
+        errors=["Reached maximum budget"], **COST)
+    sys.stdin.buffer.read()
+    sys.exit(0)
+if mode in ("credit-low", "bad-key"):
+    text = ("Credit balance is too low to access the Anthropic API. Please go to Plans & "
+            "Billing to upgrade or purchase credits." if mode == "credit-low"
+            else "Invalid API key · Fix external API key")
+    out(type="assistant", parent_tool_use_id=None,
+        message={"model": "<synthetic>", "content": [{"type": "text", "text": text}]})
+    out(type="result", subtype="success", is_error=True, result=text, session_id="abc-1",
+        total_cost_usd=0, modelUsage={})
+    sys.stdin.buffer.read()
+    sys.exit(0)
+if mode == "stderr-key":
+    # A key quoted in an error: it must never reach the window (#658).
+    sys.stderr.write("Error: request failed for key sk-ant-api03-SECRETSECRETSECRET-abc_123\n")
+    sys.stderr.flush()
+    sys.exit(1)
 if mode == "hang":
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
     with open(os.path.join(os.getcwd(), "grandchild.pid"), "w") as handle:
@@ -129,6 +182,12 @@ def answer_controls(until):
                                                         "kind": "free"}],
                                                        "totalTokens": 2362,
                                                        "maxTokens": 1000000}})
+        elif subtype == "interrupt":
+            # As Claude Code 2.1.325 does mid-reply (#658): the answer, then
+            # the interrupted turn's result, with what it cost so far.
+            out(type="control_response", response={"subtype": "success", "request_id": rid})
+            out(type="result", subtype="error_during_execution", is_error=True,
+                session_id="abc-1", **COST)
         else:
             continue
         log(controls=[m.get("request", {}).get("subtype") for m in received
@@ -149,6 +208,14 @@ if mode == "live":
     out(type="assistant", parent_tool_use_id=None,
         message={"content": [{"type": "text", "text": "Working on it."}]})
     answer_controls(lambda subtype: subtype in ("set_model", "set_permission_mode"))
+if mode == "interruptible":
+    # Replying, until Stop's interrupt; then the result, and it stays open
+    # (only the runner ending the process ends it).
+    out(type="assistant", parent_tool_use_id=None,
+        message={"content": [{"type": "text", "text": "Once upon a time"}]})
+    answer_controls(lambda subtype: subtype == "interrupt")
+    time.sleep(60)
+    sys.exit(0)
 if mode == "background":
     # A background sleep with its task id, the answer, idle; then stop_task
     # ends it, idle again, and The Chat Place ends the turn.
@@ -241,5 +308,5 @@ elif mode == 'missing':
 else:
     out(type="assistant", parent_tool_use_id=None,
         message={"content": [{"type": "text", "text": "reply with a line separator"}]})
-out(type="result", subtype="success", is_error=False, result=result, session_id="abc-1")
+out(type="result", subtype="success", is_error=False, result=result, session_id="abc-1", **COST)
 sys.stdin.buffer.read()  # until The Chat Place closes stdin

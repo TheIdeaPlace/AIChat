@@ -171,6 +171,13 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "load_backup_secret", lambda: secret.get("pw"))
     patch(platform_paths, "save_backup_secret", lambda text: secret.__setitem__("pw", text))
     patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
+    # Nor a real API key (#658): named secrets in memory too.
+    named = {}
+    patch(platform_paths, "secrets_available", lambda: True)
+    patch(platform_paths, "has_secret", lambda name: name in named)
+    patch(platform_paths, "load_secret", lambda name: named.get(name))
+    patch(platform_paths, "save_secret", lambda name, text: named.__setitem__(name, text))
+    patch(platform_paths, "delete_secret", lambda name: named.pop(name, None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)

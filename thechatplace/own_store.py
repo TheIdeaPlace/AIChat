@@ -23,7 +23,8 @@ from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
 from .chat_options import (ChatOptions, clean_instructions, is_safe_agent,
                            is_safe_style)
-from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
+from .billing import normalize_route
+from .claude_cli import EFFORT_LABELS, is_safe_dir, is_safe_rule, model_allowed
 from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
 
@@ -91,6 +92,11 @@ class OwnSession:
     #: True once those changed after the chat's first turn: Claude Code would
     #: otherwise keep the system prompt it recorded then (chat_options.py).
     prompt_fresh: bool = False
+    #: How the chat is charged (#658): "subscription", or "api" for API
+    #: credits. Fixed when the chat is made. Anything else reads as the
+    #: subscription, and an older release, which doesn't know the field,
+    #: runs the chat on the subscription too: never the other way round.
+    billing: str = "subscription"
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -262,9 +268,12 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                        if k in extras and _valid_codex_extra(k, extras[k])}
         if kept_extras:
             values["provider_options"] = {**values.get("provider_options", {}), **kept_extras}
-    # Only a model the picker offers: anything else (a hand edit, or a model
-    # that bills usage credits) would fail or cost extra on every turn.
-    if values.get("model") not in MODEL_LABELS:
+    # Charged one way or the other (#658); an unknown value is the subscription.
+    values["billing"] = normalize_route(values.get("billing"))
+    # Only a model the picker offers for how the chat is charged: anything
+    # else (a hand edit, or a model that bills usage credits on the
+    # subscription, as Fable can) would fail or cost extra on every turn.
+    if not model_allowed(values.get("model", ""), values["billing"]):
         values["model"] = ""
     if values.get("effort") not in EFFORT_LABELS:
         values["effort"] = ""
@@ -296,6 +305,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "agent", "instructions", "output_style"):
             values[name] = ""
         values["prompt_fresh"] = False
+        # API credits are Claude's only, for now (#658).
+        values["billing"] = "subscription"
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
@@ -589,6 +600,11 @@ class OwnSessionStore:
             return
         allowed = {name: value for name, value in changes.items()
                    if name in _FIELDS and name not in ("cli_session_id", "provider")}
+        if "billing" in allowed and normalize_route(allowed["billing"]) != session.billing:
+            # Fixed when the chat is made (#658, Kelly's decision): a chat
+            # is never moved between the subscription and API credits.
+            # Continuing it as a new chat is how it changes.
+            raise ValueError("How a chat is charged can't be changed.")
         updated = replace(session, **allowed)
         validated = _session_from_dict(asdict(updated))
         if validated is None or validated != updated:

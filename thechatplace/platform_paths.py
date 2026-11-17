@@ -2698,26 +2698,59 @@ def start_codex_archive_server(profile: Path, executable=None) -> CodexServerPro
     return owned
 
 
-# The scheduled-backup passphrase (#442) ---------------------------------------
+# Secrets: the scheduled-backup passphrase (#442) and the Claude API key (#658)
 #
-# Kept where the system protects it, never in a file of The Chat Place's in
+# Kept where the system protects them, never in a file of The Chat Place's in
 # plain text: Windows' DPAPI (only this Windows user can unprotect it), the
 # macOS login keychain, or the Secret Service through ``secret-tool`` on
-# Linux. Whoever is signed in as you can use it, which is what lets a
+# Linux. Whoever is signed in as you can use them, which is what lets a
 # schedule run with nobody there to type; a backup that leaves the computer
-# stays locked without it.
+# stays locked without its passphrase, and backups never hold a secret
+# (backup.SECRET_FILES).
+#
+# Each secret has a name, which is its keychain and keyring account; on
+# Windows it's a file of its own in the app's folder. Only the names below
+# exist: a name never becomes part of a path or a command unless it's one of
+# these. The backup passphrase keeps the file and account it always had, so
+# a passphrase kept by an earlier release is still found.
 
+BACKUP_SECRET = "scheduled-backup-passphrase"
+CLAUDE_API_KEY_SECRET = "claude-api-key"
 BACKUP_SECRET_FILE = "backup-passphrase.dpapi"
+#: Every secret file on Windows ends in this; backups leave them all out.
+SECRET_SUFFIX = ".dpapi"
+#: name -> (its Windows file, secret-tool's label for it)
+_SECRETS = {
+    BACKUP_SECRET: (BACKUP_SECRET_FILE, "The Chat Place backup passphrase"),
+    CLAUDE_API_KEY_SECRET: ("claude-api-key" + SECRET_SUFFIX, "The Chat Place Claude API key"),
+}
 _SECRET_SERVICE = "The Chat Place"
-_SECRET_ACCOUNT = "scheduled-backup-passphrase"
+_SECRET_ACCOUNT = BACKUP_SECRET
 
 
-def backup_secret_available() -> bool:
-    """Whether this computer can keep the passphrase protected."""
+def _secret_entry(name: str) -> tuple:
+    try:
+        return _SECRETS[name]
+    except (KeyError, TypeError):
+        raise ValueError(f"Not a secret The Chat Place keeps: {name!r}") from None
+
+
+def secret_file(name: str) -> Path:
+    """Where a secret is kept on Windows (protected with DPAPI)."""
+    return app_data_dir() / _secret_entry(name)[0]
+
+
+def secrets_available() -> bool:
+    """Whether this computer can keep a secret protected."""
     if sys.platform == "win32" or sys.platform == "darwin":
         return True
     import shutil
     return shutil.which("secret-tool") is not None
+
+
+def backup_secret_available() -> bool:
+    """Whether this computer can keep the passphrase protected."""
+    return secrets_available()
 
 
 def _dpapi(data: bytes, protect: bool) -> bytes:
@@ -2739,7 +2772,7 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
     UI_FORBIDDEN = 0x1
     if not function(ctypes.byref(source), None, None, None, None, UI_FORBIDDEN,
                     ctypes.byref(result)):
-        raise OSError(ctypes.get_last_error(), "Windows couldn't protect the passphrase")
+        raise OSError(ctypes.get_last_error(), "Windows couldn't protect the secret")
     try:
         return ctypes.string_at(result.pbData, result.cbData)
     finally:
@@ -2753,8 +2786,8 @@ def _keychain():
     return ctypes, security, core
 
 
-def _keychain_find(ctypes, security):
-    service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+def _keychain_find(ctypes, security, account_name: str = ""):
+    service, account = _SECRET_SERVICE.encode(), (account_name or _SECRET_ACCOUNT).encode()
     length, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
     status = security.SecKeychainFindGenericPassword(
         None, len(service), service, len(account), account,
@@ -2764,11 +2797,33 @@ def _keychain_find(ctypes, security):
 
 def save_backup_secret(passphrase: str) -> None:
     """Keep the passphrase protected; raises OSError if it can't be."""
-    data = passphrase.encode("utf-8")
+    save_secret(BACKUP_SECRET, passphrase)
+
+
+def has_backup_secret() -> bool:
+    """Whether a passphrase is kept, without reading it (see has_secret)."""
+    return has_secret(BACKUP_SECRET)
+
+
+def load_backup_secret() -> Optional[str]:
+    """The kept passphrase, or None if there isn't one or it can't be read."""
+    return load_secret(BACKUP_SECRET)
+
+
+def delete_backup_secret() -> None:
+    """Forget the kept passphrase, wherever it is (nothing if there's none)."""
+    delete_secret(BACKUP_SECRET)
+
+
+def save_secret(name: str, value: str) -> None:
+    """Keep a secret protected; raises OSError if it can't be (ValueError
+    for a name that isn't one of _SECRETS)."""
+    file_name, label = _secret_entry(name)
+    data = value.encode("utf-8")
     if sys.platform == "win32":
         folder = app_data_dir()
         folder.mkdir(parents=True, exist_ok=True)
-        target = folder / BACKUP_SECRET_FILE
+        target = folder / file_name
         temporary = target.with_name(target.name + ".tmp")
         try:
             temporary.write_bytes(_dpapi(data, protect=True))
@@ -2778,40 +2833,42 @@ def save_backup_secret(passphrase: str) -> None:
         return
     if sys.platform == "darwin":
         ctypes, security, core = _keychain()
-        status, _length, found, item = _keychain_find(ctypes, security)
+        status, _length, found, item = _keychain_find(ctypes, security, name)
         if status == 0:
             security.SecKeychainItemFreeContent(None, found)
             status = security.SecKeychainItemModifyAttributesAndData(item, None, len(data), data)
             core.CFRelease(item)
         else:
-            service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+            service, account = _SECRET_SERVICE.encode(), name.encode()
             status = security.SecKeychainAddGenericPassword(
                 None, len(service), service, len(account), account, len(data), data, None)
         if status != 0:
-            raise OSError(f"The keychain didn't keep the passphrase (error {status}).")
+            raise OSError(f"The keychain didn't keep it (error {status}).")
         return
     import subprocess
     try:
-        done = subprocess.run(["secret-tool", "store", "--label", "The Chat Place backup passphrase",
-                               "service", _SECRET_SERVICE, "account", _SECRET_ACCOUNT],
+        # On stdin, never in the arguments, where other users' tools can see it.
+        done = subprocess.run(["secret-tool", "store", "--label", label,
+                               "service", _SECRET_SERVICE, "account", name],
                               input=data, capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise OSError(f"secret-tool couldn't keep the passphrase: {exc}") from None
+        raise OSError(f"secret-tool couldn't keep it: {exc}") from None
     if done.returncode != 0:
-        raise OSError("secret-tool couldn't keep the passphrase: "
+        raise OSError("secret-tool couldn't keep it: "
                       + done.stderr.decode("utf-8", "replace").strip())
 
 
-def has_backup_secret() -> bool:
-    """Whether a passphrase is kept, without reading it: opening Backup
-    Schedule mustn't raise a keychain prompt or wait on a keyring (#452
-    review)."""
+def has_secret(name: str) -> bool:
+    """Whether a secret is kept, without reading it: opening Backup
+    Schedule (or API Keys) mustn't raise a keychain prompt or wait on a
+    keyring (#452 review)."""
     try:
+        _secret_entry(name)
         if sys.platform == "win32":
-            return (app_data_dir() / BACKUP_SECRET_FILE).is_file()
+            return secret_file(name).is_file()
         if sys.platform == "darwin":
             ctypes, security, core = _keychain()
-            service, account = _SECRET_SERVICE.encode(), _SECRET_ACCOUNT.encode()
+            service, account = _SECRET_SERVICE.encode(), name.encode()
             item = ctypes.c_void_p()
             status = security.SecKeychainFindGenericPassword(
                 None, len(service), service, len(account), account, None, None,
@@ -2821,23 +2878,24 @@ def has_backup_secret() -> bool:
             return status == 0
         import subprocess
         done = subprocess.run(["secret-tool", "search", "service", _SECRET_SERVICE,
-                               "account", _SECRET_ACCOUNT], capture_output=True, timeout=5)
+                               "account", name], capture_output=True, timeout=5)
         return done.returncode == 0 and bool(done.stdout.strip() or done.stderr.strip())
     except Exception:  # noqa: BLE001 - unknown reads as none
         return False
 
 
-def load_backup_secret() -> Optional[str]:
-    """The kept passphrase, or None if there isn't one or it can't be read."""
+def load_secret(name: str) -> Optional[str]:
+    """A kept secret, or None if there isn't one or it can't be read."""
     try:
+        _secret_entry(name)
         if sys.platform == "win32":
-            path = app_data_dir() / BACKUP_SECRET_FILE
+            path = secret_file(name)
             if not path.is_file():
                 return None
             return _dpapi(path.read_bytes(), protect=False).decode("utf-8")
         if sys.platform == "darwin":
             ctypes, security, core = _keychain()
-            status, length, found, item = _keychain_find(ctypes, security)
+            status, length, found, item = _keychain_find(ctypes, security, name)
             if status != 0:
                 return None
             try:
@@ -2847,7 +2905,7 @@ def load_backup_secret() -> Optional[str]:
                 core.CFRelease(item)
         import subprocess
         done = subprocess.run(["secret-tool", "lookup", "service", _SECRET_SERVICE,
-                               "account", _SECRET_ACCOUNT], capture_output=True, timeout=30)
+                               "account", name], capture_output=True, timeout=30)
         return done.stdout.decode("utf-8") if done.returncode == 0 and done.stdout else None
     except (OSError, ValueError, UnicodeDecodeError, AttributeError):
         return None
@@ -2855,15 +2913,16 @@ def load_backup_secret() -> Optional[str]:
         return None
 
 
-def delete_backup_secret() -> None:
-    """Forget the kept passphrase, wherever it is (nothing if there's none)."""
+def delete_secret(name: str) -> None:
+    """Forget a kept secret, wherever it is (nothing if there's none)."""
     try:
+        _secret_entry(name)
         if sys.platform == "win32":
-            (app_data_dir() / BACKUP_SECRET_FILE).unlink(missing_ok=True)
+            secret_file(name).unlink(missing_ok=True)
             return
         if sys.platform == "darwin":
             ctypes, security, core = _keychain()
-            status, _length, found, item = _keychain_find(ctypes, security)
+            status, _length, found, item = _keychain_find(ctypes, security, name)
             if status == 0:
                 security.SecKeychainItemFreeContent(None, found)
                 security.SecKeychainItemDelete(item)
@@ -2871,6 +2930,85 @@ def delete_backup_secret() -> None:
             return
         import subprocess
         subprocess.run(["secret-tool", "clear", "service", _SECRET_SERVICE,
-                        "account", _SECRET_ACCOUNT], capture_output=True, timeout=30)
+                        "account", name], capture_output=True, timeout=30)
     except Exception:  # noqa: BLE001 - forgetting must never raise
         pass
+
+
+# The command Claude Code runs to get the API key (#658) ----------------------
+#
+# A chat on API credits gives Claude Code ``--settings {"apiKeyHelper":
+# <command>}``. Claude Code runs the command and uses what it prints as the
+# key. Checked with Claude Code 2.1.325: given this way, Bash commands Claude
+# runs did not see the key (they did with ANTHROPIC_API_KEY in Claude Code's
+# environment), and initialize reported ``apiKeySource: "apiKeyHelper"``. So
+# the key never goes in an environment or on a command line: the command
+# only says where the key is kept, and reads it from there itself.
+#
+# The command is run through a shell The Chat Place doesn't choose (cmd.exe
+# or Git Bash on Windows, sh elsewhere), so it's built to mean the same in
+# each, and nothing in it comes from the chat's folder: the program is named
+# by its full path, so a powershell.exe in a project's folder (cmd.exe looks
+# in the current folder first) is never the one run.
+
+
+def _windows_powershell() -> str:
+    """Windows PowerShell 5.1's full path, with forward slashes: Windows
+    takes them, cmd.exe takes them in quotes, and to Git Bash a backslash
+    can be an escape. SystemRoot is used only if it's a plain folder path,
+    as it goes in double quotes, inside which cmd.exe and bash each read some
+    characters specially."""
+    root = os.environ.get("SystemRoot") or ""
+    if not re.fullmatch(r"[A-Za-z]:\\[A-Za-z0-9 _.()\\-]*", root):
+        root = r"C:\Windows"
+    return root.rstrip("\\").replace("\\", "/") + "/System32/WindowsPowerShell/v1.0/powershell.exe"
+
+
+def _powershell_quoted(text: str) -> str:
+    """A PowerShell single-quoted string: nothing in it is expanded, and a
+    quote is written twice (as are the typographic ones PowerShell also takes
+    for quotes)."""
+    for quote in ("'", "\u2018", "\u2019", "\u201a", "\u201b"):
+        text = text.replace(quote, quote * 2)
+    return "'" + text + "'"
+
+
+def api_key_helper_script(name: str) -> str:
+    """The PowerShell that prints a secret kept with DPAPI (Windows): the
+    same unprotect as ``_dpapi`` (this user, no extra entropy, no UI),
+    written as UTF-8 with no byte order mark and no line ending."""
+    path = _powershell_quoted(str(secret_file(name)))
+    return ("$ErrorActionPreference = 'Stop'; "
+            "Add-Type -AssemblyName System.Security; "
+            f"$b = [System.IO.File]::ReadAllBytes({path}); "
+            "$k = [System.Security.Cryptography.ProtectedData]::Unprotect($b, $null, "
+            "[System.Security.Cryptography.DataProtectionScope]::CurrentUser); "
+            "$o = [Console]::OpenStandardOutput(); $o.Write($k, 0, $k.Length); $o.Flush()")
+
+
+def api_key_helper_command(name: str = CLAUDE_API_KEY_SECRET) -> str:
+    """The shell command Claude Code runs as ``apiKeyHelper`` to print secret
+    ``name`` (see above).
+
+    Windows: Windows PowerShell 5.1 with the script as ``-EncodedCommand``
+    (base64 of UTF-16), whose letters mean nothing to any shell, so neither
+    the folder's path nor an apostrophe in a user name can break out of it;
+    inside, the path is a single-quoted PowerShell string. The key's bytes
+    are written as they were kept. Mac: ``security``'s ``-w`` prints the
+    keychain item's password. Linux: ``secret-tool lookup``. Every part is
+    quoted for sh."""
+    _secret_entry(name)
+    if sys.platform == "win32":
+        import base64
+        script = base64.b64encode(api_key_helper_script(name).encode("utf-16-le")).decode("ascii")
+        return (f'"{_windows_powershell()}" -NoLogo -NoProfile -NonInteractive '
+                f"-EncodedCommand {script}")
+    import shlex
+    if sys.platform == "darwin":
+        return " ".join(shlex.quote(part) for part in (
+            "/usr/bin/security", "find-generic-password", "-s", _SECRET_SERVICE,
+            "-a", name, "-w"))
+    import shutil
+    tool = shutil.which("secret-tool") or "secret-tool"
+    return " ".join(shlex.quote(part) for part in (
+        tool, "lookup", "service", _SECRET_SERVICE, "account", name))
