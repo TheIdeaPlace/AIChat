@@ -92,7 +92,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
                        own=None, reported_window: int = 0,
                        now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
                        subagent_count: Optional[int] = None, running_model: str = "",
-                       api_spent: Optional[float] = None) -> List[str]:
+                       api_spent: Optional[float] = None, api_cost: str = '') -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
@@ -138,7 +138,12 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
         lines.append(f"Output style: {own.output_style or 'your setting'}")
         instructions = " ".join(own.instructions.split())
         lines.append(f"Instructions for this chat: {instructions or 'none'}")
-    if own is not None and info.provider == 'codex':
+    if own is not None and info.provider in ('codex', 'codex-api'):
+        from .billing import money
+        lines.append('Charged to: ' + ('OpenAI API credits' if info.provider == 'codex-api' else 'ChatGPT subscription'))
+        if info.provider == 'codex-api':
+            words = api_cost or ('estimated ' + money(api_spent) if api_spent is not None else 'cost not known')
+            lines.append('Spending on API credits by this chat: ' + words)
         options = own.provider_options
         # A chat on Codex's default follows it at each turn (#596, decision
         # 19), so say which model it was last on: the next turn takes the
@@ -158,7 +163,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
                           else 'Additional folders saved for folder editing: ') + '; '.join(options['extra_roots']))
         if options.get('instructions'):
             lines.append('Chat instructions: ' + options['instructions'])
-    if info.provider == "codex":
+    if info.provider in ('codex', 'codex-api'):
         lines.extend(saved_rule_lines(saved_rule_count))
     mode = own.permission_mode if own is not None else info.permission_mode
     if mode and info.provider == "claude":

@@ -1316,6 +1316,15 @@ def d_new_session_api_credits(frame, env):
     return lambda: frame._modal(dialog)
 
 
+def d_new_session_openai(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',),
+                              provider='codex', openai_key=True)
+    dialog.charge.SetSelection(1)
+    dialog._on_charge()
+    return lambda: frame._modal(dialog)
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -2298,6 +2307,77 @@ def d_api_keys_with_key(frame, env):
     return show
 
 
+def _openai_keys(frame, env, state):
+    from thechatplace import openai_billing, spend_ledger
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    ledger = spend_ledger.SpendLedger(env['tmp'] / 'openai-probe', defaults=spend_ledger.Limits(5, .5))
+    if state != 'empty':
+        openai_billing.save_api_key('sk-proj-probe-' + '0' * 30)
+        held = ledger.reserve('codex-api:probe')
+        ledger.close(held, complete=False)
+    class Test:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            pass
+        def cancel(self):
+            pass
+    dialog = ApiKeysDialog(frame, openai_ledger=ledger, openai_runner_factory=Test)
+    dialog.provider_choice.SetSelection(1)
+    dialog.on_provider()
+    if state == 'testing':
+        dialog.on_test()
+    elif state == 'updating':
+        dialog._key_change_pending = True
+        dialog._sync()
+        dialog.result.SetValue('Updating the OpenAI key. Please wait...')
+    elif state == 'failed':
+        dialog.result.SetValue('OpenAI refused your key. Replace it and test again. No charge was made for the refused request.')
+    elif state == 'held':
+        dialog.result.SetValue('Your key works. That test was estimated at less than a cent.')
+    return lambda: frame._modal(dialog)
+
+
+def d_openai_keys_empty(frame, env):
+    return _openai_keys(frame, env, 'empty')
+
+
+def d_openai_keys_held(frame, env):
+    return _openai_keys(frame, env, 'held')
+
+
+def d_openai_keys_testing(frame, env):
+    return _openai_keys(frame, env, 'testing')
+
+
+def d_openai_keys_failed(frame, env):
+    return _openai_keys(frame, env, 'failed')
+
+
+def d_openai_keys_updating(frame, env):
+    return _openai_keys(frame, env, 'updating')
+
+
+def d_openai_properties(frame, env):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.properties import session_properties
+    from thechatplace.ui.dialogs import PropertiesDialog
+    record = OwnSession('openai-probe', 'OpenAI budget', env['folders']['Scratch'],
+                        provider='codex-api', billing='api', provider_options={'model': 'gpt-5-nano'})
+    lines = session_properties(record.to_info(), own=record, api_cost='cost not known')
+    return lambda: frame._modal(PropertiesDialog(frame, 'Properties of OpenAI budget', lines, frame._copy_properties))
+
+
+def d_openai_usage(frame, env):
+    from thechatplace.ui.dialogs import UsageDialog
+    lines = ['OpenAI API credits: estimated spending less than a cent of $5.00.',
+             'This chat: cost not known. Prices dated 2026-11-17.',
+             'Held $0.50; estimated remaining $4.50.',
+             'Stopped message: estimated, at most 7 cents.',
+             'Limits are approximate; one request can pass a limit.']
+    return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
+
+
 def d_restore_chooser(frame, env):
     """Restore from Backup's chooser (#450): a backup's chats, one skipped."""
     from thechatplace.ui.dialogs import RestoreChooserDialog
@@ -2478,6 +2558,7 @@ SURFACES = {
     "new-session-api-credits": ("dialog", d_new_session_api_credits,
                                 "New Session once a Claude API key is added, with Charge to "
                                 "on API credits and Fable chosen (#658)"),
+    'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
     "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
@@ -2587,6 +2668,13 @@ SURFACES = {
     "api-keys": ("dialog", d_api_keys, "Tools, API Keys with no key and nothing spent"),
     "api-keys-with-key": ("dialog", d_api_keys_with_key,
                           "Tools, API Keys with a key, some spending and a test's answer"),
+    'openai-keys-empty': ('dialog', d_openai_keys_empty, 'OpenAI API Keys without a saved key'),
+    'openai-keys-held': ('dialog', d_openai_keys_held, 'OpenAI API Keys with estimated spending and Release Held'),
+    'openai-keys-testing': ('dialog', d_openai_keys_testing, 'OpenAI API Keys while testing a made-up key'),
+    'openai-keys-failed': ('dialog', d_openai_keys_failed, 'OpenAI API Keys after key refusal'),
+    'openai-keys-updating': ('dialog', d_openai_keys_updating, 'OpenAI API Keys while replacing a key'),
+    'openai-properties': ('dialog', d_openai_properties, 'Codex API Properties with unknown spending'),
+    'openai-usage': ('dialog', d_openai_usage, 'OpenAI Usage with estimated maximum and unknown spending'),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "rewind": ("dialog", d_rewind, "Retry from Here on your first message: Conversation only chosen"),
     "rewind-files": ("dialog", d_rewind_files,
@@ -2637,6 +2725,7 @@ DIALOG_CLASSES = {
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "new-session-api-credits": "NewSessionDialog",
+    'new-session-openai': 'NewSessionDialog',
     "new-session-worktree": "NewSessionDialog",
     "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
@@ -2722,6 +2811,13 @@ DIALOG_CLASSES = {
     "backup-schedule": "BackupScheduleDialog",
     "api-keys": "ApiKeysDialog",
     "api-keys-with-key": "ApiKeysDialog",
+    'openai-keys-empty': 'ApiKeysDialog',
+    'openai-keys-held': 'ApiKeysDialog',
+    'openai-keys-testing': 'ApiKeysDialog',
+    'openai-keys-failed': 'ApiKeysDialog',
+    'openai-keys-updating': 'ApiKeysDialog',
+    'openai-properties': 'PropertiesDialog',
+    'openai-usage': 'UsageDialog',
     "relay": "RelayDialog",
     "rewind": "RewindDialog",
     "rewind-files": "RewindDialog",

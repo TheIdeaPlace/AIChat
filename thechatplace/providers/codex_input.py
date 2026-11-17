@@ -88,3 +88,12 @@ def input_items(text):
     result = text.items() if isinstance(text, CodexInput) else [{'type': 'text', 'text': text}]
     validate_input(result)
     return result
+
+
+def prepend_context(text, context):
+    """Keep native attachments when a deferred conversation precedes Send."""
+    if not context:
+        return text
+    parts = text.items()[1:] if isinstance(text, CodexInput) else getattr(text, 'parts', ())
+    joined = context + str(text)
+    return LongCodexInput(joined, parts) if len(joined) > 32000 else CodexInput(joined, parts)

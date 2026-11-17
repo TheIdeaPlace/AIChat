@@ -2405,6 +2405,55 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
     return owned
 
 
+def codex_api_home() -> Path:
+    return app_data_dir() / 'codex-api'
+
+
+def start_codex_api_server(executable=None, *, home=None) -> CodexServerProcess:
+    """API-only process: no ambient credentials, disk login, or endpoint (#661)."""
+    import json
+    import subprocess
+    from .providers.codex_billing import route_config
+    from types import SimpleNamespace
+    home = Path(home) if home is not None else codex_api_home()
+    home.mkdir(parents=True, exist_ok=True)
+    if (home / 'auth.json').exists():
+        raise OSError('The API Codex home contains a disk sign-in. Remove it before using API credits.')
+    executable = executable or find_codex()
+    if not executable or not _native_codex(executable):
+        raise OSError('Install the native Codex CLI, then restart.')
+    env = {k: v for k, v in codex_child_environment().items()
+           if not k.upper().startswith(('CODEX_', 'ANTHROPIC_', 'OTEL_', 'RUST_'))
+           and k.upper() not in ('SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE',
+                                'CURL_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS', 'NODE_TLS_REJECT_UNAUTHORIZED')}
+    env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+    config = route_config(SimpleNamespace(billing_route='api'))
+    config.update(log_dir=str(home / 'logs'))
+    args = [executable, 'app-server', '--listen', 'stdio://']
+    for key, value in config.items():
+        # TOML has no null. A missing service tier is the standard tier.
+        if isinstance(value, dict) and value:
+            for field, setting in value.items():
+                args += ['-c', f'{key}.{field}={json.dumps(setting)}']
+        elif value is not None:
+            args += ['-c', f'{key}={json.dumps(value)}']
+    tree = ProcessTree()
+    try:
+        process = subprocess.Popen(args, env=env, cwd=home, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   **tree.popen_kwargs())
+    except BaseException:
+        tree.close()
+        raise
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except BaseException:
+        owned.close()
+        raise
+    return owned
+
+
 # ---------------------------------------------------------------------------
 # GitHub Copilot CLI (#352)
 # ---------------------------------------------------------------------------
@@ -2716,6 +2765,7 @@ def start_codex_archive_server(profile: Path, executable=None) -> CodexServerPro
 
 BACKUP_SECRET = "scheduled-backup-passphrase"
 CLAUDE_API_KEY_SECRET = "claude-api-key"
+OPENAI_API_KEY_SECRET = "openai-api-key"
 BACKUP_SECRET_FILE = "backup-passphrase.dpapi"
 #: Every secret file on Windows ends in this; backups leave them all out.
 SECRET_SUFFIX = ".dpapi"
@@ -2723,6 +2773,7 @@ SECRET_SUFFIX = ".dpapi"
 _SECRETS = {
     BACKUP_SECRET: (BACKUP_SECRET_FILE, "The Chat Place backup passphrase"),
     CLAUDE_API_KEY_SECRET: ("claude-api-key" + SECRET_SUFFIX, "The Chat Place Claude API key"),
+    OPENAI_API_KEY_SECRET: ("openai-api-key" + SECRET_SUFFIX, "The Chat Place OpenAI API key"),
 }
 _SECRET_SERVICE = "The Chat Place"
 _SECRET_ACCOUNT = BACKUP_SECRET

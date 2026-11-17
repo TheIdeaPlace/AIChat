@@ -88,6 +88,57 @@ def written(frame, session_id="api-1", title="Paid", kind="prompt"):
 SENT_PAID = "Sent on API credits to Paid."
 
 
+def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.openai_prices import SOURCES
+    dialog = NewSessionDialog(frame, folder, providers=('claude', 'codex'), provider='codex', openai_key=True)
+    try:
+        assert dialog.charge.IsShown() and dialog.billing() == 'subscription'
+        assert dialog.charge.GetString(0) == 'ChatGPT subscription'
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert dialog.billing() == 'api'
+        assert dialog.model.GetStrings() == list(SOURCES)
+        assert dialog.values()[-1] == 'gpt-5-nano'
+        assert dialog.mode.GetCount() == 2
+        assert 'estimated' in dialog.note.GetValue()
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        assert dialog.billing() == 'subscription' and not dialog.charge.IsShown()
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_api_confirmation_and_sent_event_use_own_identity(frame, folder, monkeypatch, env):
+    record = OwnSession('openai-1', 'OpenAI paid', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    calls = []
+    monkeypatch.setattr(frame, '_confirm_api_send', lambda title, provider: calls.append((title, provider)) or True)
+    key = record.to_info().key
+    assert frame._api_send_problem(key) is None
+    assert calls == [('OpenAI paid', 'codex-api')]
+    assert key not in frame._api_confirmed
+    frame._on_codex_api_event(TurnEvent('api_sent', session_id=record.cli_session_id, data={'billing': 'api'}))
+    assert key in frame._api_confirmed
+    assert frame._api_send_problem(key) is None and len(calls) == 1
+
+
+def test_codex_api_unknown_cost_is_not_zero_in_status_and_properties(frame, folder):
+    from thechatplace import properties, openai_billing
+    record = OwnSession('unknown-openai', 'Unknown cost', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    key = record.to_info().key
+    ledger = spend_ledger.default_ledger('openai')
+    reservation = ledger.reserve(key)
+    ledger.close(reservation, complete=False)
+    assert 'this chat cost not known' in frame._api_spend_line(key)
+    words = openai_billing.chat_cost_words(ledger, key)
+    lines = properties.session_properties(record.to_info(), own=record, api_cost=words)
+    assert 'Spending on API credits by this chat: cost not known' in lines
+    assert frame._is_api_chat(record.to_info())
+
+
 def sent_said(said):
     """What was said of a message going on API credits into Paid: its
     read-back with "on API credits" in it, or the notice alone (#663)."""
@@ -972,3 +1023,84 @@ def test_without_echoes_a_steer_given_back_may_have_gone_in(frame, env, monkeypa
     assert frame.reply_text.GetValue().endswith("Change course")
     assert pump(lambda: "Your steered message for Paid may not have been taken in. "
                 "It's back in the message box." in env["feedback"])
+
+
+def test_codex_api_pasted_files_are_visible_and_removable(frame, folder, monkeypatch):
+    from types import SimpleNamespace
+    record = OwnSession('attached-api', 'Attachments', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame._open = record.to_info()
+    monkeypatch.setattr(frame, '_clipboard_files', lambda: ([folder + '/notes.txt'], []))
+    frame._on_reply_paste(SimpleNamespace(Skip=lambda: pytest.fail('File paste was ignored')))
+    assert frame.attach_list.IsShown()
+    assert frame.attach_list.GetStrings() == ['notes.txt']
+    assert frame._attachments[record.to_info().key] == [folder + '/notes.txt']
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    frame._on_attach_key(SimpleNamespace(GetKeyCode=lambda: wx.WXK_DELETE))
+    assert not frame.attach_list.IsShown() and not frame._attachments.get(record.to_info().key)
+
+
+def test_codex_charge_preserves_model_identity_and_effort(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, folder, providers=('codex',), provider='codex', openai_key=True)
+    try:
+        dialog._set_codex_models((CodexModel('other', 'Other', ('low',), 'low', True),
+                                 CodexModel('gpt-5.4-mini', 'Mini', ('low', 'high'), 'low', False),
+                                 CodexModel('gpt-5-nano', 'Nano', ('low', 'high'), 'low', False)), False)
+        dialog.model.SetSelection(3)  # nano, not API-list position 3
+        dialog._on_codex_model()
+        dialog.effort_choice.SetSelection(2)  # high
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert dialog.values()[-1] == 'gpt-5-nano' and dialog.effort() == 'high'
+        dialog.charge.SetSelection(0)
+        dialog._on_charge()
+        assert dialog.values()[-1] == 'gpt-5-nano' and dialog.effort() == 'high'
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        dialog._set_codex_models((), True)
+        dialog.charge.SetSelection(0)
+        dialog._on_charge()
+        assert dialog.model.GetSelection() == 0 and dialog.values()[-1] == ''
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_cost_and_failure_are_spoken_with_announcements_off(frame, env, folder):
+    from thechatplace.speech import ANNOUNCE_SILENT
+    record = OwnSession('cost-api', 'Paid Codex', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame.speech.announce = ANNOUNCE_SILENT
+    frame.speech.api_say_cost = True
+    frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={
+        'sent': True, 'cost_words': 'estimated 3 cents'}))
+    assert not frame.speech.enabled  # this bypasses ordinary announcement gating
+    assert 'Paid Codex: the cost is estimated at 3 cents.' in env['feedback']
+    assert (env['feedback'][-1], record.to_info().key) in env['about']
+    frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={'failure': 'connection_dropped'}))
+    assert "OpenAI's connection dropped" in env['feedback'][-1]
+    frame.speech.api_say_cost = False
+    before = list(env['feedback'])
+    frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={'sent': True, 'cost_words': 'estimated 3 cents'}))
+    assert env['feedback'] == before
+
+
+def test_api_bundled_smoke_report_imports_api_backend(tmp_path):
+    import json
+    from thechatplace import app
+    out = tmp_path / 'smoke.json'
+    app.smoke_test(str(out))
+    assert json.loads(out.read_text())['codex_api'] is True
+
+
+def test_api_relay_checks_own_route_and_actual_running_state(frame, folder):
+    from types import SimpleNamespace
+    record = OwnSession('relay-api', 'API relay', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    info = record.to_info()
+    assert frame._relay_on_api_credits(info)
+    frame._codex_states[info.key] = SimpleNamespace(outcome='inProgress', state='working')
+    assert frame._relay_source_working(info)
+    frame._codex_states[info.key] = SimpleNamespace(outcome='completed', state='idle')
+    assert not frame._relay_source_working(info)

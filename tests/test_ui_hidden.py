@@ -11477,6 +11477,7 @@ def refuse_codex_creation(frame, monkeypatch):
 
 @pytest.mark.parametrize('source', [None, 'continue'])
 def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(frame, env, monkeypatch, source):
+    from thechatplace.sessions import SessionInfo
     # New Session (or Continue Here) is closed by the time Codex refuses, and
     # with no editable chat open the message box is hidden, so the first
     # message goes to the clipboard, said first, before the reason (#257).
@@ -11484,7 +11485,8 @@ def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(f
     stores = refuse_codex_creation(frame, monkeypatch)
     assert not frame.own_reply.IsShown()
     frame._create_codex_owned('/workspace', 'Refused', 'My first message',
-                              source=object() if source else None, sandbox='workspace-write')
+                              source=SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+                              if source else None, sandbox='workspace-write')
     assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
     said = env["feedback"][-1]
     assert said.startswith('No Codex chat was started. Your first message is copied to the clipboard. '
@@ -11810,6 +11812,7 @@ def test_window_new_and_continue_pass_codex_model_effort_selection(frame, monkey
     assert args == ('/', 'Synthetic', 'Synthetic prompt')
     assert options['model'] == 'synthetic-one' and options['effort'] == 'future-effort'
     assert options.get('source') is (source if continuing else None)
+    assert options['provider'] == 'codex'  # legacy selection has no billing(), so stays on subscription
 
 
 def test_codex_catalog_availability_is_announced_without_moving_focus(frame, monkeypatch):

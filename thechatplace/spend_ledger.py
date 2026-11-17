@@ -17,6 +17,9 @@ written. Each line is one of:
 * ``settle``: what Claude Code said a result cost (``total_cost_usd``), by
   model too. A turn can have several (Send Now, follow-ups), each the cost
   since the one before.
+* ``correction``: an OpenAI late-usage attribution reduces an already
+  recorded settlement; the earlier turn is charged first, so a crash can
+  over-count, never free unaccounted credit.
 * ``close``: the turn's process is over. ``complete`` (exactly ``true``)
   when every message sent got its result, so what was settled is the whole
   cost; otherwise (Stop mid-reply, a crash, a result without a usable cost,
@@ -436,8 +439,9 @@ class CostTracker:
 
 class SpendLedger:
     def __init__(self, folder: Optional[Path] = None,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, defaults: Optional[Limits] = None) -> None:
         self._folder = Path(folder) if folder is not None else None
+        self._defaults = defaults or Limits()
         self._clock = clock
         #: Reservations made in this process and not yet closed: Reset keeps
         #: them, and Release Held leaves them be.
@@ -608,15 +612,15 @@ class SpendLedger:
         try:
             raw = json.loads(self.limits_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return Limits(), ""
+            return self._defaults, ""
         except (OSError, ValueError, RecursionError) as exc:
-            return Limits(), (f"The Chat Place couldn't read its API spending limits ({exc}), "
+            return self._defaults, (f"The Chat Place couldn't read its API spending limits ({exc}), "
                               "so it won't spend API credits until they're set again in "
                               "Tools, API Keys.")
         overall = _limit(raw.get("overall")) if isinstance(raw, dict) else None
         per_message = _limit(raw.get("per_message")) if isinstance(raw, dict) else None
         if overall is None or per_message is None:
-            return Limits(), ("The Chat Place's API spending limits are damaged, so it won't "
+            return self._defaults, ("The Chat Place's API spending limits are damaged, so it won't "
                               "spend API credits until they're set again in Tools, API Keys.")
         return Limits(overall, per_message), ""
 
@@ -662,6 +666,7 @@ class SpendLedger:
             lines.pop()
         #: Chats renamed (#663): old id -> new id.
         renamed: Dict[str, str] = {}
+        settled_all, settled_counted, settlement_dates = {}, {}, {}
 
         def chat_of(chat: str) -> str:
             seen = set()
@@ -680,9 +685,36 @@ class SpendLedger:
                     reservations = {rid: entry for rid, entry in reservations.items()
                                     if rid in keep and not entry.closed}
                     totals.spent, totals.by_chat, totals.by_model = 0.0, {}, {}
+                    settled_counted.clear()
                     totals.reset_at = record["at"]
                     damage = ""  # Reset is how damage is put behind you
                     continue
+                if record['type'] in ('settle', 'correction'):
+                    rid, cost = record['id'], record['cost']
+                    if record['type'] == 'correction' and -cost > settled_all.get(rid, 0) + .000001:
+                        raise ValueError('Correction exceeds recorded spending')
+                    counted = cost if cost >= 0 else -min(-cost, settled_counted.get(rid, 0))
+                    settled_all[rid] = settled_all.get(rid, 0) + cost
+                    settled_counted[rid] = settled_counted.get(rid, 0) + counted
+                    today_cost = cost if record['at'] >= midnight else 0
+                    week_cost = cost if record['at'] >= week_start else 0
+                    dated = settlement_dates.setdefault(rid, [])
+                    if cost >= 0:
+                        dated.append([cost, record['at']])
+                    else:
+                        left, today_cost, week_cost = -cost, 0, 0
+                        for batch in reversed(dated):
+                            taken = min(left, batch[0])
+                            if batch[1] >= midnight:
+                                today_cost -= taken
+                            if batch[1] >= week_start:
+                                week_cost -= taken
+                            batch[0] -= taken
+                            left -= taken
+                            if left <= .0000001:
+                                break
+                    record = dict(record, _counted_cost=counted,
+                                  _today_cost=today_cost, _week_cost=week_cost)
                 self._replay_line(record, reservations, totals, renamed, chat_of,
                                   midnight, week_start)
             except Exception:  # noqa: BLE001 - a line can only ever be damage (#663)
@@ -727,19 +759,18 @@ class SpendLedger:
             reservations[rid] = _Open(record["amount"], chat_of(record.get("chat", "")))
             return
         entry = reservations.get(rid)
-        if kind == "settle":
+        if kind in ("settle", "correction"):
             cost = record["cost"]
-            totals.spent += cost
+            counted = record.get("_counted_cost", cost)
+            totals.spent += counted
             chat = chat_of(record.get("chat") or (entry.chat_id if entry else ""))
             if chat:
-                totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + cost
+                totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + counted
                 totals.chat_all_time[chat] = totals.chat_all_time.get(chat, 0.0) + cost
             for model, amount in (record.get("models") or {}).items():
-                totals.by_model[model] = totals.by_model.get(model, 0.0) + amount
-            if record["at"] >= midnight:
-                totals.today += cost
-            if record["at"] >= week_start:
-                totals.last_7_days += cost
+                totals.by_model[model] = totals.by_model.get(model, 0.0) + (amount * counted / cost if cost else 0)
+            totals.today += record.get("_today_cost", cost if record["at"] >= midnight else 0)
+            totals.last_7_days += record.get("_week_cost", cost if record["at"] >= week_start else 0)
             if entry is not None:
                 entry.settled += cost
             return
@@ -774,25 +805,35 @@ class SpendLedger:
             old, new = record.get("from"), record.get("to")
             return record if isinstance(old, str) and old and isinstance(new, str) \
                 and new else None
-        if kind not in ("reserve", "settle", "close") or not isinstance(record.get("id"), str) \
+        if kind not in ("reserve", "settle", "correction", "close") or not isinstance(record.get("id"), str) \
                 or not record["id"]:
             return None
         if not isinstance(record.get("chat", ""), str):
             return None
         if kind == "reserve" and _amount(record.get("amount")) is None:
             return None
-        if kind == "settle":
-            if _amount(record.get("cost")) is None:
+        if kind in ("settle", "correction"):
+            sign = -1 if kind == "correction" else 1
+            if not isinstance(record.get("cost"), (int, float)) or isinstance(record["cost"], bool) or _amount(sign * record["cost"]) is None:
                 return None
             models = record.get("models", {})
             if not isinstance(models, dict) or any(
-                    not isinstance(m, str) or _amount(c) is None for m, c in models.items()):
+                    not isinstance(m, str) or not isinstance(c, (int, float)) or isinstance(c, bool) or _amount(sign*c) is None for m, c in models.items()):
                 return None
         return record
 
     def totals(self, now: Optional[float] = None) -> Totals:
         with _LOCK:
             return self._replay(now)[0]
+
+    def chat_cost(self, chat_id):
+        """Recorded amount, retained hold, and whether any cost is unresolved."""
+        with _LOCK:
+            totals, reservations = self._replay()
+            pending = [entry for entry in reservations.values() if entry.chat_id == chat_id]
+            return (totals.chat_all_time.get(chat_id, 0.0),
+                    sum(max(0, entry.amount-entry.settled) for entry in pending),
+                    bool(pending) or bool(totals.problem))
 
     def can_spend(self) -> Optional[str]:
         """Why an API message can't start now, or None."""
@@ -881,6 +922,22 @@ class SpendLedger:
                 self._unrecorded.add(reservation.id)
                 return False
 
+    def correct_openai_overlap(self, reservation, credit, model):
+        """Remove usage already charged to a later OpenAI turn, after the
+        matching earlier turn was charged. Only this API ledger uses it."""
+        credit = _money(credit)
+        if credit is None or not reservation.chat_id.startswith('codex-api:'):
+            return False
+        with _LOCK:
+            try:
+                self._append({'type': 'correction', 'id': reservation.id,
+                              'chat': reservation.chat_id, 'cost': -round(credit, 6),
+                              'models': {model: -round(credit, 6)}})
+                return True
+            except OSError:
+                self._unrecorded.add(reservation.id)
+                return False
+
     def close(self, reservation: Reservation, complete: bool) -> None:
         """The process is over. ``complete``: its whole cost was settled (or
         nothing was ever sent), so the rest of the reservation is freed;
@@ -917,12 +974,20 @@ class SpendLedger:
 
 
 _DEFAULT: Optional[SpendLedger] = None
+_OPENAI_DEFAULT: Optional[SpendLedger] = None
 
 
-def default_ledger() -> SpendLedger:
+def default_ledger(provider='claude') -> SpendLedger:
     """The ledger in the app's folder, one for the whole process."""
-    global _DEFAULT
+    global _DEFAULT, _OPENAI_DEFAULT
     with _LOCK:
+        if provider == 'openai':
+            if _OPENAI_DEFAULT is None:
+                _OPENAI_DEFAULT = SpendLedger(platform_paths.app_data_dir() / 'openai-billing',
+                                               defaults=Limits(5.00, 0.50))
+            return _OPENAI_DEFAULT
+        if provider != 'claude':
+            raise ValueError('Unknown API-credit provider')
         if _DEFAULT is None:
             _DEFAULT = SpendLedger()
         return _DEFAULT

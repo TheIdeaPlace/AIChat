@@ -14,6 +14,7 @@ from .codex_rpc import (check_startable, verify_codex_rule_layers, codex_tool_ov
                         ReadOnlyCodexConnection, thread_list_pages)
 from .codex_models import read_models
 from .codex_policy import CodexPolicy
+from .codex_billing import account_matches, config_matches, route_config, is_api
 
 CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/"
 
@@ -81,8 +82,9 @@ class CodexOwnedThread:
         mode = self.collaboration if self.collaboration is not None else self.unavailable_mode
         if mode is not None:
             options['collaboration'] = mode
-        return OwnSession(self.native_id, self.title, self.cwd, provider="codex",
+        return OwnSession(self.native_id, self.title, self.cwd, provider=getattr(self.connection, 'provider_id', 'codex'),
                           created_ms=self.created_ms, started=True,
+                          billing='api' if is_api(self.connection) else 'subscription',
                           provider_options=options)
 
 
@@ -105,7 +107,7 @@ class CodexOwnedThreads:
         if not isinstance(cwd, str) or not cwd.strip():
             raise ValueError("Codex working directory required")
         account = self.connection.request("account/read", {"refreshToken": True})
-        if not is_chatgpt_account(account):
+        if not account_matches(self.connection, account):
             raise CodexRpcError("Codex owned chats require ChatGPT sign-in")
         result = self.connection.request("config/read", {"cwd": cwd, "includeLayers": True})
         config = result.get("config")
@@ -115,11 +117,7 @@ class CodexOwnedThreads:
             raise CodexRpcError('Remove or rename the configured ccd_session_mgmt server before opening this chat here')
         tools = codex_tool_overrides(config, mcp_servers, apps)
         providers = config.get("model_providers", {})
-        if (config.get("model_provider") not in (None, "openai")
-                or config.get("forced_login_method") not in (None, "chatgpt")
-                or config.get("openai_base_url") is not None
-                or config.get("chatgpt_base_url") not in (None, CHATGPT_BASE_URL)
-                or not isinstance(providers, dict) or "openai" in providers):
+        if not config_matches(self.connection, config):
             raise CodexRpcError("Codex owned chats require the default ChatGPT route")
 
         verify_codex_rule_layers(result)
@@ -255,7 +253,15 @@ class CodexOwnedThreads:
             # Resume changes the loaded thread. Inspect persisted turn state
             # first, even after restarting TCP; never overwrite unfinished work.
             self._verify_idle(native_id)
-        if (model is not None and method != "thread/resume") or effort is not None:
+        if is_api(self.connection):
+            from ..openai_prices import require_price, Unpriced
+            require_price(model)
+            if apps or mcp_servers or policy.reviewer != 'user':
+                services = list(apps or ()) + list(mcp_servers or ())
+                if policy.reviewer != 'user':
+                    services.append('automatic approval review')
+                raise Unpriced(f'No API-credit price is known for service {", ".join(map(str, services))!r}. Nothing was sent.')
+        elif (model is not None and method != "thread/resume") or effort is not None:
             models = read_models(self.connection)
             choice = next((choice for choice in models if choice.model == model), None)
             # The catalog hides retired models. A saved chat on one can still
@@ -310,6 +316,9 @@ class CodexOwnedThreads:
             # Aside on a new chat is. It only leaves the turns out of the
             # reply: nothing here reads them, and the copy still has them.
             params["excludeTurns"] = True
+        if is_api(self.connection):
+            # Last merge wins: per-thread config can override CLI pins (#661).
+            params['config'].update(route_config(self.connection))
         try:
             result = self.connection.request(method, params)
         except CodexRpcError as error:
@@ -372,7 +381,7 @@ class CodexOwnedThreads:
              sandbox='read-only', approval_policy='on-request', approvals_reviewer='user',
              last_turn_id=None, before_turn_id=None, passive=False, mcp_servers=(), instructions=None, extra_roots=(), apps=(),
              collaboration=None, allow_retired=False):
-        if (not isinstance(source, SessionInfo) or source.provider != "codex"
+        if (not isinstance(source, SessionInfo) or source.provider != getattr(self.connection, 'provider_id', 'codex')
                 or not isinstance(source.cli_session_id, str)
                 or not platform_paths.is_safe_id(source.cli_session_id)):
             raise ValueError("Codex fork requires a valid source chat")
@@ -390,7 +399,7 @@ class CodexOwnedThreads:
 
     @staticmethod
     def _saved_options(record):
-        if (not isinstance(record, OwnSession) or record.provider != "codex"
+        if (not isinstance(record, OwnSession) or record.provider not in ("codex", "codex-api")
                 or record.started is not True or not isinstance(record.cli_session_id, str)
                 or not platform_paths.is_safe_id(record.cli_session_id)):
             raise ValueError("Only a started TCP-owned Codex chat can be resumed")
@@ -417,6 +426,10 @@ class CodexOwnedThreads:
         return options
 
     def resume(self, record: OwnSession):
+        if (not isinstance(record, OwnSession)
+                or record.provider != getattr(self.connection, 'provider_id', 'codex')
+                or (record.billing == 'api') != is_api(self.connection)):
+            raise ValueError('Codex billing route does not match this backend')
         options = self._saved_options(record)
         return self._create("thread/resume", record.cwd, record.title,
                             native_id=record.cli_session_id, model=options.get("model"), effort=options.get("effort"),

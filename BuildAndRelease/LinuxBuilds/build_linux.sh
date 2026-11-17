@@ -172,7 +172,7 @@ echo ""
 echo "Building the app (PyInstaller)..."
 rm -rf "$APP"
 "$PY" -m PyInstaller --noconfirm --clean --windowed --onedir --name TheChatPlace \
-    --hidden-import velopack --hidden-import thechatplace.providers.codex \
+    --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_api --hidden-import thechatplace.openai_billing --hidden-import thechatplace.openai_prices \
     --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot \
     --hidden-import thechatplace.providers.copilot_runtime \
     --collect-data theideaplace_appkit \

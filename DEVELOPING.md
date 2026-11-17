@@ -147,6 +147,91 @@ It's skipped otherwise, and never runs in CI. The other API-credit tests use a f
 Code, which is only as right as what we believe the real one says: #662 reached a test build
 because every fake reported a key the way the real one doesn't.
 
+OpenAI's separate `codex-api` backend (#661) has windowless tests in
+`tests/test_codex_api.py` and opt-in real app-server checks in `tests/test_live_openai.py`:
+
+```powershell
+$env:TCP_LIVE_OPENAI='1'
+$env:TCP_LIVE_OPENAI_KEY_FILE='C:\Users\kelly\OneDrive\testing\idt\keys\openai.txt'
+& 'C:\Users\kelly\GitHub\AIChat\.venv\Scripts\python.exe' -m pytest -q -x -s -p no:cacheprovider tests/test_live_openai.py
+```
+
+Run paid checks outside the coding agent's network sandbox; don't add CA overrides for
+its TLS failure. The tests use temporary homes and memory-only login, never the default
+Codex home or the saved system-store secret. They print token counters and estimated
+costs, never the key. For the free real-CLI redirect and dropped-stream checks, set
+`TCP_LIVE_OPENAI_FREE=1` and use `-k "redirect or cut_stream"` without enabling the paid flag.
+
+OpenAI's ledger lives in `openai-billing/`, separate from Claude's unchanged files. Its
+defaults are $5 overall and about $0.50 per message. The API runtime home `codex-api/`
+is excluded from backups. The app's single-instance guard remains part of spending
+safety: the ledger lock protects concurrent chats within that app process.
+
+API route invariants are applied after all per-thread settings. In CLI 0.163 the
+`turn/start` schema has no `config` field; sending a matching field there is not proof
+of server enforcement. Safety depends on the verified start/resume/fork configuration,
+fresh route checks, and the transport's strict turn-field validation. A caller cannot
+submit a different endpoint through the API transport. Hosted search, connected services,
+automatic review, native compaction/goals, and subagents are blocked until their costs
+can be accounted for. Side questions and copies cut at an earlier turn are not enabled
+for this backend yet. A full-history copy requires a known source usage baseline.
+Starts and full forks save their token baselines. A possible paid write invalidates
+the durable baseline until settlement; Stop/refusal retain the latest valid counters.
+Missing baselines recover from a matching turn's first `total - last` report. A
+counter regression, turn mismatch or model reroute invalidates the baseline.
+Any stream error keeps uncertain spending held, including a successful retry; a retry
+does not interrupt the turn. Completed-turn trackers accept late matching usage. If an
+earlier final snapshot overlaps a later turn, the earlier usage is charged first, then
+an append-only correction removes the duplicate later settlement. A crash between these
+writes can only over-count. Corrections retain original settlement dates and Reset scope.
+A confirmed key refusal frees the unspent reservation. Stop can settle an estimated
+maximum of recorded usage plus one request's context and maximum output, using the
+dated table; if that exceeds the reservation, the remaining hold stays.
+A timed-out Stop retains its tracker while other chats run; process cleanup claims
+a draining state before rejecting new sends and closing, so it cannot kill a new turn.
+
+Checkpoint 3 exposes these routes in Tools, API Keys with a Provider choice and in
+New Session's Charge to. OpenAI key updates run off the UI thread; each paid write
+checks the key generation, so replacement affects existing processes and removal
+blocks queued messages. Model changes use the priced API catalog, not ChatGPT's.
+Unknown per-chat spending is read from reservations, never displayed as zero.
+Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
+until the user sends a message. Failed or cancelled sends restore only user text. Native
+attachment parts survive the prefix. The writer event clears the deferred context.
+
+The visual probe includes `new-session-openai`, `openai-keys-empty`,
+`openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
+`openai-keys-updating`, `openai-properties`, and
+`openai-usage`. Each uses made-up keys and fake data. The first-send question is
+a native `wx.MessageDialog`, not an app-defined dialog surface: native message
+boxes do not use the probe's modal capture hook. Run them through the existing
+VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
+and inspect the other variants for wrapping and focus. Window tests and these
+surfaces run in CI; do not run window tests on Kelly's PC during this work.
+
+Orca's automated steps switch API Keys to OpenAI and check the key box, limits and
+estimated total. Run `tools/orca_speech.sh --keep /tmp/tcp-openai-orca` in the existing
+isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
+
+1. Open Tools, API Keys (Alt+T, P), use Alt+P, and choose Codex (OpenAI). Listen for
+   Provider, OpenAI, Key status, and the masked OpenAI API key field. Tab through
+   limits, Total and Release Held; a live reservation must not be releasable.
+2. Add a test key, then Test Key. Listen for Testing and its result with estimated
+   cost, or the refusal. Replace or remove the key while a request is delayed;
+   the dialog must remain usable and say the update is pending before it finishes.
+3. In New Session choose Codex, then API credits. Confirm that only priced models
+   and human approval modes are offered. Cancel the first-send question: the
+   message stays in the reply box. Send it, then listen for one guaranteed
+   Sent on API credits notice, including with ordinary announcements off.
+4. Read the row, window title, messages name, reply field, Properties and Usage.
+   All identify API credits; costs say estimated, or cost not known for missing
+   usage. Stop a reply, check the estimated maximum or retained hold, and send
+   again. Check a second chat can continue while the first Stop is delayed.
+
+Real tool-environment and fork semantics require the paid suite outside the agent
+sandbox. Tool isolation tries priced nano models then mini, and skips explicitly
+if no actual environment output was returned. Fork is tested independently of it.
+
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an
 accessibility bus), with no person, sound or VM:
@@ -249,6 +334,8 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
 | `thechatplace/billing.py` | How a Claude chat is charged (#658): the subscription or API credits, the check of initialize's `account` before anything is sent, the key's `apiKeyHelper` settings, budgets, the key scrubber and the words for API failures |
 | `thechatplace/spend_ledger.py` | What API credits have cost (#658): `api-spend.jsonl` (reservations, settlements, resets, appended only) and `api-limits.json`, under one lock so two chats can't spend the same money |
+| `thechatplace/openai_billing.py`, `thechatplace/openai_prices.py` | OpenAI's named system secret and one dated table for estimated standard text-token costs (#661) |
+| `thechatplace/providers/codex_api.py`, `codex_billing.py` | The isolated API-credit Codex backend: ephemeral login, route checks and pins, send events, provider-specific reservations, token settlement and bounded Stop (#661) |
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |

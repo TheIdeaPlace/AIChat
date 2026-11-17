@@ -27,6 +27,8 @@ TARGET_FIELDS = (FIELD_TITLE, FIELD_PROVIDER, FIELD_FOLDER, FIELD_STATUS)
 
 
 def provider_name(provider: str) -> str:
+    if provider == 'codex-api':
+        return 'Codex'
     return (provider or "").capitalize() or "Another agent"
 
 

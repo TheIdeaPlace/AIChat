@@ -1,0 +1,130 @@
+{
+ "title": "Properties of OpenAI budget",
+ "class": "PropertiesDialog",
+ "size": [
+  1120,
+  630
+ ],
+ "client": [
+  1096,
+  566
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Properties:",
+   "rect": [
+    8,
+    8,
+    99,
+    31
+   ],
+   "best": [
+    99,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Properties",
+   "label": "",
+   "rect": [
+    10,
+    41,
+    1080,
+    469
+   ],
+   "best": [
+    923,
+    304
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "Title: OpenAI budget",
+    "Provider: Codex",
+    "Kind: Chat Place session",
+    "Folder: C:\\Users\\vmuser\\AppData\\Local\\Temp\\tcp-probe\\openai-properties\\Projects\\Scratch",
+    "Status: Idle",
+    "Started: not recorded",
+    "Last activity: not recorded",
+    "Charged to: OpenAI API credits",
+    "Spending on API credits by this chat: cost not known",
+    "Model chosen: gpt-5-nano",
+    "Effort: Codex's default",
+    "Sandbox: read-only"
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    677,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    816,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    955,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

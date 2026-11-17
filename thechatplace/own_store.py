@@ -73,6 +73,8 @@ class OwnSession:
     #: for the heading.
     fork_source: str = ""
     forked_from: str = ""
+    #: Quoted subscription history, sent only with the first explicit API Send.
+    api_context: str = ""
     #: Rewind to Here and Branch from Here (#468): the uuid of the last
     #: record of ``fork_source`` the copy keeps (``--resume-session-at``).
     #: "" copies the whole history, as Continue Here does.
@@ -131,8 +133,9 @@ class OwnSession:
             permission_mode=self.permission_mode,
             unread=self.unread,
             provider=self.provider,
+            provider_label='Codex' if self.provider == 'codex-api' else '',
             continued_from=self.forked_from,
-            api_credits=self.provider == "claude" and self.billing == "api",  # #658
+            api_credits=self.billing == "api" and self.provider in ('claude', 'codex-api'),
         )
 
 
@@ -140,10 +143,10 @@ _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
 #: Every provider a record may name.
-PROVIDERS = ("claude", "codex", "copilot")
+PROVIDERS = ("claude", "codex", "copilot", "codex-api")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
-SEPARATE_PROVIDERS = ("copilot",)
+SEPARATE_PROVIDERS = ("copilot", "codex-api")
 #: The name Claude's API-credit chats' own file goes by (#663), in the
 #: place a separate provider's would.
 API_CHATS = "claude-api"
@@ -202,7 +205,7 @@ def _unknown_fields(item: dict) -> dict:
                if name not in _FIELDS and name != "provider_extras"}
     extras = item.get("provider_extras")
     if "provider_extras" in item:
-        if item.get("provider", "claude") != "codex" or not isinstance(extras, dict):
+        if item.get("provider", "claude") not in ("codex", "codex-api") or not isinstance(extras, dict):
             unknown["provider_extras"] = extras
         else:
             later = {name: value for name, value in extras.items() if name not in CODEX_EXTRAS}
@@ -277,7 +280,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             ok = True
         values[name] = value if ok else _DEFAULTS[name]
     extras = item.get("provider_extras")
-    if provider == "codex" and isinstance(extras, dict):
+    if provider in ("codex", "codex-api") and isinstance(extras, dict):
         # A hand edit that isn't valid is dropped, which only leaves the chat
         # in Default mode with no extra tools, rather than refusing the file.
         kept_extras = {k: extras[k] for k in CODEX_EXTRAS
@@ -321,8 +324,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "agent", "instructions", "output_style"):
             values[name] = ""
         values["prompt_fresh"] = False
-        # API credits are Claude's only, for now (#658).
-        values["billing"] = "subscription"
+        # Each Codex backend has a fixed billing route (#661).
+        values["billing"] = "api" if provider == 'codex-api' else "subscription"
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
@@ -513,7 +516,7 @@ class OwnSessionStore:
         item = _stored_record(session)
         record = {**kept, **item}
         later = kept.get("provider_extras")
-        if session.provider == "codex" and isinstance(later, dict):
+        if session.provider in ("codex", "codex-api") and isinstance(later, dict):
             record["provider_extras"] = {**later, **item.get("provider_extras", {})}
         return record
 
@@ -654,14 +657,26 @@ class OwnSessionStore:
                 if extras:
                     self._extras[session.identity] = extras
                 raise
-        if provider == 'codex':
+        if provider in ('codex', 'codex-api'):
             # What The Chat Place saved for the chat goes with its entry: its
             # task list, its Allow for This Chat rules and its automatic
             # review history (#634). Delete Session Permanently comes here
             # whether Codex deleted the chat or no longer had it.
             # Repeating removal also retries cleanup after a sharing violation.
-            CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
+            CodexPlanStore(self.path.parent / 'provider-tasks' / provider).remove(cli_session_id)
             from .providers.codex_permissions import CodexPermissionStore, CodexReviewStore
-            permissions = self.path.parent / 'provider-permissions' / 'codex'
+            permissions = self.path.parent / 'provider-permissions' / provider
             CodexPermissionStore(permissions).remove(cli_session_id)
             CodexReviewStore(permissions).remove(cli_session_id)
+            if provider == 'codex-api':
+                from .providers.codex_api import _BASELINES_LOCK
+                from .provider_storage import atomic_write_json
+                with _BASELINES_LOCK:
+                    path = self.path.parent / 'openai-billing' / 'codex-token-baselines.json'
+                    try:
+                        saved = json.loads(path.read_text(encoding='utf-8'))
+                    except (FileNotFoundError, ValueError):
+                        saved = {}
+                    if isinstance(saved, dict) and cli_session_id in saved:
+                        saved.pop(cli_session_id)
+                        atomic_write_json(path, saved)

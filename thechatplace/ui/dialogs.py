@@ -214,7 +214,8 @@ class NewSessionDialog(wx.Dialog):
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
-                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False):
+                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False,
+                 openai_key: bool = False):
         """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
@@ -358,6 +359,7 @@ class NewSessionDialog(wx.Dialog):
         # buttons, so Tab always stops on it with one chosen (#428). No
         # access key: every letter of "Charge to" is taken in this dialog.
         self._api_key = bool(api_key)
+        self._openai_key = bool(openai_key)
         self.charge_label = wx.StaticText(self, label="Charge to:")
         grid.Add(self.charge_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.charge = wx.Choice(self, choices=[label for _v, label in CHARGE_CHOICES])
@@ -980,10 +982,11 @@ class NewSessionDialog(wx.Dialog):
         index = self.model.GetSelection()
         models = models_for(self.billing())  # Fable too on API credits (#658)
         model = models[index][0] if 0 <= index < len(models) else ""
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             mode = DEFAULT_PERMISSION_MODE
-            index = self.model.GetSelection() - 1
-            model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
+            index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+            choices = self._codex_route_models()
+            model = choices[index].model if 0 <= index < len(choices) else ""
         elif self.provider() == "copilot":
             mode = DEFAULT_PERMISSION_MODE  # it always asks
             index = self.model.GetSelection() - 1
@@ -1014,7 +1017,7 @@ class NewSessionDialog(wx.Dialog):
     def billing(self) -> str:
         """How the new chat is charged (#658): "api" only for a Claude chat
         with API credits chosen; otherwise the subscription."""
-        if not self._api_key or self.provider() != "claude":
+        if not self._charge_available():
             return "subscription"
         index = self.charge.GetSelection()
         return CHARGE_CHOICES[index][0] if 0 <= index < len(CHARGE_CHOICES) else "subscription"
@@ -1022,12 +1025,27 @@ class NewSessionDialog(wx.Dialog):
     def _sync_charge(self):
         """Charge to is there only for Claude, once a key exists (#658).
         Disabled too when hidden, as the other fields are."""
-        shown = self._api_key and self.provider() == "claude"
+        shown = self._charge_available()
+        selected = self.charge.GetSelection()
+        labels = ['ChatGPT subscription' if self.provider() in ('codex', 'codex-api') else 'Claude subscription', 'API credits']
+        if list(self.charge.GetStrings()) != labels:
+            self.charge.Set(labels)
+            self.charge.SetSelection(max(0, selected))
         if self.charge.IsShown() != shown or self.charge_label.IsShown() != shown:
             for control in (self.charge_label, self.charge):
                 control.Show(shown)
                 control.Enable(shown)
             self.Layout()
+
+    def _charge_available(self):
+        return (self._api_key if self.provider() == 'claude' else
+                self._openai_key if self.provider() in ('codex', 'codex-api') else False)
+
+    def _codex_route_models(self):
+        if self.billing() == 'api':
+            from ..openai_prices import model_choices
+            return model_choices()
+        return self._codex_models
 
     def _claude_note(self) -> str:
         note = (CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing \
@@ -1039,6 +1057,22 @@ class NewSessionDialog(wx.Dialog):
     def _on_charge(self):
         """API credits offer Fable; the subscription doesn't (#658). The
         model chosen stays chosen if it's on both lists."""
+        if self.provider() in ('codex', 'codex-api'):
+            old_models, old_paid = getattr(self, '_display_codex_models', ((), False))
+            old_index = self.model.GetSelection() - (0 if old_paid else 1)
+            old = old_models[old_index].model if 0 <= old_index < len(old_models) else ''
+            old_effort = self.effort_choice.GetStringSelection()
+            self._on_provider()
+            models = self._codex_route_models()
+            selected = next((i for i, choice in enumerate(models) if choice.model == old), 0)
+            self.model.SetSelection(selected if self.billing() == 'api' else
+                                    selected + 1 if models and old else 0)
+            self._on_codex_model()
+            efforts = list(self.effort_choice.GetStrings())
+            self.effort_choice.SetSelection(efforts.index(old_effort) if old_effort in efforts else 0)
+            if models and models[selected].model != old:
+                self._feedback('Model changed to ' + models[selected].label + '.')
+            return
         models = models_for(self.billing())
         index = self.model.GetSelection()
         before = self.model.GetString(index) if 0 <= index < self.model.GetCount() else ""
@@ -1053,6 +1087,8 @@ class NewSessionDialog(wx.Dialog):
         from ..chat_options import ChatOptions
         saved = self._options_by_provider = getattr(self, '_options_by_provider', {})
         previous = self._control_provider
+        if previous != provider:
+            self.charge.SetSelection(0)
         if previous in ('claude', 'codex'):
             saved[previous] = (self._chat_options, list(self._chat_folders))
         if previous != provider:
@@ -1060,7 +1096,7 @@ class NewSessionDialog(wx.Dialog):
             self._update_chat_options_summary()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
-        elif self._control_provider == "codex":
+        elif self._control_provider in ('codex', 'codex-api'):
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "copilot":
             self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
@@ -1085,16 +1121,25 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Copilot CLI. " + note
                 self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
-        elif provider == "codex":
+        elif provider in ('codex', 'codex-api'):
             # "Codex's default", as Change Effort and Properties say it (#596).
-            self.model.Set([CODEX_DEFAULT] + [choice.label for choice in self._codex_models])
-            self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
-            self.model.Enable(bool(self._codex_models))
+            models = self._codex_route_models()
+            paid = self.billing() == 'api'
+            self._display_codex_models = (models, paid)
+            self.model.Set(([] if paid else [CODEX_DEFAULT]) + [choice.label for choice in models])
+            self.model.SetSelection(min(self._codex_choices[0], max(0, self.model.GetCount()-1)))
+            self.model.Enable(bool(models))
             self._on_codex_model()
             self.effort_choice.SetSelection(min(self._codex_choices[1], self.effort_choice.GetCount() - 1))
             from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
-            self.mode.Set([label for value, label in CODEX_REVIEW_MODES])
-            self.mode.SetSelection(self._codex_choices[2])
+            modes = CODEX_REVIEW_MODES[:2] if paid else CODEX_REVIEW_MODES
+            self.mode.Set([label for value, label in modes])
+            if paid:
+                previous = CODEX_REVIEW_MODES[min(self._codex_choices[2], len(CODEX_REVIEW_MODES)-1)][0]
+                selected = next((i for i, (value, label) in enumerate(modes) if value[:2] == previous[:2]), 0)
+            else:
+                selected = min(self._codex_choices[2], len(modes)-1)
+            self.mode.SetSelection(selected)
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave them on Codex's default. "
@@ -1107,6 +1152,13 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Codex. " + note
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())
+            if paid:
+                self.note.SetValue('API credits charge your OpenAI key, with estimated costs from a dated price table. '
+                    'Limits are separate from Claude and can be passed by one request. '
+                    'Only priced models and human approval review are available. Hosted search, connected services, '
+                    'subagents, background goals and native compaction are unavailable. Billing is fixed for this chat.')
+                if self.continuing:
+                    self.note.SetValue('The first message sends a text copy of the earlier conversation.\n\n' + self.note.GetValue())
         else:
             for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
                     ([label for value, label in models_for(self.billing())],
@@ -1170,7 +1222,7 @@ class NewSessionDialog(wx.Dialog):
         if self.provider() not in ("claude", "codex"):
             return ChatOptions(), []
         options = self._chat_options
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             options = ChatOptions(instructions=options.instructions)
         return options, list(self._chat_folders)
 
@@ -1178,19 +1230,21 @@ class NewSessionDialog(wx.Dialog):
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
         if self.provider() == "copilot":
             return ""
-        if self.provider() == "codex":
-            model = self.model.GetSelection() - 1
+        if self.provider() in ('codex', 'codex-api'):
+            model = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
             effort = self.effort_choice.GetSelection() - 1
-            choices = self._codex_models[model].efforts if 0 <= model < len(self._codex_models) else ()
+            models = self._codex_route_models()
+            choices = models[model].efforts if 0 <= model < len(models) else ()
             return choices[effort] if 0 <= effort < len(choices) else ""
         index = self.effort_choice.GetSelection()
         return EFFORTS[index][0] if 0 <= index < len(EFFORTS) else ""
 
     def _on_codex_model(self, _event=None):
-        if self.provider() != "codex":
+        if self.provider() not in ('codex', 'codex-api'):
             return
-        index = self.model.GetSelection() - 1
-        efforts = self._codex_models[index].efforts if 0 <= index < len(self._codex_models) else ()
+        index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+        models = self._codex_route_models()
+        efforts = models[index].efforts if 0 <= index < len(models) else ()
         self.effort_choice.Set([CODEX_DEFAULT] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
@@ -1203,8 +1257,10 @@ class NewSessionDialog(wx.Dialog):
     def _refresh_rules(self):
         if not self or self.IsBeingDeleted():
             return
-        if self._load_rules is None or self.provider() != 'codex':
+        if self._load_rules is None or self.provider() not in ('codex', 'codex-api'):
             return
+        if self.billing() == 'api':
+            return  # never read the ChatGPT home's rules for an API chat
         folder = self.folder.GetValue().strip()
         if folder == self._rules_for:
             return
@@ -1226,7 +1282,7 @@ class NewSessionDialog(wx.Dialog):
         self._codex_models = () if error else tuple(models)
         self._codex_model_error = error
         self._codex_models_loaded = True
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             self._on_provider()
             if self.IsShown():
                 self._feedback("Codex model choices are available." if self._codex_models else
@@ -2307,7 +2363,8 @@ class PermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(), "Request")
+        from ..billing import scrub
+        self.request_text = _read_only_text(self, scrub(request.detail()), "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Reason to give Claude if you deny (optional):"),
                   0, wx.LEFT, 8)
@@ -2385,7 +2442,8 @@ class CodexPermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        detail = request.detail(file_detail)
+        from ..billing import scrub
+        detail = scrub(request.detail(file_detail))
         if chat_rule is not None and provider != "Codex":
             # Copilot's (#426): The Chat Place keeps the command and answers
             # Allow Once each time; Copilot's own "always" is never sent.
@@ -4351,7 +4409,7 @@ class AgentConversationDialog(wx.Dialog):
             used = slot < slots
             new = used and info is None and provider is not None
             any_new = any_new or new
-            new_codex = new_codex or (new and provider == "codex")
+            new_codex = new_codex or (new and provider in ('codex', 'codex-api'))
             permission = self.permissions[slot]
             if new:
                 labels = [label for _value, label in self._modes(provider)]
@@ -4476,7 +4534,7 @@ class AgentConversationDialog(wx.Dialog):
                 value = self._modes(provider)[index][0]
                 if provider == "claude":
                     permission = value
-                elif provider == "codex":
+                elif provider in ('codex', 'codex-api'):
                     permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
@@ -6355,7 +6413,7 @@ class ChatOptionsDialog(wx.Dialog):
         self._provider = provider
         self._folder = folder
         self._options = options or ChatOptions()
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
@@ -6381,7 +6439,7 @@ class ChatOptionsDialog(wx.Dialog):
         set_accessible_name(self.style, "Output style")
         grid.Add(self.style, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             grid.ShowItems(False)
             sizer.Hide(grid)
 
@@ -6418,7 +6476,7 @@ class ChatOptionsDialog(wx.Dialog):
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
         note = (CODEX_CHAT_OPTIONS_NOTE + (" " + CODEX_CHAT_OPTIONS_LATER_NOTE if existing else "")
-                if provider == "codex" else
+                if provider in ('codex', 'codex-api') else
                 CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -6445,7 +6503,7 @@ class ChatOptionsDialog(wx.Dialog):
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and (self.instructions if provider == "codex" else self.agent).SetFocus())
+        wx.CallAfter(lambda: self and (self.instructions if provider in ('codex', 'codex-api') else self.agent).SetFocus())
 
     # -- the agent and style choices
 

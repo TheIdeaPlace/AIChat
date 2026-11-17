@@ -9,6 +9,12 @@ class CodexTokenUsage:
     latest_total: int
     cumulative_total: int
     context_window: int | None
+    latest_cached_input: int = 0
+    latest_reasoning_output: int = 0
+    cumulative_input: int = 0
+    cumulative_cached_input: int = 0
+    cumulative_output: int = 0
+    cumulative_reasoning_output: int = 0
 
     @property
     def share(self):
@@ -32,7 +38,10 @@ def decode_tokens(value):
     if not _counter(window) or window == 0:
         window = None
     return CodexTokenUsage(last['inputTokens'], last['outputTokens'], last['totalTokens'],
-                           total['totalTokens'], window)
+                           total['totalTokens'], window,
+                           last['cachedInputTokens'], last['reasoningOutputTokens'],
+                           total['inputTokens'], total['cachedInputTokens'],
+                           total['outputTokens'], total['reasoningOutputTokens'])
 
 
 def context_lines(tokens):

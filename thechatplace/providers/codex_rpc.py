@@ -14,6 +14,7 @@ import re
 import threading
 
 from .. import __version__, platform_paths
+from .codex_billing import account_matches, config_matches
 from .codex_events import decode_event, CodexTokenUsageEvent, CodexEvent, _text
 from .codex_requests import (decode_request, decode_resolved, CodexRequestDeclined, COMMAND, FILES, QUESTIONS, ELICITATION,
                              ACCEPT, ACCEPT_SESSION)
@@ -166,6 +167,17 @@ class CodexTurnRejected(CodexRpcError):
         # What Codex reported, for the diagnostics log (#448): fixed tokens only.
         self.status = status if isinstance(status, str) and re.fullmatch(r'[A-Za-z, ]{0,120}', status) else ''
         super().__init__(self.REASONS[self.code])
+
+
+class ApiCreditsRefused(CodexTurnRejected):
+    """An app-worded paid refusal, never arbitrary server text (#661)."""
+    def __init__(self, text):
+        from ..billing import scrub
+        super().__init__('billing_route')
+        self.text = scrub(text)[:1000]
+
+    def __str__(self):
+        return self.text
 
 
 _ENDED_TURNS = ('completed', 'failed', 'interrupted')
@@ -453,7 +465,7 @@ class ReadOnlyCodexConnection:
         try:
             if result.get("decision") in (ACCEPT, ACCEPT_SESSION) or result.get("action") == ACCEPT:
                 account = self.request("account/read", {"refreshToken": True})
-                if not is_chatgpt_account(account):
+                if not account_matches(self, account):
                     raise CodexRpcError("Codex approvals require ChatGPT sign-in")
             payload = self._encode({"id": request.request_id, "result": result})
         except Exception as error:
@@ -468,7 +480,7 @@ class ReadOnlyCodexConnection:
                 self._outgoing.put(payload)
                 del self._server_pending[request.request_id]
 
-    def _request(self, method, params, on_sent=None):
+    def _request(self, method, params, on_sent=None, on_written=None):
         """``on_sent``: called once the request is queued to go, so a caller
         can tell a failure before sending from one after (#634)."""
         if not isinstance(params, dict):
@@ -479,7 +491,7 @@ class ReadOnlyCodexConnection:
             # sign-in/provider state can change while the server stays alive.
             try:
                 account = self.request("account/read", {"refreshToken": True})
-                if not is_chatgpt_account(account):
+                if not account_matches(self, account):
                     raise CodexTurnRejected('chatgpt_required')
                 self._verify_turn_route(params)
             except (CodexTurnRejected, CodexSteerRefused):
@@ -503,7 +515,7 @@ class ReadOnlyCodexConnection:
                     raise CodexTurnRejected('input_size') from None
                 raise
             self._pending[request_id] = pending
-            self._outgoing.put(payload)
+            self._outgoing.put((payload, on_written) if on_written else payload)
         # Outside the lock, so a callback can't deadlock on it or leave the
         # request half-registered if it raises.
         if on_sent is not None:
@@ -558,11 +570,7 @@ class ReadOnlyCodexConnection:
         codex_tool_overrides(config, external)  # selected servers must still be configured
         verify_codex_tools(self, thread_id, allowed)
         providers = config.get("model_providers", {})
-        if (config.get("model_provider") not in (None, "openai")
-                or config.get("forced_login_method") not in (None, "chatgpt")
-                or config.get("openai_base_url") is not None
-                or config.get("chatgpt_base_url") not in (None, "https://chatgpt.com/backend-api/")
-                or not isinstance(providers, dict) or "openai" in providers):
+        if not config_matches(self, config):
             # Reject rather than silently changing a user's configured route.
             # The older CLI allowed overriding built-in provider definitions.
             raise CodexRpcError("Codex turns require the default ChatGPT billing route")
@@ -584,8 +592,13 @@ class ReadOnlyCodexConnection:
     def _write(self):
         try:
             while (payload := self._outgoing.get()) is not None:
+                callback = None
+                if isinstance(payload, tuple):
+                    payload, callback = payload
                 self._process.stdin.write(payload)
                 self._process.stdin.flush()
+                if callback is not None:
+                    callback()
         except (OSError, ValueError):
             self._fail("Codex connection write failed")
 
@@ -631,6 +644,10 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
+                        if getattr(self, 'billing_route', '') == 'api' and event.kind not in ('text_delta', 'reasoning_delta'):
+                            from ..billing import scrub
+                            event = replace(event, text=scrub(event.text),
+                                            plan=tuple((scrub(text), status) for text, status in event.plan))
                         self._event_sequence = getattr(self, '_event_sequence', 0) + 1
                         event = replace(event, sequence=self._event_sequence)
                     if isinstance(event, CodexTokenUsageEvent):

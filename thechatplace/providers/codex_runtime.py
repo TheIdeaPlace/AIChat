@@ -111,6 +111,8 @@ class CodexChatRuntime:
     Only explicit lifecycle actions acquire/reconnect a server. Stream failure
     suspends queues; it cannot resume or replay any prompt automatically.
     """
+    provider_id = 'codex'
+
     def __init__(self, on_update=lambda state: None, *, factory=None, executable=None, session_tools=False):
         self._managed = ManagedCodexConnection(executable, factory=factory or (
             lambda exe: CodexExecutionConnection(exe, initialize=False, session_tools=session_tools)))
@@ -259,7 +261,7 @@ class CodexChatRuntime:
             proof = self._proofs.get(native_id)
             unsettled = (bool(self._problems.get(native_id)) or native_id in self._policy_changes
                          or native_id in self._policy_recoveries)
-        own = own if (isinstance(own, OwnSession) and own.provider == 'codex'
+        own = own if (isinstance(own, OwnSession) and own.provider == self.provider_id
                       and own.cli_session_id == native_id and own.started is True) else None
         if unsettled:
             raise CodexFeatureError('copy_unconfirmed')
@@ -285,7 +287,7 @@ class CodexChatRuntime:
         except (CodexRpcError, ValueError, OSError):
             raise CodexFeatureError('copy_folder_moved') from None
         try:
-            CodexOwnedThreads._saved_options(OwnSession(native_id, source.title, source.cwd, provider='codex',
+            CodexOwnedThreads._saved_options(OwnSession(native_id, source.title, source.cwd, provider=self.provider_id,
                                                         started=True, provider_options=dict(options)))
         except (CodexRpcError, ValueError, OSError):
             raise CodexFeatureError('copy_unconfirmed') from None
@@ -372,9 +374,8 @@ class CodexChatRuntime:
                 and recovery[1] == self._problems.get(native_id)
                 and proof.connection.owns_runtime(proof))
 
-    @staticmethod
-    def _require_saved_policy(record, saved):
-        if (not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True
+    def _require_saved_policy(self, record, saved):
+        if (not isinstance(record, OwnSession) or record.provider != self.provider_id or record.started is not True
                 or record.cwd != saved.cwd or record.provider_options != saved.provider_options):
             raise CodexRpcError('Saved Codex permissions no longer match this loaded chat')
 
@@ -384,7 +385,7 @@ class CodexChatRuntime:
         The UI persists the returned record on its own thread and then confirms
         it. A failed save must never enable a broader runtime permission (#184).
         """
-        if not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True:
+        if not isinstance(record, OwnSession) or record.provider != self.provider_id or record.started is not True:
             raise CodexRpcError('Only owned Codex chats can change permissions')
         roots = record.provider_options.get('extra_roots', ()) if extra_roots is _KEEP else extra_roots
         for root in roots:
@@ -477,7 +478,13 @@ class CodexChatRuntime:
                 # A null effective effort means the model default, not the
                 # old loaded thread's explicit override. Pin the catalog value.
                 from .codex_models import read_models
-                choice = next((m for m in read_models(connection) if m.model == checked.model), None)
+                from .codex_billing import is_api
+                if is_api(connection):
+                    from ..openai_prices import model_choices
+                    models = model_choices()
+                else:
+                    models = read_models(connection)
+                choice = next((m for m in models if m.model == checked.model), None)
                 if choice is None:
                     raise CodexRpcError('Codex model effort could not be verified')
                 checked = replace(checked, effort=choice.default_effort)
@@ -559,7 +566,7 @@ class CodexChatRuntime:
 
     def fork_at(self, source, title, turn_id, before=False, own=None):
         from .codex_features import verify_anchor
-        if source.provider != 'codex' or type(before) is not bool:
+        if source.provider != self.provider_id or type(before) is not bool:
             raise ValueError('A Codex source chat is required')
         connection, _ = self._binding()
         verify_anchor(connection, source.cli_session_id, turn_id, before=before)
@@ -608,7 +615,7 @@ class CodexChatRuntime:
         chat stays."""
         from .codex_features import CodexFeatureError
         from .codex_rpc import missing_thread, CodexDeleteUnanswered
-        if not isinstance(record, OwnSession) or record.provider != 'codex':
+        if not isinstance(record, OwnSession) or record.provider != self.provider_id:
             raise CodexRpcError('Only owned Codex chats can be deleted')
         native_id = record.cli_session_id
         with self._lock:
@@ -767,7 +774,7 @@ class CodexChatRuntime:
                 self._notify(proof.native_id)
 
     def _context(self, record, *, allow_problem=False, allow_reopening=False):
-        if not isinstance(record, OwnSession) or record.provider != 'codex' or record.started is not True:
+        if not isinstance(record, OwnSession) or record.provider != self.provider_id or record.started is not True:
             raise CodexRpcError('Only owned Codex chats can send')
         with self._lock:
             proof, executor = self._proofs.get(record.cli_session_id), self._executor
@@ -775,7 +782,7 @@ class CodexChatRuntime:
             problem = self._problems.get(record.cli_session_id)
         if problem and not allow_problem:
             raise CodexRpcError(problem)
-        if (record.provider != 'codex' or proof is None or executor is None
+        if (record.provider != self.provider_id or proof is None or executor is None
                 or (reopening and not allow_reopening) or not proof.connection.owns_runtime(proof)):
             raise CodexRpcError('Reopen this Codex chat before sending')
         return proof, executor
@@ -808,7 +815,7 @@ class CodexChatRuntime:
         A failed readiness check is not evidence that its native turn ended.
         Keep the existing owner/stream intact, including uncertain turns (#247).
         """
-        if not isinstance(record, OwnSession) or record.provider != 'codex':
+        if not isinstance(record, OwnSession) or record.provider != self.provider_id:
             raise CodexRpcError('Only owned Codex chats can be prepared')
         with self._lock:
             unconfirmed = record.cli_session_id in self._delete_unconfirmed
@@ -1105,7 +1112,7 @@ class CodexChatRuntime:
 
     def _permission_record(self, record):
         if (not isinstance(record, OwnSession)
-                or record.provider != 'codex' or record.started is not True):
+                or record.provider != self.provider_id or record.started is not True):
             raise CodexRpcError('Remembered Codex approvals require a chat started in The Chat Place')
 
     def chat_rule_candidate(self, record, request):
