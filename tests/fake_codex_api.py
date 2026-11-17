@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 home = Path(os.environ['CODEX_HOME'])
@@ -76,13 +77,15 @@ for line in sys.stdin:
             continue
         if scenario == 'retry':
             event('error', {'threadId': tid, 'turnId': turn, 'willRetry': True,
-                            'error': {'codexErrorInfo': 'streamDisconnected'}})
+                            'error': {'codexErrorInfo': {'responseStreamDisconnected': {'httpStatusCode': 200}}}})
         if scenario == 'rerouted' and t['count'] > 1:
             event('model/rerouted', {'threadId': tid, 'turnId': turn, 'toModel': 'unpriced-model'})
-        if scenario != 'missing':
+        if scenario not in ('missing', 'late-usage'):
             # Refused requests do not advance reported token totals.
             count = t['count'] - (1 if scenario in ('401', 'unauthorized') else 0)
             usage = {'last': total(1), 'total': total(count), 'modelContextWindow': 400000}
+            if scenario == 'multi-first':
+                usage['total'] = total(2)
             if scenario == 'cap':
                 usage = {'last': total(1000), 'total': total(1000), 'modelContextWindow': 400000}
             if scenario == 'malformed':
@@ -90,18 +93,32 @@ for line in sys.stdin:
             event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
             if scenario == 'duplicate':
                 event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
-        if scenario in ('hang', 'missing', 'malformed', 'unanswered-stop', 'cap') or (scenario == 'stop-once' and t['count'] == 1):
+        if (scenario == 'delayed-stop' and t['count'] == 1) or scenario in ('hang', 'missing', 'malformed', 'unanswered-stop', 'cap') or (scenario == 'stop-once' and t['count'] == 1):
             pending = (tid, turn)
             continue
         event('item/completed', {'threadId': tid, 'turnId': turn,
               'item': {'id': 'reply', 'type': 'agentMessage', 'text': 'OK'}})
         t['status'] = 'idle'
         event('turn/completed', {'threadId': tid, 'turn': {'id': turn, 'status': 'completed', 'error': None}})
+        if scenario == 'late-usage':
+            params_late = {'threadId': tid, 'turnId': turn, 'tokenUsage': {'last': total(1), 'total': total(t['count']), 'modelContextWindow': 400000}}
+            timer = threading.Timer(.85, event, ('thread/tokenUsage/updated', params_late))
+            timer.daemon = True
+            timer.start()
         continue
     elif method == 'turn/interrupt':
         if scenario == 'unanswered-stop':
             continue
         tid, turn = params['threadId'], params['turnId']
+        if scenario == 'delayed-stop':
+            def delayed(tid=tid, turn=turn):
+                threads[tid]['status'] = 'idle'
+                event('turn/completed', {'threadId': tid, 'turn': {'id': turn, 'status': 'interrupted', 'error': None}})
+            timer = threading.Timer(.3, delayed)
+            timer.daemon = True
+            timer.start()
+            emit({'id': msg['id'], 'result': {}})
+            continue
         threads[tid]['status'] = 'idle'
         event('turn/completed', {'threadId': tid, 'turn': {'id': turn, 'status': 'interrupted', 'error': None}})
     emit({'id': msg['id'], 'result': result})

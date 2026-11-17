@@ -73,6 +73,8 @@ class OwnSession:
     #: for the heading.
     fork_source: str = ""
     forked_from: str = ""
+    #: Quoted subscription history, sent only with the first explicit API Send.
+    api_context: str = ""
     #: Rewind to Here and Branch from Here (#468): the uuid of the last
     #: record of ``fork_source`` the copy keeps (``--resume-session-at``).
     #: "" copies the whole history, as Continue Here does.
@@ -673,7 +675,7 @@ class OwnSessionStore:
                     path = self.path.parent / 'openai-billing' / 'codex-token-baselines.json'
                     try:
                         saved = json.loads(path.read_text(encoding='utf-8'))
-                    except FileNotFoundError:
+                    except (FileNotFoundError, ValueError):
                         saved = {}
                     if isinstance(saved, dict) and cli_session_id in saved:
                         saved.pop(cli_session_id)

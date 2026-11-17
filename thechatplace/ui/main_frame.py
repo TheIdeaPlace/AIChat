@@ -1968,6 +1968,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.desktop_reply.Show(not editable)
         if not editable:
             self.desktop_note.SetValue(
+                "This Codex API chat is read-only here. Use Continue Here to make an owned API copy."
+                if info.provider == "codex-api" else
                 f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
                 f"reads its local history. Reply in {home_app(info.provider)}."
                 if info.provider in LISTED_PROVIDERS else
@@ -2121,9 +2123,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if api:
             from ..openai_billing import chat_cost_words
             return (f'API credits: this chat {chat_cost_words(ledger, session_id)}, '
-                    f'estimated app spending {_dollars(totals.spent)}, held {_dollars(totals.held)} '
-                    f'of {_dollars(totals.limits.overall)}')
-        return (f"API credits: {'estimated ' if api else ''}this chat {_dollars(chat)}, The Chat Place "
+                    f'The Chat Place estimated spending {_dollars(totals.spent)} plus {_dollars(totals.held)} held, '
+                    f'{_dollars(totals.counted)} of {_dollars(totals.limits.overall)} including holds')
+        return (f"API credits: this chat {_dollars(chat)}, The Chat Place "
                 f"{_dollars(totals.counted)} of {_dollars(totals.limits.overall)}")
 
     def _api_send_problem(self, session_id: str, ask: bool = True) -> Optional[str]:
@@ -2394,9 +2396,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             own = self.store.get(info.cli_session_id, provider=info.provider)
             if own is not None:
                 if own.provider_options.get('model'):
-                    kind += ' on ' + own.provider_options['model']
+                    kind += (', ' if api else ' on ') + own.provider_options['model']
                 if own.provider_options.get('effort'):
-                    kind += ' at ' + own.provider_options['effort']
+                    kind += (', ' + own.provider_options['effort'] + ' effort' if api else ' at ' + own.provider_options['effort'])
                 if (own.provider_options.get('collaboration') == 'plan' and not getattr(
                         self._codex_states.get(info.key), 'plan_unavailable', False)):
                     kind += ', plan mode'
@@ -2691,7 +2693,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._select_on_load = None
             if not self._chat_loaded:
                 name = provider_name(self._open.provider)
-                line = (f"Couldn't load this {name} chat. Try again, or open it in "
+                line = ("Couldn't load this Codex API chat. Try again, or check its key in Tools, API Keys."
+                        if self._open.provider == "codex-api" else f"Couldn't load this {name} chat. Try again, or open it in "
                         f"{home_app(self._open.provider)} to read it."
                         if self._open.provider in LISTED_PROVIDERS
                         else f"Couldn't read this transcript: {error}")
@@ -5416,7 +5419,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """The loaded session's attachments, under the reply box."""
         info = self._open
         paths = (self._attachments.get(self._attachment_key(info), [])
-                 if info and info.is_own and info.provider in ('claude', 'codex') else [])
+                 if info and info.is_own and info.provider in ('claude', 'codex', 'codex-api') else [])
         if paths:
             self.attach_list.Set([os.path.basename(p) for p in paths])
             self.attach_list.SetSelection(0)
@@ -5451,7 +5454,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         them, and so does a picture on the clipboard (a screenshot from
         Win+Shift+S, say); text pastes as usual."""
         info = self._open
-        own = info is not None and info.is_own and info.provider in ('claude', 'codex')
+        own = info is not None and info.is_own and info.provider in ('claude', 'codex', 'codex-api')
         copied, folders = self._clipboard_files() if own else ([], [])
         if copied:
             self._add_attachments(self._attachment_key(info), copied)
@@ -5709,10 +5712,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if not self._has_api_key('codex-api'):
                 self._feedback('Add an OpenAI key in Tools, API Keys first.')
                 return
+            if not info.cwd or not os.path.isdir(info.cwd):
+                self._feedback(f"{info.title}'s folder ({info.cwd or 'unknown'}) doesn't exist any more, so a new chat can't be started in it.")
+                return
             question = wx.MessageDialog(self,
                 'Make a new chat charged to your OpenAI key? Its first message sends a text copy '
                 'of this conversation. Costs are estimated and may be higher for that first message.',
                 'Continue on API Credits', wx.OK | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
+            question.SetOKCancelLabels('&Continue', 'Cancel')
             try:
                 if question.ShowModal() != wx.ID_OK:
                     return

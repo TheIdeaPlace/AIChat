@@ -20,8 +20,19 @@ PRICES = {
     'gpt-5.4-mini': ('0.75', '0.075', '4.50'),
     'gpt-5.4-mini-2026-03-17': ('0.75', '0.075', '4.50'),
 }
-# Same official model pages above: context window and maximum output tokens.
-TOKEN_LIMITS = {model: (400_000, 128_000) for model in PRICES}
+# Rechecked 2026-11-17 on the exact model pages in SOURCES. Both 5.4 small
+# models document 400K context / 128K output; neither lists a long-context
+# surcharge. The >272K multiplier on the 5.4 page applies to 5.4 / 5.4 Pro
+# (1.05M context), not mini/nano. Regional endpoints' uplift is not supported.
+LIMITS_CHECKED = '2026-11-17'
+TOKEN_LIMITS = {
+    'gpt-5-nano': (400_000, 128_000),
+    'gpt-5-nano-2025-08-07': (400_000, 128_000),
+    'gpt-5.4-nano': (400_000, 128_000),
+    'gpt-5.4-nano-2026-03-17': (400_000, 128_000),
+    'gpt-5.4-mini': (400_000, 128_000),
+    'gpt-5.4-mini-2026-03-17': (400_000, 128_000),
+}
 
 
 def request_ceiling(model, context_window=None):

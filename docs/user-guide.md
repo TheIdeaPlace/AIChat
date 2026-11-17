@@ -377,7 +377,7 @@ released money may represent spending that could not be counted.
 
 In **New Session**, choose **Codex**, then **API credits** under **Charge to**. The subscription
 is the default and a chat's billing never changes. The app uses a separate Codex home and
-keeps your ChatGPT sign-in separate. **Continue on API Credits** makes a new chat with a text
+keeps your ChatGPT sign-in separate. Continue on API Credits waits for your first Send; the conversation is a hidden prefix to your message. Cancelling Send keeps only your message in the reply box. **Continue on API Credits** makes a new chat with a text
 copy of the earlier conversation; that first message may cost more.
 
 Every OpenAI cost says **estimated**, using a price table dated November 17, 2026. Only priced

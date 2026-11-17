@@ -644,7 +644,7 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
-                        if getattr(self, 'billing_route', '') == 'api':
+                        if getattr(self, 'billing_route', '') == 'api' and event.kind not in ('text_delta', 'reasoning_delta'):
                             from ..billing import scrub
                             event = replace(event, text=scrub(event.text),
                                             plan=tuple((scrub(text), status) for text, status in event.plan))

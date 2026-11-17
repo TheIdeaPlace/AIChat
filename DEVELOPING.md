@@ -179,7 +179,11 @@ Starts and full forks save their token baselines. A possible paid write invalida
 the durable baseline until settlement; Stop/refusal retain the latest valid counters.
 Missing baselines recover from a matching turn's first `total - last` report. A
 counter regression, turn mismatch or model reroute invalidates the baseline.
-Any stream error keeps uncertain spending held, including a successful retry.
+Any stream error keeps uncertain spending held, including a successful retry; a retry
+does not interrupt the turn. Completed-turn trackers accept late matching usage. If an
+earlier final snapshot overlaps a later turn, the earlier usage is charged first, then
+an append-only correction removes the duplicate later settlement. A crash between these
+writes can only over-count. Corrections retain original settlement dates and Reset scope.
 A confirmed key refusal frees the unspent reservation. Stop can settle an estimated
 maximum of recorded usage plus one request's context and maximum output, using the
 dated table; if that exceeds the reservation, the remaining hold stays.
@@ -191,6 +195,9 @@ New Session's Charge to. OpenAI key updates run off the UI thread; each paid wri
 checks the key generation, so replacement affects existing processes and removal
 blocks queued messages. Model changes use the priced API catalog, not ChatGPT's.
 Unknown per-chat spending is read from reservations, never displayed as zero.
+Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
+until the user sends a message. Failed or cancelled sends restore only user text. Native
+attachment parts survive the prefix. The writer event clears the deferred context.
 
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,

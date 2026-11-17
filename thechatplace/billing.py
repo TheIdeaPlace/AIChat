@@ -516,7 +516,15 @@ def cost_sentence(words: str, title: str = "") -> str:
     cents.", "Budget: cost not known.")."""
     if words == COST_NOT_KNOWN:
         return f"{title}: {COST_NOT_KNOWN}." if title else "Cost not known."
-    return f"{title}: it cost {words}." if title else f"It cost {words}."
+    if words == "nothing was charged":
+        return f"{title}: nothing was charged." if title else "Nothing was charged."
+    if words.startswith("estimated, at most "):
+        text = "The cost is " + words
+    elif words.startswith("estimated "):
+        text = "The cost is estimated at " + words[len("estimated "):]
+    else:
+        text = "It cost " + words
+    return f"{title}: {text[0].lower() + text[1:]}." if title else text + "."
 
 
 def money(amount: Optional[float]) -> str:

@@ -629,7 +629,7 @@ def test_openai_test_result_is_estimated_and_late_event_is_ignored(parent, env):
         assert window.on_test() and window.testing
         token = window._test_token
         window._test_done(token, TurnEvent('finished', data={'cost_usd': .00001, 'cost_words': 'estimated less than a cent'}))
-        assert window.result.GetValue() == 'Your key works. That test cost estimated less than a cent.'
+        assert window.result.GetValue() == 'Your key works. That test was estimated at less than a cent.'
         assert window.on_test()
         token = window._test_token
         window.provider_choice.SetSelection(0)
@@ -642,13 +642,21 @@ def test_openai_test_result_is_estimated_and_late_event_is_ignored(parent, env):
         window.Destroy()
 
 
-def test_openai_key_save_does_not_wait_on_the_ui_thread(parent, env):
+def test_openai_key_save_does_not_wait_on_the_ui_thread(parent, env, monkeypatch):
     from thechatplace import openai_billing
     from thechatplace.ui.api_keys_dialog import ApiKeysDialog
     window = ApiKeysDialog(parent)
     try:
         window.provider_choice.SetSelection(1)
         window.on_provider()
+        focus = []
+        monkeypatch.setattr(window.result, 'SetFocus', lambda: focus.append('result'))
+        sync = window._sync
+        def checked_sync():
+            if window._key_change_pending:
+                assert focus == ['result']
+            sync()
+        monkeypatch.setattr(window, '_sync', checked_sync)
         with openai_billing.credentials_lock:
             window.key_box.SetValue('sk-proj-' + '0' * 30)
             assert window.on_add()

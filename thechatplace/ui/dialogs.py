@@ -1058,8 +1058,20 @@ class NewSessionDialog(wx.Dialog):
         """API credits offer Fable; the subscription doesn't (#658). The
         model chosen stays chosen if it's on both lists."""
         if self.provider() in ('codex', 'codex-api'):
-            self._codex_choices = (0, 0, 0)
+            old_models, old_paid = getattr(self, '_display_codex_models', ((), False))
+            old_index = self.model.GetSelection() - (0 if old_paid else 1)
+            old = old_models[old_index].model if 0 <= old_index < len(old_models) else ''
+            old_effort = self.effort_choice.GetStringSelection()
             self._on_provider()
+            models = self._codex_route_models()
+            selected = next((i for i, choice in enumerate(models) if choice.model == old), 0)
+            self.model.SetSelection(selected if self.billing() == 'api' else
+                                    selected + 1 if models and old else 0)
+            self._on_codex_model()
+            efforts = list(self.effort_choice.GetStrings())
+            self.effort_choice.SetSelection(efforts.index(old_effort) if old_effort in efforts else 0)
+            if models and models[selected].model != old:
+                self._feedback('Model changed to ' + models[selected].label + '.')
             return
         models = models_for(self.billing())
         index = self.model.GetSelection()
@@ -1113,6 +1125,7 @@ class NewSessionDialog(wx.Dialog):
             # "Codex's default", as Change Effort and Properties say it (#596).
             models = self._codex_route_models()
             paid = self.billing() == 'api'
+            self._display_codex_models = (models, paid)
             self.model.Set(([] if paid else [CODEX_DEFAULT]) + [choice.label for choice in models])
             self.model.SetSelection(min(self._codex_choices[0], max(0, self.model.GetCount()-1)))
             self.model.Enable(bool(models))

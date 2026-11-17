@@ -43,6 +43,9 @@ class Payment:
     context_window: int | None = None
     timed_out: bool = False
     reported: bool = False
+    upper_bound: bool = False
+    last_total: dict | None = None
+    ordinal: int = 0
 
 
 class CodexApiConnection(CodexExecutionConnection):
@@ -62,6 +65,9 @@ class CodexApiConnection(CodexExecutionConnection):
         self._credential_generation = None
         self._payments_lock = threading.RLock()
         self._payments = {}
+        self._past_payments = {}
+        self._payment_number = 0
+        self._ephemeral_threads = set()
         self._api_draining = False
         self._totals = {}
         self._baseline_path = self.ledger.folder / 'codex-token-baselines.json'
@@ -146,12 +152,12 @@ class CodexApiConnection(CodexExecutionConnection):
         return super().request(method, params)
 
     def _request(self, method, params, on_sent=None, on_written=None):
-        if method in ('turn/start', 'turn/steer'):
+        if method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start', 'turn/steer'):
             from ..openai_billing import credentials_lock, key_generation
             # Serialize key changes with preflight and the actual paid write,
             # including automatically advanced queued messages.
             with credentials_lock:
-                if self._credential_generation != key_generation():
+                if not self._api_logged_in or self._credential_generation != key_generation():
                     self._login_api()
                 return self._request_api(method, params, on_sent, on_written)
         return self._request_api(method, params, on_sent, on_written)
@@ -202,6 +208,8 @@ class CodexApiConnection(CodexExecutionConnection):
             result = super()._request(method, params, on_sent=on_sent, on_written=on_written)
             if method == 'thread/start':
                 tid = result.get('thread', {}).get('id')
+                if tid and params.get('ephemeral'):
+                    self._ephemeral_threads.add(tid)
                 if tid:
                     self._totals[tid] = dict.fromkeys(COUNTERS, 0)
                     self._persist_baseline(tid, self._totals[tid])
@@ -248,7 +256,8 @@ class CodexApiConnection(CodexExecutionConnection):
             except OSError:
                 self.ledger.close(reservation, complete=True)
                 raise ApiCreditsRefused('The API-credit token baseline could not be recorded. Nothing was sent.') from None
-            payment = Payment(reservation, model, self._totals.get(tid))
+            self._payment_number += 1
+            payment = Payment(reservation, model, self._totals.get(tid), ordinal=self._payment_number)
             self._payments[tid] = payment
 
         def queued():
@@ -278,7 +287,7 @@ class CodexApiConnection(CodexExecutionConnection):
     @staticmethod
     def _service_name(method):
         return {'thread/compact/start': 'conversation compaction', 'thread/goal/set': 'background goals',
-                'thread/goal/clear': 'background goals', 'thread/memory/reset': 'memory'}.get(method,
+                'thread/goal/clear': 'background goals', 'thread/memoryMode/set': 'memory'}.get(method,
                     'this background Codex service')
 
     def _stop_timeout(self, tid, payment):
@@ -290,6 +299,7 @@ class CodexApiConnection(CodexExecutionConnection):
             if not others:
                 self._api_draining = True
             payment.timed_out = others
+            self._emit_api('api_error', tid, failure='stop_pending')
             self._finish_payment(tid, payment, keep=others)
         if not others:
             try:
@@ -311,11 +321,15 @@ class CodexApiConnection(CodexExecutionConnection):
         tid = params.get('threadId') if isinstance(params, dict) else None
         with self._payments_lock:
             payment = self._payments.get(tid)
-            if payment is None and method == 'thread/tokenUsage/updated':
-                usage = params.get('tokenUsage')
-                value = usage.get('total') if isinstance(usage, dict) else None
-                if self._valid_counters(value):
-                    self._totals[tid] = {k: value[k] for k in COUNTERS}
+            archived = False
+            if method == 'thread/tokenUsage/updated':
+                past = self._past_payments.get((tid, params.get('turnId')))
+                if past is not None and past is not payment:
+                    payment, archived = past, True
+            if payment is None:
+                # Unattributed telemetry must not move a baseline without a
+                # matching reservation. A later turn can recover total-last.
+                pass
             if payment:
                 turn_id = params.get('turnId') or params.get('turn', {}).get('id')
                 if payment.turn_id and turn_id and payment.turn_id != turn_id:
@@ -324,6 +338,7 @@ class CodexApiConnection(CodexExecutionConnection):
                 elif method == 'turn/started':
                     payment.turn_id = turn_id or payment.turn_id
                 elif method == 'thread/tokenUsage/updated':
+                    was_usage, prior_total = payment.usage, payment.last_total
                     usage = params.get('tokenUsage')
                     value = usage.get('total') if isinstance(usage, dict) else None
                     if not payment.turn_id and turn_id:
@@ -332,7 +347,7 @@ class CodexApiConnection(CodexExecutionConnection):
                         last = usage.get('last')
                         if self._valid_counters(last):
                             before = {k: value[k] - last[k] for k in COUNTERS}
-                            if self._valid_counters(before):
+                            if self._valid_counters(before) and (payment.baseline is None or all(before[k] >= payment.baseline[k] for k in COUNTERS)):
                                 payment.baseline = before
                     if payment.model_unknown or not self._valid_counters(value) or payment.baseline is None:
                         payment.uncertain = True
@@ -340,28 +355,35 @@ class CodexApiConnection(CodexExecutionConnection):
                     else:
                         delta = {k: value[k]-payment.baseline[k] for k in COUNTERS}
                         try:
-                            previous = self._totals.get(tid, payment.baseline)
+                            previous = payment.last_total or payment.baseline
                             if any(value[k] < previous[k] for k in COUNTERS):
                                 raise ValueError('Usage counters decreased')
                             cost = estimate(payment.model, delta)
-                            if cost < payment.cost:
+                            if not payment.upper_bound and cost < payment.cost:
                                 raise ValueError('Usage decreased')
                             accounted = float(Decimal(str(cost)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
                             increment = max(0, accounted-payment.accounted)
-                            if not self.ledger.settle(payment.reservation, increment,
-                                                      {payment.model: increment}):
+                            recorded = self.ledger.settle(payment.reservation, increment,
+                                                      {payment.model: increment})
+                            if not recorded:
                                 payment.uncertain = True
-                            payment.accounted = accounted
-                            payment.cost = cost
+                            payment.accounted = max(payment.accounted, accounted)
+                            payment.cost = max(cost, payment.accounted) if payment.upper_bound else cost
                             payment.usage = True
                             payment.context_window = usage.get('modelContextWindow')
-                            self._totals[tid] = {k: value[k] for k in COUNTERS}
+                            payment.last_total = {k: value[k] for k in COUNTERS}
+                            if not archived or (tid not in self._payments and all(value[k] >= self._totals.get(tid, payment.baseline)[k] for k in COUNTERS)):
+                                self._totals[tid] = dict(payment.last_total)
                         except ValueError:
                             payment.uncertain = True
                             payment.inconsistent = True
-                    if payment.cost >= payment.reservation.amount and not payment.stopping:
+                    if archived and (not was_usage or prior_total != payment.last_total):
+                        if not payment.inconsistent and recorded:
+                            self._adjust_successors(tid, payment)
+                        self._finish_payment(tid, payment, late=True)
+                    if not archived and payment.cost >= payment.reservation.amount and not payment.stopping:
                         self._emit_api('api_error', tid, failure='message_limit', limit=payment.reservation.amount)
-                    if payment.cost >= payment.reservation.amount or payment.uncertain:
+                    if not archived and (payment.cost >= payment.reservation.amount or payment.inconsistent):
                         self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'model/rerouted':
                     # Mixed-model counters cannot be attributed safely.
@@ -379,6 +401,8 @@ class CodexApiConnection(CodexExecutionConnection):
                         payment.refused = refused
                         self._emit_api('api_error', tid, failure='usage_limit' if info == 'usageLimitExceeded' else 'key_refused')
                         self._interrupt_payment(tid, payment, turn_id)
+                    elif not params.get('willRetry'):
+                        self._emit_api('api_error', tid, failure='connection_dropped')
                 elif method == 'turn/completed':
                     payment.terminal = params.get('turn', {}).get('status', 'unknown')
                     payment.timer = threading.Timer(.5, self._finish_payment, (tid, payment))
@@ -387,6 +411,36 @@ class CodexApiConnection(CodexExecutionConnection):
         # Protocol replies, IDs, paths and approval checks are never rewritten.
         # Presentation text is scrubbed after decoding, at the event boundary.
         super()._receive(message)
+
+    def _adjust_successors(self, tid, earlier):
+        # A delayed final snapshot can include requests previously absorbed
+        # into the next turn's cumulative delta. Charge earlier first, then
+        # correct the later reservation; interruption between writes is safe.
+        later = [p for (thread, _), p in self._past_payments.items() if thread == tid]
+        if tid in self._payments:
+            later.append(self._payments[tid])
+        for payment in later:
+            if payment.ordinal <= earlier.ordinal or payment.baseline is None:
+                continue
+            baseline = {k: max(payment.baseline[k], earlier.last_total[k]) for k in COUNTERS}
+            if baseline == payment.baseline:
+                continue
+            payment.baseline = baseline
+            if not payment.usage or payment.upper_bound:
+                continue
+            try:
+                cost = estimate(payment.model, {k: payment.last_total[k]-baseline[k] for k in COUNTERS})
+            except ValueError:
+                payment.uncertain = payment.inconsistent = True
+                continue
+            accounted = float(Decimal(str(cost)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
+            credit = max(0, payment.accounted-accounted)
+            if credit and not self.ledger.correct_openai_overlap(payment.reservation, credit, payment.model):
+                payment.uncertain = True
+                continue
+            payment.cost, payment.accounted = cost, accounted
+            if payment.reported:
+                self._finish_payment(tid, payment, late=True)
 
     def _interrupt_payment(self, tid, payment, turn_id):
         if payment.stopping or not turn_id:
@@ -399,40 +453,47 @@ class CodexApiConnection(CodexExecutionConnection):
                 self._stop_timeout(tid, payment)
         threading.Thread(target=interrupt, daemon=True).start()
 
-    def _finish_payment(self, tid, payment, keep=False):
+    def _finish_payment(self, tid, payment, keep=False, late=False):
         with self._payments_lock:
-            if self._payments.get(tid) is not payment:
+            if not late and self._payments.get(tid) is not payment:
                 return
             if payment.timer:
                 payment.timer.cancel()
             if payment.stop_timer:
                 payment.stop_timer.cancel()
             complete = payment.refused or (payment.usage and not payment.uncertain and payment.terminal == 'completed')
-            upper_bound = False
-            if payment.stopping and not payment.uncertain and not payment.refused:
+            upper_bound = payment.upper_bound
+            if upper_bound:
+                complete = True
+            if payment.stopping and not payment.uncertain and not payment.refused and not upper_bound:
                 from ..openai_prices import request_ceiling
                 maximum = payment.accounted + request_ceiling(payment.model, payment.context_window)
                 if maximum <= payment.reservation.amount:
                     extra = float(Decimal(str(maximum-payment.accounted)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
                     if self.ledger.settle(payment.reservation, extra, {payment.model: extra}):
                         payment.cost = payment.accounted + extra
-                        payment.usage = complete = upper_bound = True
-            if payment.inconsistent:
+                        payment.accounted = payment.cost
+                        payment.usage = complete = upper_bound = payment.upper_bound = True
+            if (payment.inconsistent or (not payment.usage and not payment.refused)) and not late:
                 self._totals.pop(tid, None)
             try:
-                self._persist_baseline(tid, self._totals.get(tid))
+                if not late or tid not in self._payments:
+                    self._persist_baseline(tid, self._totals.get(tid))
             except OSError:
                 complete = False
             if not keep:
                 self.ledger.close(payment.reservation, complete=complete)
-                self._payments.pop(tid, None)
-            if not payment.reported:
+                if not late:
+                    self._payments.pop(tid, None)
+                    if payment.turn_id:
+                        self._past_payments[(tid, payment.turn_id)] = payment
+            if not payment.reported or late:
                 payment.reported = True
                 self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.usage else None,
                     outcome=payment.terminal,
                     cost_complete=complete, cost_upper_bound=upper_bound, price_date=PRICE_DATE,
                     cost_words=self._cost_words(payment, complete, upper_bound))
-            if not keep and self._payments and all(p.timed_out for p in self._payments.values()):
+            if not late and not keep and self._payments and all(p.timed_out for p in self._payments.values()):
                 self._api_draining = True
                 # Only abandoned turns remain: stop them after the other chats
                 # finish, while retaining their live reservations and telemetry.
@@ -446,12 +507,16 @@ class CodexApiConnection(CodexExecutionConnection):
     @staticmethod
     def _cost_words(payment, complete, upper_bound):
         from ..billing import COST_NOT_KNOWN, money
+        if payment.refused and not payment.usage:
+            return 'nothing was charged'
         if upper_bound:
             return 'estimated, at most ' + money(payment.cost)
         words = shared_cost_words(payment.cost if payment.usage else None, complete)
         return words if words == COST_NOT_KNOWN else 'estimated ' + words
 
     def _persist_baseline(self, tid, value):
+        if tid in self._ephemeral_threads:
+            return
         from ..provider_storage import atomic_write_json
         with _BASELINES_LOCK:
             try:
@@ -527,9 +592,10 @@ class CodexApiProvider(CodexProvider):
         self._check(session)
         totals = self.ledger.totals()
         from ..openai_billing import chat_cost_words
-        return [f'OpenAI API credits: estimated spending ${totals.spent:.6f} of ${totals.limits.overall:.2f}.',
+        from ..billing import money
+        return [f'OpenAI API credits: estimated spending {money(totals.spent)} of {money(totals.limits.overall)}.',
                 f'This chat: {chat_cost_words(self.ledger, session.key)}. Prices dated {PRICE_DATE}.',
-                f'Held ${totals.held:.2f}; estimated remaining ${totals.left:.6f}.',
+                f'Held {money(totals.held)}; estimated remaining {money(totals.left)}.',
                 'Limits are approximate; one request can pass a limit.']
 
     def usage_warnings(self, session):

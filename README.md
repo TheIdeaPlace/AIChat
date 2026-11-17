@@ -495,7 +495,8 @@ API credits.
   compaction, goals, Ask Aside and copies cut at an earlier turn are unavailable on OpenAI
   credits. Human approvals and full-history copies within the API backend remain available.
   Continue Here or Continue on API Credits from a subscription chat makes a new API chat
-  whose first message includes a text copy of the conversation. Billing never changes on the
+  that waits for your first Send. The text copy is a hidden prefix to your message; cancelling
+  Send keeps only your message in the reply box. Billing never changes on the
   original chat. Agent conversations remain on subscriptions.
 
 The following details describe Claude API chats; the shared send notice, first-message

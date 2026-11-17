@@ -1023,3 +1023,83 @@ def test_without_echoes_a_steer_given_back_may_have_gone_in(frame, env, monkeypa
     assert frame.reply_text.GetValue().endswith("Change course")
     assert pump(lambda: "Your steered message for Paid may not have been taken in. "
                 "It's back in the message box." in env["feedback"])
+
+
+def test_codex_api_pasted_files_are_visible_and_removable(frame, folder, monkeypatch):
+    from types import SimpleNamespace
+    record = OwnSession('attached-api', 'Attachments', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame._open = record.to_info()
+    monkeypatch.setattr(frame, '_clipboard_files', lambda: ([folder + '/notes.txt'], []))
+    frame._on_reply_paste(SimpleNamespace(Skip=lambda: pytest.fail('File paste was ignored')))
+    assert frame.attach_list.IsShown()
+    assert frame.attach_list.GetStrings() == ['notes.txt']
+    assert frame._attachments[record.to_info().key] == [folder + '/notes.txt']
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    frame._on_attach_key(SimpleNamespace(GetKeyCode=lambda: wx.WXK_DELETE))
+    assert not frame.attach_list.IsShown() and not frame._attachments.get(record.to_info().key)
+
+
+def test_codex_charge_preserves_model_identity_and_effort(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, folder, providers=('codex',), provider='codex', openai_key=True)
+    try:
+        dialog._set_codex_models((CodexModel('other', 'Other', ('low',), 'low', True),
+                                 CodexModel('gpt-5.4-mini', 'Mini', ('low', 'high'), 'low', False),
+                                 CodexModel('gpt-5-nano', 'Nano', ('low', 'high'), 'low', False)), False)
+        dialog.model.SetSelection(3)  # nano, not API-list position 3
+        dialog._on_codex_model()
+        dialog.effort_choice.SetSelection(2)  # high
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert dialog.values()[-1] == 'gpt-5-nano' and dialog.effort() == 'high'
+        dialog.charge.SetSelection(0)
+        dialog._on_charge()
+        assert dialog.values()[-1] == 'gpt-5-nano' and dialog.effort() == 'high'
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        dialog._set_codex_models((), True)
+        dialog.charge.SetSelection(0)
+        dialog._on_charge()
+        assert dialog.model.GetSelection() == 0 and dialog.values()[-1] == ''
+    finally:
+        dialog.Destroy()
+
+
+def test_codex_cost_and_failure_are_spoken_with_announcements_off(frame, env, folder):
+    from thechatplace.speech import ANNOUNCE_SILENT
+    record = OwnSession('cost-api', 'Paid Codex', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame.speech.announce = ANNOUNCE_SILENT
+    frame.speech.api_say_cost = True
+    frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={
+        'sent': True, 'cost_words': 'estimated 3 cents'}))
+    assert 'Paid Codex: the cost is estimated at 3 cents.' in env['spoken']
+    assert (env['spoken'][-1], record.to_info().key) in env['about']
+    frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={'failure': 'connection_dropped'}))
+    assert "OpenAI's connection dropped" in env['spoken'][-1]
+    frame.speech.api_say_cost = False
+    before = list(env['spoken'])
+    frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={'sent': True, 'cost_words': 'estimated 3 cents'}))
+    assert env['spoken'] == before
+
+
+def test_api_bundled_smoke_report_imports_api_backend(tmp_path):
+    import json
+    from thechatplace import app
+    out = tmp_path / 'smoke.json'
+    app.smoke_test(str(out))
+    assert json.loads(out.read_text())['codex_api'] is True
+
+
+def test_api_relay_checks_own_route_and_actual_running_state(frame, folder):
+    from types import SimpleNamespace
+    record = OwnSession('relay-api', 'API relay', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    info = record.to_info()
+    assert frame._relay_on_api_credits(info)
+    frame._codex_states[info.key] = SimpleNamespace(outcome='inProgress', state='working')
+    assert frame._relay_source_working(info)
+    frame._codex_states[info.key] = SimpleNamespace(outcome='completed', state='idle')
+    assert not frame._relay_source_working(info)

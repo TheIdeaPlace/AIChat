@@ -365,6 +365,7 @@ class ApiKeysDialog(wx.Dialog):
     def _change_openai_key(self, action, success):
         # A paid request serializes its final write with key mutations. Never
         # wait for that mutex (or the system key store) on the UI thread.
+        self.result.SetFocus()  # before Add/Remove become disabled
         self._key_change_pending = True
         self._sync()
         self.result.SetValue('Updating the OpenAI key. Please wait...')
@@ -439,7 +440,8 @@ class ApiKeysDialog(wx.Dialog):
         if event.kind == "finished" and not event.is_error:
             cost = (event.data or {}).get("cost_usd")
             words = (event.data or {}).get('cost_words', 'cost not known') if self._provider_index else billing.money(cost)
-            text = f"Your key works. That test cost {words}."
+            text = (f"Your key works. That test was {words.replace('estimated ', 'estimated at ', 1)}."
+                    if self._provider_index else f"Your key works. That test cost {words}.")
         else:
             text = billing.scrub(event.text) or NO_RESULT_WORDS
         self._refresh()

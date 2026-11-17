@@ -1357,3 +1357,102 @@ def test_api_sound_mode_never_says_sent_before_a_refused_write():
     action, done = w.work.pop()
     done('Preflight refused. Nothing was sent.', True)
     assert not any(text.startswith('Sent') for text in w.said)
+
+
+def test_api_copy_creation_does_not_send_or_restore_transcript():
+    w = Window()
+    source = w.record.to_info()
+    made = OwnSession('copy', 'API copy', '/work', provider='codex-api', billing='api')
+    sent = []
+    saved = []
+    w.sessions.read = lambda info: SimpleNamespace(unreadable_lines=0, messages=[SimpleNamespace(full_text=lambda: 'Earlier conversation')])
+    w.sessions.create_owned = lambda *a, **k: made
+    w.store.add = saved.append
+    w.open_session = lambda info: None
+    w._send_codex_owned = lambda *a, **k: sent.append(a)
+    w._create_codex_owned('/work', 'API copy', '', source=source, provider='codex-api')
+    action, done = w.work.pop()
+    result = action()
+    done(result, False)
+    assert saved == [made] and not sent
+    assert 'Earlier conversation' in made.api_context
+    assert w._codex_drafts[made.to_info().key] == ''
+    assert 'Earlier conversation' not in w.reply_text.value
+
+
+def test_api_copy_cannot_route_back_through_subscription_fork():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.sessions.fork_owned = lambda *a, **k: pytest.fail('Wrong billing route fork')
+    w._create_codex_owned('/work', 'Wrong route', '', source=w.record.to_info(), provider='codex')
+    action, done = w.work.pop()
+    with pytest.raises(ValueError, match='billing route'):
+        action()
+
+
+def test_api_cancel_keeps_only_user_message_and_says_not_sent():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.record.api_context = 'Quoted history that must remain hidden.'
+    w._api_send_problem = lambda key: ''
+    w._send_codex_owned(w.record, 'My message')
+    assert w.said[-1] == 'Not sent. Your message is in the reply box.'
+    assert w.reply_text.value.startswith('My message')
+    assert w.record.api_context not in w.reply_text.value
+    assert not w.work
+
+
+def test_api_first_send_adds_hidden_prefix_but_readback_uses_only_user_text():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.record.api_context = 'Quoted history.\n\n'
+    w._api_send_problem = lambda key: None
+    w._api_notice_spoken = lambda key: True
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._say_or_hold_read_back = lambda key, text, *a: w.said.append(text)
+    received = []
+    w.sessions.owned_action = lambda *a: received.append(a[-1]) or False
+    w._send_codex_owned(w.record, 'My message')
+    action, done = w.work.pop()
+    action()
+    assert received == ['Quoted history.\n\nMy message']
+    assert not any('Quoted history' in text for text in w.said)
+
+
+def test_api_approval_summary_is_scrubbed_in_speech_and_notification():
+    from thechatplace.providers.codex_requests import CodexRequest, COMMAND
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    secret = 'sk-proj-' + 'a'*30
+    request = CodexRequest('r', COMMAND, 'owned', 'turn', 'cmd', command='echo ' + secret)
+    waiting = CodexChatState('owned', 'needs you', 'turn', 'inProgress', requests=(request,))
+    w._on_owned_update('codex-api', waiting)
+    assert '(hidden)' in w.said[-1] and secret not in str(w.said)
+    assert '(hidden)' in str(w.notified) and secret not in str(w.notified)
+    assert secret in request.command  # checks and the actual command stay intact
+
+
+def test_api_accepted_long_message_keeps_file_note():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._api_send_problem = lambda key: None
+    w._api_notice_spoken = lambda key: True
+    w._say_or_hold_read_back = lambda *a: None
+    w._codex_sendable = lambda *a: ('Read the saved message.', 'synthetic-file')
+    w._send_codex_owned(w.record, 'Long message')
+    action, done = w.work.pop()
+    done(False, False)
+    assert any('too long to send directly' in text for text in w.said)
+
+
+def test_api_returned_first_message_does_not_dump_hidden_context_into_draft():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    key = w.record.to_info().key
+    w._open = None
+    w._api_context_prefixes = {key: 'Quoted history.\n\n'}
+    w._on_owned_update('codex-api', CodexChatState('owned', 'idle', 'turn', 'interrupted'))
+    state = CodexChatState('owned', 'idle', unsent=('Quoted history.\n\nMy message',))
+    w._on_owned_update('codex-api', state)
+    assert w._codex_drafts[key] == 'My message'

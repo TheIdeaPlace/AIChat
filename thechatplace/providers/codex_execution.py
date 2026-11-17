@@ -623,12 +623,17 @@ class CodexTurnExecutor:
             requests = tuple(r for r in self._requests.values()
                              if buffer.status == 'inProgress'
                              and (r.thread_id, r.turn_id) == (buffer.thread_id, buffer.turn_id))
-            return CodexTurnState(buffer.turn_id, buffer.status, buffer.replies, requests, buffer.file_changes,
+            replies, reasoning = buffer.replies, buffer.reasoning
+            if getattr(self.connection, "billing_route", "") == "api":
+                from ..billing import scrub
+                replies = tuple((identity, scrub(text)) for identity, text in replies)
+                reasoning = tuple((identity, scrub(text)) for identity, text in reasoning)
+            return CodexTurnState(buffer.turn_id, buffer.status, replies, requests, buffer.file_changes,
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
                                   buffer.changed_paths, tuple(buffer.review_notices.items()),
-                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, buffer.reasoning,
+                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, reasoning,
                                   tools_started=buffer.tools_started, edits_made=buffer.edits_made)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):

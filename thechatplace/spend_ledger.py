@@ -17,6 +17,9 @@ written. Each line is one of:
 * ``settle``: what Claude Code said a result cost (``total_cost_usd``), by
   model too. A turn can have several (Send Now, follow-ups), each the cost
   since the one before.
+* ``correction``: an OpenAI late-usage attribution reduces an already
+  recorded settlement; the earlier turn is charged first, so a crash can
+  over-count, never free unaccounted credit.
 * ``close``: the turn's process is over. ``complete`` (exactly ``true``)
   when every message sent got its result, so what was settled is the whole
   cost; otherwise (Stop mid-reply, a crash, a result without a usable cost,
@@ -663,6 +666,7 @@ class SpendLedger:
             lines.pop()
         #: Chats renamed (#663): old id -> new id.
         renamed: Dict[str, str] = {}
+        settled_all, settled_counted, settlement_dates = {}, {}, {}
 
         def chat_of(chat: str) -> str:
             seen = set()
@@ -681,9 +685,36 @@ class SpendLedger:
                     reservations = {rid: entry for rid, entry in reservations.items()
                                     if rid in keep and not entry.closed}
                     totals.spent, totals.by_chat, totals.by_model = 0.0, {}, {}
+                    settled_counted.clear()
                     totals.reset_at = record["at"]
                     damage = ""  # Reset is how damage is put behind you
                     continue
+                if record['type'] in ('settle', 'correction'):
+                    rid, cost = record['id'], record['cost']
+                    if record['type'] == 'correction' and -cost > settled_all.get(rid, 0) + .000001:
+                        raise ValueError('Correction exceeds recorded spending')
+                    counted = cost if cost >= 0 else -min(-cost, settled_counted.get(rid, 0))
+                    settled_all[rid] = settled_all.get(rid, 0) + cost
+                    settled_counted[rid] = settled_counted.get(rid, 0) + counted
+                    today_cost = cost if record['at'] >= midnight else 0
+                    week_cost = cost if record['at'] >= week_start else 0
+                    dated = settlement_dates.setdefault(rid, [])
+                    if cost >= 0:
+                        dated.append([cost, record['at']])
+                    else:
+                        left, today_cost, week_cost = -cost, 0, 0
+                        for batch in reversed(dated):
+                            taken = min(left, batch[0])
+                            if batch[1] >= midnight:
+                                today_cost -= taken
+                            if batch[1] >= week_start:
+                                week_cost -= taken
+                            batch[0] -= taken
+                            left -= taken
+                            if left <= .0000001:
+                                break
+                    record = dict(record, _counted_cost=counted,
+                                  _today_cost=today_cost, _week_cost=week_cost)
                 self._replay_line(record, reservations, totals, renamed, chat_of,
                                   midnight, week_start)
             except Exception:  # noqa: BLE001 - a line can only ever be damage (#663)
@@ -728,19 +759,18 @@ class SpendLedger:
             reservations[rid] = _Open(record["amount"], chat_of(record.get("chat", "")))
             return
         entry = reservations.get(rid)
-        if kind == "settle":
+        if kind in ("settle", "correction"):
             cost = record["cost"]
-            totals.spent += cost
+            counted = record.get("_counted_cost", cost)
+            totals.spent += counted
             chat = chat_of(record.get("chat") or (entry.chat_id if entry else ""))
             if chat:
-                totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + cost
+                totals.by_chat[chat] = totals.by_chat.get(chat, 0.0) + counted
                 totals.chat_all_time[chat] = totals.chat_all_time.get(chat, 0.0) + cost
             for model, amount in (record.get("models") or {}).items():
-                totals.by_model[model] = totals.by_model.get(model, 0.0) + amount
-            if record["at"] >= midnight:
-                totals.today += cost
-            if record["at"] >= week_start:
-                totals.last_7_days += cost
+                totals.by_model[model] = totals.by_model.get(model, 0.0) + (amount * counted / cost if cost else 0)
+            totals.today += record.get("_today_cost", cost if record["at"] >= midnight else 0)
+            totals.last_7_days += record.get("_week_cost", cost if record["at"] >= week_start else 0)
             if entry is not None:
                 entry.settled += cost
             return
@@ -775,19 +805,20 @@ class SpendLedger:
             old, new = record.get("from"), record.get("to")
             return record if isinstance(old, str) and old and isinstance(new, str) \
                 and new else None
-        if kind not in ("reserve", "settle", "close") or not isinstance(record.get("id"), str) \
+        if kind not in ("reserve", "settle", "correction", "close") or not isinstance(record.get("id"), str) \
                 or not record["id"]:
             return None
         if not isinstance(record.get("chat", ""), str):
             return None
         if kind == "reserve" and _amount(record.get("amount")) is None:
             return None
-        if kind == "settle":
-            if _amount(record.get("cost")) is None:
+        if kind in ("settle", "correction"):
+            sign = -1 if kind == "correction" else 1
+            if not isinstance(record.get("cost"), (int, float)) or isinstance(record["cost"], bool) or _amount(sign * record["cost"]) is None:
                 return None
             models = record.get("models", {})
             if not isinstance(models, dict) or any(
-                    not isinstance(m, str) or _amount(c) is None for m, c in models.items()):
+                    not isinstance(m, str) or not isinstance(c, (int, float)) or isinstance(c, bool) or _amount(sign*c) is None for m, c in models.items()):
                 return None
         return record
 
@@ -886,6 +917,22 @@ class SpendLedger:
             try:
                 self._append({"type": "settle", "id": reservation.id, "cost": round(cost, 6),
                               "chat": reservation.chat_id, "models": clean})
+                return True
+            except OSError:
+                self._unrecorded.add(reservation.id)
+                return False
+
+    def correct_openai_overlap(self, reservation, credit, model):
+        """Remove usage already charged to a later OpenAI turn, after the
+        matching earlier turn was charged. Only this API ledger uses it."""
+        credit = _money(credit)
+        if credit is None or not reservation.chat_id.startswith('codex-api:'):
+            return False
+        with _LOCK:
+            try:
+                self._append({'type': 'correction', 'id': reservation.id,
+                              'chat': reservation.chat_id, 'cost': -round(credit, 6),
+                              'models': {model: -round(credit, 6)}})
                 return True
             except OSError:
                 self._unrecorded.add(reservation.id)

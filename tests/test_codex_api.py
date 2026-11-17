@@ -583,3 +583,216 @@ def test_ephemeral_permission_probe_cannot_become_a_normal_paid_chat(connect, tm
     with pytest.raises(CodexRpcError, match='key test configuration'):
         conn.accept_key_test(proof)
     assert not conn.owns_runtime(proof)
+
+
+def test_retry_does_not_send_an_interrupt(connect, tmp_path, monkeypatch):
+    conn, events = connect('retry')
+    interrupted = []
+    original = conn._interrupt_payment
+    monkeypatch.setattr(conn, '_interrupt_payment', lambda *a: interrupted.append(a))
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Retry', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Retry can complete')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    runner.drain()
+    assert runner.snapshot(proof).status == 'completed'
+    assert not interrupted and conn.ledger.totals().held > 0
+
+
+def test_usage_after_completion_grace_is_settled(connect, tmp_path):
+    conn, events = connect('late-usage')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Late usage', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hello')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert conn.ledger.totals().held > 0
+    wait(lambda: len([e for e in events if e.kind == 'finished']) == 2)
+    assert conn.ledger.totals().spent == pytest.approx(.000061)
+    assert conn.ledger.totals().held == 0
+
+
+def test_late_old_usage_does_not_restore_active_turn_baseline_or_double_charge(connect, tmp_path):
+    conn, events = connect('late-usage')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Overlap', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'First')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    runner.drain()
+    runner.start(proof, 'Second before first usage')
+    # Turn one's late report must not restore a crash-unsafe baseline while
+    # turn two has not yet received usage or ended its accounting window.
+    wait(lambda: conn.ledger.totals().spent > 0)
+    assert proof.native_id not in json.loads(conn._baseline_path.read_text())
+    wait(lambda: conn.ledger.totals().spent >= .000122)
+    assert conn.ledger.totals().spent == pytest.approx(.000122)
+    assert conn.ledger.totals().held == 0
+
+
+def test_slow_stop_can_send_again_while_other_chat_is_still_running(connect, tmp_path):
+    conn, events = connect('delayed-stop')
+    conn.STOP_TIMEOUT = .05
+    first = CodexOwnedThreads(conn).start(str(tmp_path), 'Slow', model='gpt-5-nano')
+    second = CodexOwnedThreads(conn).start(str(tmp_path), 'Still working', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(first, 'One')
+    runner.start(second, 'Two')
+    runner.interrupt(first)
+    wait(lambda: any(e.kind == 'api_error' and e.data.get('failure') == 'stop_pending' for e in events))
+    wait(lambda: first.native_id not in conn._payments)
+    runner.drain()
+    assert runner.snapshot(first).status == 'interrupted'
+    assert second.native_id in conn._payments and not conn.closed
+    runner.start(first, 'Send again now')
+    wait(lambda: any(e.kind == 'finished' and e.session_id == first.native_id and e.data.get('outcome') == 'completed' for e in events))
+    assert second.native_id in conn._payments and not conn.closed
+    assert conn.ledger.totals().held > 0  # unknown stopped request stays held
+
+
+def test_login_generation_recovers_all_thread_lifecycle_methods(connect, tmp_path, monkeypatch):
+    kept = {'key': FAKE}
+    monkeypatch.setattr(openai_billing, 'key_generation', lambda: kept.get('generation', 0))
+    conn, _ = connect()
+    conn._key_loader = lambda: kept.get('key')
+    owned = CodexOwnedThreads(conn)
+    proof = owned.start(str(tmp_path), 'Existing', model='gpt-5-nano')
+    kept.update(key=None, generation=1)
+    with pytest.raises(ApiCreditsRefused):
+        owned.start(str(tmp_path), 'Removed', model='gpt-5-nano')
+    kept.update(key=FAKE, generation=2)
+    assert owned.start(str(tmp_path), 'Added again', model='gpt-5-nano')
+    assert owned.resume(proof.record())
+    assert owned.fork(proof.record().to_info(), 'Copy', model='gpt-5-nano')
+
+
+def test_ephemeral_key_test_never_persists_a_token_baseline(connect, tmp_path):
+    conn, _ = connect()
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Test', model='gpt-5-nano', ephemeral=True)
+    assert not conn._baseline_path.exists() or proof.native_id not in json.loads(conn._baseline_path.read_text())
+
+
+def test_streaming_split_keys_are_scrubbed_after_accumulation(connect, tmp_path):
+    conn, _ = connect('hang')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Chunks', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Hello')
+    for offset in range(1, len(FAKE)):
+        item = 'split-' + str(offset)
+        for chunk in (FAKE[:offset], FAKE[offset:]):
+            conn._receive({'method': 'item/agentMessage/delta', 'params': {
+                'threadId': proof.native_id, 'turnId': 'turn-1', 'itemId': item, 'delta': chunk}})
+            runner.drain()
+            assert FAKE not in str(runner.snapshot(proof).replies)
+        assert '(hidden)' in dict(runner.snapshot(proof).replies)[item]
+
+
+def test_refusal_cost_words_and_friendly_service_names(connect, tmp_path):
+    conn, events = connect('401')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Bad key', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hello')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    report = next(e.data for e in events if e.kind == 'finished')
+    assert report['cost_words'] == 'nothing was charged'
+    assert billing.cost_sentence(report['cost_words']) == 'Nothing was charged.'
+    assert conn._service_name('thread/memoryMode/set') == 'memory'
+    assert 'estimated at 3 cents' in billing.cost_sentence('estimated 3 cents')
+
+
+def test_delete_with_damaged_baselines_succeeds(tmp_path):
+    store = OwnSessionStore(tmp_path / 'sessions.json')
+    store.add(OwnSession('damaged', 'Delete', str(tmp_path), provider='codex-api', billing='api'))
+    path = tmp_path / 'openai-billing' / 'codex-token-baselines.json'
+    path.parent.mkdir()
+    path.write_text('{broken')
+    store.remove('damaged', 'codex-api')
+    assert store.get('damaged', provider='codex-api') is None
+
+
+def test_known_baseline_prices_all_usage_not_only_last_request(connect, tmp_path):
+    conn, events = connect('multi-first')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Multiple requests', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hello')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert conn.ledger.totals().spent == pytest.approx(.000122)
+    assert conn.ledger.totals().held == 0
+
+
+
+def test_deferred_api_context_survives_store_reload(tmp_path):
+    store = OwnSessionStore(tmp_path / 'sessions.json')
+    record = OwnSession('copy', 'Copy', str(tmp_path), provider='codex-api', billing='api',
+                        api_context='Quoted conversation, not permissions.\n')
+    store.add(record)
+    assert OwnSessionStore(store.path).get('copy', provider='codex-api').api_context == record.api_context
+
+
+def test_deferred_context_preserves_native_parts_even_when_long(tmp_path):
+    from thechatplace.providers.codex_input import CodexInput, LongCodexInput, prepend_context
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('Synthetic skill')
+    part = {'type': 'skill', 'path': str(skill), 'name': 'test'}
+    original = CodexInput('My message', [part])
+    assert prepend_context(original, '') is original
+    with_context = prepend_context(original, 'Quoted history.\n')
+    assert with_context.items()[1:] == [part]
+    assert str(with_context) == 'Quoted history.\nMy message'
+    long = prepend_context(original, 'x'*32000)
+    assert isinstance(long, LongCodexInput) and list(long.parts) == [part]
+
+
+@pytest.mark.parametrize('later_reported', [False, True])
+def test_late_increment_does_not_get_charged_again_by_next_turn(connect, tmp_path, later_reported):
+    conn, events = connect('normal')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Incremental late usage', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'First request')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    runner.drain()
+    # A late incremental report follows the next turn's initial usage.
+    runner.start(proof, 'Second request')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    later = conn._payments[proof.native_id]
+    if later_reported:
+        conn._finish_payment(proof.native_id, later)
+    total = lambda n: dict(inputTokens=1000*n, cachedInputTokens=200*n, outputTokens=50*n, reasoningOutputTokens=10*n)
+    conn._receive({'method': 'thread/tokenUsage/updated', 'params': {
+        'threadId': proof.native_id, 'turnId': 'turn-1',
+        'tokenUsage': {'total': total(2), 'last': total(1)}}})
+    # Later's already-reported cumulative2000 is now correctly zero delta;
+    # its final cumulative3000 adds only its own one request.
+    conn._receive({'method': 'thread/tokenUsage/updated', 'params': {
+        'threadId': proof.native_id, 'turnId': 'turn-2',
+        'tokenUsage': {'total': total(3), 'last': total(1)}}})
+    assert conn.ledger.totals().spent == pytest.approx(.000183)
+    assert not conn.ledger.totals().problem
+    assert spend_ledger.SpendLedger(conn.ledger.folder).totals().spent == pytest.approx(.000183)
+
+
+def test_overlap_correction_preserves_reset_and_refuses_excess_credit(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path)
+    r = ledger.reserve('codex-api:chat')
+    ledger.settle(r, .03, {'gpt-5-nano': .03})
+    ledger.close(r, True)
+    ledger.reset()
+    assert ledger.correct_openai_overlap(r, .01, 'gpt-5-nano')
+    totals = ledger.totals()
+    assert totals.spent == 0 and totals.chat_all_time[r.chat_id] == pytest.approx(.02)
+    assert not totals.problem
+    ledger.correct_openai_overlap(r, .10, 'gpt-5-nano')
+    assert ledger.totals().problem
+
+
+@pytest.mark.parametrize('days', [1, 8])
+def test_overlap_correction_is_attributed_to_original_settlement_day(tmp_path, days):
+    now = time.time()
+    recorded = now - days*86400
+    clock = [recorded]
+    ledger = spend_ledger.SpendLedger(tmp_path, clock=lambda: clock[0])
+    r = ledger.reserve('codex-api:day-test')
+    ledger.settle(r, .03, {'gpt-5-nano': .03})
+    ledger.close(r, True)
+    clock[0] = now
+    assert ledger.correct_openai_overlap(r, .01, 'gpt-5-nano')
+    totals = ledger.totals(now=now)
+    assert totals.spent == pytest.approx(.02) and totals.today == 0
+    assert totals.last_7_days == pytest.approx(.02 if days == 1 else 0)
+    assert not totals.problem

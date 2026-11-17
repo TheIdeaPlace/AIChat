@@ -112,8 +112,8 @@ class RelayChats:
     def _relay_on_api_credits(self, info) -> bool:
         """Whether ``info`` is a chat of the app's own charged to API credits
         (#658): agent conversations stay on the subscription for now."""
-        return (info is not None and info.provider == "claude"
-                and self._api_own(info.cli_session_id) is not None)
+        return (info is not None and info.provider in ("claude", "codex-api")
+                and self._api_own(info.key if info.provider == "codex-api" else info.cli_session_id) is not None)
 
     def _relay_new(self, came, provider, text, joint_title):
         """Start a new chat with the reply as its first message (#378):
@@ -191,7 +191,7 @@ class RelayChats:
             runner = self._runners.get(info.cli_session_id)
             if runner is not None:
                 return not runner.waiting_on_background
-        elif info.provider in ("codex", "copilot"):
+        elif info.provider in ("codex", "codex-api", "copilot"):
             state = self._codex_states.get(info.key)
             if state is not None:
                 return state.outcome == "inProgress" or state.state == WORKING
