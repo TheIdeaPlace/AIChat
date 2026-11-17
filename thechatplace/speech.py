@@ -647,14 +647,21 @@ def strip_for_speech(text: str) -> str:
 
 
 class _Kept:
-    """A kept utterance still owed (Speaker, #663): what it's about, what's
-    said if it's said again, and how. Compared by identity, so a newer one
-    about the same thing is never taken for it."""
+    """A kept utterance (Speaker, #663): what it's about, what's said (in
+    full, and if it's said again), and how. ``resay``: this is the one
+    saying again, after an interruption, which is never owed itself.
+    Compared by identity, so a newer one about the same thing is never
+    taken for it."""
 
-    __slots__ = ("about", "again", "settings")
+    __slots__ = ("about", "text", "again", "settings", "resay")
 
-    def __init__(self, about: str, again: str, settings: "SpeechSettings") -> None:
-        self.about, self.again, self.settings = about, again, settings
+    def __init__(self, about: str, text: str, again: str, settings: "SpeechSettings",
+                 resay: bool = False) -> None:
+        self.about, self.text, self.again, self.settings = about, text, again, settings
+        self.resay = resay
+
+    def said_again(self) -> "_Kept":
+        return _Kept(self.about, self.again, self.again, self.settings, resay=True)
 
 
 class Speaker:
@@ -674,14 +681,21 @@ class Speaker:
     Budget", #663) waits its turn like any non-interrupting one, but an
     interruption can't lose it. It's about something (``about``, a chat),
     and stays owed until something else about that is said (the chat's
-    reply or cost proves the send), a system voice has said it in full, a
-    newer one about the same thing replaces it, ``forget`` lets it go (the
-    chat's turn is over) or ``stop()`` closes the app. While it's owed, an
-    interrupting announcement about anything else (which also cuts off a
-    screen reader that may still be saying it) is followed by it again
-    (``again``, its short form). Whether a screen reader finished saying it
-    can't be told, so it's said again after each interruption until then,
-    rather than guessed at; one about another chat never stands in for it.
+    reply with its cost, its "needs you", its ending), a system voice has
+    said it in full, a newer one about the same thing replaces it,
+    ``forget`` lets it go (the chat's turn or aside is over) or ``stop()``
+    closes the app.
+
+    An interruption never loses one still waiting in the queue: it was
+    never said, so it keeps its place after the announcement that cut in.
+    One already handed to a screen reader may have been cut off, and
+    whether it finished can't be told, so after the first interrupting
+    announcement about anything else it's said once more (``again``, its
+    short form) and is then settled: a long turn with lots of other news
+    hears it at most twice, not after every announcement. An interruption
+    you set off yourself (``resay=False``: Repeat Last Announcement) leaves
+    it owed without saying it again. One about another chat never stands
+    in for it.
     """
 
     def __init__(self, popen=subprocess.Popen, screen_readers=None):
@@ -759,7 +773,8 @@ class Speaker:
         return None
 
     def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True,
-              keep: bool = False, about: str = "", again: str = "") -> bool:
+              keep: bool = False, about: str = "", again: str = "",
+              resay: bool = True) -> bool:
         """Queue ``text``; returns False when speech is unavailable.
 
         Never raises and never blocks. ``interrupt=True`` stops whatever is
@@ -769,13 +784,16 @@ class Speaker:
         heard, so a later interruption doesn't lose it (see the class), and
         said as ``again`` if it's said again. ``about``: what it's about (a
         chat), which settles a kept utterance about the same thing.
+        ``resay=False``: an interruption you set off yourself (Repeat Last
+        Announcement), after which a kept utterance already handed over
+        isn't said again.
         """
         spoken = strip_for_speech(text)
         if not spoken:
             return False
         kept = None
         if keep and not interrupt:
-            kept = _Kept(about or spoken, strip_for_speech(again) or spoken, settings)
+            kept = _Kept(about or spoken, spoken, strip_for_speech(again) or spoken, settings)
         with self._lock:
             if about:
                 # Something about it is said now, or a newer notice
@@ -783,32 +801,42 @@ class Speaker:
                 self._kept.pop(about, None)
         survivors = []
         if interrupt:
-            survivors = self._stop(cancel_now=False)
-        queued = self._queue_utterance(spoken, settings, interrupt, kept=kept)
+            survivors = self._stop(cancel_now=False, resay=resay, about=about)
+        queued = self._queue_utterance(spoken, settings, interrupt, kept=kept,
+                                       owed=kept is not None)
         if not queued:
             self._cancel_if_owed()
         for owed in survivors:
-            # After the announcement that cut in, and still owed.
-            self._queue_utterance(owed.again, owed.settings, False, kept=owed)
+            # After the announcement that cut in.
+            self._queue_utterance(owed.text, owed.settings, False, kept=owed)
         return queued
 
     def forget(self, about: str) -> None:
         """A kept utterance about ``about`` isn't owed any more (#663): the
-        chat's turn is over, so saying it later would be stale."""
+        chat's turn or aside is over, so saying it again later would be
+        stale. One still waiting in the queue, or saying it again already
+        due there, is still said: it's true, and was never heard."""
         with self._lock:
             self._kept.pop(about, None)
 
     def rename(self, old: str, new: str) -> None:
         """What a kept utterance is about has a new name (a chat given
         another id, #663), so what's said about it under that settles it."""
+        if not old or not new:
+            return
         with self._lock:
             kept = self._kept.pop(old, None)
-            if kept is not None and new:
+            if kept is not None:
                 kept.about = new
                 self._kept[new] = kept
+            for _command, _request, queued in self._queue:
+                if queued is not None and queued.about == old:
+                    queued.about = new
 
     def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool,
-                         kept: Optional["_Kept"] = None) -> bool:
+                         kept: Optional["_Kept"] = None, owed: bool = False) -> bool:
+        """``kept``: the kept utterance (or its saying again) this is, to be
+        known in the queue; ``owed``: a new one, owed from now (#663)."""
         try:
             # One file pair per utterance: two utterances close together
             # must not overwrite each other's text before it is read. The
@@ -855,7 +883,7 @@ class Speaker:
         self._log(spoken, settings, interrupt)
         with self._lock:
             self._queue.append((command, request, kept))
-            if kept is not None:
+            if kept is not None and owed:
                 self._kept[kept.about] = kept
             if self._worker is None or not self._worker.is_alive():
                 self._worker = threading.Thread(target=self._drain, name="speech",
@@ -1039,7 +1067,7 @@ class Speaker:
         """
         self._stop(cancel_now=True)
 
-    def _stop(self, cancel_now: bool) -> List["_Kept"]:
+    def _stop(self, cancel_now: bool, resay: bool = True, about: str = "") -> List["_Kept"]:
         """``stop``. Linux: killing ``spd-say`` leaves the text with
         speech-dispatcher, so it's told to cancel, but only when The Chat
         Place's own voice was speaking, and Orca wasn't running beside it:
@@ -1048,14 +1076,29 @@ class Speaker:
         (``cancel_now=False``), which makes it before the next utterance,
         never after.
 
-        Returns the kept utterances still owed, oldest first, for ``speak``
-        to say again after the interrupting one (#663); ``stop`` drops
-        them."""
+        Returns what ``speak`` says after the interrupting announcement
+        (``about`` it, and so not owed now), oldest first (#663): kept
+        utterances, and sayings again, still waiting in the queue, never
+        said; then, unless ``resay`` is False, each one owed that was
+        already handed over, once more, in its short form, no longer owed
+        after that. ``stop`` drops them all."""
         with self._lock:
             self._generation += 1
-            survivors = [] if cancel_now else list(self._kept.values())
+            survivors: List[_Kept] = []
             if cancel_now:
                 self._kept.clear()
+            else:
+                waiting = [kept for _command, _request, kept in self._queue
+                           if kept is not None and kept.about != about]
+                survivors.extend(waiting)
+                if resay:
+                    for owed in list(self._kept.values()):
+                        if any(owed is kept for kept in waiting):
+                            continue  # never handed over: it keeps its place
+                        del self._kept[owed.about]
+                        if not any(kept.resay and kept.about == owed.about
+                                   for kept in waiting):
+                            survivors.append(owed.said_again())
             self._queue.clear()
             running, self._running = self._running, []
             if running and IS_LINUX and not self._voice_beside_orca:

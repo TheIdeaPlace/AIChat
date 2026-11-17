@@ -17,6 +17,7 @@ from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHE
                      AsideRunner, build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
+from ..speech import speaker
 from .dialogs import AskAsideDialog, ChatOptionsDialog
 
 
@@ -246,15 +247,27 @@ class ClaudeExtras:
         billing = ({k: v for k, v in self._billing_kwargs(own.cli_session_id).items()
                     if k != "chat_id"}  # an aside's chat is its command's
                    if api else {})
+        # An aside's "Sent on API credits" is kept under a key of its own,
+        # not the chat's: the chat's turn ending doesn't settle it, nor the
+        # aside's ending the turn's (#663).
+        notice_key = f"aside:{own.cli_session_id}" if api else ""
 
         def ask(question, on_event):
             def arrived(event):
                 if event.kind == "sent":
                     # The question really went on API credits (#663):
                     # said now, from the dialog, not as Ask is pressed.
-                    self._api_message_sent(own.cli_session_id, window=_alive(dialog))
+                    self._api_message_sent(own.cli_session_id, window=_alive(dialog),
+                                           about=notice_key)
                     return
-                on_event(event)
+                try:
+                    on_event(event)
+                finally:
+                    if notice_key and event.kind != "text":
+                        # However it ended (answered, stopped, failed, the
+                        # dialog closed, or nothing to say at this level),
+                        # saying it again later would be stale (#663).
+                        speaker.forget(notice_key)
 
             def start(at):
                 return main_frame.AsideRunner(at, cwd, question,
@@ -286,15 +299,15 @@ class ClaudeExtras:
                 text = _aside_with_cost(text, cost, failed)
             self._sound(sound_events.ASIDE_FAILED if failed else sound_events.ASIDE_ANSWERED)
             if text:
-                # About the chat: it settles a "Sent on API credits" still
-                # to be heard (speech.Speaker, #663).
-                self._say(text, window=_alive(dialog),
-                          about=own.cli_session_id if api else "")
+                # With its cost, it settles the aside's "Sent on API
+                # credits" (speech.Speaker, #663); without, that's said once
+                # more after it if the answer cut it off.
+                self._say(text, window=_alive(dialog), about=notice_key if cost else "")
             if cost and not self.speech.enabled:
                 # Silent: the cost is still said, as Settings asks (#663).
                 from ..billing import cost_sentence
                 self._speak_announcement(cost_sentence(cost), interrupt=False,
-                                         window=_alive(dialog), about=own.cli_session_id)
+                                         window=_alive(dialog), about=notice_key)
 
         def cost_words(event):
             """What an aside on API credits cost, as said, or "" (#663)."""
@@ -311,6 +324,8 @@ class ClaudeExtras:
         finally:
             dialog.settle()
             dialog.Destroy()
+            if notice_key:
+                speaker.forget(notice_key)  # closed: the aside is over (#663)
         _give_focus_back(returning_to)
 
 

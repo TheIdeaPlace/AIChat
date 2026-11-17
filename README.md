@@ -512,9 +512,12 @@ yet.
   chat $0.42, The Chat Place $12.30 of $190" (Enter there opens Tools, API Keys). Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
   gone on API credits once Claude Code has it, always, even when announcements are off. When
-  you send, what's read back says it: "Sent on API credits to Paid chat: Add the totals."
-  Otherwise it's "Sent on API credits to Paid chat." If something else is announced over it
-  before Paid chat's reply or cost is said, it's said again after. The first message in each
+  you send, the status bar says "Sending on API credits…" at once, and what's read back a
+  moment later says it: "Sent on API credits to Paid chat: Add the totals." Otherwise it's
+  "Sent on API credits to Paid chat." If another announcement cuts in over it, it's said once
+  more after that, in the short form, unless Paid chat has said something of its own first
+  (its reply with what it cost, that it needs you, or how its turn ended). Repeat Last
+  Announcement doesn't bring it back. The first message in each
   such chat each time The Chat Place starts asks "Send on API credits?" first: Enter sends,
   Escape keeps the message in the reply box. If that message isn't sent after all, the next one
   asks again. When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents."
@@ -2108,9 +2111,11 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 - **Claude chats:** The Chat Place says "Steering" and the chat's name (reading your message back
   as it does for Send), then "has your message" once Claude takes it in. If Claude had already
   finished its reply, that reply is read, then that Claude is answering your message, straight
-  after, in the same turn. A steered message that the turn ends (or Stop stops) before Claude
-  takes it in comes back to the reply box, never lost or sent twice. Attached files go as their
-  paths, as for a queued message.
+  after, in the same turn. A steered message, or one sent with Send Now, that the turn ends (or
+  Stop stops) before Claude takes it in comes back to the reply box, never lost, and you hear
+  that it wasn't taken in. With a Claude Code too old to say what it has taken in, you hear that
+  it "may not have been taken in" instead, so check the chat before you send it again. Attached
+  files go as their paths, as for a queued message.
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)

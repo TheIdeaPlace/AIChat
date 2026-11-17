@@ -38,3 +38,21 @@ def test_a_send_on_api_credits_says_so_in_its_read_back_and_names_the_chat():
     # The subscription's are as they were.
     assert sent_text('Budget', 'Add the totals.', 'full', True) == 'Sent to Budget: Add the totals.'
     assert sent_text('Budget', 'x', 'full', False) == 'Sent. Budget is working.'
+
+
+def test_messages_given_back_say_what_they_were_and_whether_thats_certain():
+    # #663: a Send Now comes back on Stop as a steer does; without Claude
+    # Code's echoes, whether it went in can't be told, and that's said.
+    from thechatplace.announce import API_SENDING, untaken_text
+    assert untaken_text('Budget', ['steer']) == (
+        "Your steered message for Budget wasn't taken in. It's back in the message box.")
+    assert untaken_text('Budget', ['now']) == (
+        "Your Send Now message for Budget wasn't taken in. It's back in the message box.")
+    assert untaken_text('Budget', ['steer', 'now']) == (
+        "Your 2 messages for Budget weren't taken in. They're back in the message box.")
+    assert untaken_text('Budget', ['steer'], sure=False) == (
+        "Your steered message for Budget may not have been taken in. "
+        "It's back in the message box.")
+    assert untaken_text('Budget', ['now', 'now'], sure=False) == (
+        "Your 2 messages for Budget may not have been taken in. They're back in the message box.")
+    assert API_SENDING == "Sending on API credits…"

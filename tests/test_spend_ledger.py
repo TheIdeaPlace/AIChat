@@ -366,17 +366,47 @@ def test_the_clean_baseline_is_kept_until_a_clean_end_replaces_it(tmp_path):
     again.set_baseline("c", 0.4, {"m": 0.4}, tokens=120, clean=True)
     latest, clean = again.baselines("c")
     assert latest.total == clean.total == pytest.approx(0.4)
-    book.set_baseline("new", 0.2)                               # no clean end yet
-    assert book.baselines("new")[1] is None
+    # No clean end yet, and none recorded before: what Claude Code saved for
+    # it isn't known, so it's a legacy entry, recorded but not counted from.
+    book.set_baseline("new", 0.2)
+    assert book.baseline("new")[0] == pytest.approx(0.2) and book.baselines("new") is None
     assert book.baselines("") is None and book.baselines("missing") is None
+
+
+def test_an_earlier_builds_baseline_is_legacy_until_a_clean_end(tmp_path):
+    # The review (#663): no "clean" record fell back to the latest, the
+    # under-count case. A legacy entry is no usable baseline, through
+    # stopped turns too, until a process ends cleanly.
+    (tmp_path / spend_ledger.BASELINES_FILE).write_text(
+        '{"c": {"total": 0.3, "models": {"m": 0.3}}}', encoding="utf-8")
+    book = ledger(tmp_path)
+    assert book.baselines("c") is None and book.baseline("c")[0] == pytest.approx(0.3)
+    book.set_baseline("c", 0.5)                                 # a stopped turn's
+    assert book.baselines("c") is None
+    assert "clean" not in json.loads(book.baselines_path.read_text(encoding="utf-8"))["c"]
+    book.set_baseline("c", 0.6, clean=True)
+    latest, clean = book.baselines("c")
+    assert latest.total == clean.total == pytest.approx(0.6)
+    book.set_baseline("c", 0.9)                                 # stopped again: clean kept
+    assert book.baselines("c")[1].total == pytest.approx(0.6)
+
+
+def test_an_empty_clean_record_is_no_baseline_either(tmp_path):
+    # "clean": null, as an earlier test build wrote before any clean end:
+    # no clean end on record, so the same as a legacy entry.
+    (tmp_path / spend_ledger.BASELINES_FILE).write_text(
+        '{"c": {"total": 0.3, "clean": null}}', encoding="utf-8")
+    book = ledger(tmp_path)
+    assert book.baselines("c") is None and book.baseline("c")[0] == pytest.approx(0.3)
 
 
 @pytest.mark.parametrize("clean", ['"x"', "[1]", '{"total": -1}', '{"total": "a"}'])
 def test_a_damaged_clean_baseline_is_none(tmp_path, clean):
     (tmp_path / spend_ledger.BASELINES_FILE).write_text(
         '{"c": {"total": 0.3, "tokens": "many", "clean": ' + clean + '}}', encoding="utf-8")
-    latest, kept = ledger(tmp_path).baselines("c")
-    assert latest.total == pytest.approx(0.3) and latest.tokens is None and kept is None
+    # No clean end on record: recorded, but no baseline to count from (#663).
+    book = ledger(tmp_path)
+    assert book.baselines("c") is None and book.baseline("c")[0] == pytest.approx(0.3)
 
 
 @pytest.mark.parametrize("total", [0.30, 0.82, 1.40, 7.0])

@@ -294,7 +294,7 @@ def test_a_resumed_turn_counts_only_its_own_cost_not_the_chats_earlier_turns(tmp
 
 
 def test_a_fork_counts_from_its_sources_baseline(tmp_path, book):
-    book.set_baseline("source-1", 0.40, {"claude-haiku-5-5": 0.40})
+    book.set_baseline("source-1", 0.40, {"claude-haiku-5-5": 0.40}, clean=True)
     _runner, events, _ = run(FakeProcess(_turn_lines(0.43, "copy-1", restored=5000)),
                              tmp_path, book,
                              command=["claude", "-p", "--resume", "source-1", "--fork-session",
@@ -371,6 +371,38 @@ def test_tokens_that_match_the_latest_baseline_count_from_it(tmp_path, book):
     _r, events, _ = run(FakeProcess(_turn_lines(0.35, "chat-u", restored=900)), tmp_path, book,
                         command=_resume("chat-u"))
     assert events[-1].data["cost_usd"] == pytest.approx(0.05)
+
+
+def test_a_legacy_baseline_is_no_baseline_until_a_clean_end(tmp_path, book):
+    # The review (#663): an earlier build's baseline has no clean record, so
+    # it fell back to the latest, which may include a stopped turn's cost
+    # Claude Code never saved: the under-count. Now it's no usable baseline.
+    book.path.parent.mkdir(parents=True, exist_ok=True)
+    book.baselines_path.write_text(
+        json.dumps({"chat-w": {"total": 0.30, "models": {"claude-haiku-5-5": 0.30}}}),
+        encoding="utf-8")
+    book.set_limits(190, 2)
+    assert book.baselines("chat-w") is None
+    _r, events, _ = run(FakeProcess(_turn_lines(0.35, "chat-w", restored=900)), tmp_path, book,
+                        command=_resume("chat-w"))
+    assert events[-1].data["cost_usd"] is None                 # "cost not known"
+    assert events[-1].data["cost_complete"] is False
+    assert book.totals().spent == pytest.approx(0.35)          # all of it, up to the $2 hold
+    # That process ended cleanly: from now on there's a baseline to count from.
+    latest, clean = book.baselines("chat-w")
+    assert latest.total == clean.total == pytest.approx(0.35)
+    _r, events, _ = run(FakeProcess(_turn_lines(0.40, "chat-w", restored=900)), tmp_path, book,
+                        command=_resume("chat-w"))
+    assert events[-1].data["cost_usd"] == pytest.approx(0.05)
+
+
+def test_a_legacy_baseline_stays_legacy_through_a_stopped_turn(tmp_path, book):
+    book.path.parent.mkdir(parents=True, exist_ok=True)
+    book.baselines_path.write_text(json.dumps({"chat-x": {"total": 0.30}}), encoding="utf-8")
+    run(FakeProcess(_turn_lines(0.50, "chat-x", restored=900), returncode=-9), tmp_path, book,
+        command=_resume("chat-x"))
+    assert book.baseline("chat-x")[0] == pytest.approx(0.50)   # recorded,
+    assert book.baselines("chat-x") is None                     # but not counted from
 
 
 def test_a_failed_or_killed_process_never_sets_the_clean_baseline(tmp_path, book):
@@ -1137,6 +1169,8 @@ def test_stop_with_a_steer_not_taken_in_ends_at_once_and_gives_it_back(tmp_path,
     assert "new paid work" not in [e.text for e in events]
     assert events[-1].text == "Stopped." and events[-1].data["cost_complete"] is False
     assert runner.steering == ["Change course"]       # the window gives it back
+    assert runner.untaken() == [("steer", "Change course")]
+    assert runner.echoes is False                     # so it says "may not have been"
     totals = book.totals()
     assert totals.spent == pytest.approx(0.02)
     assert totals.held == pytest.approx(5.0 - 0.02)   # whether it went in isn't known
@@ -1149,6 +1183,8 @@ def test_stop_after_send_now_ends_at_once_and_holds_the_new_messages_cost(tmp_pa
                                          lambda r: r.send_now("Do this instead"))
     assert process.killed
     assert events[-1].text == "Stopped." and events[-1].data["cost_complete"] is False
+    # The result was the replaced work's: the Send Now goes back (#663).
+    assert runner.untaken() == [("now", "Do this instead")]
     totals = book.totals()
     assert totals.spent == pytest.approx(0.02)
     assert totals.held == pytest.approx(5.0 - 0.02)

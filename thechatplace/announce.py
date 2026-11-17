@@ -218,6 +218,26 @@ def api_sent_text(title: str) -> str:
     return f"Sent on API credits to {title}."
 
 
+def untaken_text(title: str, kinds, sure: bool = True) -> str:
+    """Steered or Send Now messages that went back to the message box at a
+    turn's end, Stop most of all, because Claude didn't take them in (#238,
+    #663). ``kinds``: each one's ("steer" or "now"). ``sure`` False: Claude
+    Code doesn't say what it took in, so they may have gone in."""
+    kinds = list(kinds)
+    if len(kinds) == 1:
+        what = "Your steered message" if kinds[0] == "steer" else "Your Send Now message"
+        verb, back = "wasn't", "It's"
+    else:
+        what, verb, back = f"Your {len(kinds)} messages", "weren't", "They're"
+    taken = f"{verb} taken in" if sure else "may not have been taken in"
+    return f"{what} for {title} {taken}. {back} back in the message box."
+
+
+#: The status bar's word, not spoken, from Enter in an API chat until the
+#: message has really gone and its read-back is said (#663).
+API_SENDING = "Sending on API credits…"
+
+
 def sent_text(title: str, message: str, level: str, read_back: bool,
               queued: bool = False, api: bool = False) -> str:
     """Confirmation that Kelly's message went to Claude. Which session comes

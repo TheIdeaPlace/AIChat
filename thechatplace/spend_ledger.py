@@ -109,10 +109,13 @@ total at the end of its last process that ended cleanly. A resumed first
 result counts from the clean one: counting from the latest would take the
 stopped turn's cost (already counted at Stop) off this turn's, an
 under-count, or with a cheap turn give a total below it. The latest is
-used only when there's no clean one, or when the tokens show it was what
-was restored (each baseline keeps modelUsage's cumulative tokens, and the
-restored part of a result's tokens matches the baseline it came from), in
-case a later Claude Code saves a stopped turn's cost.
+used only when the tokens show it was what was restored (each baseline
+keeps modelUsage's cumulative tokens, and the restored part of a result's
+tokens matches the baseline it came from), in case a later Claude Code
+saves a stopped turn's cost. A chat with no clean end on record (an
+earlier build's entry, or one whose processes have all been stopped) has
+no usable baseline: what was saved isn't known, so a restored first result
+is counted up to the reservation and its cost said as not known.
 
 Within one process a total never shrinks; if it does, that result adds
 nothing and the tracker starts again from it. ``CUMULATIVE_COST`` False
@@ -477,9 +480,12 @@ class SpendLedger:
 
     def _read_baselines(self) -> Dict[str, dict]:
         """{chat: {"total", "models", "tokens", "clean"}}, "clean" being the
-        same shape or None (see "Which baseline was restored"); a missing or
-        damaged file is none known, which counts each first result in full
-        up to its cap."""
+        same shape or None (see "Which baseline was restored"). An entry
+        with no "clean" at all is a legacy one, kept as it is: written by
+        an earlier build, or since a process whose history wasn't known, so
+        what Claude Code last saved for the chat isn't known (``baselines``).
+        A missing or damaged file is none known, which counts each first
+        result in full up to its cap."""
         try:
             raw = json.loads(self.baselines_path.read_text(encoding="utf-8"))
         except (OSError, ValueError, RecursionError):
@@ -492,25 +498,34 @@ class SpendLedger:
                 continue
             latest = self._entry(entry)
             if latest is not None:
-                latest["clean"] = self._entry(entry.get("clean"))
+                if "clean" in entry:
+                    latest["clean"] = self._entry(entry.get("clean"))
                 kept[chat] = latest
         return kept
 
     def baseline(self, chat_id: str) -> Optional[Tuple[float, Dict[str, float]]]:
         """(total, {model: cost}) Claude Code last reported for ``chat_id``,
-        or None if it isn't known."""
-        found = self.baselines(chat_id)
-        return (found[0].total, dict(found[0].models)) if found else None
-
-    def baselines(self, chat_id: str) -> Optional[Tuple[Baseline, Optional[Baseline]]]:
-        """(latest, clean) baselines for ``chat_id`` (clean None if no
-        process for it has ended cleanly since it was recorded), or None if
-        none is known."""
+        or None if it isn't known: what's recorded, a legacy entry's too.
+        What a turn counts from is ``baselines``."""
         if not chat_id:
             return None
         with _LOCK:
             entry = self._read_baselines().get(chat_id)
-        if not entry:
+        return (entry["total"], dict(entry["models"])) if entry else None
+
+    def baselines(self, chat_id: str) -> Optional[Tuple[Baseline, Optional[Baseline]]]:
+        """(latest, clean) baselines for ``chat_id``, or None if none is
+        known. An entry with no clean end on record (a legacy one, with no
+        "clean", ``_read_baselines``; or a "clean" that's empty or damaged)
+        is none known too (#663): its latest total may include a stopped
+        turn's cost Claude Code never saved, so counting from it would
+        under-count. A restored first result is then counted up to the
+        reservation, and its cost said as not known."""
+        if not chat_id:
+            return None
+        with _LOCK:
+            entry = self._read_baselines().get(chat_id)
+        if not entry or not entry.get("clean"):
             return None
         clean = entry["clean"]
         return (Baseline(entry["total"], dict(entry["models"]), entry["tokens"]),
@@ -555,9 +570,12 @@ class SpendLedger:
         its total, by model, and modelUsage's cumulative ``tokens``.
         ``clean``: the chat's process ended cleanly after it, so this is
         also what Claude Code saved for it (see "Which baseline was
-        restored"); otherwise the clean one recorded before is kept. Not
-        part of the total (Reset leaves it), and a failure to write is let
-        go: the next turn then counts its first result up to its cap."""
+        restored"); otherwise the clean one recorded before is kept. With
+        none recorded before (a legacy entry, or none at all), what Claude
+        Code saved isn't known until a process ends cleanly, so the entry
+        is left legacy (no "clean") until then. Not part of the total
+        (Reset leaves it), and a failure to write is let go: the next turn
+        then counts its first result up to its cap."""
         total = _money(total)
         if not chat_id or total is None:
             return
@@ -569,8 +587,12 @@ class SpendLedger:
             # restored (CostTracker).
             latest = {"total": total, "models": _model_costs(models), "tokens": _count(tokens)}
             before = baselines.get(chat_id) or {}
-            baselines[chat_id] = {**latest,
-                                  "clean": dict(latest) if clean else before.get("clean")}
+            entry = dict(latest)
+            if clean:
+                entry["clean"] = dict(latest)
+            elif "clean" in before:
+                entry["clean"] = before["clean"]
+            baselines[chat_id] = entry
             try:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 atomic_write_json(self.baselines_path, baselines)

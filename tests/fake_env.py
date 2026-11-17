@@ -147,8 +147,13 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
         if about_:
             about.append((text, about_))
 
-    def speak_kw(text, settings, interrupt=True, keep=False, about="", again=""):
+    #: What was said with ``resay=False`` (Repeat Last Announcement, #663).
+    no_resay = []
+
+    def speak_kw(text, settings, interrupt=True, keep=False, about="", again="", resay=True):
         speak(text, settings, interrupt, keep, about, again)
+        if not resay:
+            no_resay.append(text)
     patch(speech.speaker, "speak", speak_kw)
     forgotten = []
     patch(speech.speaker, "forget", forgotten.append)
@@ -270,6 +275,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "kept": kept, "about": about, "again": again, "forgotten": forgotten,
+            "no_resay": no_resay,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
@@ -366,6 +372,14 @@ class FakeRunner:
     @property
     def steering(self):
         return list(getattr(self, "steered", []))
+
+    #: As TurnRunner's: Claude Code's echoes say what was taken in (#663).
+    echoes = True
+
+    def untaken(self):
+        """Steers, then Send Now messages a test says weren't taken in."""
+        return ([("steer", text) for text in self.steering]
+                + [("now", text) for text in getattr(self, "now_untaken", [])])
 
     def send_follow_up(self, prompt, images=None):
         if not self.waiting_on_background:

@@ -358,7 +358,9 @@ your Claude subscription.</p>
 <p>You always know when a message is on API credits: the chat's row and the window's title say
 "API credits", each message you send is said to have gone on API credits once Claude Code has
 it ("Sent on API credits to Budget", with your message read back after it; always said, even
-when announcements are off), the first one in each
+when announcements are off, and said once more if another announcement cuts it off before
+Budget says anything of its own. Until it's said, the status bar shows "Sending on API
+credits…"), the first one in each
 chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
 Ask Aside answer says what it cost, and
 the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
@@ -2075,7 +2077,9 @@ Until the chat's own history shows it, a steered message is at the end of the me
   message now.</li>
 <li>If the turn ends or you press Stop before the message is taken in, it comes back to the reply
   box (a queued one stays queued, or comes back with the rest when you press Stop). It's never
-  lost or sent twice.</li>
+  lost or sent twice. A message sent with Send Now comes back the same way. If your Claude Code
+  is too old to say what it took in, you hear that the message "may not have been taken in":
+  check the chat before sending it again.</li>
 <li>If Codex doesn't confirm a steered message (an error, or the connection is lost), it comes back
   to the reply box, even a queued one, with a warning to check the chat's history first, since
   Codex may have it. It's never sent again on its own.</li>

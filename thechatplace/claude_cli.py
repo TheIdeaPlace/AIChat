@@ -89,7 +89,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable, Collection, Dict, List, Optional
+from typing import Callable, Collection, Dict, List, Optional, Tuple
 
 from . import platform_paths
 from .billing import (KEY_REFUSED, ROUTE_API, account_problem, budget_flags, failure_text,
@@ -1642,6 +1642,24 @@ class TurnRunner:
             return [m[1] for m in self._untaken if m[0] == "steer"] + [
                 prompt for kind, prompt in self._waiting if kind == "steer"]
 
+    def untaken(self) -> List[Tuple[str, str]]:
+        """Steers and Send Now messages Claude hasn't taken in, oldest
+        first, as (kind, text), for the window to give back when the turn
+        ends, after a Stop most of all, rather than lose them (#238, #663).
+        Without echoes (``echoes``) it's a guess: a result is taken to
+        answer the oldest message other than a steer."""
+        with self._lock:
+            return [(m[0], m[1]) for m in self._untaken if m[0] in ("steer", "now")] + [
+                (kind, prompt) for kind, prompt in self._waiting if kind in ("steer", "now")]
+
+    @property
+    def echoes(self) -> bool:
+        """True once Claude Code has echoed a message it took in, so what
+        ``untaken`` says is known; False (a Claude Code without the echoes,
+        or none taken in yet) when a message it lists may have gone in."""
+        with self._lock:
+            return self._echoes
+
     def _write_message(self, kind: str, prompt: str, images: Optional[List[dict]] = None,
                        late: bool = False) -> bool:
         """Write a message, to be answered. Call with ``_lock`` held."""
@@ -1860,6 +1878,15 @@ class TurnRunner:
             # the echoes that's exact, and a result with nothing taken in (a
             # background agent's notification, say) answers nothing; without
             # them, one. Never below zero.
+            if not self._echoes:
+                # No echoes: a result answers one message, taken to be the
+                # oldest that isn't a steer (a steer joins work; it never
+                # has a result of its own), so ``untaken`` doesn't list
+                # a Send Now that was answered (#663).
+                for index, message in enumerate(self._untaken):
+                    if message[0] != "steer":
+                        del self._untaken[index]
+                        break
             if self._echoes:
                 answered = self._taken_since_result
             elif self._cancelled:

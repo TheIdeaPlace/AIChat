@@ -817,7 +817,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "turn_status": self.on_turn_status,
             "usage_and_context": lambda e: self.on_usage(),
             "changed_files": lambda e: self.on_changes(),
-            "repeat_last_announcement": lambda e: self._say(self._last_announcement, force=True),
+            "repeat_last_announcement": lambda e: self._say(self._last_announcement, force=True,
+                                                            resay=False),
             "what_ai_knows": lambda e: self.on_about_you(),
             "connected_tools": lambda e: self.on_connected_tools(),
             "user_guide": self.on_user_guide,
@@ -1092,31 +1093,36 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.focus_sessions()
 
     def _say(self, text: Optional[str], force: bool = False, interrupt: bool = True,
-             window: Optional[wx.Window] = None, about: str = ""):
+             window: Optional[wx.Window] = None, about: str = "", resay: bool = True):
         """Speak an announcement (per the level) and put it in the status bar.
         ``window``: a dialog of ours that's open, so VoiceOver hears it from
         the window it's in rather than from this one behind it. ``about``:
-        the chat it's about, if it's a chat's reply, cost or ending (#663)."""
+        the chat it's about, when it says or implies that a message went in
+        (its reply with its cost, "needs you", its ending, #663).
+        ``resay=False``: you set it off yourself (Repeat Last Announcement),
+        so a "Sent on API credits" it cuts off isn't said again after it."""
         if not text:
             return
         self._last_announcement = text
         self._status(text)
         if force or self.speech.enabled:
-            self._speak_announcement(text, interrupt=interrupt, window=window, about=about)
+            self._speak_announcement(text, interrupt=interrupt, window=window, about=about,
+                                     resay=resay)
 
     def _speak_announcement(self, text: str, interrupt: bool, window: Optional[wx.Window] = None,
-                            keep: bool = False, about: str = "", again: str = ""):
+                            keep: bool = False, about: str = "", again: str = "",
+                            resay: bool = True):
         """``keep``: owed until heard, so a later interruption doesn't lose
         it, said again as ``again``; ``about``: the chat it's about, which
-        settles a kept "Sent on API credits" for that chat (speech.Speaker,
-        #663)."""
+        settles a kept "Sent on API credits" for that chat; ``resay``: as
+        for ``_say`` (speech.Speaker, #663)."""
         # A Mac only: elsewhere queue_announcement declines and speech goes as before.
         source = window if window else self
         if (not interrupt and self.speech.engine in ("auto", "voiceover")
                 and mac_a11y.queue_announcement(source.GetHandle(), strip_for_speech(text))):
             return
         speaker.speak(text, self.speech, interrupt=interrupt, keep=keep, about=about,
-                      again=again)
+                      again=again, resay=resay)
 
     def _feedback(self, text: str, window: Optional[wx.Window] = None):
         """The answer to something Kelly just did: status bar, and spoken
@@ -2168,8 +2174,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._api_read_back[session_id] = said
         return True
 
+    def _say_or_hold_read_back(self, session_id: str, said: str, api: bool,
+                               announce_send: bool) -> None:
+        """A send's read-back: said now, as usual, or in an API chat held
+        for its "api_sent" (``_hold_read_back``). Then the status bar says
+        it's going at once, unspoken, so the second or so before the
+        read-back isn't nothing (#663)."""
+        if not announce_send:
+            return
+        if api and self._hold_read_back(session_id, said):
+            self._status(announce.API_SENDING)
+        else:
+            self._feedback(said)
+
     def _say_api_sent(self, session_id: str, window: Optional[wx.Window] = None,
-                      kind: str = "") -> None:
+                      kind: str = "", about: str = "") -> None:
         """A message has gone into an API chat (#658): spoken, or its own
         sound when Settings asks for one and this build has it. Said when
         the turn's runner has really written it, after the account check
@@ -2183,12 +2202,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         even with announcements set to Silent, as it's the feature's promise
         that no message is charged unheard; queued behind other speech
         rather than cutting it off, and kept (speech.Speaker): owed until
-        something else about the chat is said, so an interruption before
-        then is followed by it again, in its short form. Not made the last
+        something about the chat says or implies the send, so it's said
+        once more, in its short form, after the first announcement about
+        something else that cuts in before then. Not made the last
         announcement, so Repeat Last Announcement still repeats what was
         sent. ``window``: a dialog of ours that's open (Ask Aside), for
         VoiceOver. ``kind``: the runner's kind of message ("prompt",
-        "follow_up", "steer", "now")."""
+        "follow_up", "steer", "now"). ``about``: what it's kept under, if
+        not the chat's turn (an aside's ``aside:<id>``)."""
         own = self._api_own(session_id)
         if own is None:
             return
@@ -2201,16 +2222,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             said = self._api_read_back.pop(session_id, None) or short
         self._status(said)
         self._speak_announcement(said, interrupt=False, window=window, keep=True,
-                                 about=session_id, again=short)
+                                 about=about or session_id, again=short)
 
     def _api_message_sent(self, session_id: str, window: Optional[wx.Window] = None,
-                          kind: str = "") -> None:
+                          kind: str = "", about: str = "") -> None:
         """A message really went into an API chat (#663): said, and the
-        first-send question counts as answered from now on."""
+        first-send question counts as answered from now on. ``about``: as
+        for ``_say_api_sent``."""
         self._api_confirm_pending.discard(session_id)
         if self._api_own(session_id) is not None:
             self._api_confirmed.add(session_id)
-        self._say_api_sent(session_id, window=window, kind=kind)
+        self._say_api_sent(session_id, window=window, kind=kind, about=about)
 
     def _api_cost_words(self, event, session_id: str = "", turn_over: bool = True) -> str:
         """What a turn on API credits cost, as said ("6 cents", "nothing",
@@ -2603,7 +2625,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         loaded = self._open is not None and self._open.cli_session_id == session_id
         self._sound(sound_events.COMPACTED, self._open.key if loaded else self._own_key(session_id),
                     own=self._open.is_own if loaded else True)
-        self._say(f"{title}: {text}", interrupt=False)
+        # The chat's own news: it settles a "Sent on API credits" (#663).
+        self._say(f"{title}: {text}", interrupt=False, about=session_id)
 
     def _command_speech_state(self, session_id):
         return self._command_speech.setdefault(session_id, {'assistant_text': False, 'spoken': []})
@@ -2622,7 +2645,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         label = 'Claude Code error: ' if failed else 'Claude Code: '
         text = announce.reply_text(title, label + summary, self.speech.announce)
         if text:
-            self._say(text, interrupt=False)
+            self._say(text, interrupt=False, about=session_id)
         else:
             self._status(f"{title}: Claude Code command {'failed' if failed else 'finished'}.")
 
@@ -4865,7 +4888,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         text = (f"{title} is using {model_spoken(actual)} instead of "
                 f"{model_label(own.model)}, the model this session chose.")
         self._warned.add(key)
-        self._say(text)
+        self._say(text, about=session_id)  # the chat's own news (#663)
 
     def _check_context(self):
         """Say once when the loaded session's context passes 80%."""
@@ -4896,7 +4919,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._warned.add(key)
         self._sound(sound_events.LIMIT)
         self._say(f"{info.title}: {usage.context_text(tokens, window)} Claude Code will "
-                  "compact the conversation when it's full; /compact does it now.")
+                  "compact the conversation when it's full; /compact does it now.",
+                  about=info.cli_session_id)  # the chat's own news (#663)
 
     def on_turn_status(self, _event=None):
         """How long the running turn has taken, and what it is doing."""
@@ -5791,8 +5815,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._sound(sound_events.SENT, self._own_key(session_id),
                             on_its_own=not announce_send)
                 # On API credits, said once the runner has written it (#663).
-                if announce_send and not (api and self._hold_read_back(session_id, said)):
-                    self._feedback(said)
+                self._say_or_hold_read_back(session_id, said, api, announce_send)
                 return True  # on API credits, the runner's "api_sent" says so (#663)
             # Claude started on the finished work just now: queue it.
         if runner is not None:
@@ -5949,8 +5972,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # once the runner has really written it: its "api_sent" (#663),
         # which says this read-back then, with "on API credits" in it.
         self._api_read_back.pop(session_id, None)
-        if announce_send and not (api and self._hold_read_back(session_id, said)):
-            self._feedback(said)
+        self._say_or_hold_read_back(session_id, said, api, announce_send)
         self._api_cost_said.pop(session_id, None)
         self._store_write(self.store.update, session_id, state=IDLE, detail="",
                           last_activity_ms=int(time.time() * 1000))
@@ -6010,6 +6032,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if session_id in self._api_read_back:
                     self._api_read_back[reported] = self._api_read_back.pop(session_id)
                 # A "Sent on API credits" still owed is about the new id now.
+                # (An aside's stays under the key its dialog forgets it by.)
                 speaker.rename(session_id, reported)
                 # Its spending and cost baseline go with it (#663), so Usage
                 # doesn't list them under a chat no longer listed.
@@ -6080,7 +6103,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if warning and key not in self._warned:
                 self._warned.add(key)
                 self._sound(sound_events.LIMIT)
-                self._say(warning)
+                self._say(warning, about=session_id)  # from its turn (#663)
             return
         if event.kind == "remote_control":
             self._on_remote_control(session_id, title, event.data or {})
@@ -6122,7 +6145,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             queue.append(event.request)
             if len(queue) == 1:
                 self._sound(sound_events.NEEDS_YOU, self._own_key(session_id))
-                self._say(f"{title} needs you. {event.request.summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers.")
+                # It settles a "Sent on API credits" (#663): Claude is
+                # working on what went, and the notice after it would sound
+                # as if the answer were charged.
+                self._say(f"{title} needs you. {event.request.summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers.",
+                          about=session_id)
                 self._notify(self._own_key(session_id), f"{title} needs you",
                              f"{event.request.summary()}. {key_name(your_key('Ctrl+Shift+A'))} answers.",
                              needs_you=True)
@@ -6215,14 +6242,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     if is_open:
                         self._show_attachments()
             self._steers_ended(session_id)
-            # Steered but never taken in (Stop, or the turn ended first): it
-            # comes back rather than being lost (#238).
-            untaken = list(getattr(runner, "steering", ()) or ()) if runner is not None else []
+            # Steered or sent with Send Now but never taken in (Stop, or the
+            # turn ended first): it comes back rather than being lost (#238,
+            # #663). Without Claude Code's echoes that's a guess, and said so.
+            untaken = self._untaken_messages(runner)
             if untaken:
-                unsent.extend(untaken)
+                unsent.extend(text for _kind, text in untaken)
                 self._sound(sound_events.NOT_SENT, self._own_key(session_id), on_its_own=True)
-                note = (f"Your steered message for {title} wasn't taken in. It's back in the "
-                        "message box.")
+                note = announce.untaken_text(title, [kind for kind, _text in untaken],
+                                             sure=bool(getattr(runner, "echoes", True)))
                 self._feedback(note)
                 self._last_announcement = note
             queued = self._take_queued(session_id)
@@ -6277,7 +6305,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     text = ((text or f"{title} finished{announce.cost_after(cost)}.")
                             + f" {detail}: " + "; ".join(denials))
                 if text:
-                    self._say(text, about=session_id)
+                    # With its cost, the reply says the send was charged and
+                    # settles a "Sent on API credits" still owed; without
+                    # (Settings turned the cost off), it doesn't, so that is
+                    # said once more after it if the reply cut it off (#663).
+                    self._say(text, about=session_id if cost else "")
                 else:
                     reply = announce.first_sentence(event.text) if event.text else ""
                     said = f"{title} finished{announce.cost_after(cost)}."
@@ -6332,6 +6364,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # Whatever happened there, a held-back reply sound isn't lost.
                 self._agent_pay_reply_sound("claude", session_id)
             self.refresh_sessions()
+
+    @staticmethod
+    def _untaken_messages(runner) -> List[tuple]:
+        """A finished runner's steers and Send Now messages not taken in, as
+        (kind, text), oldest first (#238, #663); a runner without
+        ``untaken`` lists its steers."""
+        if runner is None:
+            return []
+        untaken = getattr(runner, "untaken", None)
+        if callable(untaken):
+            return list(untaken())
+        return [("steer", text) for text in getattr(runner, "steering", ()) or ()]
 
     def _answered_with_background(self, session_id: str, title: str, event: TurnEvent,
                                   is_open: bool):
@@ -6400,7 +6444,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 text = ((text or f"{title} answered{announce.cost_after(cost)}.")
                         + f" {detail}: " + "; ".join(denials))
             if text:
-                self._say(f"{text} {background}", about=session_id)
+                # Settles a "Sent on API credits" only with its cost (#663).
+                self._say(f"{text} {background}", about=session_id if cost else "")
             else:
                 reply = announce.first_sentence(event.text) if event.text else ""
                 said = f"{title} answered{announce.cost_after(cost)}."
