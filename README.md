@@ -515,8 +515,8 @@ yet.
   asks "Send on API credits?" first: Enter sends, Escape keeps the message in the reply box.
   When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents." (or "less than
   a cent"). Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask
-  before the first API-credit message in each chat" (Alt+B) and "Announce what each API-credit reply
-  cost" (Alt+N), both on at first.
+  before the first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit
+  reply" (Alt+V), both on at first.
 - **Before anything is sent** The Chat Place checks with Claude Code that the message will be
   charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
   spending limit is reached or the tally is damaged, the message isn't sent, stays in the reply

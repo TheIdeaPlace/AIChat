@@ -1497,7 +1497,7 @@ class SettingsDialog(wx.Dialog):
             self.api_confirm.SetValue(speech.api_confirm_first)
             credits.Add(self.api_confirm, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM
                         | (0 if self.api_notice is not None else wx.TOP), 6)
-            self.api_cost = wx.CheckBox(body, label="A&nnounce what each API-credit reply cost")
+            self.api_cost = wx.CheckBox(body, label="Gi&ve the cost of each API-credit reply")
             self.api_cost.SetValue(speech.api_say_cost)
             credits.Add(self.api_cost, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(credits, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

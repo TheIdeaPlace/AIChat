@@ -2147,7 +2147,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _api_cost_words(self, event) -> str:
         """What a finished turn on API credits cost, as said ("6 cents",
         "less than a cent"; never "0 cents"), or "" for the subscription or
-        with Settings' "Announce what each API-credit reply cost" off (#658)."""
+        with Settings' "Give the cost of each API-credit reply" off (#658)."""
         data = getattr(event, "data", None) or {}
         if data.get("billing") != "api" or not self.speech.api_say_cost:
             return ""
@@ -4277,6 +4277,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         the selected session from its next turn. While a turn runs, the
         session can be reached from claude.ai and your other devices."""
         info = self._selected_session()
+        if info is not None and info.is_own and self._api_own(info.cli_session_id) is not None:
+            # First, so it's the reason given even where Remote Control is
+            # otherwise unavailable, as on a Mac's tests (#658).
+            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Remote Control",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return
         if not self._require_capability("remote_control", info):
             return
         if info is None:
@@ -4288,10 +4294,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(info.cli_session_id, provider=info.provider)
         if own is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
-            return
-        if self._api_own(info.cli_session_id) is not None:
-            wx.MessageBox(REMOTE_NOT_ON_API.format(title=info.title), "Remote Control",
-                          wx.OK | wx.ICON_INFORMATION, self)
             return
         default = "on" if self.speech.remote_control else "off"
         values = ["", "on", "off"]
