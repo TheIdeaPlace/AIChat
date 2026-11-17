@@ -139,6 +139,14 @@ the release workflow signs and notarizes it. The Linux build (AppImages for x64 
 preview. It has been tested with Orca 51 on an MNT Pocket Reform, with Orca 48 on Debian 13
 (arm64) in a virtual machine, and on Ubuntu 26.04 (arm64) in a virtual machine.
 
+**API credits are checked against the real API before a build reaches anyone.**
+`tests/test_live_api.py` runs Test Key, a new chat and its second message, and Stop through
+the app's own code, on a real key, for about a cent on Haiku:
+`TCP_LIVE_API=1 TCP_LIVE_API_KEY_FILE=<file with the key> python -m pytest tests/test_live_api.py`.
+It's skipped otherwise, and never runs in CI. The other API-credit tests use a fake Claude
+Code, which is only as right as what we believe the real one says: #662 reached a test build
+because every fake reported a key the way the real one doesn't.
+
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an
 accessibility bus), with no person, sound or VM:
