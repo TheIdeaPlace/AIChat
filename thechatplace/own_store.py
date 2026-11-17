@@ -321,7 +321,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "agent", "instructions", "output_style"):
             values[name] = ""
         values["prompt_fresh"] = False
-        # API credits are Claude's only, for now (#658).
+        # Each Codex backend has a fixed billing route (#661).
         values["billing"] = "api" if provider == 'codex-api' else "subscription"
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
@@ -654,14 +654,26 @@ class OwnSessionStore:
                 if extras:
                     self._extras[session.identity] = extras
                 raise
-        if provider == 'codex':
+        if provider in ('codex', 'codex-api'):
             # What The Chat Place saved for the chat goes with its entry: its
             # task list, its Allow for This Chat rules and its automatic
             # review history (#634). Delete Session Permanently comes here
             # whether Codex deleted the chat or no longer had it.
             # Repeating removal also retries cleanup after a sharing violation.
-            CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
+            CodexPlanStore(self.path.parent / 'provider-tasks' / provider).remove(cli_session_id)
             from .providers.codex_permissions import CodexPermissionStore, CodexReviewStore
-            permissions = self.path.parent / 'provider-permissions' / 'codex'
+            permissions = self.path.parent / 'provider-permissions' / provider
             CodexPermissionStore(permissions).remove(cli_session_id)
             CodexReviewStore(permissions).remove(cli_session_id)
+            if provider == 'codex-api':
+                from .providers.codex_api import _BASELINES_LOCK
+                from .provider_storage import atomic_write_json
+                with _BASELINES_LOCK:
+                    path = self.path.parent / 'openai-billing' / 'codex-token-baselines.json'
+                    try:
+                        saved = json.loads(path.read_text(encoding='utf-8'))
+                    except FileNotFoundError:
+                        saved = {}
+                    if isinstance(saved, dict) and cli_session_id in saved:
+                        saved.pop(cli_session_id)
+                        atomic_write_json(path, saved)

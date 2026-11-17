@@ -20,6 +20,16 @@ PRICES = {
     'gpt-5.4-mini': ('0.75', '0.075', '4.50'),
     'gpt-5.4-mini-2026-03-17': ('0.75', '0.075', '4.50'),
 }
+# Same official model pages above: context window and maximum output tokens.
+TOKEN_LIMITS = {model: (400_000, 128_000) for model in PRICES}
+
+
+def request_ceiling(model, context_window=None):
+    inp, _, out = require_price(model)
+    context, output = TOKEN_LIMITS[model]
+    if type(context_window) is int and context_window > 0:
+        context = max(context, context_window)
+    return float((context * inp + output * out) / 1_000_000)
 
 
 class Unpriced(ValueError):

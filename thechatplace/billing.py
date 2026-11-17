@@ -80,7 +80,7 @@ FIRST_PARTY = "firstParty"
 #: added, and what the scrubber hides.
 KEY_PREFIX = "sk-ant-"
 _KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]{20,300}")
-_KEY_ANYWHERE = re.compile(r"sk-ant-[A-Za-z0-9_\-]*", re.IGNORECASE)
+_KEY_ANYWHERE = re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}", re.IGNORECASE)
 HIDDEN_KEY = "sk-ant-(hidden)"
 
 #: Where to add credit or see what's been spent.
@@ -140,14 +140,21 @@ def save_api_key(key: str, now: Optional[float] = None) -> None:
     won't keep it. The key's ending and today's date go in the info file; a
     failure to write that is let go, as the status then says "key added"."""
     from . import platform_paths
+    save_named_api_key(key, platform_paths.CLAUDE_API_KEY_SECRET, _info_path(),
+                       looks_like_key, 'Claude', KEY_PREFIX, now)
+
+
+def save_named_api_key(key, secret_name, info_path, validate, label, prefix, now=None):
+    """Both providers use the same protected secret and non-secret metadata path."""
+    from . import platform_paths
     key = (key or "").strip()
-    if not looks_like_key(key):
-        raise ValueError(f"A Claude API key starts with {KEY_PREFIX}.")
-    platform_paths.save_secret(platform_paths.CLAUDE_API_KEY_SECRET, key)
+    if not validate(key):
+        raise ValueError(f"A {label} API key starts with {prefix}.")
+    platform_paths.save_secret(secret_name, key)
     day = datetime.date.fromtimestamp(time.time() if now is None else now)
     try:
         from .provider_storage import atomic_write_json
-        atomic_write_json(_info_path(), {"ending": key_ending(key), "added": day.isoformat()})
+        atomic_write_json(info_path, {"ending": key_ending(key), "added": day.isoformat()})
     except OSError:
         pass
 
@@ -162,11 +169,11 @@ def remove_api_key() -> None:
         pass
 
 
-def _key_info() -> Optional[tuple]:
+def _key_info(path=None) -> Optional[tuple]:
     """(ending, date added) from the info file, or None if it's missing or
     damaged."""
     try:
-        raw = json.loads(_info_path().read_text(encoding="utf-8"))
+        raw = json.loads((path if path is not None else _info_path()).read_text(encoding="utf-8"))
         ending, added = raw["ending"], datetime.date.fromisoformat(raw["added"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -182,15 +189,18 @@ def api_key_status(now: Optional[float] = None) -> str:
     Never the key."""
     if not has_api_key():
         return "Claude: No key"
-    info = _key_info()
+    return named_key_status('Claude', _key_info(), now)
+
+
+def named_key_status(label, info, now=None):
     if info is None:
-        return "Claude: key added"
+        return f"{label}: key added"
     ending, added = info
     today = datetime.date.fromtimestamp(time.time() if now is None else now)
     day = f"{_MONTHS[added.month - 1]} {added.day}"
     if added.year != today.year:
         day += f", {added.year}"
-    return f"Claude: key ending in {ending}, added {day}"
+    return f"{label}: key ending in {ending}, added {day}"
 
 
 def scrub(text):
@@ -200,7 +210,8 @@ def scrub(text):
     if not isinstance(text, str):
         return text
     text = _KEY_ANYWHERE.sub(HIDDEN_KEY, text)
-    return re.sub(r'sk-(?!ant-)[A-Za-z0-9_-]+', 'sk-(hidden)', text, flags=re.IGNORECASE)
+    return re.sub(r'\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}',
+                  'sk-(hidden)', text, flags=re.IGNORECASE)
 
 
 # -- The settings an API chat's turns get --------------------------------------

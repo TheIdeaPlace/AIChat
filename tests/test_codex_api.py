@@ -10,7 +10,7 @@ import pytest
 
 from thechatplace import platform_paths, billing, openai_billing, openai_prices, spend_ledger
 from thechatplace.own_store import OwnSession, OwnSessionStore
-from thechatplace.providers.codex_api import CodexApiConnection
+from thechatplace.providers.codex_api import CodexApiConnection, COUNTERS
 from thechatplace.providers.codex_billing import account_matches, config_matches, route_config
 from thechatplace.providers.codex_owned import CodexOwnedThreads
 from thechatplace.providers.codex_execution import CodexTurnExecutor
@@ -107,8 +107,12 @@ def test_stop_and_disconnect_keep_unknown_cost_held(connect, tmp_path, scenario)
     wait(lambda: any(e.kind == 'api_sent' for e in events))
     runner.interrupt(proof)
     wait(lambda: any(e.kind == 'finished' for e in events))
-    assert conn.ledger.totals().spent + conn.ledger.totals().held >= .499999
-    assert not next(e for e in events if e.kind == 'finished').data['cost_complete']
+    if scenario == 'malformed':
+        assert conn.ledger.totals().held > 0
+    else:
+        assert .071 <= conn.ledger.totals().spent < .072
+        assert conn.ledger.totals().held == 0
+        assert 'estimated, at most' in next(e for e in events if e.kind == 'finished').data['cost_words']
 
 
 def test_no_usage_on_disconnect_is_held_after_restart(connect, tmp_path):
@@ -229,6 +233,8 @@ def test_launcher_keeps_api_home_and_key_out_of_child_environment(tmp_path, monk
     monkeypatch.setenv('CODEX_SQLITE_HOME', str(tmp_path / 'subscription'))
     monkeypatch.setenv('ANTHROPIC_API_KEY', FAKE)
     monkeypatch.setenv('SSL_CERT_FILE', str(tmp_path / 'extra-ca'))
+    monkeypatch.setenv('RUST_LOG', 'trace')
+    monkeypatch.setenv('RUST_BACKTRACE', 'full')
     monkeypatch.setattr(platform_paths, '_native_codex', lambda path: True)
     monkeypatch.setattr(platform_paths, 'ProcessTree', lambda: SimpleNamespace(
         popen_kwargs=lambda: {}, attach=lambda proc: None, close=lambda: None))
@@ -241,6 +247,7 @@ def test_launcher_keeps_api_home_and_key_out_of_child_environment(tmp_path, monk
     assert captured['env']['CODEX_HOME'] == captured['env']['CODEX_SQLITE_HOME'] == str(home)
     assert FAKE not in str(captured['env']) and FAKE not in str(captured['args'])
     assert 'SSL_CERT_FILE' not in captured['env']
+    assert not any(k.startswith('RUST_') for k in captured['env'])
     assert 'forced_login_method="api"' in captured['args']
     assert 'cli_auth_credentials_store="ephemeral"' in captured['args']
 
@@ -266,7 +273,7 @@ def test_anchored_copy_without_verified_counters_is_refused(connect, tmp_path):
     assert not events and conn.ledger.totals().held == 0
 
 
-def test_reroute_invalidates_previous_baseline_for_continuation_and_restart(connect, tmp_path):
+def test_reroute_invalidates_previous_baseline_and_recovery_uses_last(connect, tmp_path):
     conn, events = connect('rerouted')
     proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Reroute', model='gpt-5-nano')
     runner = CodexTurnExecutor(conn)
@@ -281,8 +288,6 @@ def test_reroute_invalidates_previous_baseline_for_continuation_and_restart(conn
     assert proof.native_id not in json.loads(conn._baseline_path.read_text())
     assert conn.ledger.totals().spent == pytest.approx(.000061)
     assert conn.ledger.totals().held >= .499999
-    with pytest.raises(ApiCreditsRefused, match='baseline'):
-        runner.start(proof, 'Must not price unknown earlier tokens')
     restarted, _ = connect(ledger=conn.ledger)
     assert proof.native_id not in restarted._totals
 
@@ -298,7 +303,7 @@ def test_durable_baseline_is_invalidated_before_a_turn_can_crash(connect, tmp_pa
     assert proof.native_id not in restarted._totals
 
 
-def test_queued_rpc_failure_keeps_hold_and_refuses_next_send(connect, tmp_path):
+def test_queued_rpc_failure_keeps_hold_and_preserves_baseline(connect, tmp_path):
     conn, events = connect('rpc-error')
     proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Ambiguous refusal', model='gpt-5-nano')
     params = {'threadId': proof.native_id, 'model': 'gpt-5-nano',
@@ -309,6 +314,189 @@ def test_queued_rpc_failure_keeps_hold_and_refuses_next_send(connect, tmp_path):
     with pytest.raises(CodexRpcError):
         conn.request('turn/start', params)
     assert conn.ledger.totals().held == .5
-    assert proof.native_id not in conn._totals
-    with pytest.raises(ApiCreditsRefused, match='baseline'):
-        conn.request('turn/start', params)
+    assert conn._totals[proof.native_id]['inputTokens'] == 0
+
+
+@pytest.mark.parametrize('scenario', ['401', 'unauthorized'])
+def test_refused_key_releases_hold_and_chat_can_send_again(connect, tmp_path, scenario):
+    conn, events = connect(scenario)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Refused', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Refused request')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    runner.drain()
+    assert conn.ledger.totals().held == conn.ledger.totals().spent == 0
+    runner.start(proof, 'Replacement key works')
+    wait(lambda: len([e for e in events if e.kind == 'finished']) == 2)
+    assert conn.ledger.totals().spent == pytest.approx(.000061)
+    assert conn.ledger.totals().held == 0
+
+
+def test_stop_then_send_and_missing_baseline_recovery(connect, tmp_path):
+    conn, events = connect()
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Recovery', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    for n in (1, 2):
+        conn._totals.pop(proof.native_id, None)
+        runner.start(proof, 'First usage establishes baseline')
+        wait(lambda: len([e for e in events if e.kind == 'finished']) == n)
+        runner.drain()
+    assert conn.ledger.totals().spent == pytest.approx(.000122)
+
+
+def test_retry_error_keeps_hold_even_when_turn_completes(connect, tmp_path):
+    conn, events = connect('retry')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Retry', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hidden partial request')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert conn.ledger.totals().held > 0
+    assert not next(e for e in events if e.kind == 'finished').data['cost_complete']
+
+
+def test_chat_can_send_after_stop(connect, tmp_path):
+    conn, events = connect('stop-once')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Stop then send', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Stop')
+    wait(lambda: conn._totals[proof.native_id]['inputTokens'] > 0)
+    runner.interrupt(proof)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    runner.drain()
+    runner.start(proof, 'Continue')
+    wait(lambda: len([e for e in events if e.kind == 'finished']) == 2)
+    assert conn.ledger.totals().held == 0
+
+
+def test_stop_timeout_does_not_close_another_chat(connect, tmp_path):
+    conn, events = connect('unanswered-stop')
+    first = CodexOwnedThreads(conn).start(str(tmp_path), 'Slow Stop', model='gpt-5-nano')
+    second = CodexOwnedThreads(conn).start(str(tmp_path), 'Other chat', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(first, 'Hello')
+    runner.start(second, 'Hello')
+    conn._stop_timeout(first.native_id, conn._payments[first.native_id])
+    assert not conn.closed and second.native_id in conn._payments
+    assert conn.request('account/read', {})['account'] == {'type': 'apiKey'}
+
+
+def test_cap_trips_stop_and_over_ceiling_reservation_stays_held(connect, tmp_path):
+    conn, events = connect('cap')
+    conn.ledger.set_limits(5, .01)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Cap', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Exceeds one cent')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert conn.ledger.totals().spent == pytest.approx(.061)
+    assert not next(e for e in events if e.kind == 'finished').data['cost_complete']
+
+
+def test_hyphenated_text_and_protocol_paths_are_not_scrubbed(connect, tmp_path):
+    text = r'C:\Users\kelly\GitHub\task-runner risk-free ask-me disk-space C:\code\task-tracker'
+    assert billing.scrub(text) == text
+    from thechatplace.claude_cli import scrub_event, TurnEvent
+    event = TurnEvent('text', text=text)
+    assert scrub_event(event).text == text
+    conn, _ = connect()
+    path = tmp_path / 'task-tracker'
+    path.mkdir()
+    proof = CodexOwnedThreads(conn).start(str(path), 'ask-me', model='gpt-5-nano')
+    assert proof.cwd == str(path)
+    assert conn.request('thread/read', {'threadId': proof.native_id})['thread']['cwd'] == str(path)
+
+
+def test_new_and_fork_baselines_are_durable(connect, tmp_path):
+    conn, _ = connect()
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Empty', model='gpt-5-nano')
+    copied = CodexOwnedThreads(conn).fork(proof.record().to_info(), 'Copy', model='gpt-5-nano')
+    saved = json.loads(conn._baseline_path.read_text())
+    assert saved[proof.native_id] == saved[copied.native_id] == dict.fromkeys(conn._totals[proof.native_id], 0)
+
+
+def test_damaged_openai_limits_keep_openai_defaults(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits(5, .5))
+    ledger.limits_path.write_text('{')
+    assert ledger.limits() == spend_ledger.Limits(5, .5) and ledger.can_spend()
+
+
+def test_decreasing_counter_is_rejected_even_when_dollar_cost_rises(connect, tmp_path):
+    conn, events = connect('hang')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Decreasing', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hello')
+    wait(lambda: conn._totals[proof.native_id]['inputTokens'] == 1000)
+    payment = conn._payments[proof.native_id]
+    value = {'inputTokens': 900, 'cachedInputTokens': 200, 'outputTokens': 100, 'reasoningOutputTokens': 10}
+    conn._receive({'method': 'thread/tokenUsage/updated', 'params': {'threadId': proof.native_id,
+        'turnId': payment.turn_id, 'tokenUsage': {'total': value, 'last': value}}})
+    assert payment.inconsistent
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert proof.native_id not in conn._totals and conn.ledger.totals().held > 0
+
+
+def test_history_redacts_display_text_without_changing_identity():
+    from thechatplace.providers.codex import transcript_from_thread, scrub_history
+    history = transcript_from_thread({'turns': [{'id': 'task-turn', 'items': [
+        {'id': 'task-reply', 'type': 'agentMessage', 'text': 'risk-free '+FAKE},
+        {'id': 'task-tool', 'type': 'commandExecution', 'command': 'echo '+FAKE,
+         'aggregatedOutput': FAKE, 'status': 'completed', 'exitCode': 0}]}]})
+    ids = [m.uuid for m in history.messages]
+    from thechatplace.tasklist import TaskStep
+    history.tasks = [TaskStep('task-id', 'risk-free '+FAKE, active_form=FAKE)]
+    scrub_history(history)
+    assert all(FAKE not in m.whole for m in history.messages)
+    assert ids == [m.uuid for m in history.messages]
+    assert history.messages[0].text.startswith('risk-free ')
+    assert FAKE not in history.tasks[0].subject + history.tasks[0].active_form
+
+
+def test_timeout_claims_draining_before_releasing_payment_lock(connect, tmp_path, monkeypatch):
+    conn, _ = connect('unanswered-stop')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Stopping', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Hello')
+    checked = []
+    original_close = conn.close
+    def close():
+        assert conn._api_draining
+        with pytest.raises(ApiCreditsRefused, match='connection is stopping'):
+            conn.request('turn/start', {'threadId': 'unrelated', 'model': 'gpt-5-nano'})
+        checked.append(True)
+        original_close()
+    monkeypatch.setattr(conn, 'close', close)
+    conn._stop_timeout(proof.native_id, conn._payments[proof.native_id])
+    assert checked
+    monkeypatch.setattr(conn, 'close', original_close)
+
+
+def test_delete_api_chat_removes_baseline_and_uses_api_stores(tmp_path, monkeypatch):
+    from thechatplace.provider_storage import CodexPlanStore
+    from thechatplace.providers.codex_permissions import CodexPermissionStore, CodexReviewStore
+    removed = []
+    for cls in (CodexPlanStore, CodexPermissionStore, CodexReviewStore):
+        monkeypatch.setattr(cls, 'remove', lambda self, tid: removed.append(tid))
+    store = OwnSessionStore(tmp_path / 'sessions.json')
+    store.add(OwnSession('api-chat', 'API', str(tmp_path), provider='codex-api', billing='api'))
+    folder = tmp_path / 'openai-billing'
+    folder.mkdir()
+    path = folder / 'codex-token-baselines.json'
+    path.write_text(json.dumps({'api-chat': dict.fromkeys(COUNTERS, 0), 'other': {}}))
+    store.remove('api-chat', 'codex-api')
+    assert removed == ['api-chat'] * 3
+    assert json.loads(path.read_text()) == {'other': {}}
+
+
+def test_immediate_resend_rechecks_draining_after_previous_settlement(connect, tmp_path, monkeypatch):
+    import threading
+    conn, _ = connect('unanswered-stop')
+    owned = CodexOwnedThreads(conn)
+    first = owned.start(str(tmp_path), 'Timed out', model='gpt-5-nano')
+    second = owned.start(str(tmp_path), 'Just ended', model='gpt-5-nano')
+    runner = CodexTurnExecutor(conn)
+    runner.start(first, 'Hello')
+    runner.start(second, 'Hello')
+    conn._stop_timeout(first.native_id, conn._payments[first.native_id])
+    conn._payments[second.native_id].terminal = 'completed'
+    closed = threading.Event()
+    original_close = conn.close
+    monkeypatch.setattr(conn, 'close', closed.set)
+    with pytest.raises(ApiCreditsRefused, match='connection is stopping'):
+        conn.request('turn/start', {'threadId': second.native_id, 'model': 'gpt-5-nano'})
+    assert closed.wait(2)
+    monkeypatch.setattr(conn, 'close', original_close)

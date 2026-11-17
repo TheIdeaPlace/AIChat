@@ -2423,7 +2423,7 @@ def start_codex_api_server(executable=None, *, home=None) -> CodexServerProcess:
     if not executable or not _native_codex(executable):
         raise OSError('Install the native Codex CLI, then restart.')
     env = {k: v for k, v in codex_child_environment().items()
-           if not k.upper().startswith(('CODEX_', 'ANTHROPIC_', 'OTEL_'))
+           if not k.upper().startswith(('CODEX_', 'ANTHROPIC_', 'OTEL_', 'RUST_'))
            and k.upper() not in ('SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE',
                                 'CURL_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS', 'NODE_TLS_REJECT_UNAUTHORIZED')}
     env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))

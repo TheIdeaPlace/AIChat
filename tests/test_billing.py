@@ -224,7 +224,7 @@ def test_key_shape_and_ending():
 
 
 def test_scrub_hides_anything_shaped_like_a_key():
-    text = f"Error: key {FAKE_KEY} refused; also SK-ANT-api03-AbC_d-e"
+    text = f"Error: key {FAKE_KEY} refused; also SK-ANT-api03-AbC_d-e00000000000000000000"
     scrubbed = billing.scrub(text)
     assert "0000" not in scrubbed and "AbC" not in scrubbed
     assert scrubbed.count(billing.HIDDEN_KEY) == 2

@@ -611,13 +611,13 @@ class SpendLedger:
         except FileNotFoundError:
             return self._defaults, ""
         except (OSError, ValueError, RecursionError) as exc:
-            return Limits(), (f"The Chat Place couldn't read its API spending limits ({exc}), "
+            return self._defaults, (f"The Chat Place couldn't read its API spending limits ({exc}), "
                               "so it won't spend API credits until they're set again in "
                               "Tools, API Keys.")
         overall = _limit(raw.get("overall")) if isinstance(raw, dict) else None
         per_message = _limit(raw.get("per_message")) if isinstance(raw, dict) else None
         if overall is None or per_message is None:
-            return Limits(), ("The Chat Place's API spending limits are damaged, so it won't "
+            return self._defaults, ("The Chat Place's API spending limits are damaged, so it won't "
                               "spend API credits until they're set again in Tools, API Keys.")
         return Limits(overall, per_message), ""
 

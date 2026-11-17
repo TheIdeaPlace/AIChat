@@ -358,6 +358,7 @@ class CodexReader:
                 and time.monotonic() - self._history_checked < 30):
             before = self.transcript.tasks
             self._restore_tasks(self.transcript)
+            scrub_history(self.transcript)
             return before != self.transcript.tasks
         if self._failed_stamp == stamp:
             raise ValueError("History unavailable until the chat changes")
@@ -369,6 +370,7 @@ class CodexReader:
             self._turn_ids = [turn["id"] for turn in thread["turns"]]
             self.last_turn_status = thread["turns"][-1].get("status", "") if thread["turns"] else ""
             self._restore_tasks(history)
+            scrub_history(history)
         except Exception:
             self._failed_stamp = stamp
             raise
@@ -378,6 +380,19 @@ class CodexReader:
         self._history_stamp = stamp
         self._history_checked = time.monotonic()
         return changed
+
+
+def scrub_history(history):
+    """Redact display text only; protocol replies and executable paths stay exact."""
+    from ..billing import scrub
+    for entry in (*history.messages, *history.commands, *history.tasks, *history.agents):
+        for name in ('text', 'detail', 'command', 'description', 'output', 'prompt', 'report', 'subject', 'active_form'):
+            value = getattr(entry, name, None)
+            if isinstance(value, str):
+                setattr(entry, name, scrub(value))
+    for edit in history.edits:
+        for hunk in edit.hunks:
+            hunk.lines = [scrub(line) for line in hunk.lines]
 
 
 class CodexChildReader(CodexReader):

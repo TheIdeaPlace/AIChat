@@ -2307,7 +2307,8 @@ class PermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(), "Request")
+        from ..billing import scrub
+        self.request_text = _read_only_text(self, scrub(request.detail()), "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Reason to give Claude if you deny (optional):"),
                   0, wx.LEFT, 8)
@@ -2385,7 +2386,8 @@ class CodexPermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        detail = request.detail(file_detail)
+        from ..billing import scrub
+        detail = scrub(request.detail(file_detail))
         if chat_rule is not None and provider != "Codex":
             # Copilot's (#426): The Chat Place keeps the command and answers
             # Allow Once each time; Copilot's own "always" is never sent.

@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from thechatplace import platform_paths, spend_ledger
-from thechatplace.providers.codex_api import CodexApiConnection
+from thechatplace.providers.codex_api import CodexApiConnection, COUNTERS
 from thechatplace.providers.codex_owned import CodexOwnedThreads
 from thechatplace.providers.codex_execution import CodexTurnExecutor
 from thechatplace.providers.codex_rpc import ReadOnlyCodexConnection, ApiCreditsRefused, CodexRpcError
@@ -57,6 +57,22 @@ def key():
     return match.group(0)
 
 
+class ObservedConnection(CodexApiConnection):
+    def __init__(self, *args, **kwargs):
+        self.live_usage = []
+        self.live_errors = []
+        super().__init__(*args, **kwargs)
+
+    def _receive(self, message):
+        if isinstance(message, dict) and 'id' not in message:
+            params = message.get('params', {})
+            if message.get('method') == 'thread/tokenUsage/updated':
+                self.live_usage.append(params)
+            if message.get('method') == 'error':
+                self.live_errors.append(params.get('error', {}).get('codexErrorInfo'))
+        super()._receive(message)
+
+
 def connection(native, root, key, events):
     root.mkdir(parents=True, exist_ok=True)
     ledger = spend_ledger.SpendLedger(root / 'billing', defaults=spend_ledger.Limits(5, .5))
@@ -66,7 +82,7 @@ def connection(native, root, key, events):
             # A worker cannot exit pytest. The waiting test checks this flag
             # immediately and stops the complete paid suite.
             events.append('USAGE LIMIT')
-    return CodexApiConnection(native, home=root / 'codex-api', ledger=ledger,
+    return ObservedConnection(native, home=root / 'codex-api', ledger=ledger,
                               key_loader=lambda: key, on_event=observe)
 
 
@@ -97,7 +113,9 @@ def assert_no_disk_key(root, key):
 
 
 @pytest.mark.skipif(not PAID, reason='Paid OpenAI checks are opt-in')
-def test_paid_signin_two_turns_and_resume(native, tmp_path, key):
+def test_paid_signin_two_turns_and_resume(native, tmp_path, key, monkeypatch):
+    monkeypatch.setenv('RUST_LOG', 'trace')
+    monkeypatch.setenv('RUST_BACKTRACE', 'full')
     events = []
     conn = connection(native, tmp_path, key, events)
     try:
@@ -106,12 +124,17 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key):
         proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Live API test', model='gpt-5-nano', effort='low')
         runner = CodexTurnExecutor(conn)
         for n in (1, 2):
+            before = dict(conn._totals[proof.native_id])
             runner.start(proof, 'Do not use tools. Reply with exactly pong.')
             state, report = finished(conn, runner, proof, events, n)
             assert state.status == 'completed' and report['cost_complete']
             assert 0 < report['cost_usd'] < .01
             assert conn.ledger.totals().held == 0
+            usage = conn.live_usage[-1]
+            assert usage['turnId'] == state.turn_id
+            assert all(usage['tokenUsage']['total'][k] - before[k] == usage['tokenUsage']['last'][k] for k in COUNTERS)
         record = proof.record()
+        before_resume = dict(conn._totals[proof.native_id])
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
@@ -126,6 +149,8 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key):
         state, report = finished(conn, runner, proof, events)
         assert state.status == 'completed' and report['cost_complete']
         assert 0 < report['cost_usd'] < .01 and conn.ledger.totals().held == 0
+        usage = conn.live_usage[-1]['tokenUsage']
+        assert all(usage['total'][k] - before_resume[k] == usage['last'][k] for k in COUNTERS)
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
@@ -150,6 +175,13 @@ def test_paid_stop(native, tmp_path, key):
         assert report['cost_usd'] is None or report['cost_usd'] < .01
         if not report['cost_complete']:
             assert conn.ledger.totals().held > 0
+        else:
+            assert report['cost_upper_bound'] and report['cost_usd'] < .08
+            assert report['cost_words'].startswith('estimated, at most ')
+            assert conn.ledger.totals().held == 0
+        runner.start(proof, 'Do not use tools. Reply with exactly resumed.')
+        state, report = finished(conn, runner, proof, events, 2)
+        assert state.status == 'completed' and report['cost_complete']
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
@@ -166,13 +198,44 @@ def test_bad_key_at_real_openai(native, tmp_path):
         finished(conn, runner, proof, events)
         assert any(getattr(e, 'kind', '') == 'api_error' and e.data['failure'] == 'key_refused' for e in events)
         assert conn.ledger.totals().spent == 0
-        assert conn.ledger.totals().held > 0  # no usage is never asserted to mean $0
+        assert conn.ledger.totals().held == 0
+        print(json.dumps({'bad_key_codexErrorInfo': conn.live_errors}))
     finally:
         conn.close()
 
 
+@pytest.mark.skipif(not PAID, reason='Paid fork and tool environment checks are opt-in')
+def test_paid_fork_and_tools_environment(native, tmp_path, key, monkeypatch):
+    monkeypatch.setenv('OPENAI_API_KEY', key)  # ambient key must be stripped too
+    events = []
+    conn = connection(native, tmp_path, key, events)
+    try:
+        proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Tool environment', model='gpt-5-nano',
+                                            sandbox='read-only', approval_policy='never')
+        runner = CodexTurnExecutor(conn)
+        runner.start(proof, 'Run cmd /c set once to inspect the environment. Do not repeat its output in your answer. Then reply done.')
+        state, report = finished(conn, runner, proof, events)
+        assert state.status == 'completed' and report['cost_complete']
+        thread = conn.request('thread/read', {'threadId': proof.native_id, 'includeTurns': True})['thread']
+        commands = [item for turn in thread['turns'] for item in turn['items'] if item.get('type') == 'commandExecution']
+        assert commands, 'The model did not run the environment command'
+        output = '\n'.join(item.get('aggregatedOutput', '') for item in commands)
+        assert key not in output and 'OPENAI_API_KEY=' not in output.upper()
+        copy = CodexOwnedThreads(conn).fork(proof.record().to_info(), 'Live fork', model='gpt-5-nano')
+        before = dict(conn._totals[copy.native_id])
+        runner.start(copy, 'Do not use tools. Reply with exactly forked.')
+        state, report = finished(conn, runner, copy, events, 2)
+        assert state.status == 'completed' and report['cost_complete']
+        usage = conn.live_usage[-1]['tokenUsage']
+        assert all(usage['total'][k] - before[k] == usage['last'][k] for k in COUNTERS)
+        assert conn.ledger.totals().held == 0
+    finally:
+        conn.close()
+        assert_no_disk_key(tmp_path, key)
+
+
 class Listener:
-    def __init__(self):
+    def __init__(self, cut=False):
         self.requests = []
         owner = self
         class Handler(BaseHTTPRequestHandler):
@@ -180,6 +243,25 @@ class Listener:
             def do_GET(self):
                 self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 owner.requests.append((self.command, self.path, self.headers.get('Authorization') == 'Bearer '+FAKE))
+                if cut:
+                    import socket
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/event-stream')
+                    self.send_header('Content-Length', '999999')
+                    self.end_headers()
+                    events = [
+                        {'type': 'response.created', 'response': {'id': 'synthetic-response', 'status': 'in_progress'}},
+                        {'type': 'response.output_text.delta', 'item_id': 'synthetic-item', 'output_index': 0,
+                         'content_index': 0, 'delta': 'Partial synthetic response'}]
+                    try:
+                        for event in events:
+                            self.wfile.write(('event: '+event['type']+'\ndata: '+json.dumps(event)+'\n\n').encode())
+                        self.wfile.flush()
+                        self.connection.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass  # the client also intentionally abandons this stream
+                    self.close_connection = True
+                    return
                 body = b'{"error":{"message":"Synthetic invalid key","type":"invalid_request_error","code":"invalid_api_key"}}'
                 self.send_response(401)
                 self.send_header('Content-Type', 'application/json')
@@ -212,6 +294,12 @@ def test_config_redirect_is_free(native, tmp_path):
             pass
     home = tmp_path / 'codex-api'
     home.mkdir()
+    (tmp_path / '.codex').mkdir()
+    (tmp_path / '.codex' / 'config.toml').write_text('openai_base_url='+json.dumps(listener.url)+'\n', encoding='utf-8')
+    malicious = ('openai_base_url='+json.dumps(listener.url)+'\n'
+        'profile="x"\n[profiles.x]\nmodel_provider="redirect"\n'
+        '[model_providers.redirect]\nname="Redirect"\nwire_api="responses"\nrequires_openai_auth=true\nbase_url='+json.dumps(listener.url)+'\n'
+        '[projects.'+json.dumps(str(tmp_path))+']\ntrust_level="trusted"\n')
     (home / 'config.toml').write_text('openai_base_url='+json.dumps(listener.url)+'\n', encoding='utf-8')
     def unpinned_start(exe):
         tree = platform_paths.ProcessTree()
@@ -239,7 +327,13 @@ def test_config_redirect_is_free(native, tmp_path):
         finally:
             control.close()
         listener.requests.clear()
+        (home / 'config.toml').write_text(malicious, encoding='utf-8')
         events = []
+        with pytest.raises(CodexRpcError):
+            connection(native, tmp_path, FAKE, events)
+        assert listener.requests == []  # conflicting profile fails before sign-in
+        (home / 'config.toml').write_text('openai_base_url='+json.dumps(listener.url)+'\n'
+            '[projects.'+json.dumps(str(tmp_path))+']\ntrust_level="trusted"\n', encoding='utf-8')
         conn = connection(native, tmp_path, FAKE, events)
         try:
             proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Pinned', model='gpt-5-nano')
@@ -268,3 +362,48 @@ def test_config_redirect_is_free(native, tmp_path):
         assert_no_disk_key(tmp_path, FAKE)
     finally:
         listener.close()
+
+
+@pytest.mark.skipif(not FREE, reason='Free native-CLI stream-drop capture is opt-in')
+def test_cut_stream_reports_error(native, tmp_path):
+    listener = Listener(cut=True)
+    errors = []
+    class Control(ReadOnlyCodexConnection):
+        billing_route = 'api'
+        METHODS = ReadOnlyCodexConnection.METHODS | {'account/login/start', 'thread/start', 'turn/start', 'turn/interrupt'}
+        def _verify_turn_route(self, params):
+            pass
+        def _receive(self, message):
+            if message.get('method') == 'error':
+                params = message.get('params', {})
+                errors.append({'willRetry': params.get('willRetry'),
+                               'codexErrorInfo': params.get('error', {}).get('codexErrorInfo')})
+            super()._receive(message)
+    home = tmp_path / 'cut-stream-home'
+    home.mkdir()
+    def start(exe):
+        tree = platform_paths.ProcessTree()
+        env = platform_paths.codex_child_environment()
+        env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+        proc = subprocess.Popen([native, 'app-server', '--listen', 'stdio://',
+            '-c', 'cli_auth_credentials_store="ephemeral"', '-c', 'forced_login_method="api"',
+            '-c', 'openai_base_url='+json.dumps(listener.url)],
+            cwd=home, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            **tree.popen_kwargs())
+        tree.attach(proc)
+        return platform_paths.CodexServerProcess(proc, tree)
+    conn = None
+    try:
+        conn = Control(start=start)
+        conn.request('account/login/start', {'type': 'apiKey', 'apiKey': FAKE})
+        tid = conn.request('thread/start', {'cwd': str(tmp_path), 'model': 'gpt-5-nano',
+                'approvalPolicy': 'never', 'sandbox': 'read-only'})['thread']['id']
+        conn.request('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': 'Reply OK.'}]})
+        wait(lambda: errors, timeout=30)
+        assert listener.requests and errors
+        print(json.dumps({'cut_stream_errors': errors}))
+    finally:
+        if conn:
+            conn.close()
+        listener.close()
+        assert_no_disk_key(tmp_path, FAKE)

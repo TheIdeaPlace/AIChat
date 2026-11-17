@@ -644,6 +644,10 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
+                        if getattr(self, 'billing_route', '') == 'api':
+                            from ..billing import scrub
+                            event = replace(event, text=scrub(event.text),
+                                            plan=tuple((scrub(text), status) for text, status in event.plan))
                         self._event_sequence = getattr(self, '_event_sequence', 0) + 1
                         event = replace(event, sequence=self._event_sequence)
                     if isinstance(event, CodexTokenUsageEvent):

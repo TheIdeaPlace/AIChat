@@ -175,10 +175,16 @@ submit a different endpoint through the API transport. Hosted search, connected 
 automatic review, native compaction/goals, and subagents are blocked until their costs
 can be accounted for. Side questions and copies cut at an earlier turn are not enabled
 for this backend yet. A full-history copy requires a known source usage baseline.
-Before sending, the durable token baseline is invalidated; only a completed turn
-with valid usage restores it. After uncertain usage, continuation is refused until
-a trustworthy cumulative snapshot is available; starting a new API chat is safe.
-Releasing held credit does not make an unknown token baseline trustworthy.
+Starts and full forks save their token baselines. A possible paid write invalidates
+the durable baseline until settlement; Stop/refusal retain the latest valid counters.
+Missing baselines recover from a matching turn's first `total - last` report. A
+counter regression, turn mismatch or model reroute invalidates the baseline.
+Any stream error keeps uncertain spending held, including a successful retry.
+A confirmed key refusal frees the unspent reservation. Stop can settle an estimated
+maximum of recorded usage plus one request's context and maximum output, using the
+dated table; if that exceeds the reservation, the remaining hold stays.
+A timed-out Stop retains its tracker while other chats run; process cleanup claims
+a draining state before rejecting new sends and closing, so it cannot kill a new turn.
 
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an

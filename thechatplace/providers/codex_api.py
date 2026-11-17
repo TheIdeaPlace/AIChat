@@ -39,6 +39,10 @@ class Payment:
     refused: bool = False
     accounted: float = 0
     model_unknown: bool = False
+    inconsistent: bool = False
+    context_window: int | None = None
+    timed_out: bool = False
+    reported: bool = False
 
 
 class CodexApiConnection(CodexExecutionConnection):
@@ -55,6 +59,7 @@ class CodexApiConnection(CodexExecutionConnection):
         self._api_logged_in = False
         self._payments_lock = threading.RLock()
         self._payments = {}
+        self._api_draining = False
         self._totals = {}
         self._baseline_path = self.ledger.folder / 'codex-token-baselines.json'
         try:
@@ -113,7 +118,7 @@ class CodexApiConnection(CodexExecutionConnection):
     def request(self, method, params):
         from .codex_features import ACTION_METHODS
         if method in ACTION_METHODS - {'thread/backgroundTerminals/terminate'}:
-            raise ApiCreditsRefused(f'No API-credit price is known for service {method!r}. Nothing was sent.')
+            raise ApiCreditsRefused('No API-credit price is known for ' + self._service_name(method) + '. Nothing was sent.')
         return super().request(method, params)
 
     def _request(self, method, params, on_sent=None, on_written=None):
@@ -122,7 +127,7 @@ class CodexApiConnection(CodexExecutionConnection):
         params = dict(params)
         from .codex_features import ACTION_METHODS
         if method in ACTION_METHODS - {'thread/backgroundTerminals/terminate'}:
-            raise ApiCreditsRefused(f'No API-credit price is known for service {method!r}. Nothing was sent.')
+            raise ApiCreditsRefused('No API-credit price is known for ' + self._service_name(method) + '. Nothing was sent.')
         if method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
             config = dict(params.get('config') or {})
             invariants = route_config(self)
@@ -131,7 +136,9 @@ class CodexApiConnection(CodexExecutionConnection):
                     raise ApiCreditsRefused('Codex API-credit settings point to another billing route. Nothing was sent.')
             if params.get('modelProvider', 'openai') != 'openai':
                 raise CodexTurnRejected('provider')
-            config.update(invariants)  # FINAL merge, after every caller/tool override
+            # Final supported lifecycle config. CLI 0.163 ignores this field
+            # on turn/start; there it is only a transport validation invariant.
+            config.update(invariants)
             params['config'] = config
             if method != 'turn/start':
                 if not self._api_logged_in:
@@ -154,7 +161,7 @@ class CodexApiConnection(CodexExecutionConnection):
                             payment.stop_timer.cancel()
                         # Before waiting on the RPC: an unanswered interrupt
                         # must still end the process and retain its unknown cost.
-                        payment.stop_timer = threading.Timer(self.STOP_TIMEOUT, self.close)
+                        payment.stop_timer = threading.Timer(self.STOP_TIMEOUT, self._stop_timeout, (params.get('threadId'), payment))
                         payment.stop_timer.daemon = True
                         payment.stop_timer.start()
             result = super()._request(method, params, on_sent=on_sent, on_written=on_written)
@@ -162,11 +169,13 @@ class CodexApiConnection(CodexExecutionConnection):
                 tid = result.get('thread', {}).get('id')
                 if tid:
                     self._totals[tid] = dict.fromkeys(COUNTERS, 0)
+                    self._persist_baseline(tid, self._totals[tid])
             if method == 'thread/fork':
                 tid = result.get('thread', {}).get('id')
                 source = self._totals.get(params.get('threadId'))
                 if tid and source is not None:
                     self._totals[tid] = dict(source)
+                    self._persist_baseline(tid, source)
             if method in ('thread/start', 'thread/resume', 'thread/fork'):
                 self._require_price(result.get('model'), result.get('serviceTier'))
             return result
@@ -184,14 +193,15 @@ class CodexApiConnection(CodexExecutionConnection):
         model = params.get('model')
         self._require_price(model)
         with self._payments_lock:
+            if self._api_draining:
+                raise ApiCreditsRefused('The API connection is stopping. Send again after it closes. Nothing was sent.')
             previous = self._payments.get(tid)
             if previous and previous.terminal:
                 self._finish_payment(tid, previous)
             elif previous:
                 raise CodexTurnRejected('not_idle')
-            if tid not in self._totals:
-                raise ApiCreditsRefused('The API-credit token baseline for this chat is not known. '
-                    'Start a new API chat before sending. Nothing was sent.')
+            if self._api_draining:
+                raise ApiCreditsRefused('The API connection is stopping. Send again after it closes. Nothing was sent.')
             try:
                 reservation = self.ledger.reserve('codex-api:' + tid)
             except SpendRefused as error:
@@ -225,10 +235,32 @@ class CodexApiConnection(CodexExecutionConnection):
             with self._payments_lock:
                 if self._payments.get(tid) is payment:
                     self.ledger.close(reservation, complete=not payment.queued)
-                    if payment.queued:
-                        self._totals.pop(tid, None)
+                    # No usage was observed; a later matching total/last report
+                    # can recover the baseline. Don't strand this chat.
                     self._payments.pop(tid, None)
             raise
+
+    @staticmethod
+    def _service_name(method):
+        return {'thread/compact/start': 'conversation compaction', 'thread/goal/set': 'background goals',
+                'thread/goal/clear': 'background goals', 'thread/memory/reset': 'memory'}.get(method,
+                    'this background Codex service')
+
+    def _stop_timeout(self, tid, payment):
+        with self._payments_lock:
+            if self._payments.get(tid) is not payment:
+                return
+            payment.uncertain = True
+            others = any(p is not payment and not p.timed_out for p in self._payments.values())
+            if not others:
+                self._api_draining = True
+            payment.timed_out = others
+            self._finish_payment(tid, payment, keep=others)
+        if not others:
+            try:
+                self.close()
+            except CodexRpcError:
+                pass
 
     def _verify_saved_route(self, tid):
         thread = self.request('thread/read', {'threadId': tid, 'includeTurns': False}).get('thread')
@@ -253,14 +285,29 @@ class CodexApiConnection(CodexExecutionConnection):
                 turn_id = params.get('turnId') or params.get('turn', {}).get('id')
                 if payment.turn_id and turn_id and payment.turn_id != turn_id:
                     payment.uncertain = True
+                    payment.inconsistent = True
+                elif method == 'turn/started':
+                    payment.turn_id = turn_id or payment.turn_id
                 elif method == 'thread/tokenUsage/updated':
                     usage = params.get('tokenUsage')
                     value = usage.get('total') if isinstance(usage, dict) else None
+                    if not payment.turn_id and turn_id:
+                        payment.turn_id = turn_id
+                    if payment.baseline is None and turn_id == payment.turn_id and self._valid_counters(value):
+                        last = usage.get('last')
+                        if self._valid_counters(last):
+                            before = {k: value[k] - last[k] for k in COUNTERS}
+                            if self._valid_counters(before):
+                                payment.baseline = before
                     if payment.model_unknown or not self._valid_counters(value) or payment.baseline is None:
                         payment.uncertain = True
+                        payment.inconsistent = True
                     else:
                         delta = {k: value[k]-payment.baseline[k] for k in COUNTERS}
                         try:
+                            previous = self._totals.get(tid, payment.baseline)
+                            if any(value[k] < previous[k] for k in COUNTERS):
+                                raise ValueError('Usage counters decreased')
                             cost = estimate(payment.model, delta)
                             if cost < payment.cost:
                                 raise ValueError('Usage decreased')
@@ -272,22 +319,27 @@ class CodexApiConnection(CodexExecutionConnection):
                             payment.accounted = accounted
                             payment.cost = cost
                             payment.usage = True
+                            payment.context_window = usage.get('modelContextWindow')
                             self._totals[tid] = {k: value[k] for k in COUNTERS}
                         except ValueError:
                             payment.uncertain = True
+                            payment.inconsistent = True
                     if payment.cost >= payment.reservation.amount or payment.uncertain:
                         self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'model/rerouted':
                     # Mixed-model counters cannot be attributed safely.
                     payment.uncertain = True
                     payment.model_unknown = True
+                    payment.inconsistent = True
                     self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'error':
+                    payment.uncertain = True  # even a successful retry can hide billed partial output
                     error = params.get('error')
                     info = error.get('codexErrorInfo') if isinstance(error, dict) else None
                     status = next((v.get('httpStatusCode') for v in info.values() if isinstance(v, dict)), None) if isinstance(info, dict) else None
-                    if status in (401, 403) or info == 'usageLimitExceeded':
-                        payment.refused = True
+                    refused = status in (401, 403) or info in ('unauthorized', 'authenticationError') if isinstance(info, str) else status in (401, 403)
+                    if refused or info == 'usageLimitExceeded':
+                        payment.refused = refused
                         self._emit_api('api_error', tid, failure='usage_limit' if info == 'usageLimitExceeded' else 'key_refused')
                         self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'turn/completed':
@@ -295,17 +347,9 @@ class CodexApiConnection(CodexExecutionConnection):
                     payment.timer = threading.Timer(.5, self._finish_payment, (tid, payment))
                     payment.timer.daemon = True
                     payment.timer.start()
-        # The ordinary decoder exposes only fixed error classes; scrub any other
-        # text before it can enter history, diagnostics or an observer.
-        def safe(value):
-            if isinstance(value, str):
-                return scrub(value)
-            if isinstance(value, dict):
-                return {k: safe(v) for k, v in value.items()}
-            if isinstance(value, list):
-                return [safe(v) for v in value]
-            return value
-        super()._receive(safe(message))
+        # Protocol replies, IDs, paths and approval checks are never rewritten.
+        # Presentation text is scrubbed after decoding, at the event boundary.
+        super()._receive(message)
 
     def _interrupt_payment(self, tid, payment, turn_id):
         if payment.stopping or not turn_id:
@@ -315,10 +359,10 @@ class CodexApiConnection(CodexExecutionConnection):
             try:
                 self.request('turn/interrupt', {'threadId': tid, 'turnId': turn_id})
             except Exception:
-                self.close()
+                self._stop_timeout(tid, payment)
         threading.Thread(target=interrupt, daemon=True).start()
 
-    def _finish_payment(self, tid, payment):
+    def _finish_payment(self, tid, payment, keep=False):
         with self._payments_lock:
             if self._payments.get(tid) is not payment:
                 return
@@ -326,20 +370,48 @@ class CodexApiConnection(CodexExecutionConnection):
                 payment.timer.cancel()
             if payment.stop_timer:
                 payment.stop_timer.cancel()
-            complete = payment.usage and not payment.uncertain and payment.terminal == 'completed'
-            if not complete:
+            complete = payment.refused or (payment.usage and not payment.uncertain and payment.terminal == 'completed')
+            upper_bound = False
+            if payment.stopping and not payment.uncertain and not payment.refused:
+                from ..openai_prices import request_ceiling
+                maximum = payment.accounted + request_ceiling(payment.model, payment.context_window)
+                if maximum <= payment.reservation.amount:
+                    extra = float(Decimal(str(maximum-payment.accounted)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
+                    if self.ledger.settle(payment.reservation, extra, {payment.model: extra}):
+                        payment.cost = payment.accounted + extra
+                        payment.usage = complete = upper_bound = True
+            if payment.inconsistent:
                 self._totals.pop(tid, None)
             try:
                 self._persist_baseline(tid, self._totals.get(tid))
             except OSError:
                 complete = False
-                self._totals.pop(tid, None)
-            self.ledger.close(payment.reservation, complete=complete)
-            self._payments.pop(tid, None)
-            self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.usage else None,
-                cost_complete=complete, price_date=PRICE_DATE,
-                cost_words=(('estimated ' + shared_cost_words(payment.cost, complete))
-                            if payment.usage else 'cost not known'))
+            if not keep:
+                self.ledger.close(payment.reservation, complete=complete)
+                self._payments.pop(tid, None)
+            if not payment.reported:
+                payment.reported = True
+                self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.usage else None,
+                    cost_complete=complete, cost_upper_bound=upper_bound, price_date=PRICE_DATE,
+                    cost_words=self._cost_words(payment, complete, upper_bound))
+            if not keep and self._payments and all(p.timed_out for p in self._payments.values()):
+                self._api_draining = True
+                # Only abandoned turns remain: stop them after the other chats
+                # finish, while retaining their live reservations and telemetry.
+                def cleanup():
+                    try:
+                        self.close()
+                    except CodexRpcError:
+                        pass
+                threading.Thread(target=cleanup, daemon=True).start()
+
+    @staticmethod
+    def _cost_words(payment, complete, upper_bound):
+        from ..billing import COST_NOT_KNOWN, money
+        if upper_bound:
+            return 'estimated, at most ' + money(payment.cost)
+        words = shared_cost_words(payment.cost if payment.usage else None, complete)
+        return words if words == COST_NOT_KNOWN else 'estimated ' + words
 
     def _persist_baseline(self, tid, value):
         from ..provider_storage import atomic_write_json

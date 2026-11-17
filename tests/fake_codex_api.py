@@ -66,16 +66,30 @@ for line in sys.stdin:
         turn = 'turn-' + str(t['count'])
         emit({'id': msg['id'], 'result': {'turn': {'id': turn, 'status': 'inProgress'}}})
         event('turn/started', {'threadId': tid, 'turn': {'id': turn, 'status': 'inProgress'}})
+        if scenario in ('401', 'unauthorized') and t['count'] == 1:
+            info = {'httpConnectionFailed': {'httpStatusCode': 401}} if scenario == '401' else 'unauthorized'
+            event('error', {'threadId': tid, 'turnId': turn, 'willRetry': False,
+                            'error': {'codexErrorInfo': info}})
+            t['status'] = 'idle'
+            event('turn/completed', {'threadId': tid, 'turn': {'id': turn, 'status': 'failed'}})
+            continue
+        if scenario == 'retry':
+            event('error', {'threadId': tid, 'turnId': turn, 'willRetry': True,
+                            'error': {'codexErrorInfo': 'streamDisconnected'}})
         if scenario == 'rerouted' and t['count'] > 1:
             event('model/rerouted', {'threadId': tid, 'turnId': turn, 'toModel': 'unpriced-model'})
         if scenario != 'missing':
-            usage = {'last': total(1), 'total': total(t['count']), 'modelContextWindow': 400000}
+            # Refused requests do not advance reported token totals.
+            count = t['count'] - (1 if scenario in ('401', 'unauthorized') else 0)
+            usage = {'last': total(1), 'total': total(count), 'modelContextWindow': 400000}
+            if scenario == 'cap':
+                usage = {'last': total(1000), 'total': total(1000), 'modelContextWindow': 400000}
             if scenario == 'malformed':
                 usage['total']['cachedInputTokens'] = -1
             event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
             if scenario == 'duplicate':
                 event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
-        if scenario in ('hang', 'missing', 'malformed', 'unanswered-stop'):
+        if scenario in ('hang', 'missing', 'malformed', 'unanswered-stop', 'cap') or (scenario == 'stop-once' and t['count'] == 1):
             pending = (tid, turn)
             continue
         event('item/completed', {'threadId': tid, 'turnId': turn,
