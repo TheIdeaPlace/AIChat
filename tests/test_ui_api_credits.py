@@ -211,7 +211,9 @@ def test_remote_control_is_never_on_in_an_api_chat(frame, env, monkeypatch):
     # Session, Remote Control says why instead of offering it.
     chosen = []
     monkeypatch.setattr(frame, "_choose", lambda *a, **k: chosen.append(a) or None)
-    select(frame, "Paid")
+    # Loaded, not just highlighted: a hidden window's focus isn't on the list
+    # on a Mac, so the command means the loaded chat there.
+    open_chat(frame, "api-1")
     frame.on_remote_control()
     assert env["boxes"][-1] == REMOTE_NOT_ON_API.format(title="Paid")
     assert "isn't available in chats on API credits" in env["boxes"][-1]
