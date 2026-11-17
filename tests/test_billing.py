@@ -13,7 +13,7 @@ FAKE_KEY = "sk-ant-test-0000000000000000000000000000"
 
 SUBSCRIPTION = {"email": "someone@example.com", "organization": "Example",
                 "subscriptionType": "max", "apiProvider": "firstParty"}
-HELPER = {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty", "tokenSource": "claude.ai"}
+HELPER = {"tokenSource": "apiKeyHelper", "apiProvider": "firstParty"}  # as 2.1.325 answers (#662)
 
 
 def body(account=None, **extra):
@@ -28,6 +28,9 @@ def body(account=None, **extra):
 
 def test_an_api_chat_sends_only_on_the_apps_own_key_at_anthropic():
     assert billing.account_problem(ROUTE_API, body(HELPER)) is None
+    # The helper named as apiKeySource too (as system/init names it) is the same key.
+    assert billing.account_problem(ROUTE_API, body(
+        {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty"})) is None
     assert billing.account_problem(ROUTE_API, body(HELPER, auth_conflict={"x": 1})) is None
 
 
@@ -40,11 +43,13 @@ def test_an_api_chat_sends_only_on_the_apps_own_key_at_anthropic():
     body(SUBSCRIPTION),                      # the subscription: the key wasn't used
     body({**HELPER, "apiKeySource": "ANTHROPIC_API_KEY"}),   # a key from the environment
     body({**HELPER, "apiKeySource": "/login managed key"}),
-    body({**HELPER, "apiKeySource": None}),
-    body({**HELPER, "apiKeySource": "none"}),
+    body({"tokenSource": "claude.ai", "apiProvider": "firstParty", "apiKeySource": None}),
+    body({"tokenSource": "claude.ai", "apiProvider": "firstParty", "apiKeySource": "none"}),
+    body({"tokenSource": "CLAUDE_CODE_OAUTH_TOKEN", "apiProvider": "firstParty"}),
     body({**HELPER, "apiProvider": "bedrock"}),
     body({**HELPER, "apiProvider": "vertex"}),
     body({"apiKeySource": "apiKeyHelper"}),  # no provider: not known to be Anthropic's
+    body({"tokenSource": "apiKeyHelper"}),
     "not a dict",
 ])
 def test_an_api_chat_fails_closed_on_anything_else(init_body):
@@ -58,11 +63,35 @@ def test_a_subscription_chat_stops_for_any_key_or_other_provider():
                     {"apiKeySource": "apiKeyHelper"}, {**SUBSCRIPTION, "apiProvider": "bedrock"}):
         problem = billing.account_problem(ROUTE_SUBSCRIPTION, body(account))
         assert problem and "didn't send your message" in problem and "Nothing was sent" in problem
+    # The claude.ai sign-in, or none named, is the subscription (#662, #663),
+    # and so is `claude setup-token`'s CLAUDE_CODE_OAUTH_TOKEN, which can only
+    # come from a settings file's env, as the app strips it from the
+    # environment (signin.py counts it as the subscription).
+    for token in ("claude.ai", "none", "", None, "CLAUDE_CODE_OAUTH_TOKEN"):
+        assert billing.account_problem(
+            ROUTE_SUBSCRIPTION, body({**SUBSCRIPTION, "tokenSource": token})) is None
+    assert billing.account_problem(ROUTE_SUBSCRIPTION, body(
+        {"tokenSource": "CLAUDE_CODE_OAUTH_TOKEN", "apiProvider": "firstParty"})) is None
     # "none" and "" are no key, as system/init has always said.
     assert billing.account_problem(ROUTE_SUBSCRIPTION,
                                    body({**SUBSCRIPTION, "apiKeySource": "none"})) is None
     assert billing.account_problem(ROUTE_SUBSCRIPTION,
                                    body({**SUBSCRIPTION, "apiKeySource": ""})) is None
+
+
+@pytest.mark.parametrize("token", ["ANTHROPIC_AUTH_TOKEN", "something-new",
+                                   "claude_code_oauth_token", FAKE_KEY])
+def test_a_subscription_chat_stops_for_any_other_token(token):
+    # As 2.1.325 answers for a settings file's env.ANTHROPIC_AUTH_TOKEN
+    # (checked under a scratch CLAUDE_CONFIG_DIR, #663): no apiKeySource,
+    # only the token's source, and firstParty. Anything not known to be the
+    # subscription is refused, a near miss of a name included.
+    account = {"tokenSource": token, "apiProvider": "firstParty"}
+    problem = billing.account_problem(ROUTE_SUBSCRIPTION, body(account))
+    assert problem and "another token" in problem and "Nothing was sent" in problem
+    assert FAKE_KEY not in problem
+    # Beside a real sign-in's fields too.
+    assert billing.account_problem(ROUTE_SUBSCRIPTION, body({**SUBSCRIPTION, **account}))
 
 
 def test_a_subscription_chat_without_an_account_goes_on_as_before():
@@ -105,12 +134,47 @@ def test_source_problem_on_each_route():
 def test_api_settings_name_the_helper_command_never_the_key(monkeypatch, tmp_path):
     monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
     settings = billing.api_settings()
-    assert list(settings) == ["apiKeyHelper"]
+    assert list(settings) == ["apiKeyHelper", "env"]
     assert settings["apiKeyHelper"] == platform_paths.api_key_helper_command(
         platform_paths.CLAUDE_API_KEY_SECRET)
     assert "sk-ant" not in json.dumps(settings)
     with pytest.raises(ValueError):
         billing.api_settings("not-a-secret")
+
+
+def test_api_settings_pin_where_the_key_goes(monkeypatch, tmp_path):
+    # A settings file's env.ANTHROPIC_BASE_URL sent the key elsewhere (#663);
+    # the turn's own --settings overrides it.
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    env = billing.api_settings()["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "https://api.anthropic.com"
+    assert env["NODE_TLS_REJECT_UNAUTHORIZED"] == "1"
+    assert env["NODE_EXTRA_CA_CERTS"] == ""
+    env["ANTHROPIC_BASE_URL"] = "changed"           # a copy each time
+    assert billing.api_settings()["env"]["ANTHROPIC_BASE_URL"] == billing.API_BASE_URL
+
+
+def test_an_api_turns_environment_has_no_certificate_variables_node_reads_at_startup():
+    # Node reads NODE_EXTRA_CA_CERTS as it starts, before settings apply
+    # (#663): it's taken out of the child's environment, in any case.
+    env = {"PATH": "p", "NODE_EXTRA_CA_CERTS": "corp.pem", "Node_Tls_Reject_Unauthorized": "0",
+           "HTTPS_PROXY": "http://proxy:8080", "NODE_OPTIONS": "--max-old-space-size=4096"}
+    assert billing.api_environment(env) == {"PATH": "p", "HTTPS_PROXY": "http://proxy:8080",
+                                            "NODE_OPTIONS": "--max-old-space-size=4096"}
+    assert env["NODE_EXTRA_CA_CERTS"] == "corp.pem"   # the caller's own is left alone
+
+
+def test_the_pinned_env_merges_with_and_wins_over_one_already_there(monkeypatch, tmp_path):
+    monkeypatch.setattr(platform_paths, "app_data_dir", lambda: tmp_path)
+    mine = json.dumps({"env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:9", "KEEP": "1"}})
+    merged = claude_mcp.merge_settings(["claude", "--settings", mine], billing.api_settings())
+    settings = json.loads(merged[merged.index("--settings") + 1])
+    assert settings["env"]["ANTHROPIC_BASE_URL"] == billing.API_BASE_URL
+    assert settings["env"]["KEEP"] == "1"
+    # An env that isn't an object is simply replaced.
+    odd = json.dumps({"env": "x"})
+    merged = claude_mcp.merge_settings(["claude", "--settings", odd], billing.api_settings())
+    assert json.loads(merged[merged.index("--settings") + 1])["env"] == billing.API_ENV
 
 
 def test_the_helper_is_merged_into_the_one_settings_and_wins(monkeypatch, tmp_path):
@@ -290,9 +354,61 @@ def test_failure_text_for_budget_credit_and_key():
 
 
 @pytest.mark.parametrize("amount,said", [
-    (0, "less than a cent"), (0.0043, "less than a cent"), (0.005, "1 cent"),
+    (0, "nothing"), (0.0, "nothing"), (0.0043, "less than a cent"), (0.005, "1 cent"),
     (0.06, "6 cents"), (0.42, "42 cents"), (0.994, "99 cents"), (0.995, "$1.00"),
     (12.3, "$12.30"), (1234.5, "$1,234.50"), (None, "an unknown amount"),
     (float("nan"), "an unknown amount")])
 def test_money_is_said_plainly(amount, said):
     assert billing.money(amount) == said
+
+
+@pytest.mark.parametrize("amount,complete,said", [
+    (0.06, True, "6 cents"), (0.0, True, "nothing"), (0.06, False, "at least 6 cents"),
+    (0.001, False, "cost not known"), (0.0, False, "cost not known"),
+    (None, True, "cost not known"), (None, False, "cost not known"),
+    (float("inf"), True, "cost not known"), (float("nan"), True, "cost not known"),
+    (-1.0, True, "cost not known"), (True, True, "cost not known")])
+def test_cost_words_say_when_the_cost_isnt_known(amount, complete, said):
+    # One phrase that names the cost (#663), never "an amount that isn't known".
+    words = billing.cost_words(amount, complete)
+    assert words == said
+    more = billing.cost_more(words)
+    if said == "cost not known":
+        assert more == "cost not known"                  # never "… more"
+        assert billing.cost_sentence(words) == "Cost not known."
+        assert billing.cost_sentence(words, "Budget") == "Budget: cost not known."
+    else:
+        assert more == f"{said} more"
+        assert billing.cost_sentence(words) == f"It cost {said}."
+        assert billing.cost_sentence(words, "Budget") == f"Budget: it cost {said}."
+    for text in (more, billing.cost_sentence(words), billing.cost_sentence(words, "Budget")):
+        assert "isn't known" not in text and "not known more" not in text
+
+
+@pytest.mark.parametrize("cost,after,phrase", [
+    ("6 cents", ", 6 cents", "6 cents"), ("nothing", " at no cost", "at no cost"),
+    ("cost not known", ", cost not known", "cost not known"), ("", "", "")])
+def test_a_cost_after_a_reply_or_an_answer_reads_as_a_cost(cost, after, phrase):
+    from thechatplace import announce
+    assert announce.cost_after(cost) == after
+    assert announce.cost_phrase(cost) == phrase
+    if cost:
+        assert announce.reply_text("Budget", "Hi.", "full", cost=cost) == f"Budget replied{after}. Hi."
+
+
+@pytest.mark.parametrize("retry,refused", [
+    # What 2.1.325 sent for a made-up key (#663): no text, these two fields.
+    ({"error_status": 401, "error": "authentication_failed", "attempt": 3}, True),
+    ({"error_status": 403, "error": ""}, True),
+    ({"error_status": None, "error": "authentication_failed"}, True),
+    ({"error_status": None, "error": "Invalid API key"}, True),
+    ({"error_status": 529, "error": "overloaded"}, False),
+    ({"error_status": 429, "error": "rate_limit"}, False),
+    ({"error_status": 500, "error": "server_error"}, False),
+    ({}, False), (None, False), ({"error_status": "401"}, False)])
+def test_key_refused_reads_the_retrys_status_and_error(retry, refused):
+    assert billing.key_refused(retry) is refused
+
+
+def test_a_refused_key_in_claude_codes_new_words_is_still_plain():
+    assert billing.failure_text("", "API error: authentication_failed") == billing.KEY_REFUSED

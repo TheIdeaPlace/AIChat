@@ -172,7 +172,7 @@
   {
    "class": "TextCtrl",
    "name": "Test result",
-   "label": "Test Key sends one short request on your key to check that it works, and counts what it cost in the tally.",
+   "label": "Test Key sends one short request on your key to check that it works, and counts what it cost in the total.",
    "rect": [
     10,
     264,
@@ -289,15 +289,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Tally:",
+   "label": "Total:",
    "rect": [
     23,
     501,
-    48,
+    52,
     31
    ],
    "best": [
-    48,
+    52,
     31
    ],
    "depth": 0,
@@ -307,7 +307,7 @@
   },
   {
    "class": "TextCtrl",
-   "name": "Tally",
+   "name": "Total",
    "label": "",
    "rect": [
     25,
@@ -323,7 +323,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Spent since the tally was reset: $12.34. Held for running messages: $5.00. Left: $172.66."
+   "value": "Spent since the total was reset: $12.34. Held for running messages: $5.00. Left: $172.66."
   },
   {
    "class": "Button",
@@ -347,15 +347,15 @@
   {
    "class": "Button",
    "name": "button",
-   "label": "R&eset Tally...",
+   "label": "R&eset Total...",
    "rect": [
     168,
     633,
-    150,
+    154,
     42
    ],
    "best": [
-    150,
+    154,
     42
    ],
    "depth": 0,
@@ -368,7 +368,7 @@
    "name": "button",
    "label": "Release &Held...",
    "rect": [
-    324,
+    328,
     633,
     171,
     42

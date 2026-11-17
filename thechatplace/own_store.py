@@ -9,6 +9,13 @@ Providers added later each have a file of their own
 know, and would then save nothing (#352). Each file is replaced atomically;
 mixed-format migration preserves an exact backup and writes foreign records
 before removing them from the old file.
+
+Claude chats on API credits (#658) are kept apart too, in
+``provider-sessions-claude-api.json`` (#663): a release from before API
+credits reads ``sessions.json`` without knowing ``billing``, and would run
+such a chat on the subscription, without its spending limits. Kept where it
+never looks, it doesn't list them at all. One written into ``sessions.json``
+by a build before this is moved out on load, as the mixed format is.
 """
 from __future__ import annotations
 
@@ -94,8 +101,9 @@ class OwnSession:
     prompt_fresh: bool = False
     #: How the chat is charged (#658): "subscription", or "api" for API
     #: credits. Fixed when the chat is made. Anything else reads as the
-    #: subscription, and an older release, which doesn't know the field,
-    #: runs the chat on the subscription too: never the other way round.
+    #: subscription. An API chat is kept in a file of its own that older
+    #: releases never read (#663), so none of them runs it on the
+    #: subscription.
     billing: str = "subscription"
 
     @property
@@ -136,6 +144,13 @@ PROVIDERS = ("claude", "codex", "copilot")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
 SEPARATE_PROVIDERS = ("copilot",)
+#: The name Claude's API-credit chats' own file goes by (#663), in the
+#: place a separate provider's would.
+API_CHATS = "claude-api"
+
+
+def _is_api_chat(session: "OwnSession") -> bool:
+    return session.provider == "claude" and session.billing == "api"
 #: Codex settings newer than 0.4 (#467). On disk they sit beside
 #: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
 #: provider-sessions.json over a provider option it doesn't know, and then
@@ -323,7 +338,7 @@ class OwnSessionStore:
         self._files = PartitionedFile(self.path)
         #: provider -> its own companion file (SEPARATE_PROVIDERS).
         self._separate = {name: self.path.with_name(f"provider-{self.path.stem}-{name}{self.path.suffix}")
-                          for name in SEPARATE_PROVIDERS}
+                          for name in (*SEPARATE_PROVIDERS, API_CHATS)}
         self._sessions: Dict[tuple[str, str], OwnSession] = {}
         #: identity -> the record's fields a newer release wrote, which this
         #: one doesn't read but saves back (see _unknown_fields).
@@ -397,7 +412,9 @@ class OwnSessionStore:
                 self._save_blocked = True
                 return
             if session is not None:
-                mixed |= session.provider != "claude"
+                # An API chat written here by a build before its own file
+                # (#663) is moved out too, before an older release reads it.
+                mixed |= session.provider != "claude" or _is_api_chat(session)
                 self._sessions[session.identity] = session
                 self._keep_extras(session, item)
         if foreign is not None:
@@ -454,7 +471,8 @@ class OwnSessionStore:
         seen = set()
         for item in entries:
             session = _session_from_dict(item) if isinstance(item, dict) else None
-            if session is None or session.provider != provider or session.identity in seen:
+            if session is None or not self._belongs(session, provider) \
+                    or session.identity in seen:
                 self.load_error = f"Invalid {provider} session store ({path}). Changes won't be saved."
                 self._save_blocked = True
                 return False
@@ -467,6 +485,14 @@ class OwnSessionStore:
             self._sessions[session.identity] = session
             self._keep_extras(session, item)
         return True
+
+    @staticmethod
+    def _belongs(session: OwnSession, name: str) -> bool:
+        """Whether a session is kept in the companion file ``name``: a
+        separate provider's, or Claude's API chats' (#663)."""
+        if name == API_CHATS:
+            return _is_api_chat(session)
+        return session.provider == name
 
     def _keep_extras(self, session: OwnSession, item: dict) -> None:
         extras = _unknown_fields(item)
@@ -510,7 +536,8 @@ class OwnSessionStore:
     def _legacy_payload(self) -> dict:
         records = []
         for session in self._sessions.values():
-            if session.provider == "claude":
+            # Never an API chat (#663): an older release reads this file.
+            if session.provider == "claude" and not _is_api_chat(session):
                 item = self._record(session)
                 item.pop("provider")
                 item.pop("provider_options")
@@ -529,7 +556,8 @@ class OwnSessionStore:
         previous = {}
         try:
             for name, path in self._separate.items():
-                records = [self._record(s) for s in self._sessions.values() if s.provider == name]
+                records = [self._record(s) for s in self._sessions.values()
+                           if self._belongs(s, name)]
                 try:
                     previous[path] = path.read_bytes()
                 except FileNotFoundError:

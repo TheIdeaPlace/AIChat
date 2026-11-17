@@ -42,13 +42,20 @@ On API credits (#658)
 ---------------------
 A chat made to be charged to an API key (``TurnRunner(billing="api")``)
 gets the key only through ``apiKeyHelper`` in its one ``--settings``, never
-in an environment, and a ``--max-budget-usd`` reserved from the spend
+in an environment, with the address it may go to pinned there too
+(billing.API_ENV, #663), and a ``--max-budget-usd`` reserved from the spend
 ledger. Its message goes only once initialize's ``account`` says the app's
-key at Anthropic's own API: no answer means no message. What each result
-adds to ``total_cost_usd`` is settled in the ledger: the total includes the
-cost state Claude Code restores on ``--resume``, so every turn of every
-chat records its last total as the chat's baseline (spend_ledger, "What a
-result cost"). See billing.py and spend_ledger.py.
+key at Anthropic's own API: no answer means no message. Each message it
+writes is then said with an "api_sent" event, which is when the window says
+"Sent on API credits". What each result adds to ``total_cost_usd`` is
+settled in the ledger: the total can include the cost state Claude Code
+restores on ``--resume``, so every turn of every chat records its last
+total as the chat's baseline, and the result's tokens say whether it was
+restored (spend_ledger, "What a result cost"). A result without a usable
+cost, or a Stop before the last result, leaves the cost unknown and the
+reservation held. A refused key (an ``api_retry`` of 401) ends the turn at
+once. Everything an API turn says is scrubbed of key-shaped text. See
+billing.py and spend_ledger.py.
 
 Never into a desktop session
 ----------------------------
@@ -82,11 +89,11 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable, Collection, Dict, List, Optional
+from typing import Callable, Collection, Dict, List, Optional, Tuple
 
 from . import platform_paths
-from .billing import (ROUTE_API, account_problem, budget_flags, failure_text, normalize_route,
-                      scrub, source_problem)
+from .billing import (KEY_REFUSED, ROUTE_API, account_problem, budget_flags, failure_text,
+                      key_refused, normalize_route, scrub, source_problem)
 from .chat_options import ChatChoices, ChatOptions, choices_from_init
 from .transcript import compaction_text
 
@@ -641,6 +648,10 @@ class PermissionRequest:
     #: For a question: what Claude wrote just before asking it, which the
     #: answer dialog shows (#415). Filled in by the window, not Claude Code.
     said: str = ""
+    #: In a chat on API credits (#663): what's shown and said about the
+    #: request (``summary``, ``detail``, ``plan``) has key-shaped text
+    #: hidden. ``input``, which the answer is made from, stays as it is.
+    hide_keys: bool = False
 
     @property
     def is_question(self) -> bool:
@@ -650,17 +661,24 @@ class PermissionRequest:
     def is_plan(self) -> bool:
         return self.tool_name == PLAN_TOOL
 
+    def _shown(self, text: str) -> str:
+        return scrub(text) if self.hide_keys else text
+
     def questions(self) -> List[dict]:
         items = self.input.get("questions")
         return [q for q in items if isinstance(q, dict) and isinstance(q.get("question"), str)] \
             if isinstance(items, list) else []
 
     def plan(self) -> str:
+        """The plan, to show (an answer approving it sends ``input``)."""
         plan = self.input.get("plan")
-        return plan if isinstance(plan, str) else ""
+        return self._shown(plan) if isinstance(plan, str) else ""
 
     def summary(self) -> str:
         """One line, for announcements: what Claude is waiting for."""
+        return self._shown(self._summary())
+
+    def _summary(self) -> str:
         if self.is_question:
             questions = self.questions()
             first = questions[0]["question"] if questions else "a question"
@@ -672,6 +690,9 @@ class PermissionRequest:
 
     def detail(self) -> str:
         """Everything about the request, to read by line."""
+        return self._shown(self._detail())
+
+    def _detail(self) -> str:
         lines = [self.summary() + "."]
         if self.description and self.description not in lines[0]:
             lines.append(f"Why: {self.description}")
@@ -819,7 +840,7 @@ class TurnEvent:
 
     kind: str               # started | text | tool | denied | permission | background |
     #                         waiting | finished | failed | mode | retry | fallback |
-    #                         memory | context (#468) | …
+    #                         memory | context (#468) | api_sent (#663) | …
     text: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -858,6 +879,10 @@ class StreamParser:
         self._edits: Dict[str, str] = {}
         #: The model of the latest top-level assistant message (#468).
         self.reply_model = ""
+        #: Top-level assistant messages from a model (not Claude Code's own
+        #: ``<synthetic>`` error text): each is a request that went through,
+        #: and so may have cost something (#663).
+        self.assistant_messages = 0
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -1012,6 +1037,8 @@ class StreamParser:
                 # system/init's mid-turn: a fallback, a live Change Model, or
                 # plan mode's own model (#468). The Fable check reads it.
                 self.reply_model = reply_model
+                if reply_model != "<synthetic>":
+                    self.assistant_messages += 1
             if isinstance(content, str) and content.strip():
                 events.append(TurnEvent("text", text=content.strip()))
             elif isinstance(content, list):
@@ -1065,17 +1092,16 @@ class StreamParser:
                     self.context_window = max(windows)
             # What Claude Code says the process has cost so far (#658), and
             # by model. On the subscription it's only what it would have
-            # cost; a turn on API credits settles its ledger with it.
-            cost = event.get("total_cost_usd")
-            reported = None
-            if isinstance(cost, (int, float)) and not isinstance(cost, bool):
-                model_costs = {name: m.get("costUSD") for name, m in models.items()
-                               if isinstance(name, str) and isinstance(m, dict)
-                               and isinstance(m.get("costUSD"), (int, float))
-                               and not isinstance(m.get("costUSD"), bool)} \
-                    if isinstance(models, dict) else {}
-                reported = {"reported_cost_usd": float(cost),
-                            "reported_model_costs": model_costs}
+            # cost; a turn on API credits settles its ledger with it. A
+            # cost that's missing or isn't a usable number is None (#663):
+            # the turn's cost is then unknown, and its reservation held.
+            cost = _usable_cost(event.get("total_cost_usd"))
+            model_costs = {name: _usable_cost(m.get("costUSD")) for name, m in models.items()
+                           if isinstance(name, str) and isinstance(m, dict)
+                           and _usable_cost(m.get("costUSD")) is not None} \
+                if isinstance(models, dict) else {}
+            reported = {"reported_cost_usd": cost, "reported_model_costs": model_costs,
+                        "reported_tokens": result_tokens(event)}
             denials = event.get("permission_denials")
             denial_text = [describe_denial(d) for d in denials] if isinstance(denials, list) else []
             is_error = bool(event.get("is_error")) or (subtype not in ("", "success"))
@@ -1090,6 +1116,76 @@ class StreamParser:
                               is_error=is_error, denials=denial_text, raw_type=subtype,
                               data=reported)]
         return []
+
+
+def scrub_deep(value, depth: int = 0):
+    """``value`` with every string in it scrubbed of key-shaped text
+    (billing.scrub), through dicts and lists; anything else as it is."""
+    if isinstance(value, str):
+        return scrub(value)
+    if depth > 20:
+        return value
+    if isinstance(value, dict):
+        return {key: scrub_deep(item, depth + 1) for key, item in value.items()}
+    if isinstance(value, list):
+        return [scrub_deep(item, depth + 1) for item in value]
+    return value
+
+
+def scrub_event(event: "TurnEvent") -> "TurnEvent":
+    """An API turn's event with no key in anything said or shown (#663): its
+    text, detail, refusals and data. A permission request's ``input`` is
+    left as it is, as it's what's answered; what it shows and says (its
+    summary, detail and plan) is scrubbed (``hide_keys``)."""
+    event.text, event.detail = scrub(event.text), scrub(event.detail)
+    event.denials = [scrub(d) for d in event.denials]
+    if event.data is not None:
+        event.data = scrub_deep(event.data)
+    if event.request is not None:
+        event.request.hide_keys = True
+    return event
+
+
+def _usable_cost(value) -> Optional[float]:
+    """A reported cost as a float, or None if it isn't a finite number of at
+    least zero (#663)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        value = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return value if value == value and value not in (float("inf"), float("-inf")) \
+        and value >= 0 else None
+
+
+_OWN_TOKENS = ("input_tokens", "output_tokens", "cache_creation_input_tokens",
+               "cache_read_input_tokens")
+_MODEL_TOKENS = ("inputTokens", "outputTokens", "cacheCreationInputTokens",
+                 "cacheReadInputTokens")
+
+
+def _token_sum(counts, names) -> Optional[int]:
+    if not isinstance(counts, dict):
+        return None
+    found = [counts[name] for name in names if type(counts.get(name)) is int]
+    return sum(found) if found else None
+
+
+def result_tokens(event: dict) -> Optional[tuple]:
+    """(the result's own tokens, modelUsage's cumulative tokens), or None
+    when a result doesn't have both (#663). Checked with Claude Code 2.1.325:
+    ``usage`` is that turn's own and ``modelUsage`` includes the cost state
+    a ``--resume`` or a fork restored, so the second being larger means this
+    process's totals include earlier spending (spend_ledger.CostTracker)."""
+    own = _token_sum(event.get("usage"), _OWN_TOKENS)
+    models = event.get("modelUsage")
+    if own is None or not isinstance(models, dict):
+        return None
+    counts = [_token_sum(m, _MODEL_TOKENS) for m in models.values()]
+    if not counts or any(c is None for c in counts):
+        return None
+    return own, sum(counts)
 
 
 def api_key_problem(source: Optional[str]) -> Optional[str]:
@@ -1196,27 +1292,30 @@ def _resumed_of(command: List[str]) -> str:
 def cost_tracker_for(command: List[str], baselines=None, cap: Optional[float] = None):
     """A CostTracker for one process (#658; spend_ledger, "What a result
     cost"): a new chat starts from nothing; one that resumes or forks starts
-    from the baseline ``baselines`` (a SpendLedger) has for the chat it
-    restores, or from "not known" without one. ``cap``: the reservation."""
+    from the baselines ``baselines`` (a SpendLedger) has for the chat it
+    restores (the latest and the clean one, #663), or from "not known"
+    without them. ``cap``: the reservation."""
     from .spend_ledger import CostTracker
     source = _resumed_of(command)
     if not source:
-        return CostTracker(start=0.0, cap=cap)
+        return CostTracker(start=0.0, cap=cap, resumed=False)
     found = None
     if baselines is not None:
         try:
-            found = baselines.baseline(source)
+            found = baselines.baselines(source)
         except Exception:  # noqa: BLE001 - not known: counted up to the cap
             found = None
     if found is None:
-        return CostTracker(start=None, cap=cap)
-    return CostTracker(start=found[0], start_models=found[1], cap=cap)
+        return CostTracker(start=None, cap=cap, resumed=True)
+    latest, clean = found
+    return CostTracker(start=latest.total, start_models=latest.models,
+                       start_tokens=latest.tokens, clean=clean, cap=cap, resumed=True)
 
 
 def build_key_test_command(executable: str) -> List[str]:
     """Test Key (#658): one tiny request on Haiku, the cheapest model, run as
     an API turn (TurnRunner with billing "api", purpose "test"), so it goes
-    through the same checks and its cost is in the tally. Nothing is kept
+    through the same checks and its cost is in the total. Nothing is kept
     (``--no-session-persistence``), no tools, no MCP servers and no hooks or
     slash commands, so the request is only the question."""
     return [executable, "-p", "--input-format", "stream-json", "--output-format",
@@ -1325,6 +1424,24 @@ class TurnRunner:
         #: everything so far cost; an API turn that ends while it's False
         #: keeps the rest of its reservation counted (spend_ledger).
         self._cost_known = True
+        #: A result on API credits came without a usable cost (#663): what
+        #: it cost is never known, so the reservation stays counted.
+        self._cost_lost = False
+        #: (chat, total, models, tokens) from the latest result, recorded as
+        #: the chat's clean baseline if the process ends cleanly (#663).
+        self._last_reported: Optional[tuple] = None
+        #: The process was killed (Stop, a refusal): it saved no cost state.
+        self._killed = False
+        #: How many messages have actually been written to Claude Code
+        #: (#663): only a turn that sent something can have cost anything.
+        self.messages_written = 0
+        #: Messages written whose "api_sent" event is still to go out, sent
+        #: once the lock is let go (``_flush_sent``).
+        self._sent_notes: List[str] = []
+        #: ``parser.assistant_messages`` at the last result: more since
+        #: means a request after it went through, so it may have cost
+        #: something no result has counted yet (#663).
+        self._answers_at_result = 0
         #: MCP servers this chat turns off (#468), kept out of this turn's
         #: process with ``--settings`` (claude_mcp.settings_args).
         self.disabled_mcp = list(disabled_mcp or ())
@@ -1377,6 +1494,10 @@ class TurnRunner:
         #: a test can fire them when it likes instead of waiting minutes.
         self._timer = timer
         self._env = dict(env if env is not None else child_environment())
+        if self.billing == ROUTE_API:
+            # No certificate authority from the environment (#663).
+            from .billing import api_environment
+            self._env = api_environment(self._env)
         # Ask for session_state_changed, so the turn ends when Claude Code says
         # it's idle, not at the first result (#76).
         self._env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
@@ -1421,6 +1542,9 @@ class TurnRunner:
         #: True once any echo has come. Until then (a Claude Code without
         #: the echo, or a test's fake), each result answers one message.
         self._echoes = False
+        #: Reading stopped at Stop's result, with output perhaps still unread
+        #: (``untaken_sure``).
+        self._read_cut_short = False
         #: True from a result until Claude Code says it's running again: a
         #: steer now is answered after, not taken into work in progress.
         self._answered = False
@@ -1473,7 +1597,8 @@ class TurnRunner:
                 ok = self._write_send_now(prompt)
             if ok:
                 self.last_activity = "starting on your new message"
-            return ok
+        self._flush_sent()
+        return ok
 
     def send_follow_up(self, prompt: str, images: Optional[List[dict]] = None) -> bool:
         """Send a message while Claude is idle, waiting on background work
@@ -1487,7 +1612,8 @@ class TurnRunner:
             if ok:
                 self.waiting_on_background = False
                 self.last_activity = "starting on your new message"
-            return ok
+        self._flush_sent()
+        return ok
 
     def steer(self, prompt: str) -> bool:
         """Send a message into the running turn without stopping it (#238).
@@ -1509,7 +1635,8 @@ class TurnRunner:
                 # join, so it's simply the next message (#161).
                 self.waiting_on_background = False
                 self.last_activity = "starting on your new message"
-            return ok
+        self._flush_sent()
+        return ok
 
     @property
     def steering(self) -> List[str]:
@@ -1517,6 +1644,34 @@ class TurnRunner:
         with self._lock:
             return [m[1] for m in self._untaken if m[0] == "steer"] + [
                 prompt for kind, prompt in self._waiting if kind == "steer"]
+
+    def untaken(self) -> List[Tuple[str, str]]:
+        """Steers and Send Now messages Claude hasn't taken in, oldest
+        first, as (kind, text), for the window to give back when the turn
+        ends, after a Stop most of all, rather than lose them (#238, #663).
+        Without echoes (``echoes``) it's a guess: a result is taken to
+        answer the oldest message other than a steer."""
+        with self._lock:
+            return [(m[0], m[1]) for m in self._untaken if m[0] in ("steer", "now")] + [
+                (kind, prompt) for kind, prompt in self._waiting if kind in ("steer", "now")]
+
+    @property
+    def untaken_sure(self) -> bool:
+        """Whether every message ``untaken`` lists certainly didn't go in
+        (#663 review 5). One never written certainly didn't. One written is
+        certain only with Claude Code's echoes, and only if reading wasn't
+        cut short at Stop, which leaves any echo after it unread."""
+        with self._lock:
+            written = any(m[0] in ("steer", "now") for m in self._untaken)
+            return not written or (self._echoes and not self._read_cut_short)
+
+    @property
+    def echoes(self) -> bool:
+        """True once Claude Code has echoed a message it took in, so what
+        ``untaken`` says is known; False (a Claude Code without the echoes,
+        or none taken in yet) when a message it lists may have gone in."""
+        with self._lock:
+            return self._echoes
 
     def _write_message(self, kind: str, prompt: str, images: Optional[List[dict]] = None,
                        late: bool = False) -> bool:
@@ -1527,7 +1682,23 @@ class TurnRunner:
             self._cost_known = False  # until its result says what it cost
             self._unanswered += 1
             self._untaken.append([kind, prompt, late, message_id])
+            self.messages_written += 1
+            self._sent_notes.append(kind)
         return ok
+
+    def _flush_sent(self) -> None:
+        """Say each message just written, on API credits (#663): an
+        "api_sent" event, which is when the window says "Sent on API
+        credits". Only once it's really been written, after the account
+        was checked; never under ``_lock``, as the event's handler may call
+        back in."""
+        with self._lock:
+            notes, self._sent_notes = self._sent_notes, []
+        if self.billing != ROUTE_API:
+            return
+        for kind in notes:
+            self._emit(TurnEvent("api_sent", session_id=self.parser.session_id,
+                                 data={"kind": kind}))
 
     def _taken(self, message_id: str) -> Optional[tuple]:
         """Claude Code echoed one of our messages: it has taken it in. Its
@@ -1709,6 +1880,7 @@ class TurnRunner:
                     self._write_send_now(prompt)
                 else:
                     self._write_message(kind, prompt)
+        self._flush_sent()
 
     def _result_came(self) -> bool:
         """Count a result against the oldest unanswered message. True if a
@@ -1719,8 +1891,22 @@ class TurnRunner:
             # the echoes that's exact, and a result with nothing taken in (a
             # background agent's notification, say) answers nothing; without
             # them, one. Never below zero.
+            if not self._echoes:
+                # No echoes: a result answers one message, taken to be the
+                # oldest that isn't a steer (a steer joins work; it never
+                # has a result of its own), so ``untaken`` doesn't list
+                # a Send Now that was answered (#663).
+                for index, message in enumerate(self._untaken):
+                    if message[0] != "steer":
+                        del self._untaken[index]
+                        break
             if self._echoes:
                 answered = self._taken_since_result
+            elif self._cancelled:
+                # No echoes, and stopped (#663): whether a steer went in
+                # can't be told, so it stays unanswered (its cost not known)
+                # and goes back to the reply box rather than being lost.
+                answered = 1
             else:
                 # No echoes (a Claude Code without them): a steer can't be
                 # told apart, so the result is taken to answer it too, rather
@@ -1826,22 +2012,34 @@ class TurnRunner:
         interrupted turn sends its result, with ``total_cost_usd``, within
         half a second. That settles the ledger with what was really spent,
         rather than keeping the whole reservation counted; the result's
-        handling ends the process, and STOP_COST_WAIT ends it regardless."""
-        with self._lock:
-            self._cancelled = True
-            process = self._process
-            graceful = (self.billing == ROUTE_API and not self._cost_known
-                        and process is not None and process.poll() is None
-                        and self._write_line({
-                            "type": "control_request",
-                            "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
-                            "request": {"subtype": "interrupt"}}))
-        if graceful:
-            ender = self._timer(STOP_COST_WAIT, self._kill)
-            ender.daemon = True
-            ender.start()
+        handling ends the process, and STOP_COST_WAIT ends it regardless.
+
+        Never blocks (#663): it runs on the UI thread, and a write to a
+        Claude Code that isn't reading its input would wait for good, as
+        would taking ``_lock`` while another write holds it. So the flag is
+        set without the lock, the timer that ends the process starts
+        first, and the interrupt is written on a thread of its own; the
+        kill is what frees a stuck write."""
+        self._cancelled = True
+        process = self._process
+        graceful = (self.billing == ROUTE_API and not self._cost_known
+                    and process is not None and process.poll() is None)
+        if not graceful:
+            self._kill()
             return
-        self._kill()
+        ender = self._timer(STOP_COST_WAIT, self._kill)
+        ender.daemon = True
+        ender.start()
+
+        def interrupt() -> None:
+            with self._lock:
+                ok = self._write_line({
+                    "type": "control_request",
+                    "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
+                    "request": {"subtype": "interrupt"}})
+            if not ok:
+                self._kill()  # nothing to wait for
+        threading.Thread(target=interrupt, name="claude-stop", daemon=True).start()
 
     @property
     def cancelled(self) -> bool:
@@ -1853,6 +2051,8 @@ class TurnRunner:
             return
         try:
             if process.poll() is None:
+                # Killed, it saves no cost state (#663): not a clean end.
+                self._killed = True
                 self._tree.kill()
                 if process.poll() is None:
                     process.kill()
@@ -1860,7 +2060,14 @@ class TurnRunner:
             pass
 
     def _emit(self, event: TurnEvent) -> None:
-        if event.is_error or event.kind in ("failed", "retry"):
+        if self.billing == ROUTE_API:
+            # On API credits, nothing the turn says may carry a key (#663):
+            # Claude's own text can quote one (a <synthetic> error, a file
+            # it read), not only an error. A permission request's own
+            # display (its summary and detail) is scrubbed too, while what
+            # it answers with stays as Claude Code sent it.
+            scrub_event(event)
+        elif event.is_error or event.kind in ("failed", "retry"):
             # Error text can quote Claude Code's stderr or an API error:
             # never a key in the window, a log or a bug report (#658).
             event.text, event.detail = scrub(event.text), scrub(event.detail)
@@ -1884,16 +2091,24 @@ class TurnRunner:
         return command + budget_flags(self.reservation.amount)
 
     def _settle(self, event: TurnEvent) -> None:
-        """A result on API credits: what it added to the tally, and the
+        """A result on API credits: what it added to the total, and the
         turn's cost so far on the event for the window (#658). Over the
         budget, out of credit or a refused key said in words."""
+        from .spend_ledger import valid_cost
         data = event.data or {}
-        added, by_model = self.costs.add(data.get("reported_cost_usd"),
-                                         data.get("reported_model_costs"))
-        if self.reservation is not None and (added or by_model):
-            self.ledger.settle(self.reservation, added, by_model)
+        if not valid_cost(data.get("reported_cost_usd")):
+            # Missing, null, NaN, infinite or negative (#663): what this
+            # result cost can't be known, so the turn's cost never is, and
+            # its reservation stays held rather than being freed.
+            self._cost_lost = True
+        else:
+            added, by_model = self.costs.add(data.get("reported_cost_usd"),
+                                             data.get("reported_model_costs"),
+                                             data.get("reported_tokens"))
+            if self.reservation is not None and (added or by_model):
+                self.ledger.settle(self.reservation, added, by_model)
         if event.is_error:
-            plain = failure_text(event.raw_type, event.text, self.costs.total,
+            plain = failure_text(event.raw_type, event.text, self.costs.known_total,
                                  self.reservation.amount if self.reservation else None)
             if plain:
                 event.text = plain
@@ -1908,21 +2123,56 @@ class TurnRunner:
         if "reported_cost_usd" not in data:
             return
         chat = self.parser.session_id or event.session_id or _session_of(self.command)
+        tokens = data.get("reported_tokens")
+        reported = (chat, data.get("reported_cost_usd"), data.get("reported_model_costs"),
+                    tokens[1] if isinstance(tokens, (tuple, list)) and len(tokens) == 2
+                    else None)
+        self._last_reported = reported
         try:
-            self.baselines.set_baseline(chat, data.get("reported_cost_usd"),
-                                        data.get("reported_model_costs"))
+            self.baselines.set_baseline(*reported)
         except Exception:  # noqa: BLE001 - a lost baseline is counted up to the cap
             pass
 
+    def _note_clean_end(self, process) -> None:
+        """The process ended cleanly (stdin closed, exit code 0, never
+        killed): Claude Code saved the chat's cost as its last result said,
+        so that's the chat's clean baseline (#663; spend_ledger, "Which
+        baseline was restored"). A stopped or killed process saved nothing,
+        and leaves the clean one as it was."""
+        if (self._last_reported is None or self._killed or process is None
+                or process.returncode != 0 or self.baselines is None):
+            return
+        try:
+            self.baselines.set_baseline(*self._last_reported, clean=True)
+        except Exception:  # noqa: BLE001 - a lost baseline is counted from the latest
+            pass
+
+    @property
+    def cost_complete(self) -> bool:
+        """Whether every request so far is in what the turn's results said
+        it cost (#663)."""
+        return self._cost_known and not self._cost_lost
+
     def _cost_data(self, event: TurnEvent) -> None:
-        """The turn's cost and route on its last event (#658)."""
+        """The turn's cost and route on an event that says it (#658): its
+        last, and "waiting" when Claude answers with background work left
+        (#663). ``cost_complete`` False when some of it isn't known (a Stop
+        whose result didn't come, a result without a usable cost), and
+        ``sent`` whether any message went, so nothing is said of the cost
+        of a message that never did."""
         if self.billing != ROUTE_API:
             return
+        # Counted up to the reservation because what was restored couldn't
+        # be told (#663): the ledger keeps that conservative count, but it's
+        # no cost to say, so the event says the cost isn't known.
+        guessed = self.costs.guessed
         event.data = {**(event.data or {}), "billing": ROUTE_API,
-                      "cost_usd": round(self.costs.total, 6),
+                      "cost_usd": None if guessed else round(self.costs.total, 6),
+                      "cost_complete": self.cost_complete and not guessed,
+                      "sent": self.messages_written > 0,
                       "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()}}
         if event.is_error and event.kind == "failed":
-            plain = failure_text(event.raw_type, event.text, self.costs.total,
+            plain = failure_text(event.raw_type, event.text, self.costs.known_total,
                                  self.reservation.amount if self.reservation else None)
             if plain:
                 event.text = plain
@@ -1934,7 +2184,7 @@ class TurnRunner:
             return
         try:
             self.ledger.close(self.reservation,
-                              complete=self._cost_known and not self.background_tasks)
+                              complete=self.cost_complete and not self.background_tasks)
         except Exception:  # noqa: BLE001 - left open is counted: the safe way
             pass
 
@@ -2046,6 +2296,9 @@ class TurnRunner:
             #: True from a tool or text after an answer until the next result:
             #: Claude is carrying on, so nothing starts the ceiling meanwhile.
             carrying_on = False
+            #: Stop on API credits ended the process at its interrupt's
+            #: result (#663): anything still in the pipe is never read.
+            stop_reading = False
 
             def settle(outcome: str, final_event: TurnEvent) -> None:
                 """After ``_end_or_wait`` said "closed" or "…waiting": the turn
@@ -2058,12 +2311,15 @@ class TurnRunner:
                     self._unsaid_reply = ""  # said now, with the background work
                     self.last_activity = ("waiting for background work: "
                                           + "; ".join(self.background_tasks))
-                    self._emit(TurnEvent("waiting", text=final_event.text,
-                                         session_id=final_event.session_id,
-                                         is_error=final_event.is_error,
-                                         denials=list(final_event.denials),
-                                         raw_type=final_event.raw_type,
-                                         data={"tasks": list(self.background_tasks)}))
+                    waiting = TurnEvent("waiting", text=final_event.text,
+                                        session_id=final_event.session_id,
+                                        is_error=final_event.is_error,
+                                        denials=list(final_event.denials),
+                                        raw_type=final_event.raw_type,
+                                        data={"tasks": list(self.background_tasks)})
+                    # What the reply cost so far, said with it (#663).
+                    self._cost_data(waiting)
+                    self._emit(waiting)
                     # Said now; the turn's end mustn't say them again.
                     final_event.denials = []
                     final_event.is_error = False
@@ -2140,6 +2396,22 @@ class TurnRunner:
                             self._mode = event.text
                             self._emit(event)
                         continue
+                    if event.kind == "retry" and api and key_refused(event.data):
+                        # Anthropic refused the key (#663): Claude Code would
+                        # retry for about four minutes before saying so. A
+                        # refused request costs nothing, so if no request
+                        # went through since the last result, the cost is
+                        # all known and the message goes back to you.
+                        self._stopped_for_key = True
+                        if self.parser.assistant_messages == self._answers_at_result:
+                            self._cost_known = True
+                            self.stopped_before_answer = True
+                        else:
+                            self.stopped_mid_turn = True
+                        self._kill()
+                        final = TurnEvent("failed", text=KEY_REFUSED, is_error=True,
+                                          session_id=self.parser.session_id)
+                        break
                     if event.kind == "retry":
                         # Claude Code is retrying (#468), for Turn Status too,
                         # which says so itself: what Claude last did stands.
@@ -2236,6 +2508,8 @@ class TurnRunner:
                             self.pending.pop(event.text, None)
                         self.last_activity = "working"
                     elif event.kind == "permission":
+                        if api and event.request is not None:
+                            event.request.hide_keys = True  # before it's shown (#663)
                         with self._lock:
                             self.pending[event.request.request_id] = event.request
                         self.last_activity = f"waiting for you: {event.request.summary()}"
@@ -2334,6 +2608,7 @@ class TurnRunner:
                         # runs as its own result), so the turn waits for idle;
                         # an older Claude Code without them ends here.
                         replaced = self._result_came()
+                        self._answers_at_result = self.parser.assistant_messages
                         if api:
                             self._settle(event)
                         self._note_baseline(event)  # every turn's, every result (#658)
@@ -2342,10 +2617,21 @@ class TurnRunner:
                             # its cost (#658).
                             self._cost_known = True
                         if api and self._cancelled:
-                            # Stop on API credits: the interrupt's result has
-                            # said what the turn cost, so now it ends (#658).
-                            self._cost_known = True
+                            # Stop on API credits: the interrupt's result says
+                            # what the turn cost, so now it ends (#658), at
+                            # once. A message still unanswered (a Send Now or
+                            # a steer not yet taken in, #663) isn't waited
+                            # for: Claude Code would take it in and start a
+                            # new paid request after Stop. Its cost is then
+                            # not known (``_cost_known`` stays False), so the
+                            # reservation stays held, and a steer not taken in
+                            # goes back to the reply box (``steering``).
+                            # Nothing it wrote after is read: it's over.
                             self._kill()
+                            stop_reading = True
+                            # An echo still in the pipe is never read, so a
+                            # message written may have gone in (#663 review 5).
+                            self._read_cut_short = True
                             break
                         if replaced and event.raw_type == "error_during_execution":
                             # The work Send Now stopped: not the turn
@@ -2393,12 +2679,13 @@ class TurnRunner:
                     else:
                         self._emit(event)
                 self._refuse_unsupported()
-                if self.stopped_before_answer or self.stopped_mid_turn:
+                if self.stopped_before_answer or self.stopped_mid_turn or stop_reading:
                     break
             disarm_ceiling()
             self._close_stdin()
             process.wait()
             err_thread.join(timeout=2)
+            self._note_clean_end(process)
             if (final is not None and not final.is_error and not said_while_waiting
                     and not self._cancelled and process.returncode
                     and self.background_tasks):
@@ -2407,7 +2694,8 @@ class TurnRunner:
                 detail = next((x for x in reversed(stderr_lines) if x.strip()), "")
                 final = TurnEvent("failed", text=exit_message(process.returncode, detail),
                                   is_error=True, session_id=self.parser.session_id)
-            if said_while_waiting and final is not None and not self.stopped_mid_turn:
+            if (said_while_waiting and final is not None and not self.stopped_mid_turn
+                    and not self._stopped_for_key):
                 # Over with no result since the reply was said, with the
                 # background work running (#161): don't say it again.
                 if self._cancelled:

@@ -474,16 +474,17 @@ yet.
   `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
   The key is kept by the system: protected with your Windows sign-in on Windows, in the
   Keychain on a Mac, and with `secret-tool` on Linux. It's never in a backup, a bug report, a
-  log or a command line. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
+  log or a command line. Like any saved password, a program running as you can read it from
+  there. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
   works. That test cost less than a cent.", or why it didn't. **Replace Key** puts in another,
   and **Remove Key** (Alt+M) forgets it after asking. On a Mac, the first message on API
   credits may bring up a keychain question for "security" (the command that hands Claude Code
   the key): choose **Always Allow**, or it asks again each time.
 - **Spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
-  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Tally
+  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Total
   box right after them says what's been spent since the last reset, what's held for messages
   still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
-  saved asks first. **Reset Tally** (Alt+E) starts counting again from nothing, after asking.
+  saved asks first. **Reset Total** (Alt+E) starts counting again from nothing, after asking.
   **Release Held** (Alt+H) is on only when something is held for messages that are no longer
   running (left by an earlier run, a crash, or a message you stopped before Claude Code said
   what it cost): after asking, it lets that go, since those messages may have spent up to that
@@ -509,23 +510,41 @@ yet.
   and so do the window's title, the heading and the messages list's name; the reply box is
   named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
   chat $0.42, The Chat Place $12.30 of $190" (Enter there opens Tools, API Keys). Every message
-  you send in it, Ask Aside, queued messages, steering and Send Now included, is followed by
-  "Sent on API credits", always said, even when announcements are off. The first message in
-  each such chat each time The Chat Place starts
-  asks "Send on API credits?" first: Enter sends, Escape keeps the message in the reply box.
-  When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents." (or "less than
-  a cent"). Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask
-  before the first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit
-  reply" (Alt+V), both on at first.
+  you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
+  gone on API credits once Claude Code has it, always, even when announcements are off. When
+  you send, the status bar says "Sending on API credits…" at once, and what's read back a
+  moment later says it: "Sent on API credits to Paid chat: Add the totals." Otherwise it's
+  "Sent on API credits to Paid chat." If another announcement cuts in over it, it's said once
+  more after that, in the short form, unless Paid chat has said something of its own first
+  (its reply with what it cost, that it needs you, or how its turn ended). Repeat Last
+  Announcement doesn't bring it back. The first message in each
+  such chat each time The Chat Place starts asks "Send on API credits?" first: Enter sends,
+  Escape keeps the message in the reply box. If that message isn't sent after all, the next one
+  asks again. When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents."
+  (or "less than a cent", or "at no cost"). A message you stop, one that fails after it was
+  sent, an answer that leaves work running in the background, a slash command that cost
+  something, and an Ask Aside answer say what they cost too; "at least 6 cents" means Claude
+  Code didn't say what the last part cost, and "cost not known" that it isn't known at all
+  (the cost is still counted toward your limits).
+  Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask before the
+  first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit reply"
+  (Alt+V), both on at first. The cost is said even when announcements are off, unless you turn
+  that setting off.
 - **Before anything is sent** The Chat Place checks with Claude Code that the message will be
   charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
-  spending limit is reached or the tally is damaged, the message isn't sent, stays in the reply
-  box, and you hear why, before any "Send on API credits?". A chat on the subscription
-  is checked the same way the other round: it never uses a key. A message that reaches its
-  per-message limit stops, says so and what it cost; one refused for no credit or a bad key
-  says that plainly.
+  spending limit is reached or the total is damaged, the message isn't sent, stays in the reply
+  box, and you hear why, before any "Send on API credits?". The key only ever goes to
+  Anthropic's API (`https://api.anthropic.com`), even if a settings file of yours or a
+  project's points Claude Code somewhere else. A chat on the subscription is checked the same
+  way the other round: it never uses a key, or any sign-in but your Claude subscription's. A
+  message that reaches its per-message limit stops, says so and what it cost; one refused for no
+  credit says that plainly, and a key Anthropic refuses is said within seconds, with the message
+  back in the reply box, rather than after minutes of Claude Code trying again.
+- **Older releases.** Chats on API credits are kept in a file of their own, which releases of
+  The Chat Place from before API credits don't read: they don't list those chats at all, rather
+  than run them on your subscription.
 - **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
-  today, the last 7 days, since the tally was reset, what's held, what's left of the limit, and
+  today, the last 7 days, since the total was reset, what's held, what's left of the limit, and
   spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
   credits" or "Claude subscription", and for API credits what the chat has spent.
 
@@ -1973,10 +1992,20 @@ input stays open for the turn so The Chat Place can answer what Claude asks; it'
 turn's result arrives. That runs under the same login as the desktop app, never an API key; it
 uses the plan's Agent SDK credit, as any `claude -p` does. The exception is a chat you made on
 API credits: its turns get your key only through Claude Code's `apiKeyHelper` setting, a
-command that reads the kept key and prints it for Claude Code (never in an environment
-variable, so the tools Claude runs don't see it), and a `--max-budget-usd` reserved from the
-spending limits. Its message goes only once Claude Code's answer to `initialize` says the turn
-will use that key at Anthropic's own API.
+command that reads the kept key and prints it for Claude Code, and a `--max-budget-usd`
+reserved from the spending limits. The key is never in an environment variable, so the
+commands Claude runs (Bash), hooks and MCP servers don't get it in their environment; like any
+saved password, though, a program running as you can read it from the system's key store. The
+same `--settings` sets `ANTHROPIC_BASE_URL` to `https://api.anthropic.com`, which overrides any
+settings file that points elsewhere, and keeps TLS certificates checked. Claude Code is started
+without `NODE_EXTRA_CA_CERTS` (and `NODE_TLS_REJECT_UNAUTHORIZED`) in its environment, so a
+certificate authority added there, such as a company proxy's that decrypts traffic, isn't
+trusted with the key. A proxy set with `HTTPS_PROXY` is still used: the connection through it
+is encrypted to Anthropic and checked against the usual certificate authorities, so a proxy that
+only passes traffic on works and one that decrypts it is refused. Claude Code passes these
+settings on to what it runs, so in an API chat the commands Claude runs, hooks and MCP servers
+get no extra certificate authority either. Its message goes only once Claude Code's answer to
+`initialize` says the turn will use that key at Anthropic's own API.
 
 - It never uses `--bare`, which needs an API key.
 - It needs the native `claude.exe`. The npm install's `claude.cmd` is never run, because Windows
@@ -1996,8 +2025,11 @@ will use that key at Anthropic's own API.
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and the Bedrock, Vertex and
   Foundry switches. Both lists are in `claude_cli.py`.
 - Before the message is written, Claude Code's answer to `initialize` says how the turn would
-  be charged; a subscription chat that would use any API key, or another provider, is stopped
-  there, with nothing sent. As a second check, `claude` reports where its credentials came from
+  be charged; a subscription chat that would use any API key, any sign-in token other than your
+  subscription's (your claude.ai login, or a token from `claude setup-token` given as
+  `CLAUDE_CODE_OAUTH_TOKEN` in a settings file), such as an `ANTHROPIC_AUTH_TOKEN` in a settings
+  file or a kind Claude Code reports that The Chat Place doesn't know, or another provider, is
+  stopped there, with nothing sent. As a second check, `claude` reports where its credentials came from
   before it sends anything. If that's an API key rather than the subscription login, The Chat
   Place stops the run and says so. (A chat on API credits is checked the other way round.)
 
@@ -2079,9 +2111,11 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 - **Claude chats:** The Chat Place says "Steering" and the chat's name (reading your message back
   as it does for Send), then "has your message" once Claude takes it in. If Claude had already
   finished its reply, that reply is read, then that Claude is answering your message, straight
-  after, in the same turn. A steered message that the turn ends (or Stop stops) before Claude
-  takes it in comes back to the reply box, never lost or sent twice. Attached files go as their
-  paths, as for a queued message.
+  after, in the same turn. A steered message, or one sent with Send Now, that the turn ends (or
+  Stop stops) before Claude takes it in comes back to the reply box, never lost, and you hear
+  that it wasn't taken in. With a Claude Code too old to say what it has taken in, you hear that
+  it "may not have been taken in" instead, so check the chat before you send it again. Attached
+  files go as their paths, as for a queued message.
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)

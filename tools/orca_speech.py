@@ -186,11 +186,11 @@ STEPS = [
     Step("API Keys, overall limit", ["Tab"],
          expect=["Stop API chats once The Chat Place has spent"]),
     Step("API Keys, per-message limit", ["Tab"], expect=["Stop any one message at about"]),
-    # The tally, a read-only box right after the limits (#658 review).
-    Step("API Keys, tally", ["Tab"], expect=["Tally"]),
+    # The total, a read-only box right after the limits (#658 review).
+    Step("API Keys, total", ["Tab"], expect=["Total"]),
     Step("API Keys, Save Limits", ["Tab"], expect=["Save Limits", "push button"]),
     # Release Held is off with nothing held, so Tab goes past it.
-    Step("API Keys, Reset Tally", ["Tab"], expect=["Reset Tally", "push button"]),
+    Step("API Keys, Reset Total", ["Tab"], expect=["Reset Total", "push button"]),
     Step("API Keys, about spending", ["Tab"], expect=["About spending"],
          refuse=["Release Held push button"]),
     Step("API Keys, Billing Page", ["Tab"], expect=["Billing Page", "push button"]),

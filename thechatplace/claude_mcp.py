@@ -312,7 +312,9 @@ def merge_settings(command: List[str], extra: dict) -> List[str]:
     chat's apiKeyHelper (#658) goes in this way, so no other setting on the
     command can name another one. A ``--settings`` whose value isn't a JSON
     object is left alone and the merged one is added after it, so it's the
-    last, which is the one Claude Code keeps."""
+    last, which is the one Claude Code keeps. ``env`` is merged a level
+    down, its values winning too, so an API turn's pinned address (#663)
+    doesn't drop another setting's variables."""
     command = list(command)
     if not extra:
         return command
@@ -324,7 +326,10 @@ def merge_settings(command: List[str], extra: dict) -> List[str]:
         except ValueError:
             continue
         if isinstance(current, dict):
+            env = current.get("env")
             current.update(extra)
+            if isinstance(env, dict) and isinstance(extra.get("env"), dict):
+                current["env"] = {**env, **extra["env"]}
             command[i + 1] = json.dumps(current, ensure_ascii=False)
             return command
     return command + ["--settings", json.dumps(extra, ensure_ascii=False)]

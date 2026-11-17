@@ -55,9 +55,14 @@ model will answer and how it would be charged, and the run is stopped if
 ``system/init`` reports an API key or an unchosen Fable.
 
 An aside about a chat on API credits (#658) is charged as the chat is: the
-same key, through apiKeyHelper only, a budget reserved from the spend
-ledger, and the same fail-closed check of initialize's ``account`` before
-the question goes. Its cost is settled in the ledger under the chat.
+same key, through apiKeyHelper only, to the same pinned address, a budget
+reserved from the spend ledger, and the same fail-closed check of
+initialize's ``account`` before the question goes. Its cost is settled in
+the ledger under the chat, counted from the chat's baseline as a fork
+restores it. As a turn does (#663): a "sent" event once the question is
+written, a refused key ending it at once, a result without a usable cost
+leaving the reservation held, a Stop that never blocks, and nothing
+key-shaped in what it says.
 """
 from __future__ import annotations
 
@@ -71,8 +76,8 @@ from dataclasses import dataclass
 from typing import Callable, Collection, Dict, Iterable, List, Optional
 
 from . import platform_paths
-from .billing import (ROUTE_API, account_problem, api_settings, budget_flags, failure_text,
-                      normalize_route, scrub, source_problem)
+from .billing import (KEY_REFUSED, ROUTE_API, account_problem, api_settings, budget_flags,
+                      failure_text, key_refused, normalize_route, scrub, source_problem)
 from .claude_cli import (INIT_ANSWER_WAIT, INIT_UNANSWERED_API, STOP_COST_WAIT, ResumeRefused,
                          StreamParser, child_environment, cost_tracker_for, exit_message,
                          fable_problem, initialize_line, is_safe_dir, is_safe_model,
@@ -310,13 +315,20 @@ def build_aside_command(executable: str, source_id: str, model: str = "",
 @dataclass
 class AsideEvent:
     """``kind``: "text" (the answer so far, while it streams), "done" (the
-    whole answer) or "failed" (why, in words)."""
+    whole answer), "failed" (why, in words), or, on API credits only,
+    "sent": the question has just been written to Claude Code, after its
+    account was checked (#663), which is when "Sent on API credits" is said."""
 
     kind: str
     text: str = ""
     #: On "done" or "failed" for an aside on API credits (#658): what it
-    #: cost, in dollars. None on the subscription.
+    #: cost, in dollars. None on the subscription, or when it isn't known.
     cost_usd: Optional[float] = None
+    #: On API credits (#663): False when some of the cost isn't known (a
+    #: Stop whose result didn't come, a result without a usable cost), and
+    #: whether the question was sent at all.
+    cost_complete: bool = True
+    sent: bool = False
 
 
 _MISSING = ("Claude Code couldn't find this chat's conversation on disk, so there's nothing "
@@ -392,12 +404,20 @@ class AsideRunner:
         self.costs = CostTracker()
         #: The question's cost is known: it was never sent, or its result came.
         self._cost_known = True
+        #: The question was written to Claude Code (#663).
+        self._written = False
+        #: A result came without a usable cost (#663): never known, held.
+        self._cost_lost = False
         self.cwd = cwd
         self.question = question
         self.on_event = on_event
         self._popen = popen
         self._timer = timer
         self._env = dict(env if env is not None else child_environment())
+        if self.billing == ROUTE_API:
+            # No certificate authority from the environment (#663).
+            from .billing import api_environment
+            self._env = api_environment(self._env)
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
@@ -429,37 +449,32 @@ class AsideRunner:
         (TurnRunner.cancel, #658): the interrupted result says what the
         question really cost, rather than its whole reservation staying
         counted. Its handling ends the process; STOP_COST_WAIT ends it
-        regardless."""
+        regardless.
+
+        Never blocks (#663): Stop runs on the UI thread, and a pipe write to
+        a Claude Code that isn't reading waits for good, even with nothing
+        else writing. So the timer that ends the process starts first, and
+        the interrupt is written on a thread of its own; the kill frees a
+        stuck write."""
         with self._lock:
             self._cancelled = True
             process = self._process
             graceful = (self.billing == ROUTE_API and not self._cost_known
                         and process is not None and process.poll() is None)
-        if graceful and self._try_write(json.dumps({
-                "type": "control_request",
-                "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
-                "request": {"subtype": "interrupt"}}).encode("utf-8") + b"\n"):
-            ender = self._timer(STOP_COST_WAIT, self._kill)
-            ender.daemon = True
-            ender.start()
+        if not graceful:
+            self._kill()
             return
-        self._kill()
+        ender = self._timer(STOP_COST_WAIT, self._kill)
+        ender.daemon = True
+        ender.start()
+        line = json.dumps({"type": "control_request",
+                           "request_id": f"thechatplace-interrupt-{uuid.uuid4().hex[:8]}",
+                           "request": {"subtype": "interrupt"}}).encode("utf-8") + b"\n"
 
-    def _try_write(self, data: bytes) -> bool:
-        """Write without waiting: Stop runs on the UI thread, and a write
-        stuck on a Claude Code that isn't reading must not freeze it (the
-        kill that follows a False frees the stuck write)."""
-        process = self._process
-        if process is None or not self._write_lock.acquire(blocking=False):
-            return False
-        try:
-            process.stdin.write(data)
-            process.stdin.flush()
-            return True
-        except (OSError, ValueError):
-            return False
-        finally:
-            self._write_lock.release()
+        def interrupt() -> None:
+            if not self._write(line):
+                self._kill()  # nothing to wait for
+        threading.Thread(target=interrupt, name="claude-aside-stop", daemon=True).start()
 
     def _kill(self) -> None:
         process = self._process
@@ -474,6 +489,10 @@ class AsideRunner:
             pass
 
     def _emit(self, event: AsideEvent) -> None:
+        if self.billing == ROUTE_API or event.kind == "failed":
+            # Never a key in the window (#658), and on API credits not in
+            # the answer either (#663): Claude can quote one it read.
+            event.text = scrub(event.text)
         try:
             self.on_event(event)
         except Exception:  # noqa: BLE001 - a UI bug must not wedge the worker
@@ -498,7 +517,15 @@ class AsideRunner:
                 return False
             self._sent = True
             self._cost_known = False
-        self._write(message_line(self.question))
+        if self._write(message_line(self.question)):
+            self._written = True
+            if self.billing == ROUTE_API:
+                # Said now, once it's really gone (#663).
+                self._emit(AsideEvent("sent"))
+        else:
+            # Claude Code is gone: a line it never read sent nothing.
+            with self._lock:
+                self._cost_known = True
         return True
 
     def _refuse_unanswered(self) -> None:
@@ -576,6 +603,7 @@ class AsideRunner:
                                    self._refuse_unanswered if api else self._send_question)
             fallback.daemon = True
             fallback.start()
+            stop_reading = False
             for raw in iter(process.stdout.readline, b""):
                 line = _decode(raw)
                 streamed = self._stream_text(line, streamed)
@@ -594,6 +622,17 @@ class AsideRunner:
                             break
                         if self._send_question():
                             fallback.cancel()
+                    elif event.kind == "retry" and api and key_refused(event.data):
+                        # Anthropic refused the key (#663): said now, not
+                        # after Claude Code's four minutes of retrying. A
+                        # refused request costs nothing; if one got through
+                        # first, its cost stays held.
+                        if self.parser.assistant_messages == 0:
+                            with self._lock:
+                                self._cost_known = True
+                        final = AsideEvent("failed", _in_aside_words(KEY_REFUSED))
+                        self._kill()
+                        break
                     elif event.kind == "started":
                         problem = (source_problem(self.billing, self.parser.api_key_source)
                                    or fable_problem(self.parser.model, chosen, sent=True,
@@ -619,8 +658,10 @@ class AsideRunner:
                             self._settle(event)
                         if api and self._cancelled:
                             # Stop's interrupt brought the result, and so the
-                            # cost: now it ends (#658).
+                            # cost: now it ends (#658), and nothing it wrote
+                            # after is read (#663).
                             self._kill()
+                            stop_reading = True
                             break
                         if event.is_error:
                             final = AsideEvent("failed", _missing_or(
@@ -629,7 +670,7 @@ class AsideRunner:
                             answer = (event.text or streamed).strip()
                             final = AsideEvent("done", answer or "(Claude gave no answer.)")
                         self._close_stdin()
-                if final is not None and final.kind == "failed":
+                if (final is not None and final.kind == "failed") or stop_reading:
                     break
                 self._refuse_unsupported()
             fallback.cancel()
@@ -655,30 +696,41 @@ class AsideRunner:
             self._tree.close()
             if self.reservation is not None:
                 try:
-                    self.ledger.close(self.reservation, complete=self._cost_known)
+                    self.ledger.close(self.reservation,
+                                      complete=self._cost_known and not self._cost_lost)
                 except Exception:  # noqa: BLE001 - left open is counted: the safe way
                     pass
         if self.billing == ROUTE_API:
-            final.cost_usd = round(self.costs.total, 6)
+            # A count up to the reservation, as what the fork restored
+            # couldn't be told, is no cost to say (#663): not known.
+            guessed = self.costs.guessed
+            final.cost_usd = None if guessed else round(self.costs.total, 6)
+            final.cost_complete = self._cost_known and not self._cost_lost and not guessed
+            final.sent = self._written
             if final.kind == "failed":
-                plain = failure_text("", final.text, self.costs.total)
+                plain = failure_text("", final.text, self.costs.known_total)
                 if plain:
                     final.text = _in_aside_words(plain)
-        if final.kind == "failed":
-            final.text = scrub(final.text)  # never a key in the window (#658)
         self._emit(final)
 
     def _settle(self, event) -> None:
         """A result on API credits: its cost into the ledger (#658), and an
-        over-budget, out-of-credit or refused-key ending said in words."""
+        over-budget, out-of-credit or refused-key ending said in words. A
+        result without a usable cost leaves the cost unknown, and the
+        reservation held (#663)."""
+        from .spend_ledger import valid_cost
         data = event.data or {}
-        added, by_model = self.costs.add(data.get("reported_cost_usd"),
-                                         data.get("reported_model_costs"))
-        if self.reservation is not None and (added or by_model):
-            self.ledger.settle(self.reservation, added, by_model)
+        if valid_cost(data.get("reported_cost_usd")):
+            added, by_model = self.costs.add(data.get("reported_cost_usd"),
+                                             data.get("reported_model_costs"),
+                                             data.get("reported_tokens"))
+            if self.reservation is not None and (added or by_model):
+                self.ledger.settle(self.reservation, added, by_model)
+        else:
+            self._cost_lost = True
         self._cost_known = True
         if event.is_error:
-            plain = failure_text(event.raw_type, event.text, self.costs.total,
+            plain = failure_text(event.raw_type, event.text, self.costs.known_total,
                                  self.reservation.amount if self.reservation else None)
             if plain:
                 event.text = _in_aside_words(plain)

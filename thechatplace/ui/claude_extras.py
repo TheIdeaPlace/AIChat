@@ -17,12 +17,33 @@ from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHE
                      AsideRunner, build_aside_command, finished_cut_from_file)
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
+from ..speech import speaker
 from .dialogs import AskAsideDialog, ChatOptionsDialog
 
 
 def _folder_key(folder: str) -> str:
     from .. import workplaces
     return workplaces.folder_key(folder or "")
+
+
+def _alive(window):
+    """``window`` while it's still there, else None (a dialog destroyed
+    before something it started was said)."""
+    return window if window else None
+
+
+def _aside_with_cost(text: str, cost: str, failed: bool) -> str:
+    """An aside's answer as said, with what it cost on API credits (#663):
+    before the answer, as a reply's is, so a long one doesn't hide it:
+    "Answer, 2 cents. …", "Answer, at no cost. …", "Answer, cost not
+    known. …"."""
+    from ..billing import cost_sentence
+    if failed:
+        return text if "It cost" in text else f"{text.rstrip()} {cost_sentence(cost)}"
+    for head in ("Answer.", "Answer:"):
+        if text.startswith(head):
+            return f"Answer, {announce.cost_phrase(cost)}{head[-1]}{text[len(head):]}"
+    return f"{text.rstrip()} {cost_sentence(cost)}"
 
 
 def _give_focus_back(window) -> None:
@@ -226,42 +247,85 @@ class ClaudeExtras:
         billing = ({k: v for k, v in self._billing_kwargs(own.cli_session_id).items()
                     if k != "chat_id"}  # an aside's chat is its command's
                    if api else {})
+        # An aside's "Sent on API credits" is kept under a key of its own,
+        # not the chat's: the chat's turn ending doesn't settle it, nor the
+        # aside's ending the turn's (#663).
+        notice_key = f"aside:{own.cli_session_id}" if api else ""
 
         def ask(question, on_event):
+            def arrived(event):
+                if event.kind == "sent":
+                    # The question really went on API credits (#663):
+                    # said now, from the dialog, not as Ask is pressed.
+                    self._api_message_sent(own.cli_session_id, window=_alive(dialog),
+                                           about=notice_key)
+                    return
+                try:
+                    on_event(event)
+                finally:
+                    if notice_key and event.kind != "text":
+                        # However it ended (answered, stopped, failed, the
+                        # dialog closed, or nothing to say at this level),
+                        # saying it again later would be stale (#663).
+                        speaker.forget(notice_key)
+
             def start(at):
-                runner = main_frame.AsideRunner(at, cwd, question,
-                                                lambda event: wx.CallAfter(on_event, event),
-                                                **billing)
+                return main_frame.AsideRunner(at, cwd, question,
+                                              lambda event: wx.CallAfter(arrived, event),
+                                              **billing)
+
+            def begin(at):
+                runner = start(at)
                 runner.start()
-                if api:
-                    self._say_api_sent(own.cli_session_id)
                 return runner
             # Where the copy ends is decided from the transcript as each
             # question is asked (#559): not from whether a turn looks to be
             # running, since a stopped turn leaves the same unfinished end and
             # one just sent may not be written yet.
             try:
-                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, start,
+                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, begin,
                                             on_event).begin(self._pool.submit)
             except RuntimeError:  # the pool is shut down: the window is closing
                 return "The Chat Place is closing, so Claude can't be asked now."
 
-        def say(answer, failed=False):
+        def say(answer, failed=False, cost=""):
             # The answer to a key press: it may cut in (#468), as the reply
-            # to what you just did; the level decides how much is said.
+            # to what you just did; the level decides how much is said. On
+            # API credits, what it cost goes with it (#663). From the
+            # dialog's own window, for VoiceOver.
             text = (f"Not answered. {answer}" if failed
                     else announce.aside_text(answer, self.speech.announce))
+            if text and cost:
+                text = _aside_with_cost(text, cost, failed)
             self._sound(sound_events.ASIDE_FAILED if failed else sound_events.ASIDE_ANSWERED)
             if text:
-                self._say(text)
+                # With its cost, it settles the aside's "Sent on API
+                # credits" (speech.Speaker, #663); without, that's said once
+                # more after it if the answer cut it off.
+                self._say(text, window=_alive(dialog), about=notice_key if cost else "")
+            if cost and not self.speech.enabled:
+                # Silent: the cost is still said, as Settings asks (#663).
+                from ..billing import cost_sentence
+                self._speak_announcement(cost_sentence(cost), interrupt=False,
+                                         window=_alive(dialog), about=notice_key)
+
+        def cost_words(event):
+            """What an aside on API credits cost, as said, or "" (#663)."""
+            if not api or not self.speech.api_say_cost or not getattr(event, "sent", False):
+                return ""
+            from ..billing import cost_words as words
+            return words(event.cost_usd, event.cost_complete)
         returning_to = wx.Window.FindFocus()
         dialog = AskAsideDialog(self, info.title, ask, say=say, copy=self._copy_text,
-                                feedback=self._feedback, history=self._aside_history(info))
+                                feedback=lambda text: self._feedback(text, window=_alive(dialog)),
+                                history=self._aside_history(info), cost_words=cost_words)
         try:
             dialog.ShowModal()
         finally:
             dialog.settle()
             dialog.Destroy()
+            if notice_key:
+                speaker.forget(notice_key)  # closed: the aside is over (#663)
         _give_focus_back(returning_to)
 
 

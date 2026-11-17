@@ -142,7 +142,7 @@ PLAN_LIMITS_NOT_FOR_API = ("This chat is on API credits, so your plan's usage li
 
 def api_credit_lines(totals, chat_names: Optional[dict] = None) -> List[str]:
     """Usage's API credits section (#658), one line each: today, the last 7
-    days, since the tally was reset, what's held for running messages, what's
+    days, since the total was reset, what's held for running messages, what's
     left of the limit, then spending by model and by chat (chat names, never
     ids; a chat no longer in the list is "a chat that's gone"). ``totals`` is
     a spend_ledger.Totals."""
@@ -158,7 +158,7 @@ def api_credit_lines(totals, chat_names: Optional[dict] = None) -> List[str]:
     lines += [
         f"API credits today: {money(totals.today)}",
         f"API credits in the last 7 days: {money(totals.last_7_days)}",
-        f"API credits since the tally was reset: {money(totals.spent)}",
+        f"API credits since the total was reset: {money(totals.spent)}",
         f"API credits held for running messages: {money(totals.held)}",
         f"API credits left of your {money(totals.limits.overall)} limit: {money(totals.left)}",
     ]

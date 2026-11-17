@@ -255,9 +255,9 @@ the Add Key button at its right; Test Key and Remove Key below it at the left, b
 (3.6:1, Windows' usual disabled text); "Test result:" over a 100-high read-only box that
 explains what Test Key does. A framed "Spending limits" group holds "Stop API chats once
 The Chat Place has spent $" and "Stop any one message at about $" with their boxes (190.00
-and 5.00) at the right, then "Tally:" over a two-line read-only box ("Spent since the tally
+and 5.00) at the right, then "Total:" over a two-line read-only box ("Spent since the total
 was reset: nothing. Held for running messages: nothing. Left: $190.00."), then Save Limits,
-Reset Tally... and a greyed Release Held.... Below the group, "About spending:" over a
+Reset Total... and a greyed Release Held.... Below the group, "About spending:" over a
 100-high read-only note, and at the bottom Billing Page at the left and Close at the right.
 Every label is above or beside its control, nothing is cut off or overlapping, and every
 button has an underlined letter. Text is black on white or grey, 21:1; High Contrast
@@ -269,7 +269,7 @@ Aquatic is white on #202020 with white outlines (16.3:1), the disabled buttons #
 The same layout. Key status says "Claude: key ending in 7Q2x, added November 16", the
 button beside the key box reads Replace Key, Test Key (focused, so in High Contrast it's
 filled aqua) and Remove Key are on, the Test result box says "Your key works. That test
-cost less than a cent.", and the Tally reads "Spent since the tally was reset: $12.34. Held
+cost less than a cent.", and the Total reads "Spent since the total was reset: $12.34. Held
 for running messages: $5.00. Left: $172.66." Release Held stays greyed: nothing held is
 left over from an earlier run.
 

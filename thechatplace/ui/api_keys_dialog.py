@@ -10,13 +10,13 @@ either, so opening the dialog can't raise a keychain prompt on a Mac.
 
 Test Key runs one tiny request as an API turn (claude_cli.TurnRunner with
 billing "api" and purpose "test"), so it goes through the same checks as a
-chat and its cost is in the tally. The limits and the tally are the spend
+chat and its cost is in the total. The limits and the total are the spend
 ledger's (spend_ledger); a limit typed and not saved is asked about on Close.
 Release Held lets go of what's held for messages no longer running (an
 earlier run's or a crash's), after asking, without touching what was spent.
 
-The key status and the tally are read-only text boxes in the Tab order (the
-status before the key box, the tally right after the limits), refreshed
+The key status and the total are read-only text boxes in the Tab order (the
+status before the key box, the total right after the limits), refreshed
 after every action, so they can be reached and read again by line.
 """
 from __future__ import annotations
@@ -38,13 +38,13 @@ ADD_LABEL = "&Add Key"
 REPLACE_LABEL = "&Replace Key"
 
 TEST_INTRO = ("Test Key sends one short request on your key to check that it works, and "
-              "counts what it cost in the tally.")
+              "counts what it cost in the total.")
 ABOUT_SPENDING = ("The Chat Place counts only its own spending. Your Anthropic account may "
                   "have less left if other apps use the same key, and a limit can be passed by "
                   "one request.")
 REMOVE_QUESTION = ("Remove your Claude API key from The Chat Place? Chats on API credits won't "
                    "be able to send until you add one again.")
-RESET_QUESTION = ("Start a new tally of API spending? Spending since the last reset will no "
+RESET_QUESTION = ("Set the API spending total back to zero? Spending since the last reset will no "
                   "longer count against the limit.")
 SAVE_LIMITS_QUESTION = "Save the new spending limits?"
 RELEASE_QUESTION = ("Release {amount} held for messages that are no longer running? These "
@@ -89,13 +89,13 @@ def _set_read_only(box: wx.TextCtrl, text: str) -> None:
 
 
 def _amount(value: float) -> str:
-    """Money in the tally line: "nothing" for none (billing.money would say
-    "less than a cent", which isn't true of nothing)."""
-    return "nothing" if value <= 0 else billing.money(value)
+    """Money in the total line: "nothing" for none, as billing.money says
+    too (#663)."""
+    return billing.money(max(0.0, value))
 
 
 def totals_text(totals) -> str:
-    """The tally line, from ledger.totals(): what's spent, held and left, or
+    """The total line, from ledger.totals(): what's spent, held and left, or
     why nothing may be spent."""
     if totals.problem:
         return totals.problem
@@ -103,7 +103,7 @@ def totals_text(totals) -> str:
     if totals.releasable > RELEASABLE_MIN:
         held = (f"Held: {_amount(totals.held)}, {_amount(totals.releasable)} of it for "
                 "messages no longer running. ")
-    return (f"Spent since the tally was reset: {_amount(totals.spent)}. {held}"
+    return (f"Spent since the total was reset: {_amount(totals.spent)}. {held}"
             f"Left: {_amount(totals.left)}.")
 
 
@@ -175,13 +175,13 @@ class ApiKeysDialog(wx.Dialog):
         self.per_message.SetMinSize(dip(self, 110, -1))
         grid.Add(self.per_message, 0)
         group.Add(grid, 0, wx.EXPAND | wx.ALL, 6)
-        # The tally, right after the limits: read-only text Tab reaches.
-        group.Add(wx.StaticText(self, label="Tally:"), 0, wx.LEFT | wx.RIGHT, 6)
-        self.totals = _read_only_text(self, "", "Tally", min_height=54)
+        # The total, right after the limits: read-only text Tab reaches.
+        group.Add(wx.StaticText(self, label="Total:"), 0, wx.LEFT | wx.RIGHT, 6)
+        self.totals = _read_only_text(self, "", "Total", min_height=54)
         group.Add(self.totals, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.save_limits_btn = wx.Button(self, label="Sa&ve Limits")
-        self.reset_btn = wx.Button(self, label="R&eset Tally...")
+        self.reset_btn = wx.Button(self, label="R&eset Total...")
         self.release_btn = wx.Button(self, label="Release &Held...")
         row.Add(self.save_limits_btn, 0, wx.RIGHT, 6)
         row.Add(self.reset_btn, 0, wx.RIGHT, 6)
@@ -241,7 +241,7 @@ class ApiKeysDialog(wx.Dialog):
         self.Layout()
 
     def _show_totals(self):
-        """The tally, and Release Held: on only while something is held that
+        """The total, and Release Held: on only while something is held that
         no running message holds."""
         totals = self._ledger.totals()
         _set_read_only(self.totals, totals_text(totals))
@@ -369,7 +369,7 @@ class ApiKeysDialog(wx.Dialog):
     def testing(self) -> bool:
         return self._runner is not None
 
-    # -- limits and the tally -----------------------------------------------------
+    # -- limits and the total -----------------------------------------------------
 
     def _typed_limits(self):
         return parse_limit(self.overall.GetValue()), parse_limit(self.per_message.GetValue())
@@ -415,10 +415,10 @@ class ApiKeysDialog(wx.Dialog):
         try:
             self._ledger.reset()
         except OSError as exc:
-            self._tell(f"The Chat Place couldn't reset the tally: {exc}")
+            self._tell(f"The Chat Place couldn't reset the total: {exc}")
             return False
         self._refresh()
-        self._speak("Tally reset.")
+        self._speak("Total reset.")
         return True
 
     def on_release_held(self) -> bool:

@@ -48,8 +48,9 @@ if "--rewind-files" in sys.argv:
 ACCOUNTS = {
     "subscription": {"email": "someone@example.com", "organization": "Example",
                      "subscriptionType": "max", "apiProvider": "firstParty"},
-    "api": {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty",
-            "tokenSource": "claude.ai"},
+    # The app's apiKeyHelper: initialize names it only as the token's source
+    # (system/init says apiKeySource "apiKeyHelper"), checked live (#662).
+    "api": {"tokenSource": "apiKeyHelper", "apiProvider": "firstParty"},
     "apikey_env": {"apiKeySource": "ANTHROPIC_API_KEY", "apiProvider": "firstParty",
                    "tokenSource": "claude.ai"},
     "bedrock": {"apiProvider": "bedrock"},
@@ -109,11 +110,19 @@ log()
 out(type="system", subtype="init", session_id="abc-1", apiKeySource=init_source)
 mode = os.environ.get("FAKE_CLAUDE_MODE")
 #: What the result says the process cost (#658), as Claude Code reports it:
-#: total_cost_usd, and modelUsage's costUSD by model.
+#: total_cost_usd, and modelUsage's costUSD by model. ``usage`` is this
+#: turn's own tokens and modelUsage the cumulative ones, the restored cost
+#: state's included (checked with 2.1.325, #663):
+#: FAKE_CLAUDE_RESTORED_TOKENS (default 0) is how many tokens a --resume
+#: restored, which modelUsage counts and usage doesn't.
 cost = float(os.environ.get("FAKE_CLAUDE_COST", "0.0123"))
-COST = {"total_cost_usd": cost, "modelUsage": {"claude-haiku-5-5": {
-    "inputTokens": 12, "outputTokens": 3, "cacheReadInputTokens": 0,
-    "cacheCreationInputTokens": 34000, "costUSD": cost}}}
+restored_tokens = int(os.environ.get("FAKE_CLAUDE_RESTORED_TOKENS", "0"))
+COST = {"total_cost_usd": cost,
+        "usage": {"input_tokens": 12, "output_tokens": 3, "cache_read_input_tokens": 0,
+                  "cache_creation_input_tokens": 34000},
+        "modelUsage": {"claude-haiku-5-5": {
+            "inputTokens": 12 + restored_tokens, "outputTokens": 3, "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 34000, "costUSD": cost}}}
 if mode == "max-budget":
     # Over --max-budget-usd, checked after a request: it can run over.
     out(type="result", subtype="error_max_budget_usd", is_error=True, session_id="abc-1",

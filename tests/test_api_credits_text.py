@@ -50,6 +50,12 @@ def test_a_reply_says_its_cost_before_the_reply():
         "Fix replied, less than a cent: All done. 3 words."
     # Without a cost, as it always was.
     assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL) == "Fix replied. All done."
+    # Nothing is "at no cost", never "replied, nothing" (#663).
+    assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL, cost="nothing") == \
+        "Fix replied at no cost. All done."
+    assert announce.reply_text("Fix", "All done.", ANNOUNCE_FULL, cost="at least 6 cents") == \
+        "Fix replied, at least 6 cents. All done."
+    assert announce.cost_after("") == ""
 
 
 def test_the_row_says_api_credits_after_the_name():
@@ -88,7 +94,7 @@ def test_usage_lists_the_tally_by_model_and_by_chat_name(tmp_path):
     lines = usage.api_credit_lines(ledger.totals(), {"chat-1": "Budget"})
     assert "API credits today: $1.29" in lines
     assert "API credits in the last 7 days: $1.29" in lines
-    assert "API credits since the tally was reset: $1.29" in lines
+    assert "API credits since the total was reset: $1.29" in lines
     assert "API credits held for running messages: $5.00" in lines
     assert "API credits left of your $190.00 limit: $183.71" in lines
     assert lines.index("API credits on claude-opus-5-5: $1.25") < lines.index(
@@ -125,3 +131,17 @@ def test_the_commands_are_where_the_guide_says():
     assert commands.menu_path("continue_on_api_credits") == "Chat, Continue on API Credits"
     assert commands.access_key(commands.command("api_keys").label) == "p"
     assert commands.access_key(commands.command("continue_on_api_credits").label) == "e"
+
+
+def test_an_asides_answer_says_its_cost_as_a_cost():
+    # The review (#663): "Answer, nothing." read as no answer; "It cost an
+    # amount that isn't known" didn't read as a cost at all.
+    from thechatplace.ui.claude_extras import _aside_with_cost
+    assert _aside_with_cost("Answer. ZEPHYR", "3 cents", False) == "Answer, 3 cents. ZEPHYR"
+    assert _aside_with_cost("Answer. ZEPHYR", "nothing", False) == "Answer, at no cost. ZEPHYR"
+    assert _aside_with_cost("Answer: Yes. 1 words.", "cost not known", False) == (
+        "Answer, cost not known: Yes. 1 words.")
+    assert _aside_with_cost("Not answered. It failed.", "cost not known", True) == (
+        "Not answered. It failed. Cost not known.")
+    assert _aside_with_cost("Not answered. It failed.", "2 cents", True) == (
+        "Not answered. It failed. It cost 2 cents.")
