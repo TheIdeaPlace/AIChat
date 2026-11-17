@@ -21,9 +21,15 @@ Checked twice, the first time before anything is sent
 Claude Code's answer to ``initialize`` (which every turn sends first, and
 which comes before the message goes) has ``account``. Checked with 2.1.325:
 
-* With a key: ``{"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty",
-  "tokenSource": "claude.ai"}`` (``"ANTHROPIC_API_KEY"`` when the key came
-  from the environment), and a top-level ``auth_conflict``.
+* With the key in the environment: ``{"apiKeySource": "ANTHROPIC_API_KEY",
+  "apiProvider": "firstParty", "tokenSource": "claude.ai"}``, and a top-level
+  ``auth_conflict``.
+* With the key from apiKeyHelper (how the app gives it): ``{"tokenSource":
+  "apiKeyHelper", "apiProvider": "firstParty"}`` and *no* ``apiKeySource``
+  (checked with 2.1.325 after Kelly's first Test Key was refused, #662).
+  ``system/init`` does report ``apiKeySource: "apiKeyHelper"`` then;
+  ``initialize`` names it only as the token's source. ``key_source`` reads
+  both.
 * With only the subscription: ``{"email", "organization", "subscriptionType",
   "apiProvider": "firstParty"}`` and no ``apiKeySource``.
 
@@ -223,6 +229,18 @@ def _no_source(source) -> bool:
     return source is None or source in ("", "none")
 
 
+def key_source(account: dict):
+    """Where initialize's ``account`` says the key comes from, or None for
+    none. ``apiKeySource`` when there is one; otherwise a ``tokenSource`` of
+    apiKeyHelper, which is how a helper's key is reported (#662). Other
+    token sources (claude.ai, or a subscription token from ``claude
+    setup-token``) are the subscription's sign-in, not a key."""
+    source = account.get("apiKeySource")
+    if _no_source(source) and account.get("tokenSource") == HELPER_SOURCE:
+        return HELPER_SOURCE
+    return source
+
+
 def account_problem(route: str, init_body) -> Optional[str]:
     """Why the message mustn't be sent, from Claude Code's answer to
     ``initialize``, or None. Read before the message is written, so every
@@ -245,7 +263,7 @@ def account_problem(route: str, init_body) -> Optional[str]:
             return ("Claude Code didn't say how this message would be charged, so The Chat "
                     "Place didn't send it on API credits. " + _NOTHING_SENT
                     + " Update Claude Code (in a terminal, run: claude update), then send again.")
-        source = account.get("apiKeySource")
+        source = key_source(account)
         provider = account.get("apiProvider")
         if provider != FIRST_PARTY:
             return (f"Claude Code is set up to use {_provider_words(provider)} rather than "
@@ -264,7 +282,7 @@ def account_problem(route: str, init_body) -> Optional[str]:
                 "set it, then send again.")
     if account is None:
         return None
-    source = account.get("apiKeySource")
+    source = key_source(account)
     if not _no_source(source):
         return (f"Claude would have used an API key ({_safe_word(source)}) instead of your "
                 "subscription login, so The Chat Place didn't send your message. "

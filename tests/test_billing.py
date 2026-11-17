@@ -13,7 +13,7 @@ FAKE_KEY = "sk-ant-test-0000000000000000000000000000"
 
 SUBSCRIPTION = {"email": "someone@example.com", "organization": "Example",
                 "subscriptionType": "max", "apiProvider": "firstParty"}
-HELPER = {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty", "tokenSource": "claude.ai"}
+HELPER = {"tokenSource": "apiKeyHelper", "apiProvider": "firstParty"}  # as 2.1.325 answers (#662)
 
 
 def body(account=None, **extra):
@@ -28,6 +28,9 @@ def body(account=None, **extra):
 
 def test_an_api_chat_sends_only_on_the_apps_own_key_at_anthropic():
     assert billing.account_problem(ROUTE_API, body(HELPER)) is None
+    # The helper named as apiKeySource too (as system/init names it) is the same key.
+    assert billing.account_problem(ROUTE_API, body(
+        {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty"})) is None
     assert billing.account_problem(ROUTE_API, body(HELPER, auth_conflict={"x": 1})) is None
 
 
@@ -40,11 +43,13 @@ def test_an_api_chat_sends_only_on_the_apps_own_key_at_anthropic():
     body(SUBSCRIPTION),                      # the subscription: the key wasn't used
     body({**HELPER, "apiKeySource": "ANTHROPIC_API_KEY"}),   # a key from the environment
     body({**HELPER, "apiKeySource": "/login managed key"}),
-    body({**HELPER, "apiKeySource": None}),
-    body({**HELPER, "apiKeySource": "none"}),
+    body({"tokenSource": "claude.ai", "apiProvider": "firstParty", "apiKeySource": None}),
+    body({"tokenSource": "claude.ai", "apiProvider": "firstParty", "apiKeySource": "none"}),
+    body({"tokenSource": "CLAUDE_CODE_OAUTH_TOKEN", "apiProvider": "firstParty"}),
     body({**HELPER, "apiProvider": "bedrock"}),
     body({**HELPER, "apiProvider": "vertex"}),
     body({"apiKeySource": "apiKeyHelper"}),  # no provider: not known to be Anthropic's
+    body({"tokenSource": "apiKeyHelper"}),
     "not a dict",
 ])
 def test_an_api_chat_fails_closed_on_anything_else(init_body):
@@ -58,6 +63,10 @@ def test_a_subscription_chat_stops_for_any_key_or_other_provider():
                     {"apiKeySource": "apiKeyHelper"}, {**SUBSCRIPTION, "apiProvider": "bedrock"}):
         problem = billing.account_problem(ROUTE_SUBSCRIPTION, body(account))
         assert problem and "didn't send your message" in problem and "Nothing was sent" in problem
+    # A subscription sign-in names its token's source too; only a helper's is a key (#662).
+    for token in ("claude.ai", "CLAUDE_CODE_OAUTH_TOKEN"):
+        assert billing.account_problem(
+            ROUTE_SUBSCRIPTION, body({**SUBSCRIPTION, "tokenSource": token})) is None
     # "none" and "" are no key, as system/init has always said.
     assert billing.account_problem(ROUTE_SUBSCRIPTION,
                                    body({**SUBSCRIPTION, "apiKeySource": "none"})) is None

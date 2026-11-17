@@ -17,7 +17,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore, _session_from_di
 
 FAKE_CLAUDE = Path(__file__).with_name("fake_claude.py")
 FAKE_KEY = "sk-ant-test-0000000000000000000000000000"
-HELPER = {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty", "tokenSource": "claude.ai"}
+HELPER = {"tokenSource": "apiKeyHelper", "apiProvider": "firstParty"}  # as 2.1.325 answers (#662)
 SUBSCRIPTION = {"email": "someone@example.com", "subscriptionType": "max",
                 "apiProvider": "firstParty"}
 

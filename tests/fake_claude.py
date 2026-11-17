@@ -48,8 +48,9 @@ if "--rewind-files" in sys.argv:
 ACCOUNTS = {
     "subscription": {"email": "someone@example.com", "organization": "Example",
                      "subscriptionType": "max", "apiProvider": "firstParty"},
-    "api": {"apiKeySource": "apiKeyHelper", "apiProvider": "firstParty",
-            "tokenSource": "claude.ai"},
+    # The app's apiKeyHelper: initialize names it only as the token's source
+    # (system/init says apiKeySource "apiKeyHelper"), checked live (#662).
+    "api": {"tokenSource": "apiKeyHelper", "apiProvider": "firstParty"},
     "apikey_env": {"apiKeySource": "ANTHROPIC_API_KEY", "apiProvider": "firstParty",
                    "tokenSource": "claude.ai"},
     "bedrock": {"apiProvider": "bedrock"},
