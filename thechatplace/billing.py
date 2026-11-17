@@ -43,7 +43,8 @@ which comes before the message goes) has ``account``. Checked with 2.1.325:
 ``account_problem`` reads that before the message is written, both ways: an
 API chat must be on the app's own key (apiKeyHelper) at Anthropic itself
 (firstParty), and a subscription chat must not report any key, any token but
-the claude.ai sign-in, or another provider. ``source_problem`` repeats the
+a subscription sign-in (claude.ai, or ``claude setup-token``'s
+CLAUDE_CODE_OAUTH_TOKEN), or another provider. ``source_problem`` repeats the
 check on ``system/init``'s ``apiKeySource``, as the app always has.
 
 Where the key goes
@@ -211,8 +212,37 @@ API_BASE_URL = "https://api.anthropic.com"
 #: settings file's (see "Where the key goes"): Anthropic's own address, TLS
 #: certificates checked, and no extra certificate authority, so a proxy
 #: that decrypts traffic can't be trusted into reading the key.
+#:
+#: Node reads NODE_EXTRA_CA_CERTS once, as it starts, before any settings
+#: are applied, so the empty value here doesn't undo one Claude Code was
+#: started with: ``api_environment`` takes that out of the child's own
+#: environment (#663). The empty value stays for what's read after the
+#: settings are applied: Claude Code's own handling of extra certificates
+#: for its connections, and NODE_TLS_REJECT_UNAUTHORIZED, which Node reads
+#: at each connection. It costs nothing; that Claude Code reads it there
+#: isn't checked.
+#:
+#: Claude Code passes a settings file's ``env`` on to everything it runs,
+#: so Bash commands, hooks and MCP servers in an API chat see these values
+#: too: npm or node run there get no extra certificate authority. Settings
+#: can't give a value to Claude Code alone.
 API_ENV = {"ANTHROPIC_BASE_URL": API_BASE_URL, "NODE_TLS_REJECT_UNAUTHORIZED": "1",
            "NODE_EXTRA_CA_CERTS": ""}
+
+#: Taken out of an API turn's own environment (``api_environment``): read
+#: as Node starts, where the settings above come too late to change them.
+API_UNSET_VARS = ("NODE_EXTRA_CA_CERTS", "NODE_TLS_REJECT_UNAUTHORIZED")
+
+
+def api_environment(env: dict) -> dict:
+    """``env`` (a turn's environment, already child_environment's) for an
+    API turn's Claude Code process (#663): without the certificate
+    variables Node reads at startup, so a certificate authority trusted
+    there (a proxy that decrypts traffic) can't be given the key. A proxy
+    (HTTPS_PROXY) is still used: the connection through it is TLS to
+    Anthropic, checked against the usual certificate authorities."""
+    # Any case: Windows' environment names are.
+    return {name: value for name, value in env.items() if name.upper() not in API_UNSET_VARS}
 
 
 def api_settings(name: Optional[str] = None) -> dict:
@@ -273,18 +303,26 @@ def key_source(account: dict):
 #: The token source of the subscription's own sign-in (Claude Code reports
 #: it beside an API key; with the sign-in alone there's no tokenSource).
 CLAUDE_AI_SOURCE = "claude.ai"
+#: A subscription sign-in made with ``claude setup-token`` (#663): a
+#: long-lived claude.ai token for the same plan (signin.py counts it as the
+#: subscription). The app strips it from the environment it gives Claude
+#: Code, so it arrives from a settings file's ``env``.
+SETUP_TOKEN_SOURCE = "CLAUDE_CODE_OAUTH_TOKEN"
+#: Token sources that are the subscription.
+SUBSCRIPTION_TOKEN_SOURCES = (CLAUDE_AI_SOURCE, SETUP_TOKEN_SOURCE)
 
 
 def token_problem_source(account: dict):
     """A ``tokenSource`` a subscription chat mustn't send with, or None
-    (#663). Missing, "none" or claude.ai is the subscription's sign-in (or
-    no sign-in, which Claude Code refuses itself). Anything else, such as
-    ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN from a settings file's
-    ``env`` (checked with 2.1.325), is a token The Chat Place didn't choose
-    and can't check the billing of, so it stops the message; apiKeyHelper
-    is caught as a key first (``key_source``)."""
+    (#663). Missing, "none", claude.ai or CLAUDE_CODE_OAUTH_TOKEN (``claude
+    setup-token``'s sign-in) is the subscription (or no sign-in, which
+    Claude Code refuses itself). Anything else, such as
+    ANTHROPIC_AUTH_TOKEN from a settings file's ``env`` (checked with
+    2.1.325), or a source this version doesn't know, is a token The Chat
+    Place didn't choose and can't check the billing of, so it stops the
+    message; apiKeyHelper is caught as a key first (``key_source``)."""
     source = account.get("tokenSource")
-    if _no_source(source) or source == CLAUDE_AI_SOURCE:
+    if _no_source(source) or source in SUBSCRIPTION_TOKEN_SOURCES:
         return None
     return source
 
@@ -299,7 +337,7 @@ def account_problem(route: str, init_body) -> Optional[str]:
     API all stop the message.
 
     The subscription stops for any ``apiKeySource`` (a key in the environment
-    or a user's own apiKeyHelper), any token but the claude.ai sign-in
+    or a user's own apiKeyHelper), any token but a subscription sign-in
     (``token_problem_source``), or another provider. An answer with no
     ``account`` at all is let through, as every turn was before #658: Claude
     Code versions older than the account field (it isn't in 2.1.286's
@@ -436,17 +474,37 @@ def failure_text(subtype: str, text: str, cost_usd: Optional[float] = None,
     return None
 
 
+#: What's said when what a message cost isn't known (#663): one phrase that
+#: names the cost, wherever it goes ("Budget replied, cost not known: …").
+COST_NOT_KNOWN = "cost not known"
+
+
 def cost_words(amount: Optional[float], complete: bool = True) -> str:
     """What an API turn cost, as said after it (#663): "6 cents", "nothing",
     "at least 6 cents" when a request after the last result wasn't costed
-    (a Stop that didn't get its result, say), and "an amount that isn't
-    known" when nothing about it is."""
+    (a Stop that didn't get its result, say), and "cost not known"
+    (``COST_NOT_KNOWN``) when nothing about it is."""
     if amount is None or not isinstance(amount, (int, float)) or isinstance(amount, bool) \
             or not math.isfinite(amount) or amount < 0:
-        return "an amount that isn't known"
+        return COST_NOT_KNOWN
     if not complete:
-        return f"at least {money(amount)}" if amount >= 0.005 else "an amount that isn't known"
+        return f"at least {money(amount)}" if amount >= 0.005 else COST_NOT_KNOWN
     return money(amount)
+
+
+def cost_more(words: str) -> str:
+    """``cost_words`` for what came after a cost already said: "6 cents
+    more", but never "cost not known more" (#663)."""
+    return words if words == COST_NOT_KNOWN else f"{words} more"
+
+
+def cost_sentence(words: str, title: str = "") -> str:
+    """``cost_words`` as a sentence of its own: "It cost 6 cents." or "Cost
+    not known.", after ``title`` when there is one ("Budget: it cost 6
+    cents.", "Budget: cost not known.")."""
+    if words == COST_NOT_KNOWN:
+        return f"{title}: {COST_NOT_KNOWN}." if title else "Cost not known."
+    return f"{title}: it cost {words}." if title else f"It cost {words}."
 
 
 def money(amount: Optional[float]) -> str:

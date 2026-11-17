@@ -311,6 +311,72 @@ def test_a_restored_total_below_its_baseline_is_counted_up_to_the_reservation():
     # someone else's, so the reservation bounds it.
     tracker = CostTracker(start=0.80, start_models={"opus": 0.80}, cap=0.50, resumed=True)
     assert tracker.add(0.70, {"opus": 0.70}, RESTORED)[0] == pytest.approx(0.50)
+    # A guess, so it's no cost to say (#663).
+    assert tracker.guessed and tracker.known_total is None
+
+
+def test_the_live_stop_and_resume_figures_count_each_turn_once():
+    # Checked live with Claude Code 2.1.325 (#663): turn 1 ended cleanly
+    # (0.003942); turn 2 was stopped and counted 0.003914, so the latest
+    # baseline is 0.007856; turn 3 resumed and reported 0.004945, turn 1's
+    # saved cost plus its own 0.001003. Counted from the latest it was taken
+    # as "no baseline" and counted 0.004945.
+    clean = spend_ledger.Baseline(0.003942, {"haiku": 0.003942})
+    tracker = CostTracker(start=0.007856, start_models={"haiku": 0.007856}, clean=clean,
+                          cap=5.0, resumed=True)
+    added, models = tracker.add(0.004945, {"haiku": 0.004945}, RESTORED)
+    assert added == pytest.approx(0.001003) and models == {"haiku": pytest.approx(0.001003)}
+    assert not tracker.guessed and tracker.known_total == pytest.approx(0.001003)
+
+
+def test_a_dear_turn_after_a_stop_is_never_under_counted():
+    # Above the latest baseline too: still counted from the clean one, as
+    # the stopped turn's cost wasn't saved. From the latest it would lose
+    # the stopped turn's 0.003914 a second time.
+    clean = spend_ledger.Baseline(0.003942, {})
+    tracker = CostTracker(start=0.007856, clean=clean, cap=5.0, resumed=True)
+    assert tracker.add(0.003942 + 0.02, None, RESTORED)[0] == pytest.approx(0.02)
+
+
+def test_the_restored_tokens_say_which_baseline_was_restored():
+    clean = spend_ledger.Baseline(0.10, {}, tokens=500)
+    for restored, expected in ((500, 0.25), (900, 0.05), (777, 0.25)):
+        tracker = CostTracker(start=0.30, start_tokens=900, clean=clean, cap=5.0, resumed=True)
+        own = 100
+        assert tracker.add(0.35, None, (own, own + restored))[0] == pytest.approx(expected)
+
+
+def test_a_total_below_both_baselines_is_a_guess():
+    clean = spend_ledger.Baseline(0.40, {})
+    tracker = CostTracker(start=0.80, clean=clean, cap=0.25, resumed=True)
+    assert tracker.add(0.30, None, RESTORED)[0] == pytest.approx(0.25)
+    assert tracker.guessed
+
+
+def test_the_clean_baseline_is_kept_until_a_clean_end_replaces_it(tmp_path):
+    book = ledger(tmp_path)
+    book.set_baseline("c", 0.1, {"m": 0.1}, tokens=50, clean=True)
+    book.set_baseline("c", 0.3, {"m": 0.3}, tokens=90)          # a stopped turn's
+    latest, clean = book.baselines("c")
+    assert (latest.total, latest.tokens) == (pytest.approx(0.3), 90)
+    assert (clean.total, clean.models, clean.tokens) == (pytest.approx(0.1), {"m": 0.1}, 50)
+    assert book.baseline("c") == (pytest.approx(0.3), {"m": 0.3})
+    again = ledger(tmp_path)                                    # kept across runs
+    assert again.baselines("c")[1].total == pytest.approx(0.1)
+    again.set_baseline("c", 0.4, {"m": 0.4}, tokens=120, clean=True)
+    latest, clean = again.baselines("c")
+    assert latest.total == clean.total == pytest.approx(0.4)
+    book.set_baseline("new", 0.2)                               # no clean end yet
+    assert book.baselines("new")[1] is None
+    assert book.baselines("") is None and book.baselines("missing") is None
+
+
+@pytest.mark.parametrize("clean", ['"x"', "[1]", '{"total": -1}', '{"total": "a"}'])
+def test_a_damaged_clean_baseline_is_none(tmp_path, clean):
+    (tmp_path / spend_ledger.BASELINES_FILE).write_text(
+        '{"c": {"total": 0.3, "tokens": "many", "clean": ' + clean + '}}', encoding="utf-8")
+    latest, kept = ledger(tmp_path).baselines("c")
+    assert latest.total == pytest.approx(0.3) and latest.tokens is None and kept is None
 
 
 @pytest.mark.parametrize("total", [0.30, 0.82, 1.40, 7.0])
@@ -560,6 +626,28 @@ def test_a_renamed_chat_keeps_its_spending_and_baseline(tmp_path):
     book.rename_chat("new-id", "new-id")      # nothing to do
     book.rename_chat("", "x")
     assert ledger(tmp_path).totals().by_chat == {"new-id": pytest.approx(0.5)}
+
+
+def test_a_subscription_chats_rename_never_makes_a_ledger(tmp_path):
+    # The review (#663): someone who never uses API credits got a ledger file.
+    book = ledger(tmp_path)
+    book.set_baseline("old", 0.4, {"m": 0.4}, clean=True)
+    book.rename_chat("old", "new", api_chat=False)
+    assert not book.path.exists()
+    assert book.baseline("new")[0] == pytest.approx(0.4)        # the baseline still moves
+    assert book.baselines("new")[1].total == pytest.approx(0.4)
+
+
+def test_a_rename_is_recorded_for_a_chat_the_ledger_names(tmp_path):
+    book = ledger(tmp_path)
+    held = book.reserve("was-api")
+    book.settle(held, 0.2)
+    book.close(held, complete=True)
+    book.rename_chat("was-api", "now", api_chat=False)          # named already: recorded
+    book.rename_chat("never-paid", "other", api_chat=False)     # not named: no line
+    lines = book.path.read_text(encoding="utf-8").splitlines()
+    assert sum('"rename"' in line for line in lines) == 1
+    assert book.totals().by_chat == {"now": pytest.approx(0.2)}
 
 
 def test_per_result_costs_when_not_cumulative():

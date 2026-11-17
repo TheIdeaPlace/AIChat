@@ -63,10 +63,15 @@ def test_a_subscription_chat_stops_for_any_key_or_other_provider():
                     {"apiKeySource": "apiKeyHelper"}, {**SUBSCRIPTION, "apiProvider": "bedrock"}):
         problem = billing.account_problem(ROUTE_SUBSCRIPTION, body(account))
         assert problem and "didn't send your message" in problem and "Nothing was sent" in problem
-    # The claude.ai sign-in, or none named, is the subscription (#662, #663).
-    for token in ("claude.ai", "none", "", None):
+    # The claude.ai sign-in, or none named, is the subscription (#662, #663),
+    # and so is `claude setup-token`'s CLAUDE_CODE_OAUTH_TOKEN, which can only
+    # come from a settings file's env, as the app strips it from the
+    # environment (signin.py counts it as the subscription).
+    for token in ("claude.ai", "none", "", None, "CLAUDE_CODE_OAUTH_TOKEN"):
         assert billing.account_problem(
             ROUTE_SUBSCRIPTION, body({**SUBSCRIPTION, "tokenSource": token})) is None
+    assert billing.account_problem(ROUTE_SUBSCRIPTION, body(
+        {"tokenSource": "CLAUDE_CODE_OAUTH_TOKEN", "apiProvider": "firstParty"})) is None
     # "none" and "" are no key, as system/init has always said.
     assert billing.account_problem(ROUTE_SUBSCRIPTION,
                                    body({**SUBSCRIPTION, "apiKeySource": "none"})) is None
@@ -74,12 +79,13 @@ def test_a_subscription_chat_stops_for_any_key_or_other_provider():
                                    body({**SUBSCRIPTION, "apiKeySource": ""})) is None
 
 
-@pytest.mark.parametrize("token", ["ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
-                                   "something-new", FAKE_KEY])
+@pytest.mark.parametrize("token", ["ANTHROPIC_AUTH_TOKEN", "something-new",
+                                   "claude_code_oauth_token", FAKE_KEY])
 def test_a_subscription_chat_stops_for_any_other_token(token):
-    # As 2.1.325 answers for a settings file's env.ANTHROPIC_AUTH_TOKEN or
-    # CLAUDE_CODE_OAUTH_TOKEN (checked under a scratch CLAUDE_CONFIG_DIR, #663):
-    # no apiKeySource, only the token's source, and firstParty.
+    # As 2.1.325 answers for a settings file's env.ANTHROPIC_AUTH_TOKEN
+    # (checked under a scratch CLAUDE_CONFIG_DIR, #663): no apiKeySource,
+    # only the token's source, and firstParty. Anything not known to be the
+    # subscription is refused, a near miss of a name included.
     account = {"tokenSource": token, "apiProvider": "firstParty"}
     problem = billing.account_problem(ROUTE_SUBSCRIPTION, body(account))
     assert problem and "another token" in problem and "Nothing was sent" in problem
@@ -146,6 +152,16 @@ def test_api_settings_pin_where_the_key_goes(monkeypatch, tmp_path):
     assert env["NODE_EXTRA_CA_CERTS"] == ""
     env["ANTHROPIC_BASE_URL"] = "changed"           # a copy each time
     assert billing.api_settings()["env"]["ANTHROPIC_BASE_URL"] == billing.API_BASE_URL
+
+
+def test_an_api_turns_environment_has_no_certificate_variables_node_reads_at_startup():
+    # Node reads NODE_EXTRA_CA_CERTS as it starts, before settings apply
+    # (#663): it's taken out of the child's environment, in any case.
+    env = {"PATH": "p", "NODE_EXTRA_CA_CERTS": "corp.pem", "Node_Tls_Reject_Unauthorized": "0",
+           "HTTPS_PROXY": "http://proxy:8080", "NODE_OPTIONS": "--max-old-space-size=4096"}
+    assert billing.api_environment(env) == {"PATH": "p", "HTTPS_PROXY": "http://proxy:8080",
+                                            "NODE_OPTIONS": "--max-old-space-size=4096"}
+    assert env["NODE_EXTRA_CA_CERTS"] == "corp.pem"   # the caller's own is left alone
 
 
 def test_the_pinned_env_merges_with_and_wins_over_one_already_there(monkeypatch, tmp_path):
@@ -348,11 +364,36 @@ def test_money_is_said_plainly(amount, said):
 
 @pytest.mark.parametrize("amount,complete,said", [
     (0.06, True, "6 cents"), (0.0, True, "nothing"), (0.06, False, "at least 6 cents"),
-    (0.001, False, "an amount that isn't known"), (0.0, False, "an amount that isn't known"),
-    (None, True, "an amount that isn't known"), (float("inf"), True, "an amount that isn't known"),
-    (-1.0, True, "an amount that isn't known"), (True, True, "an amount that isn't known")])
+    (0.001, False, "cost not known"), (0.0, False, "cost not known"),
+    (None, True, "cost not known"), (None, False, "cost not known"),
+    (float("inf"), True, "cost not known"), (float("nan"), True, "cost not known"),
+    (-1.0, True, "cost not known"), (True, True, "cost not known")])
 def test_cost_words_say_when_the_cost_isnt_known(amount, complete, said):
-    assert billing.cost_words(amount, complete) == said
+    # One phrase that names the cost (#663), never "an amount that isn't known".
+    words = billing.cost_words(amount, complete)
+    assert words == said
+    more = billing.cost_more(words)
+    if said == "cost not known":
+        assert more == "cost not known"                  # never "… more"
+        assert billing.cost_sentence(words) == "Cost not known."
+        assert billing.cost_sentence(words, "Budget") == "Budget: cost not known."
+    else:
+        assert more == f"{said} more"
+        assert billing.cost_sentence(words) == f"It cost {said}."
+        assert billing.cost_sentence(words, "Budget") == f"Budget: it cost {said}."
+    for text in (more, billing.cost_sentence(words), billing.cost_sentence(words, "Budget")):
+        assert "isn't known" not in text and "not known more" not in text
+
+
+@pytest.mark.parametrize("cost,after,phrase", [
+    ("6 cents", ", 6 cents", "6 cents"), ("nothing", " at no cost", "at no cost"),
+    ("cost not known", ", cost not known", "cost not known"), ("", "", "")])
+def test_a_cost_after_a_reply_or_an_answer_reads_as_a_cost(cost, after, phrase):
+    from thechatplace import announce
+    assert announce.cost_after(cost) == after
+    assert announce.cost_phrase(cost) == phrase
+    if cost:
+        assert announce.reply_text("Budget", "Hi.", "full", cost=cost) == f"Budget replied{after}. Hi."
 
 
 @pytest.mark.parametrize("retry,refused", [

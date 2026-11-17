@@ -131,3 +131,17 @@ def test_the_commands_are_where_the_guide_says():
     assert commands.menu_path("continue_on_api_credits") == "Chat, Continue on API Credits"
     assert commands.access_key(commands.command("api_keys").label) == "p"
     assert commands.access_key(commands.command("continue_on_api_credits").label) == "e"
+
+
+def test_an_asides_answer_says_its_cost_as_a_cost():
+    # The review (#663): "Answer, nothing." read as no answer; "It cost an
+    # amount that isn't known" didn't read as a cost at all.
+    from thechatplace.ui.claude_extras import _aside_with_cost
+    assert _aside_with_cost("Answer. ZEPHYR", "3 cents", False) == "Answer, 3 cents. ZEPHYR"
+    assert _aside_with_cost("Answer. ZEPHYR", "nothing", False) == "Answer, at no cost. ZEPHYR"
+    assert _aside_with_cost("Answer: Yes. 1 words.", "cost not known", False) == (
+        "Answer, cost not known: Yes. 1 words.")
+    assert _aside_with_cost("Not answered. It failed.", "cost not known", True) == (
+        "Not answered. It failed. Cost not known.")
+    assert _aside_with_cost("Not answered. It failed.", "2 cents", True) == (
+        "Not answered. It failed. It cost 2 cents.")

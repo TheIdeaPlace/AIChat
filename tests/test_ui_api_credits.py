@@ -84,6 +84,16 @@ def written(frame, session_id="api-1", title="Paid", kind="prompt"):
     frame._on_turn_event({"id": session_id}, title, TurnEvent("api_sent", data={"kind": kind}))
 
 
+#: Said alone, and what's said again after an interruption (#663).
+SENT_PAID = "Sent on API credits to Paid."
+
+
+def sent_said(said):
+    """What was said of a message going on API credits into Paid: its
+    read-back with "on API credits" in it, or the notice alone (#663)."""
+    return [text for text in said if text.startswith("Sent on API credits to Paid")]
+
+
 def ended(frame, session_id="api-1", title="Paid", kind="finished", text="Done.", **data):
     """The turn's last event, as an API turn's runner gives it."""
     frame._on_turn_event({"id": session_id}, title, TurnEvent(
@@ -144,20 +154,26 @@ def test_the_first_send_is_asked_once_and_each_send_is_said(frame, env, monkeypa
     runner = FakeRunner.instances[-1]
     assert (runner.billing, runner.chat_id) == ("api", "api-1")
     assert runner.ledger is spend_ledger.default_ledger()
-    # Said once the runner has written it, not as Send is pressed (#663).
-    assert "Sent on API credits." not in env["feedback"]
+    # Said once the runner has written it, not as Send is pressed (#663):
+    # the read-back waits for it, and says it, so it's said once.
+    assert sent_said(env["feedback"]) == []
+    assert not any(text.startswith("Sent to Paid") for text in env["feedback"])
     written(frame)
-    assert "Sent on API credits." in env["feedback"]
-    assert "Sent on API credits." in env["kept"]      # an interruption can't lose it
-    # The turn ends; the next send isn't asked again this run.
+    said = sent_said(env["feedback"])
+    assert len(said) == 1 and said[0].startswith("Sent on API credits to Paid: First")
+    assert said[0] in env["kept"]                     # an interruption can't lose it
+    assert (said[0], SENT_PAID) in env["again"]       # said again in short
+    assert (said[0], "api-1") in env["about"]         # the chat's reply settles it
+    # The turn ends, which settles it; the next send isn't asked again this run.
     frame._on_turn_event({"id": "api-1"}, "Paid", TurnEvent("finished", text="ok"))
+    assert "api-1" in env["forgotten"]
     env["feedback"].clear()
     frame.reply_text.SetValue("Second")
     frame.on_send()
     assert titles == ["Paid"]
     assert len(FakeRunner.instances) == 2
     written(frame)
-    assert "Sent on API credits." in env["feedback"]
+    assert sent_said(env["feedback"])[0].startswith("Sent on API credits to Paid: Second")
 
 
 def test_the_first_send_is_asked_again_if_nothing_went(frame, env, monkeypatch):
@@ -177,7 +193,7 @@ def test_the_first_send_is_asked_again_if_nothing_went(frame, env, monkeypatch):
     frame.reply_text.SetValue("Again")
     frame.on_send()
     assert titles == ["Paid", "Paid"]
-    assert "Sent on API credits." not in env["feedback"]
+    assert sent_said(env["feedback"]) == []          # the held read-back never said
 
 
 def test_sent_on_api_credits_is_said_even_with_announcements_silent(frame, env, monkeypatch):
@@ -190,12 +206,13 @@ def test_sent_on_api_credits_is_said_even_with_announcements_silent(frame, env, 
     frame.on_send()
     assert len(FakeRunner.instances) == 1
     written(frame)
-    # Said, queued behind other speech rather than interrupting it, and kept.
-    assert "Sent on API credits." in env["feedback"]
-    assert "Sent on API credits." in env["kept"]
-    assert "Sent on API credits." not in env["spoken"]
+    # Said, queued behind other speech rather than interrupting it, and kept;
+    # Silent reads nothing back, so it's the notice alone.
+    assert sent_said(env["feedback"]) == [SENT_PAID]
+    assert SENT_PAID in env["kept"]
+    assert sent_said(env["spoken"]) == []
     # Repeat Last Announcement isn't taken over by it.
-    assert getattr(frame, "_last_announcement", "") != "Sent on API credits."
+    assert getattr(frame, "_last_announcement", "") != SENT_PAID
 
 
 @pytest.mark.parametrize("kind", ["steer", "now", "follow_up"])
@@ -226,9 +243,16 @@ def test_each_way_into_a_running_turn_is_said_when_written(frame, env, monkeypat
         monkeypatch.setattr(frame, "_selected_queued", lambda: 0)
         frame.send_queued_now()
         assert runner.sent_now
-    assert "Sent on API credits." not in env["feedback"]
     written(frame, kind=kind)
-    assert env["feedback"].count("Sent on API credits.") == 1
+    said = sent_said(env["feedback"])
+    assert len(said) == 1
+    if kind == "follow_up":
+        # A send with a read-back: it waited for this, and says it (#663).
+        assert said[0].startswith("Sent on API credits to Paid: More")
+    else:
+        # Steer and Send Now say their own words at the key; the notice,
+        # alone, names the chat.
+        assert said == [SENT_PAID]
 
 
 def test_a_queued_message_after_background_work_needs_the_key_still(frame, env, monkeypatch):
@@ -273,7 +297,7 @@ def test_a_reached_limit_is_said_before_the_question_and_keeps_the_message(frame
     assert env["boxes"][-1].startswith("The Chat Place has reached your limit of $5.00")
     assert frame.reply_text.GetValue() == "Over the limit"
     assert FakeRunner.instances == [] and titles == []
-    assert "Sent on API credits." not in env["feedback"]
+    assert sent_said(env["feedback"]) == []
 
 
 def test_a_damaged_tally_stops_an_aside_too(frame, env, monkeypatch):
@@ -357,7 +381,7 @@ def test_a_subscription_chat_is_never_asked_or_charged(frame, env, monkeypatch):
     frame.on_send()
     runner = FakeRunner.instances[-1]
     assert runner.billing == "subscription" and runner.ledger is None
-    assert titles == [] and "Sent on API credits." not in env["feedback"]
+    assert titles == [] and not any("on API credits" in text for text in env["feedback"])
 
 
 def test_a_reply_on_api_credits_says_its_cost(frame, env, monkeypatch):
@@ -399,7 +423,10 @@ def test_stop_and_failures_say_what_they_cost(frame, env, monkeypatch):
     assert env["spoken"][-1].endswith("It cost at least 2 cents.")
     _send(frame)
     ended(frame, kind="failed", text="Claude exited.", cost_usd=None)
-    assert env["spoken"][-1].endswith("It cost an amount that isn't known.")
+    assert env["spoken"][-1].endswith("Claude exited. Cost not known.")
+    _send(frame)
+    ended(frame, text="Done.", cost_usd=None, cost_complete=False)
+    assert env["spoken"][-1] == "Paid replied, cost not known. Done."
     # Nothing went: no cost to speak of.
     _send(frame)
     ended(frame, kind="failed", text="Nothing was sent.", cost_usd=0.0, sent=False)
@@ -411,6 +438,21 @@ def test_stop_and_failures_say_what_they_cost(frame, env, monkeypatch):
     assert env["spoken"][-1].count("It cost") == 1
 
 
+def test_a_slash_command_says_its_cost_only_when_it_cost_something(frame, env, monkeypatch):
+    # The review (#663): every local command said "Paid: it cost nothing.",
+    # even at Silent.
+    add_key()
+    asked(frame, monkeypatch)
+    open_chat(frame, "api-1")
+    _send(frame, "/context")
+    ended(frame, text="Context: 12,000 tokens.", cost_usd=0.0)
+    said = env["spoken"] + env["feedback"]
+    assert not any("cost" in text.lower() and text.startswith("Paid") for text in said)
+    _send(frame, "/compact-notes")
+    ended(frame, text="Summarized.", cost_usd=0.02)
+    assert "Paid: it cost 2 cents." in env["feedback"]
+
+
 def test_a_reply_already_said_still_says_its_cost(frame, env, monkeypatch):
     # The turn's text was said already (a command's output, say), but its
     # cost wasn't (#663).
@@ -420,7 +462,9 @@ def test_a_reply_already_said_still_says_its_cost(frame, env, monkeypatch):
     _send(frame)
     frame._command_speech_state("api-1")["spoken"].append("Done.")
     ended(frame, text="Done.", cost_usd=0.03)
-    assert env["spoken"][-1] == "Paid finished, 3 cents."
+    # Queued, so it doesn't cut off the text being read (#663).
+    assert env["feedback"][-1] == "Paid finished, 3 cents."
+    assert "Paid finished, 3 cents." not in env["spoken"]
 
 
 def test_background_work_says_the_cost_then_only_whats_more(frame, env, monkeypatch):
@@ -436,6 +480,13 @@ def test_background_work_says_the_cost_then_only_whats_more(frame, env, monkeypa
     # Claude carried on after the work: only what that cost.
     ended(frame, text="The build passed.", cost_usd=0.05)
     assert env["spoken"][-1] == "Paid replied, 3 cents more. The build passed."
+    # What came after isn't known: "cost not known", never "… more" (#663).
+    _send(frame)
+    frame._on_turn_event({"id": "api-1"}, "Paid", TurnEvent(
+        "waiting", text="Started.", data={"tasks": ["x"], "billing": "api", "cost_usd": 0.02,
+                                          "sent": True, "cost_complete": True}))
+    ended(frame, text="Stopped it.", cost_usd=0.02, cost_complete=False)
+    assert env["spoken"][-1] == "Paid replied, cost not known. Stopped it."
     # Nothing more after the work: nothing more said about money.
     _send(frame)
     frame._on_turn_event({"id": "api-1"}, "Paid", TurnEvent(
@@ -458,7 +509,10 @@ def test_with_announcements_silent_the_cost_is_still_said(frame, env, monkeypatc
     assert not any("Done." in said for said in env["spoken"])
     _send(frame)
     ended(frame, kind="failed", text="Stopped.", cost_usd=0.01)
-    assert env["feedback"][-1] == "It cost 1 cent."
+    assert env["feedback"][-1] == "Paid: it cost 1 cent."       # which chat, too (#663)
+    _send(frame)
+    ended(frame, kind="failed", text="Stopped.", cost_usd=None)
+    assert env["feedback"][-1] == "Paid: cost not known."
     # Off in Settings: never.
     frame.speech.api_say_cost = False
     _send(frame)
@@ -612,7 +666,9 @@ def test_a_branch_of_an_api_chat_is_an_api_chat_and_keeps_fable(frame, env, monk
     assert (runner.billing, runner.chat_id) == ("api", branch.cli_session_id)
     assert "--fork-session" in runner.command
     written(frame, branch.cli_session_id, "Paid (branch)")
-    assert titles == ["Paid (branch)"] and "Sent on API credits." in env["feedback"]
+    assert titles == ["Paid (branch)"]
+    assert any(text.startswith("Sent on API credits to Paid (branch): Carry on")
+               for text in env["feedback"])
 
 
 def test_a_branch_of_a_subscription_chat_stays_on_it(frame):
@@ -716,9 +772,9 @@ def test_an_aside_says_sent_when_written_and_its_cost_from_its_window(frame, env
     windows = []
     real = frame._speak_announcement
 
-    def speak(text, interrupt, window=None, keep=False):
+    def speak(text, interrupt, window=None, keep=False, about="", again=""):
         windows.append((text, window))
-        real(text, interrupt, window=window, keep=keep)
+        real(text, interrupt, window=window, keep=keep, about=about, again=again)
     monkeypatch.setattr(frame, "_speak_announcement", speak)
 
     def show(dialog):
@@ -727,14 +783,15 @@ def test_an_aside_says_sent_when_written_and_its_cost_from_its_window(frame, env
         assert pump(lambda: _ApiAside.instances)
         runner = _ApiAside.instances[-1]
         assert runner.billing["billing"] == "api"
-        assert "Sent on API credits." not in env["feedback"]   # not as Ask is pressed
+        assert SENT_PAID not in env["feedback"]                 # not as Ask is pressed
         runner.on_event(AsideEvent("sent"))
-        assert pump(lambda: "Sent on API credits." in env["feedback"])
-        assert ("Sent on API credits.", dialog) in windows      # from the dialog, for VoiceOver
+        assert pump(lambda: SENT_PAID in env["feedback"])       # names the chat (#663)
+        assert (SENT_PAID, dialog) in windows                   # from the dialog, for VoiceOver
         runner.on_event(AsideEvent("done", "ZEPHYR-42", cost_usd=0.03, sent=True))
         assert pump(lambda: not dialog.asking)
         assert env["spoken"][-1] == "Answer, 3 cents. ZEPHYR-42"
         assert (env["spoken"][-1], dialog) in windows
+        assert (env["spoken"][-1], "api-1") in env["about"]    # the answer settles the notice
         return wx.ID_CANCEL
     monkeypatch.setattr(claude_extras.AskAsideDialog, "ShowModal", show)
     select(frame, "Paid")

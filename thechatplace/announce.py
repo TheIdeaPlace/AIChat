@@ -49,10 +49,16 @@ def first_sentence(text: str, limit: int = 200) -> str:
     return _cut_at_word(stripped, limit) + "…"
 
 
+def cost_phrase(cost: str) -> str:
+    """An API-credit cost as a phrase (#663): "6 cents", "cost not known",
+    or "at no cost" for nothing ("Answer, nothing" reads as no answer)."""
+    return "at no cost" if cost == "nothing" else cost
+
+
 def cost_after(cost: str) -> str:
     """What goes after "Paid replied" for an API-credit cost (#663): ", 6
-    cents", " at no cost" for nothing ("replied, nothing" reads as no
-    reply), or "" for none to say."""
+    cents", ", cost not known", " at no cost" for nothing ("replied,
+    nothing" reads as no reply), or "" for none to say."""
     if not cost:
         return ""
     return " at no cost" if cost == "nothing" else f", {cost}"
@@ -204,17 +210,29 @@ def _spoken_markdown(message: str) -> str:
     return " ".join(strip_for_speech(" ".join(parts)).split())
 
 
+def api_sent_text(title: str) -> str:
+    """A message went into a chat on API credits (#663): said alone (a
+    steer, Send Now, a queued message going on its own, an aside), and as
+    what's said again if an interruption may have cut it off. It names the
+    chat, so two chats' are never taken for one."""
+    return f"Sent on API credits to {title}."
+
+
 def sent_text(title: str, message: str, level: str, read_back: bool,
-              queued: bool = False) -> str:
+              queued: bool = False, api: bool = False) -> str:
     """Confirmation that Kelly's message went to Claude. Which session comes
     first, so it's heard even if the read-back is cut short. A queued
-    message was read back when it was queued, so it isn't read again."""
+    message was read back when it was queued, so it isn't read again.
+    ``api``: the chat is on API credits, and this is said once the message
+    really went (#663), so it says that too: "Sent on API credits to
+    Budget: …"."""
     if queued:
-        return f"Sent your queued message. {title} is working."
+        return (api_sent_text(title) if api
+                else f"Sent your queued message. {title} is working.")
     words = _own_words(message, level, read_back)
     if words is None:
-        return f"Sent. {title} is working."
-    return f"Sent to {title}: {words}"
+        return api_sent_text(title) if api else f"Sent. {title} is working."
+    return f"Sent on API credits to {title}: {words}" if api else f"Sent to {title}: {words}"
 
 
 def queued_text(title: str, message: str, level: str, read_back: bool,

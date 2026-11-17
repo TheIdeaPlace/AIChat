@@ -87,14 +87,32 @@ did a fork (from its source). Then:
 
 * Not restored (or a new chat, which has nothing to restore): its whole
   total is this process's, counted in full, however big.
-* Restored, with the chat's baseline known: the total less the baseline.
+* Restored, with the chat's baseline known: the total less the baseline
+  that was restored (below).
 * Restored with no baseline (a lost record, Continue Here from a desktop
   session, a fork of a chat run elsewhere), a baseline the total is below,
   or no tokens to tell by (an older Claude Code): the total, but no more
   than the turn's reservation. The restored part is spending the app can't
   see, and ``--max-budget-usd`` keeps what this process itself spends to
   the reservation (give or take one request), so that's the most it can
-  have added that's known to be this process's.
+  have added that's known to be this process's. That count is a guess, so
+  the turn says its cost isn't known (``CostTracker.guessed``), rather than
+  saying the guess as what it cost.
+
+Which baseline was restored (#663). Claude Code saves a chat's cost only
+when its process ends cleanly. Checked with 2.1.325 (Stop is an interrupt,
+then a kill): turn 1 ended cleanly at 0.003942; turn 2 was stopped, its
+result 0.007856; turn 3, resumed, reported 0.004945, which is turn 1's
+0.003942 plus its own 0.001003. Turn 2's cost was never saved. So each chat
+keeps two baselines: the *latest* total reported, and the *clean* one, the
+total at the end of its last process that ended cleanly. A resumed first
+result counts from the clean one: counting from the latest would take the
+stopped turn's cost (already counted at Stop) off this turn's, an
+under-count, or with a cheap turn give a total below it. The latest is
+used only when there's no clean one, or when the tokens show it was what
+was restored (each baseline keeps modelUsage's cumulative tokens, and the
+restored part of a result's tokens matches the baseline it came from), in
+case a later Claude Code saves a stopped turn's cost.
 
 Within one process a total never shrinks; if it does, that result adds
 nothing and the tracker starts again from it. ``CUMULATIVE_COST`` False
@@ -274,35 +292,83 @@ def _tokens(tokens) -> Optional[Tuple[int, int]]:
     return own, everything
 
 
+def _count(value) -> Optional[int]:
+    """A baseline's cumulative tokens, checked, or None."""
+    return value if type(value) is int and value >= 0 else None
+
+
+@dataclass
+class Baseline:
+    """What Claude Code reported a chat had cost after one result: its
+    total, by model, and modelUsage's cumulative tokens (None if not
+    known), so a later result's restored part can be matched to it."""
+
+    total: float
+    models: Dict[str, float] = field(default_factory=dict)
+    tokens: Optional[int] = None
+
+
 class CostTracker:
     """Turns one process's ``total_cost_usd`` (and modelUsage's ``costUSD``)
     into what each result added (see "What a result cost" above).
 
-    ``start``: the baseline of the chat the process resumes or forks (0.0
-    for a new chat, None when it isn't known), and ``start_models`` its
-    costs by model. ``resumed``: the process restores a chat's cost state
-    (``--resume``, a fork's included); by default, when ``start`` isn't
-    0.0. ``cap``: the turn's reservation, the most a restored first result
-    with no usable baseline is counted at; None for no cap (a subscription
-    turn, which spends nothing)."""
+    ``start``: the latest baseline of the chat the process resumes or forks
+    (0.0 for a new chat, None when it isn't known), ``start_models`` its
+    costs by model and ``start_tokens`` its cumulative tokens. ``clean``:
+    the chat's clean baseline (a Baseline: the total when its last process
+    that ended cleanly ended), or None. ``resumed``: the process restores a
+    chat's cost state (``--resume``, a fork's included); by default, when
+    ``start`` isn't 0.0. ``cap``: the turn's reservation, the most a
+    restored first result with no usable baseline is counted at; None for
+    no cap (a subscription turn, which spends nothing)."""
 
     def __init__(self, cumulative: Optional[bool] = None, start: Optional[float] = 0.0,
                  start_models: Optional[Dict[str, float]] = None,
-                 cap: Optional[float] = None, resumed: Optional[bool] = None) -> None:
+                 cap: Optional[float] = None, resumed: Optional[bool] = None,
+                 clean: Optional[Baseline] = None,
+                 start_tokens: Optional[int] = None) -> None:
         self.cumulative = CUMULATIVE_COST if cumulative is None else cumulative
         self.resumed = (start != 0.0) if resumed is None else bool(resumed)
         start = _money(start) if start is not None else None
         self._last_total: Optional[float] = start
         self._last_models: Dict[str, float] = _model_costs(start_models) \
             if start is not None else {}
+        self._start_tokens = _count(start_tokens) if start is not None else None
+        self._clean = clean if isinstance(clean, Baseline) and _money(clean.total) is not None \
+            else None
         self._first = True
         self.cap = _money(cap) if cap is not None else None
         #: What the first result showed: True restored, False not, None no
         #: tokens to tell by (or no result yet).
         self.restored: Optional[bool] = None
+        #: The first result was counted up to the cap, as what was restored
+        #: couldn't be told (#663): what this process cost isn't known, and
+        #: the turn says so rather than saying the guess.
+        self.guessed = False
         #: Everything this process has cost so far, and by model.
         self.total = 0.0
         self.models: Dict[str, float] = {}
+
+    @property
+    def known_total(self) -> Optional[float]:
+        """What this process cost, to be said, or None when it's a guess."""
+        return None if self.guessed else self.total
+
+    def _restored_base(self, total: float, counted) -> Optional[Baseline]:
+        """The baseline a restored first result's total includes, or None
+        if neither fits (see "Which baseline was restored")."""
+        latest = (Baseline(self._last_total, dict(self._last_models), self._start_tokens)
+                  if self._last_total is not None else None)
+        fits = [b for b in (self._clean, latest)
+                if b is not None and total >= b.total - _SAME]
+        if counted is not None:
+            restored_tokens = counted[1] - counted[0]
+            for base in fits:
+                if base.tokens is not None and base.tokens == restored_tokens:
+                    return base
+        # No tokens to match by: the clean one, as only a clean end saves
+        # the cost; never an under-count, as it's the smaller of the two.
+        return fits[0] if fits else None
 
     def add(self, total_cost, model_costs=None, tokens=None):
         """(cost added, {model: cost added}) for one result. ``tokens``:
@@ -334,23 +400,26 @@ class CostTracker:
             else:
                 restored = counted[1] > counted[0]
             self.restored = restored
+            restored_from = self._restored_base(total, counted) if restored else None
             if restored is False:
                 # Nothing restored: the whole total is this process's own,
                 # counted in full, even past the reservation (a turn can run
                 # over --max-budget-usd by one request).
                 delta, by_model = total, dict(models)
-            elif restored and base is not None and total >= base - _SAME:
+            elif restored_from is not None:
                 # The chat's own cost restored: what this process added.
-                delta = max(0.0, total - base)
-                by_model = {m: max(0.0, c - self._last_models.get(m, 0.0))
+                delta = max(0.0, total - restored_from.total)
+                by_model = {m: max(0.0, c - restored_from.models.get(m, 0.0))
                             for m, c in models.items()}
             else:
-                # Restored with no baseline to take off (or one the total is
-                # below, so it isn't what was restored), or no tokens to tell
-                # by: some of the total is earlier spending the app can't
-                # see. --max-budget-usd keeps this process's own spending to
-                # the reservation (give or take one request), so the total is
-                # counted up to that, and never more.
+                # Restored with no baseline to take off (or none the total
+                # is at or above, so neither is what was restored), or no
+                # tokens to tell by: some of the total is earlier spending
+                # the app can't see. --max-budget-usd keeps this process's
+                # own spending to the reservation (give or take one
+                # request), so the total is counted up to that, and never
+                # more. A guess, so the cost is said as not known.
+                self.guessed = True
                 delta = total if self.cap is None else min(total, self.cap)
                 scale = delta / total if total > 0 else 0.0
                 by_model = {m: c * scale for m, c in models.items()}
@@ -394,9 +463,23 @@ class SpendLedger:
 
     # -- each chat's cost baseline ---------------------------------------------------
 
+    @staticmethod
+    def _entry(raw) -> Optional[dict]:
+        """One baseline as kept ({"total", "models", "tokens"}), checked, or
+        None."""
+        if not isinstance(raw, dict):
+            return None
+        total = _money(raw.get("total"))
+        if total is None:
+            return None
+        return {"total": total, "models": _model_costs(raw.get("models")),
+                "tokens": _count(raw.get("tokens"))}
+
     def _read_baselines(self) -> Dict[str, dict]:
-        """{chat: {"total", "models"}}; a missing or damaged file is none
-        known, which counts each first result in full up to its cap."""
+        """{chat: {"total", "models", "tokens", "clean"}}, "clean" being the
+        same shape or None (see "Which baseline was restored"); a missing or
+        damaged file is none known, which counts each first result in full
+        up to its cap."""
         try:
             raw = json.loads(self.baselines_path.read_text(encoding="utf-8"))
         except (OSError, ValueError, RecursionError):
@@ -405,33 +488,57 @@ class SpendLedger:
             return {}
         kept = {}
         for chat, entry in raw.items():
-            if not isinstance(chat, str) or not isinstance(entry, dict):
+            if not isinstance(chat, str):
                 continue
-            total = _money(entry.get("total"))
-            if total is not None:
-                kept[chat] = {"total": total, "models": _model_costs(entry.get("models"))}
+            latest = self._entry(entry)
+            if latest is not None:
+                latest["clean"] = self._entry(entry.get("clean"))
+                kept[chat] = latest
         return kept
 
     def baseline(self, chat_id: str) -> Optional[Tuple[float, Dict[str, float]]]:
         """(total, {model: cost}) Claude Code last reported for ``chat_id``,
         or None if it isn't known."""
+        found = self.baselines(chat_id)
+        return (found[0].total, dict(found[0].models)) if found else None
+
+    def baselines(self, chat_id: str) -> Optional[Tuple[Baseline, Optional[Baseline]]]:
+        """(latest, clean) baselines for ``chat_id`` (clean None if no
+        process for it has ended cleanly since it was recorded), or None if
+        none is known."""
         if not chat_id:
             return None
         with _LOCK:
             entry = self._read_baselines().get(chat_id)
-        return (entry["total"], dict(entry["models"])) if entry else None
+        if not entry:
+            return None
+        clean = entry["clean"]
+        return (Baseline(entry["total"], dict(entry["models"]), entry["tokens"]),
+                Baseline(clean["total"], dict(clean["models"]), clean["tokens"])
+                if clean else None)
 
-    def rename_chat(self, old_id: str, new_id: str) -> None:
+    def _mentions(self, chat_id: str) -> bool:
+        """Whether the ledger has ever recorded anything for ``chat_id``."""
+        totals, reservations = self._replay()
+        return (chat_id in totals.chat_all_time or chat_id in totals.by_chat
+                or any(e.chat_id == chat_id for e in reservations.values()))
+
+    def rename_chat(self, old_id: str, new_id: str, api_chat: bool = True) -> None:
         """Claude Code gave the chat ``old_id`` the id ``new_id`` (#663;
         own_store.rename_id): its spending and its baseline go with it, so
-        Usage doesn't list it under chats no longer listed. Let go if it
-        can't be written: the spending still counts in the total."""
+        Usage doesn't list it under chats no longer listed. The ledger gets
+        a line only for a chat on API credits (``api_chat``) or one it
+        already names, so a subscription chat's rename never makes the
+        ledger of someone who doesn't use API credits; the baseline moves
+        for any chat. Let go if it can't be written: the spending still
+        counts in the total."""
         if not old_id or not new_id or old_id == new_id:
             return
         from .provider_storage import atomic_write_json
         with _LOCK:
             try:
-                self._append({"type": "rename", "from": old_id, "to": new_id})
+                if api_chat or (self.path.exists() and self._mentions(old_id)):
+                    self._append({"type": "rename", "from": old_id, "to": new_id})
             except OSError:
                 pass
             baselines = self._read_baselines()
@@ -442,10 +549,15 @@ class SpendLedger:
                 except OSError:
                     pass
 
-    def set_baseline(self, chat_id: str, total, models=None) -> None:
-        """Record what Claude Code reported for ``chat_id`` after a result.
-        Not part of the total (Reset leaves it), and a failure to write is
-        let go: the next turn then counts its first result up to its cap."""
+    def set_baseline(self, chat_id: str, total, models=None, tokens=None,
+                     clean: bool = False) -> None:
+        """Record what Claude Code reported for ``chat_id`` after a result:
+        its total, by model, and modelUsage's cumulative ``tokens``.
+        ``clean``: the chat's process ended cleanly after it, so this is
+        also what Claude Code saved for it (see "Which baseline was
+        restored"); otherwise the clean one recorded before is kept. Not
+        part of the total (Reset leaves it), and a failure to write is let
+        go: the next turn then counts its first result up to its cap."""
         total = _money(total)
         if not chat_id or total is None:
             return
@@ -455,7 +567,10 @@ class SpendLedger:
             # Exactly as reported, never rounded: a baseline rounded up
             # would make the restored total look smaller than it, and so not
             # restored (CostTracker).
-            baselines[chat_id] = {"total": total, "models": _model_costs(models)}
+            latest = {"total": total, "models": _model_costs(models), "tokens": _count(tokens)}
+            before = baselines.get(chat_id) or {}
+            baselines[chat_id] = {**latest,
+                                  "clean": dict(latest) if clean else before.get("clean")}
             try:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 atomic_write_json(self.baselines_path, baselines)

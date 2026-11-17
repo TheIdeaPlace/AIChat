@@ -33,13 +33,16 @@ def _alive(window):
 
 def _aside_with_cost(text: str, cost: str, failed: bool) -> str:
     """An aside's answer as said, with what it cost on API credits (#663):
-    before the answer, as a reply's is, so a long one doesn't hide it."""
+    before the answer, as a reply's is, so a long one doesn't hide it:
+    "Answer, 2 cents. …", "Answer, at no cost. …", "Answer, cost not
+    known. …"."""
+    from ..billing import cost_sentence
     if failed:
-        return text if "It cost" in text else f"{text.rstrip()} It cost {cost}."
+        return text if "It cost" in text else f"{text.rstrip()} {cost_sentence(cost)}"
     for head in ("Answer.", "Answer:"):
         if text.startswith(head):
-            return f"Answer, {cost}{head[-1]}{text[len(head):]}"
-    return f"{text.rstrip()} It cost {cost}."
+            return f"Answer, {announce.cost_phrase(cost)}{head[-1]}{text[len(head):]}"
+    return f"{text.rstrip()} {cost_sentence(cost)}"
 
 
 def _give_focus_back(window) -> None:
@@ -283,11 +286,15 @@ class ClaudeExtras:
                 text = _aside_with_cost(text, cost, failed)
             self._sound(sound_events.ASIDE_FAILED if failed else sound_events.ASIDE_ANSWERED)
             if text:
-                self._say(text, window=_alive(dialog))
+                # About the chat: it settles a "Sent on API credits" still
+                # to be heard (speech.Speaker, #663).
+                self._say(text, window=_alive(dialog),
+                          about=own.cli_session_id if api else "")
             if cost and not self.speech.enabled:
                 # Silent: the cost is still said, as Settings asks (#663).
-                self._speak_announcement(f"It cost {cost}.", interrupt=False,
-                                         window=_alive(dialog))
+                from ..billing import cost_sentence
+                self._speak_announcement(cost_sentence(cost), interrupt=False,
+                                         window=_alive(dialog), about=own.cli_session_id)
 
         def cost_words(event):
             """What an aside on API credits cost, as said, or "" (#663)."""

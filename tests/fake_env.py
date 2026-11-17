@@ -134,12 +134,24 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     feedback = []
     #: What was spoken kept, so an interruption can't lose it (#663).
     kept = []
+    #: (text, about) for everything said about a chat, and (text, again)
+    #: for each kept one (#663).
+    about = []
+    again = []
 
-    def speak(text, settings, interrupt=True, keep=False):
+    def speak(text, settings, interrupt=True, keep=False, about_="", again_=""):
         (spoken if interrupt else feedback).append(text)
         if keep:
             kept.append(text)
-    patch(speech.speaker, "speak", speak)
+            again.append((text, again_))
+        if about_:
+            about.append((text, about_))
+
+    def speak_kw(text, settings, interrupt=True, keep=False, about="", again=""):
+        speak(text, settings, interrupt, keep, about, again)
+    patch(speech.speaker, "speak", speak_kw)
+    forgotten = []
+    patch(speech.speaker, "forget", forgotten.append)
     # The frame points the shared speaker at itself (#98); put it back after,
     # so no later test reaches a destroyed frame through it.
     patch(speech.speaker, "on_problem", None)
@@ -257,7 +269,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     from thechatplace.ui import mac_a11y
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
-            "kept": kept,
+            "kept": kept, "about": about, "again": again, "forgotten": forgotten,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}

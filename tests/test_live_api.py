@@ -1,9 +1,11 @@
 """Live checks of API credits (#658, #662, #663) against the real Anthropic API,
 through the app's own code: Test Key, a new chat on API credits, a second
 message in it (resumed: only that message's cost is counted), Stop mid-reply,
-two chats alternating in one folder and the app's fork path (each message
-counted once), and, with a made-up key (free), that a settings file can't send
-the key elsewhere and that a refused key is said at once.
+a turn resumed after a Stop (counted as its own cost, though Claude Code didn't
+save the stopped turn's), two chats alternating in one folder and the app's
+fork path (each message counted once), and, with a made-up key (free), that a
+settings file can't send the key elsewhere and that a refused key is said at
+once.
 
 Skipped unless TCP_LIVE_API=1 and TCP_LIVE_API_KEY_FILE names a file holding a
 real key; never in CI. A run spends a few cents at most, on Haiku. Run this before
@@ -221,6 +223,47 @@ def test_stop_counts_what_the_reply_cost_and_holds_nothing(world):
     assert stopped and events[-1].text == "Stopped."
     totals = world["ledger"].totals()
     assert totals.held == 0 and 0 < totals.spent < 0.05
+
+
+def test_a_turn_resumed_after_a_stop_is_counted_as_its_own_cost(world):
+    # #663, as probe_stopresume.py found with 2.1.325: Claude Code doesn't
+    # save a stopped turn's cost, so the next resume restores the cost at
+    # the last clean end. Turn 3 must be counted as its own cost, not the
+    # whole total (taking it as "no baseline"), nor less.
+    ledger, folder, exe = world["ledger"], world["folder"], world["claude"]
+    session = str(uuid.uuid4())
+    _r, first = run_ok(claude_cli.build_new_command(exe, session, "Live stop-resume", "default",
+                                                    model="haiku"),
+                       folder, "Reply with the single word one.", ledger)
+    clean_total = ledger.baseline(session)[0]
+    resume = claude_cli.build_resume_command(exe, session, "default", {session}, set(),
+                                             model="haiku")
+    stopped = []
+
+    def stop(runner):
+        if not stopped:
+            stopped.append(True)
+            runner.cancel()
+    before = ledger.totals().spent
+    _r, events = run(resume, folder, "Write a 1500-word story about a lighthouse. No tools.",
+                     ledger, on_text=stop)
+    assert stopped and events[-1].text == "Stopped."
+    stop_cost = ledger.totals().spent - before
+    assert 0 < stop_cost < 0.05
+    latest, clean = ledger.baselines(session)
+    assert clean.total == pytest.approx(clean_total)        # a stop isn't a clean end
+    assert latest.total > clean.total
+    before = ledger.totals().spent
+    runner, third = run_ok(resume, folder, "Reply with the single word three.", ledger)
+    added = ledger.totals().spent - before
+    reported = runner.costs._last_total                     # what Claude Code said: restored + own
+    own = reported - clean_total
+    assert runner.costs.restored is True and not runner.costs.guessed
+    assert 0 < own < 0.01, (reported, clean_total)
+    assert added == pytest.approx(own, rel=0.01, abs=0.00002), (added, own, reported)
+    assert third.data["cost_usd"] == pytest.approx(added, rel=0.01)
+    assert third.data["cost_complete"] is True
+    assert ledger.totals().held == pytest.approx(0.0, abs=1e-9)
 
 
 def test_two_chats_alternating_in_one_folder_are_each_counted_once(world):

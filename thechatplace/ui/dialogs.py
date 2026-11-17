@@ -6867,7 +6867,9 @@ class AskAsideDialog(wx.Dialog):
             return  # closed while it was being answered: nothing to say
         cost = self._cost_words(event)
         if item.failed and item.answer == "Stopped.":
-            self._feedback(f"Stopped asking. It cost {cost}." if cost else "Stopped asking.")
+            from ..billing import cost_sentence
+            self._feedback(f"Stopped asking. {cost_sentence(cost)}" if cost
+                           else "Stopped asking.")
             return
         # The answer to a key press: said, and in the Answer box to read by
         # line, where focus goes, unless you've started the next question.

@@ -380,8 +380,9 @@ your Claude subscription.
    whole conversation goes again.
 
 You always know when a message is on API credits: the chat's row and the window's title say
-"API credits", each message you send is followed by "Sent on API credits" once Claude Code has
-it (always said, even when announcements are off), the first one in each
+"API credits", each message you send is said to have gone on API credits once Claude Code has
+it ("Sent on API credits to Budget", with your message read back after it; always said, even
+when announcements are off), the first one in each
 chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
 Ask Aside answer says what it cost, and
 the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be

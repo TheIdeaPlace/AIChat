@@ -322,7 +322,7 @@ class AsideEvent:
     kind: str
     text: str = ""
     #: On "done" or "failed" for an aside on API credits (#658): what it
-    #: cost, in dollars. None on the subscription.
+    #: cost, in dollars. None on the subscription, or when it isn't known.
     cost_usd: Optional[float] = None
     #: On API credits (#663): False when some of the cost isn't known (a
     #: Stop whose result didn't come, a result without a usable cost), and
@@ -414,6 +414,10 @@ class AsideRunner:
         self._popen = popen
         self._timer = timer
         self._env = dict(env if env is not None else child_environment())
+        if self.billing == ROUTE_API:
+            # No certificate authority from the environment (#663).
+            from .billing import api_environment
+            self._env = api_environment(self._env)
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
@@ -599,6 +603,7 @@ class AsideRunner:
                                    self._refuse_unanswered if api else self._send_question)
             fallback.daemon = True
             fallback.start()
+            stop_reading = False
             for raw in iter(process.stdout.readline, b""):
                 line = _decode(raw)
                 streamed = self._stream_text(line, streamed)
@@ -653,8 +658,10 @@ class AsideRunner:
                             self._settle(event)
                         if api and self._cancelled:
                             # Stop's interrupt brought the result, and so the
-                            # cost: now it ends (#658).
+                            # cost: now it ends (#658), and nothing it wrote
+                            # after is read (#663).
                             self._kill()
+                            stop_reading = True
                             break
                         if event.is_error:
                             final = AsideEvent("failed", _missing_or(
@@ -663,7 +670,7 @@ class AsideRunner:
                             answer = (event.text or streamed).strip()
                             final = AsideEvent("done", answer or "(Claude gave no answer.)")
                         self._close_stdin()
-                if final is not None and final.kind == "failed":
+                if (final is not None and final.kind == "failed") or stop_reading:
                     break
                 self._refuse_unsupported()
             fallback.cancel()
@@ -694,11 +701,14 @@ class AsideRunner:
                 except Exception:  # noqa: BLE001 - left open is counted: the safe way
                     pass
         if self.billing == ROUTE_API:
-            final.cost_usd = round(self.costs.total, 6)
-            final.cost_complete = self._cost_known and not self._cost_lost
+            # A count up to the reservation, as what the fork restored
+            # couldn't be told, is no cost to say (#663): not known.
+            guessed = self.costs.guessed
+            final.cost_usd = None if guessed else round(self.costs.total, 6)
+            final.cost_complete = self._cost_known and not self._cost_lost and not guessed
             final.sent = self._written
             if final.kind == "failed":
-                plain = failure_text("", final.text, self.costs.total)
+                plain = failure_text("", final.text, self.costs.known_total)
                 if plain:
                     final.text = _in_aside_words(plain)
         self._emit(final)
@@ -720,7 +730,7 @@ class AsideRunner:
             self._cost_lost = True
         self._cost_known = True
         if event.is_error:
-            plain = failure_text(event.raw_type, event.text, self.costs.total,
+            plain = failure_text(event.raw_type, event.text, self.costs.known_total,
                                  self.reservation.amount if self.reservation else None)
             if plain:
                 event.text = _in_aside_words(plain)
