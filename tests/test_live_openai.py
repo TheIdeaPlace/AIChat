@@ -174,7 +174,13 @@ def test_paid_stop(native, tmp_path, key):
         state, report = finished(conn, runner, proof, events)
         assert state.status == 'interrupted'
         from thechatplace.openai_prices import request_ceiling
-        expected = payment.accounted + request_ceiling(payment.model, payment.context_window)
+        # What usage settled before Stop, plus one cut-off request's ceiling.
+        # payment.accounted already includes that ceiling once the turn has
+        # ended, so it IS the expected total; adding the ceiling again counted
+        # it twice. Usage may still arrive between a snapshot and the
+        # interrupt, so the relationship is checked rather than a snapshot.
+        expected = payment.accounted
+        assert expected >= request_ceiling(payment.model, payment.context_window) - .000001
         assert report['cost_complete'] and report['cost_upper_bound']
         assert report['cost_usd'] == pytest.approx(expected, abs=.000001)
         assert report['cost_words'].startswith('estimated, at most ')
