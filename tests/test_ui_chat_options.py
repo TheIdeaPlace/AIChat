@@ -312,6 +312,7 @@ def test_continue_heres_folder_box_is_a_tab_stop_one_line_tall(frame, folder):
 
 
 def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, tmp_path):
+    from thechatplace.chat_options import AGENT_LOADING_ABOUT
     from thechatplace.ui.dialogs import ChatOptionsDialog
     said = []
     dialog = ChatOptionsDialog(frame, "Mine", folder,
@@ -326,8 +327,7 @@ def test_chat_options_dialog_lists_the_folders_agents_and_styles(frame, folder, 
         assert "Run as &agent:" in labels
         # Before Claude Code answers: the chat's own agent is still there.
         assert dialog.agent.GetStringSelection() == "gone-agent"
-        assert dialog.agent_about.GetValue() == (
-            "No description: this folder's agents aren't known yet.")
+        assert dialog.agent_about.GetValue() == AGENT_LOADING_ABOUT
         assert pump(lambda: dialog.agent.GetCount() > 2)
         assert list(dialog.agent.GetStrings()) == [
             "None (Claude Code's default)", "code-reviewer (uses its own model, opus)",

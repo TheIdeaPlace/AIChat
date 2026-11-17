@@ -6350,7 +6350,7 @@ class ChatOptionsDialog(wx.Dialog):
                  billing: str = "subscription"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
-                         else "Chat Options", size=dialog_size(parent, 620, 600),
+                         else "Chat Options", size=dialog_size(parent, 620, 670),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._provider = provider
         self._folder = folder
@@ -6491,7 +6491,7 @@ class ChatOptionsDialog(wx.Dialog):
 
     def _show_agent_about(self):
         """The Agent Description box, for the agent chosen."""
-        from ..chat_options import AGENT_NONE_ABOUT, AGENT_UNKNOWN_ABOUT
+        from ..chat_options import AGENT_LOADING_ABOUT, AGENT_NONE_ABOUT, AGENT_UNKNOWN_ABOUT
         name = self._agent_values[max(0, self.agent.GetSelection())]
         agents = self._choices.agents if self._choices is not None else ()
         agent = next((a for a in agents if a.name == name), None)
@@ -6500,7 +6500,7 @@ class ChatOptionsDialog(wx.Dialog):
         elif agent is not None:
             text = agent.about()
         elif self._choices is None:
-            text = "No description: this folder's agents aren't known yet."
+            text = AGENT_LOADING_ABOUT
         else:
             text = AGENT_UNKNOWN_ABOUT
         self.agent_about.ChangeValue(text)

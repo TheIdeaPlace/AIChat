@@ -56,6 +56,8 @@ _SAFE_STYLE = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
 AGENT_NONE_LABEL = "None (Claude Code's default)"
 #: The Agent Description box for None.
 AGENT_NONE_ABOUT = "The chat runs as Claude Code's own agent."
+#: ...for the chat's agent before the folder's agents are known.
+AGENT_LOADING_ABOUT = "No description: this folder's agents aren't known yet."
 #: ...for an agent the chat has that the folder no longer lists.
 AGENT_UNKNOWN_ABOUT = "No description: Claude Code didn't list this agent for the folder."
 STYLE_DEFAULT_LABEL = "Your setting"
