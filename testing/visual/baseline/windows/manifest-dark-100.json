@@ -1280,6 +1280,104 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Tools, API Keys with a key, some spending and a test's answer"
+  },
+  "openai-keys-empty": {
+   "kind": "dialog",
+   "png": "openai-keys-empty-dark-100.png",
+   "json": "openai-keys-empty-dark-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys without a saved key"
+  },
+  "openai-keys-held": {
+   "kind": "dialog",
+   "png": "openai-keys-held-dark-100.png",
+   "json": "openai-keys-held-dark-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys with estimated spending and Release Held"
+  },
+  "openai-keys-testing": {
+   "kind": "dialog",
+   "png": "openai-keys-testing-dark-100.png",
+   "json": "openai-keys-testing-dark-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys while testing a made-up key"
+  },
+  "openai-keys-failed": {
+   "kind": "dialog",
+   "png": "openai-keys-failed-dark-100.png",
+   "json": "openai-keys-failed-dark-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys after key refusal"
+  },
+  "openai-keys-updating": {
+   "kind": "dialog",
+   "png": "openai-keys-updating-dark-100.png",
+   "json": "openai-keys-updating-dark-100.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    600,
+    680
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys while replacing a key"
+  },
+  "openai-properties": {
+   "kind": "dialog",
+   "png": "openai-properties-dark-100.png",
+   "json": "openai-properties-dark-100.json",
+   "title": "Properties of OpenAI budget",
+   "class": "PropertiesDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex API Properties with unknown spending"
+  },
+  "openai-usage": {
+   "kind": "dialog",
+   "png": "openai-usage-dark-100.png",
+   "json": "openai-usage-dark-100.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    640,
+    360
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI Usage with estimated maximum and unknown spending"
   }
  },
  "seconds": 91.3

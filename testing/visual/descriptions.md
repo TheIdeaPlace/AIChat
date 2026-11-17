@@ -283,6 +283,23 @@ Claude.ai connectors aren't available on API credits. A chat's charging can't be
 once it's made." before the usual permissions text. Without a key (new-session), there's
 no Charge to row and the dialog is as before.
 
+**Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). Everything below moves down about 45 pixels, so the dialog is 600 by about 725, and nothing else in its layout changed. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
+
+## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
+
+The same dialog with "Codex (OpenAI)" chosen. The key box is labelled "OpenAI API key:", and Key status reads "OpenAI: No key" or "OpenAI: key ending in ...".
+- **The limits start at 5.00 and 0.50.**
+- **The Total box begins "Estimated OpenAI costs."**, then spent, held (with how much is held for messages no longer running) and left. Release Held is on when something is held that nothing is running for.
+- **Testing:** "Testing the key..." while a test runs. **Failed:** the refusal in plain words. **Updating:** saving a new key.
+- **"About spending"** names the OpenAI account.
+
+The keyboard walk in the VM (ClaudeTesting-2 on THESTADIUM) reached every control by Tab, wrapped round to Provider, reversed with Shift+Tab, and left with Escape.
+
+## openai-usage and openai-properties: an OpenAI API chat (#661)
+
+- **Usage** lists "OpenAI API credits: estimated spending ... of $5.00", the chat's cost, the date of the prices, what's held and what's left (written "$0.50" here, but "50 cents" in API Keys), the last stopped message's at-most estimate, and that limits are approximate.
+- **Properties** adds "Charged to: OpenAI API credits", "Spending on API credits by this chat", and the model chosen (gpt-5-nano).
+
 ## main-api-chat: A chat on API credits (#658)
 
 The main window, 1000 by 720, with a chat on API credits loaded. The title bar reads

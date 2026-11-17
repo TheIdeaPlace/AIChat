@@ -1,0 +1,123 @@
+{
+ "title": "Usage and Context",
+ "class": "UsageDialog",
+ "size": [
+  1120,
+  630
+ ],
+ "client": [
+  1096,
+  566
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Usage and context:",
+   "rect": [
+    8,
+    8,
+    179,
+    31
+   ],
+   "best": [
+    179,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Usage and context",
+   "label": "",
+   "rect": [
+    10,
+    41,
+    1080,
+    469
+   ],
+   "best": [
+    675,
+    154
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "OpenAI API credits: estimated spending less than a cent of $5.00.",
+    "This chat: cost not known. Prices dated 2026-11-17.",
+    "Held $0.50; estimated remaining $4.50.",
+    "Stopped message: estimated, at most 7 cents.",
+    "Limits are approximate; one request can pass a limit."
+   ],
+   "selection": 0
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Copy",
+   "rect": [
+    677,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Copy &All",
+   "rect": [
+    816,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    955,
+    516,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}
