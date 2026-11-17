@@ -383,7 +383,8 @@ too).
 - **Chat Options** (Alt+H in New Session and Continue Here, for Claude and Codex; Chat, Chat
   Settings, Chat Options (Alt+C, N, O) for a chat started here; Codex's is under **Codex chats** below) chooses, for Claude, what every turn in the chat also gets: an agent to
   **Run as agent** (None, or one of the agents Claude Code knows for the folder, such as your
-  code-reviewer, listed with the start of its description), **Instructions for this chat**
+  code-reviewer, listed by name; under it, **Agent description** (Alt+P) is a read-only box with
+  the chosen agent's whole description, to read by line), **Instructions for this chat**
   (added to Claude's own; Enter starts a new line; up to 8,000 characters, and OK says if they're
   longer), an **Output style** (your setting, or one of the styles Claude Code offers, yours
   included), and **More folders** Claude may work in (Add Folder, Remove, or Delete in the list;

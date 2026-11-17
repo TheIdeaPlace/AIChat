@@ -294,7 +294,8 @@ STEPS = [
     Step("Close Codex Change Permission Mode in Plan", ["Escape"], expect=["Messages in Visual probe"]),
     # Chat Options (#468), opened by the trigger: opened from the menu, the
     # menu's closing put Orca's reading a Tab behind on GTK. It opens on Run
-    # as agent, and Tab goes through every control in turn. The
+    # as agent, and Tab goes through every control in turn, the agent's
+    # description box (#664) next. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
     Step("Codex Chat Options", [], trigger="codex-chat-options",
@@ -304,6 +305,7 @@ STEPS = [
     Step("Close Codex Chat Options", ["Escape"]),
     Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Run as agent"],
          refuse=["unlabeled", "unlabelled"]),
+    Step("Chat Options, agent description", ["Tab"], expect=["Agent description"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
     Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),

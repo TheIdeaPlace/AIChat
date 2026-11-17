@@ -176,24 +176,23 @@ def test_choices_from_initialize():
     assert choices_from_init(None) is None
 
 
-def test_agent_label_is_cut_short():
-    agent = co.Agent("code-reviewer", "Independent review " * 20)
-    assert agent.label().startswith("code-reviewer: Independent review")
-    assert len(agent.label()) <= 90 and agent.label().endswith("…")
+def test_agent_label_is_its_name_and_about_is_its_whole_description():
+    # Cut to fit the list, a description stopped mid-word: "...searching for c…".
+    description = ("General-purpose agent for researching complex questions, searching for "
+                   "code, and executing multi-step tasks.\r\nWhen you are searching for a "
+                   "keyword or file and are not confident, use this agent. " * 5)
+    agent = co.Agent("general-purpose", description)
+    assert agent.label() == "general-purpose"
+    assert agent.about() == description.replace("\r\n", "\n").strip()
+    assert co.Agent("quiet").about() == "quiet has no description."
 
 
 def test_agent_label_says_when_it_has_its_own_model():
-    assert co.Agent("wide", "Looks wide.", "sonnet").label() == (
-        "wide (uses its own model, sonnet): Looks wide.")
-    assert co.Agent("wide", "", "sonnet").label() == "wide (uses its own model, sonnet)"
-    # The model before the description, so a long description can't cut it off.
-    cut = co.Agent("wide", "Very long. " * 30, "sonnet").label()
-    assert cut.startswith("wide (uses its own model, sonnet): Very long.")
-    assert len(cut) <= 90
+    assert co.Agent("wide", "Looks wide.", "sonnet").label() == "wide (uses its own model, sonnet)"
     # "inherit" is what an agent says with no model of its own.
     for model in ("", "inherit", "Inherit"):
         agent = co.Agent("wide", "Looks wide.", model)
-        assert agent.own_model == "" and agent.label() == "wide: Looks wide."
+        assert agent.own_model == "" and agent.label() == "wide"
 
 
 @pytest.mark.parametrize("model", ["fable", "claude-fable-5", "Fable", "sonnet[1m]",
