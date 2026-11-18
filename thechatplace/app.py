@@ -365,8 +365,8 @@ def main(argv: Optional[list] = None) -> int:
     platform_paths.set_program_name()
     app = ChatPlaceApp(False)
     app.SetAppName(APP_TITLE)
-    # A Mac: no Command+letter on buttons, and Option+letter for a dialog's
-    # access keys (#675), before the first button is made. Nothing elsewhere.
+    # A Mac: no Command+letter on buttons, so Command+V and the rest always
+    # do their jobs (#675), before the first button is made. Nothing elsewhere.
     from .ui import mac_keys
     mac_keys.install(app)
     # One copy at a time: two would both run turns, announce everything

@@ -242,8 +242,9 @@ def _hook_button_class(cls) -> bool:
     are replaced on the class: each does what it did, then a Command letter
     left on the button is taken away. That catches the label changes too
     (Add Key and Replace Key), however they're made, with nothing to call
-    after each one. Return and Escape, which wx gives the default and Cancel
-    buttons, are kept.
+    after each one. Return on the default button and Escape aren't Command
+    letters, and are kept. The modifier mask is cleared with the letter:
+    left at Command, a later SetDefault's Return would be Command+Return.
     """
     if cls in _key_methods:
         return True
@@ -263,8 +264,9 @@ def _hook_button_class(cls) -> bool:
     def drop(view):
         try:
             if is_command_letter(*_key_equivalent_of(ctypes.c_void_p(view))):
-                # The original, not a message: this one would come back here.
+                # The originals, not messages: those would come back here.
                 original_key(view, key_selector, _nsstring(""))
+                original_mask(view, mask_selector, 0)
         except Exception:  # noqa: BLE001 - an exception can't cross into AppKit
             pass
 
@@ -301,8 +303,9 @@ def stop_button_command_keys() -> bool:
 def drop_command_key(window) -> bool:
     """Take a Command key equivalent off wx button `window` now, and hook its
     class if it's another of wx's, so a later label change can't put it back.
-    True if the button has none afterwards; False off macOS or for a window
-    that isn't a native button."""
+    True if the button has none afterwards; False off macOS, for a window
+    that isn't a native button, or for a button of AppKit's own, which is
+    left as it is."""
     if not IS_MACOS or _runtime() is None:
         return False
     try:
@@ -318,11 +321,14 @@ def drop_command_key(window) -> bool:
         # Only wx's own classes: an NSButton of AppKit's (an alert's Don't
         # Save, Command+D) keeps the key the system gave it.
         name = objc.class_getName(cls) if cls else None
-        if name and name.startswith(b"wx"):
-            _hook_button_class(cls)
+        if not (name and name.startswith(b"wx")):
+            return False
+        _hook_button_class(cls)
         if is_command_letter(*_key_equivalent_of(view)):
             _send(view, "setKeyEquivalent:", ctypes.c_void_p(_nsstring("")),
                   restype=None, argtypes=(ctypes.c_void_p,))
+            _send(view, "setKeyEquivalentModifierMask:", 0,
+                  restype=None, argtypes=(ctypes.c_uint64,))
         return not is_command_letter(*_key_equivalent_of(view))
     except Exception:  # noqa: BLE001
         return False

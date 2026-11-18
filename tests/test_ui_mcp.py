@@ -1,6 +1,8 @@
 """Tools, Connected Tools and connected tools' questions in the window (#468),
 on a hidden window with every outside thing faked (``fake_env``): no real
 claude, no browser, no speech."""
+import sys
+
 import pytest
 
 wx = pytest.importorskip("wx")
@@ -364,7 +366,7 @@ def test_delete_in_a_codex_chat_makes_no_copy_and_says_what_to_press(frame, env,
         assert asked == [] and copied == []
         said = env["boxes"][count:]
         assert len(said) == 3
-        key = f" ({key_name('Alt+O')})"  # Option+O on a Mac (#675)
+        key = "" if sys.platform == "darwin" else " (Alt+O)"
         assert said[0] == f"In a Codex chat, a tool changes only in a new copy: press {button}{key} to make one."
         assert dialog.list.GetString(0).startswith("notes")
         # The button itself still makes the copy.
@@ -428,7 +430,7 @@ def test_codex_sign_in_says_how_for_an_off_tool_and_a_chat_from_elsewhere(frame,
     from thechatplace.providers.codex_tools import CodexTool
     from thechatplace.ui.codex_tools_host import CodexConnectedTools
     from thechatplace.ui.dialogs import ConnectedToolsDialog
-    key = f" ({key_name('Alt+O')})"  # Option+O on a Mac (#675)
+    key = "" if sys.platform == "darwin" else " (Alt+O)"
     record = SimpleNamespace(cli_session_id="c-1", provider_options={})
     own = CodexConnectedTools(_codex_frame(record), _codex_info(is_own=True))
     own.load = lambda done: done([CodexTool("notes", "off")], "")
@@ -1252,8 +1254,10 @@ def test_alt_goes_to_a_choose_several_fields_first_box(frame, env, monkeypatch):
         assert press("Q")
         assert press("E", alt=False)
         assert not moved
-        # Option on a Mac, as Alt elsewhere (#675).
-        assert not press("E") and moved
+        if sys.platform == "darwin":
+            assert press("E") and not moved  # Option and a letter types
+        else:
+            assert not press("E") and moved
     finally:
         dialog.Destroy()
 
@@ -1276,9 +1280,10 @@ def test_alt_on_a_check_box_moves_to_it_and_leaves_it_as_it_was(frame, env, monk
         event.SetKeyCode(ord("B"))
         event.SetAltDown(True)
         dialog._on_key(event)
-        # Option on a Mac, as Alt elsewhere (#675): handled here, so the
-        # app's Option+letter (mac_keys) never checks it.
-        assert not event.GetSkipped() and moved == [True]
+        if sys.platform == "darwin":
+            assert event.GetSkipped() and not moved  # Option and a letter types
+        else:
+            assert not event.GetSkipped() and moved == [True]
         assert box.GetValue() is True
     finally:
         dialog.Destroy()

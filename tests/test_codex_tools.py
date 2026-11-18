@@ -129,8 +129,7 @@ def test_the_codex_note_says_first_that_a_change_is_a_new_copy():
     assert "codex mcp login" in elsewhere
 
 
-@pytest.mark.parametrize("platform,key", [("win32", " (Alt+O)"), ("linux", " (Alt+O)"),
-                                          ("darwin", " (Option+O)")])  # a Mac's, #675
+@pytest.mark.parametrize("platform,key", [("win32", " (Alt+O)"), ("linux", " (Alt+O)"), ("darwin", "")])
 def test_delete_and_sign_in_name_the_button_and_its_key_where_it_has_one(platform, key):
     host = _host(True)
     on, off = CodexTool("notes", "off"), CodexTool("notes", "connected", (), False)

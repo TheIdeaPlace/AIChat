@@ -2087,13 +2087,14 @@ class FormattedMessageDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_CANCEL)
         plain.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(ID_PLAIN_TEXT))
         if wx.Platform == "__WXMAC__":
-            # Command+W closes, as in any Mac window (#119). Option+P from
-            # the buttons is every dialog's Option+letter now (mac_keys,
-            # #675); from inside the page, _KEY_RELAY sends it.
+            # A Mac button has no Alt mnemonic, so Option+P works from the
+            # buttons too, and Command+W closes, as in any Mac window (#119).
             close_id = wx.NewIdRef()
             self.SetAcceleratorTable(wx.AcceleratorTable([
+                (wx.ACCEL_ALT, ord("P"), ID_PLAIN_TEXT),
                 (wx.ACCEL_CTRL, ord("W"), close_id),
             ]))
+            self.Bind(wx.EVT_MENU, lambda e: self.EndModal(ID_PLAIN_TEXT), id=ID_PLAIN_TEXT)
             self.Bind(wx.EVT_MENU, lambda e: self.EndModal(wx.ID_CANCEL), id=close_id)
         try:
             self.view.EnableAccessToDevTools(False)
@@ -3745,7 +3746,7 @@ class SessionColumnsDialog(wx.Dialog):
     Move to Bottom and Reset to Default, and a preview of the selected
     session's row. OK keeps the choice; Cancel (or Escape) leaves it.
 
-    Keys as well as the buttons, which need Tab or an access key to reach:
+    Keys as well as the buttons, since a Mac has no Alt+letter access keys:
     Enter in Available adds, Delete (or Backspace) in Shown removes, and Alt+Up, Alt+Down,
     Alt+Home and Alt+End in Shown move (Option on a Mac), as QuickMail's
     Alt+Up and Alt+Down do. Every action is said (``say``), and focus stays
@@ -6324,9 +6325,8 @@ class ElicitationDialog(wx.Dialog):
         return "Tab to the form, or to Send." if self.fields else "Tab to Send, or to Decline."
 
     def _on_key(self, event):
-        # On a Mac too, with Option (#675): before the app's Option+letter
-        # (mac_keys), which would check a check box as well as move to it.
-        if (event.AltDown()
+        # Not on a Mac, which has no access keys: Option and a letter types.
+        if (sys.platform != "darwin" and event.AltDown()
                 and not (event.ControlDown() or event.ShiftDown())
                 and event.GetKeyCode() in self._group_keys):
             self._group_keys[event.GetKeyCode()].SetFocus()

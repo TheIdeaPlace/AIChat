@@ -2,9 +2,8 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences. The Alt keys this guide gives in a dialog work as
-Option keys on a Mac: Option and the letter presses the button, checks the check box, or moves to
-the box it names. A button never takes Command and a letter, so Command+V and Command+A always edit.
+VO+M), rather than Windows Alt menu sequences. On a Mac, dialogs follow the Mac's own keys:
+Return presses the default button, Escape cancels, and Tab or VoiceOver reach the rest.
 
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 

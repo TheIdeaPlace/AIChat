@@ -68,8 +68,8 @@ def app():
     """
     wx = pytest.importorskip("wx")
     instance = wx.GetApp() or wx.App(False)
-    # As the app does (#675): on a Mac, buttons get no Command+letter and a
-    # dialog's access keys are Option+letter. Nothing elsewhere.
+    # As the app does (#675): on a Mac, buttons get no Command+letter.
+    # Nothing elsewhere.
     from thechatplace.ui import mac_keys
     mac_keys.install(instance)
     yield instance
