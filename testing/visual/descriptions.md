@@ -285,6 +285,8 @@ no Charge to row and the dialog is as before.
 
 **Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). The dialog stays 600 by 680: everything below moves down to make room, and the read-only boxes (Test result, About spending) are a little shorter. Nothing else in its layout changed, and nothing is cut off. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
 
+**Since 2026-11-18, the limit boxes start at 20.00 and 2.00 for both providers** (they were 190.00 and 5.00 for Claude, 5.00 and 0.50 for OpenAI), so the amounts in the API Keys, OpenAI and Usage pictures below change too; the pictures will be updated in the next probe run.
+
 ## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
 
 The same dialog with "Codex (OpenAI)" chosen. The key box is labelled "OpenAI API key:", and Key status reads "OpenAI: No key" or "OpenAI: key ending in ...".

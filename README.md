@@ -471,8 +471,8 @@ API credits.
 - **Codex on OpenAI credits.** In **Tools, API Keys**, choose **Codex (OpenAI)** under
   **Provider** (Alt+P). Add your OpenAI key, starting with `sk-`, in the masked key box.
   **Test Key** sends a tiny request and counts its estimated cost. Each provider has its own
-  key, limits, total, **Reset Total** and **Release Held**. OpenAI starts at $5 overall and
-  about $0.50 per message; Claude keeps its existing defaults. Save limits before switching
+  key, limits, total, **Reset Total** and **Release Held**. Both start at $20 overall and
+  about $2 per message until you change them. Save limits before switching
   providers, or answer the unsaved-changes question. Release Held warns that spending may
   be left uncounted and never releases money reserved by running messages.
 - **Choose Codex, then API credits** under **Charge to** in New Session. Only models in the
@@ -515,7 +515,7 @@ question, cost setting and API-credit labels also apply to Codex:
   credits may bring up a keychain question for "security" (the command that hands Claude Code
   the key): choose **Always Allow**, or it asks again each time.
 - **Claude spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
-  (Alt+S, $190 at first) and "Stop any one message at about $" (Alt+O, $5 at first). The Total
+  (Alt+S, $20 at first) and "Stop any one message at about $" (Alt+O, $2 at first). The Total
   box right after them says what's been spent since the last reset, what's held for messages
   still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
   saved asks first. **Reset Total** (Alt+E) starts counting again from nothing, after asking.
@@ -543,7 +543,7 @@ question, cost setting and API-credit labels also apply to Codex:
 - **Always knowing.** The chat's row in the session list says "API credits" after its name,
   and so do the window's title, the heading and the messages list's name; the reply box is
   named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
-  chat $0.42, The Chat Place $12.30 of $190" (Enter there opens Tools, API Keys). Every message
+  chat $0.42, The Chat Place $12.30 of $20" (Enter there opens Tools, API Keys). Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
   gone on API credits once Claude Code has it, always, even when announcements are off. When
   you send, the status bar says "Sending on API credits…" at once, and what's read back a

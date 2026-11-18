@@ -2310,7 +2310,7 @@ def d_api_keys_with_key(frame, env):
 def _openai_keys(frame, env, state):
     from thechatplace import openai_billing, spend_ledger
     from thechatplace.ui.api_keys_dialog import ApiKeysDialog
-    ledger = spend_ledger.SpendLedger(env['tmp'] / 'openai-probe', defaults=spend_ledger.Limits(5, .5))
+    ledger = spend_ledger.SpendLedger(env['tmp'] / 'openai-probe')
     if state != 'empty':
         openai_billing.save_api_key('sk-proj-probe-' + '0' * 30)
         held = ledger.reserve('codex-api:probe')
@@ -2370,9 +2370,9 @@ def d_openai_properties(frame, env):
 
 def d_openai_usage(frame, env):
     from thechatplace.ui.dialogs import UsageDialog
-    lines = ['OpenAI API credits: estimated spending less than a cent of $5.00.',
+    lines = ['OpenAI API credits: estimated spending less than a cent of $20.00.',
              'This chat: cost not known. Prices dated 2026-11-17.',
-             'Held $0.50; estimated remaining $4.50.',
+             'Held $2.00; estimated remaining $18.00.',
              'Stopped message: estimated, at most 7 cents.',
              'Limits are approximate; one request can pass a limit.']
     return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))

@@ -163,7 +163,7 @@ costs, never the key. For the free real-CLI redirect and dropped-stream checks, 
 `TCP_LIVE_OPENAI_FREE=1` and use `-k "redirect or cut_stream"` without enabling the paid flag.
 
 OpenAI's ledger lives in `openai-billing/`, separate from Claude's unchanged files. Its
-defaults are $5 overall and about $0.50 per message. The API runtime home `codex-api/`
+defaults are Claude's: $20 overall and about $2 per message. The API runtime home `codex-api/`
 is excluded from backups. The app's single-instance guard remains part of spending
 safety: the ledger lock protects concurrent chats within that app process.
 

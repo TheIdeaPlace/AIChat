@@ -2,8 +2,8 @@
 
 The API can't tell the app what's left on an account (other tools, IDT among
 them, spend from the same key), so the app keeps its own total and its own
-limits: an overall one ("stop API chats once The Chat Place has spent $190")
-and a per-message one ("stop any one message at about $5").
+limits: an overall one ("stop API chats once The Chat Place has spent $20")
+and a per-message one ("stop any one message at about $2").
 
 The ledger
 ----------
@@ -142,8 +142,12 @@ LEDGER_FILE = "api-spend.jsonl"
 LIMITS_FILE = "api-limits.json"
 #: Each chat's last reported total_cost_usd (see "What a result cost").
 BASELINES_FILE = "claude-cost-baselines.json"
-DEFAULT_OVERALL_LIMIT = 190.00
-DEFAULT_MESSAGE_LIMIT = 5.00
+#: Where every provider's limits start until the user sets their own: modest
+#: for anyone's first key, the same for Claude and OpenAI. $2 a message
+#: still covers a real agent turn (the largest in Kelly's first real use was
+#: $1.44 on Opus) and stops a runaway one early. Saved limits are kept.
+DEFAULT_OVERALL_LIMIT = 20.00
+DEFAULT_MESSAGE_LIMIT = 2.00
 #: The largest limit accepted, so a typo can't make a limit meaningless.
 MAX_LIMIT = 100000.0
 #: Less than this left is "the limit is reached": a turn can't do anything
@@ -984,7 +988,7 @@ def default_ledger(provider='claude') -> SpendLedger:
         if provider == 'openai':
             if _OPENAI_DEFAULT is None:
                 _OPENAI_DEFAULT = SpendLedger(platform_paths.app_data_dir() / 'openai-billing',
-                                               defaults=Limits(5.00, 0.50))
+                                               defaults=Limits())
             return _OPENAI_DEFAULT
         if provider != 'claude':
             raise ValueError('Unknown API-credit provider')

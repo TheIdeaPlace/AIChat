@@ -371,7 +371,7 @@ job.
 For **Codex**, open **Tools, API Keys** (Alt+T, P), choose **Codex (OpenAI)** under
 **Provider** (Alt+P), paste your OpenAI key into the masked box, and choose **Add Key**.
 **Test Key** checks it with a small paid request. Each provider has its own limits and total:
-OpenAI starts at $5 overall and about $0.50 a message. **Save Limits**, **Reset Total** and
+both start at $20 overall and about $2 a message. **Save Limits**, **Reset Total** and
 **Release Held** apply to the provider selected here. Release Held asks first, because the
 released money may represent spending that could not be counted.
 
@@ -401,8 +401,8 @@ your Claude subscription.
 
 1. Add the key in **Tools, API Keys** (Alt+T, P): paste it in the Claude API key box and choose
    **Add Key**. **Test Key** checks it with a request that costs less than a cent. The same
-   dialog sets the limits: The Chat Place stops API chats once it has spent $190, and stops any
-   one message at about $5, until you change them. On a Mac, the first message on API credits
+   dialog sets the limits: The Chat Place stops API chats once it has spent $20, and stops any
+   one message at about $2, until you change them. On a Mac, the first message on API credits
    may bring up a keychain question for "security": choose **Always Allow**.
 2. In **New Session** (Ctrl+N) choose **API credits** under **Charge to**. Fable is offered for
    these chats. To carry on a chat you already have, use **Chat, Continue on API Credits**: it

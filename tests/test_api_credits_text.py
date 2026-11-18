@@ -95,8 +95,8 @@ def test_usage_lists_the_tally_by_model_and_by_chat_name(tmp_path):
     assert "API credits today: $1.29" in lines
     assert "API credits in the last 7 days: $1.29" in lines
     assert "API credits since the total was reset: $1.29" in lines
-    assert "API credits held for running messages: $5.00" in lines
-    assert "API credits left of your $190.00 limit: $183.71" in lines
+    assert "API credits held for running messages: $2.00" in lines
+    assert "API credits left of your $20.00 limit: $16.71" in lines
     assert lines.index("API credits on claude-opus-5-5: $1.25") < lines.index(
         "API credits on claude-haiku-5-5: 4 cents")
     assert "API credits in Budget: $1.25" in lines
