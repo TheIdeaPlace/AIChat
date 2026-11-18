@@ -73,6 +73,7 @@ def smoke_test(out_path: str) -> int:
 
         report["wx"] = wx.version()
         from .ui import main_frame  # noqa: F401 - imported to prove it's bundled
+        from .ui import mac_keys  # noqa: F401 - imported only in main(), before the window
         from .providers.codex import CodexProvider  # noqa: F401 - no process on import
         report["codex_reader"] = True
         from .providers.codex_runtime import CodexChatRuntime  # noqa: F401
@@ -364,6 +365,10 @@ def main(argv: Optional[list] = None) -> int:
     platform_paths.set_program_name()
     app = ChatPlaceApp(False)
     app.SetAppName(APP_TITLE)
+    # A Mac: no Command+letter on buttons, and Option+letter for a dialog's
+    # access keys (#675), before the first button is made. Nothing elsewhere.
+    from .ui import mac_keys
+    mac_keys.install(app)
     # One copy at a time: two would both run turns, announce everything
     # twice, and write the same session list.
     checker = wx.SingleInstanceChecker(f"TheChatPlace-{getpass.getuser()}")

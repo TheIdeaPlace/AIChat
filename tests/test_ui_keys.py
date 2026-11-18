@@ -226,7 +226,7 @@ def test_tab_escape_and_alt_letters_still_work_in_the_key_box(capture, monkeypat
     assert _press(capture, monkeypatch, wx.WXK_TAB)
     assert _press(capture, monkeypatch, wx.WXK_TAB, shift=True)
     assert _press(capture, monkeypatch, wx.WXK_ESCAPE)
-    if sys.platform != "darwin":  # a Mac has no access keys
+    if sys.platform != "darwin":  # on a Mac, Option+A in the box is a key to assign (#675)
         assert _press(capture, monkeypatch, ord("A"), alt=True)  # Assign's access key
     assert capture.key == ""
     # A modifier alone chooses nothing.

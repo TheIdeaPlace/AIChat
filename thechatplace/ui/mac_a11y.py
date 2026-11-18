@@ -1,6 +1,7 @@
 """Name controls for VoiceOver, which wx can't do on macOS (from Image
-Description Toolkit's shared/mac_accessibility.py), and make the app active
-so VoiceOver finds its menu bar (``activate_app``).
+Description Toolkit's shared/mac_accessibility.py), make the app active
+so VoiceOver finds its menu bar (``activate_app``), and keep Command+letter
+off wx's buttons (``stop_button_command_keys``, #675).
 
 Measured on wxPython 4.3.1 / wxWidgets 3.3.3: ``SetAccessible()`` raises
 ``NotImplementedError`` (``wx.Accessible`` is Windows-only), and ``SetName()``
@@ -190,6 +191,158 @@ def activate_app() -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+#: NSEventModifierFlagCommand, in a key equivalent's modifier mask.
+_COMMAND_KEY_MASK = 1 << 20
+_BUTTON_CLASS = b"wxNSButton"  # the NSButton subclass wx makes every wx.Button from
+_key_methods: dict = {}  # hooked class address -> its methods' ctypes callbacks, kept alive
+_SET_KEY_TYPE = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_SET_MASK_TYPE = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint64)
+
+
+def is_command_letter(key, mask: int) -> bool:
+    """True for a button key equivalent made from its access key (#675): one
+    character you could type, with Command. Return (the default button's) and
+    Escape (Cancel's) aren't, and stay."""
+    return (bool(key) and len(key) == 1 and key.isprintable() and not key.isspace()
+            and bool(mask & _COMMAND_KEY_MASK))
+
+
+def _prepare_class_calls(objc):
+    objc.class_getInstanceMethod.restype = ctypes.c_void_p
+    objc.class_getInstanceMethod.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    objc.method_getImplementation.restype = ctypes.c_void_p
+    objc.method_getImplementation.argtypes = [ctypes.c_void_p]
+    objc.class_replaceMethod.restype = ctypes.c_void_p
+    objc.class_replaceMethod.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                         ctypes.c_void_p, ctypes.c_char_p]
+    objc.object_getClass.restype = ctypes.c_void_p
+    objc.object_getClass.argtypes = [ctypes.c_void_p]
+    objc.class_getName.restype = ctypes.c_char_p
+    objc.class_getName.argtypes = [ctypes.c_void_p]
+
+
+def _key_equivalent_of(view):
+    """``(keyEquivalent, keyEquivalentModifierMask)`` of a native button."""
+    key = _to_str(_send(view, "keyEquivalent"))
+    mask = _send(view, "keyEquivalentModifierMask", restype=ctypes.c_uint64)
+    return key or "", int(mask or 0)
+
+
+def _hook_button_class(cls) -> bool:
+    """Make a wx button class drop every Command key equivalent it's given, once.
+
+    wxWidgets (src/osx/cocoa/button.mm, ``SetAcceleratorFromLabel``) gives a
+    button with an "&" in its label that letter with Command as its key
+    equivalent, when it's made and again on every label change
+    (``wxButton::OSXUpdateAfterLabelChange``). AppKit offers a key equivalent
+    to the window's buttons before the focused control sees the key, so
+    "Sa&ve Limits" took Command+V from the key box beside it. Both setters
+    are replaced on the class: each does what it did, then a Command letter
+    left on the button is taken away. That catches the label changes too
+    (Add Key and Replace Key), however they're made, with nothing to call
+    after each one. Return and Escape, which wx gives the default and Cancel
+    buttons, are kept.
+    """
+    if cls in _key_methods:
+        return True
+    objc = _runtime()
+    if objc is None:
+        return False
+    _prepare_class_calls(objc)
+    key_selector = _selector("setKeyEquivalent:")
+    mask_selector = _selector("setKeyEquivalentModifierMask:")
+    key_method = objc.class_getInstanceMethod(cls, key_selector)
+    mask_method = objc.class_getInstanceMethod(cls, mask_selector)
+    if not key_method or not mask_method:
+        return False
+    original_key = _SET_KEY_TYPE(objc.method_getImplementation(key_method))
+    original_mask = _SET_MASK_TYPE(objc.method_getImplementation(mask_method))
+
+    def drop(view):
+        try:
+            if is_command_letter(*_key_equivalent_of(ctypes.c_void_p(view))):
+                # The original, not a message: this one would come back here.
+                original_key(view, key_selector, _nsstring(""))
+        except Exception:  # noqa: BLE001 - an exception can't cross into AppKit
+            pass
+
+    def set_key(view, selector_, key):
+        original_key(view, selector_, key)
+        drop(view)
+
+    def set_mask(view, selector_, mask):
+        original_mask(view, selector_, mask)
+        drop(view)
+
+    key_imp = _SET_KEY_TYPE(set_key)
+    mask_imp = _SET_MASK_TYPE(set_mask)
+    _key_methods[cls] = [original_key, original_mask, key_imp, mask_imp]
+    objc.class_replaceMethod(cls, key_selector, ctypes.cast(key_imp, ctypes.c_void_p), b"v@:@")
+    objc.class_replaceMethod(cls, mask_selector, ctypes.cast(mask_imp, ctypes.c_void_p),
+                             b"v@:Q")
+    return True
+
+
+def stop_button_command_keys() -> bool:
+    """Keep Command+letter away from every wx button from now on (#675). True
+    if it will. Called once as the app starts, before any window is made;
+    ``drop_command_key`` is the fallback for a button made some other way."""
+    if not IS_MACOS or _runtime() is None:
+        return False
+    try:
+        cls = _runtime().objc_getClass(_BUTTON_CLASS)
+        return bool(cls) and _hook_button_class(cls)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def drop_command_key(window) -> bool:
+    """Take a Command key equivalent off wx button `window` now, and hook its
+    class if it's another of wx's, so a later label change can't put it back.
+    True if the button has none afterwards; False off macOS or for a window
+    that isn't a native button."""
+    if not IS_MACOS or _runtime() is None:
+        return False
+    try:
+        handle = window.GetHandle()
+        if not handle:
+            return False
+        view = ctypes.c_void_p(handle)
+        if not _responds(view, "keyEquivalent"):
+            return False
+        objc = _runtime()
+        _prepare_class_calls(objc)
+        cls = objc.object_getClass(view)
+        # Only wx's own classes: an NSButton of AppKit's (an alert's Don't
+        # Save, Command+D) keeps the key the system gave it.
+        name = objc.class_getName(cls) if cls else None
+        if name and name.startswith(b"wx"):
+            _hook_button_class(cls)
+        if is_command_letter(*_key_equivalent_of(view)):
+            _send(view, "setKeyEquivalent:", ctypes.c_void_p(_nsstring("")),
+                  restype=None, argtypes=(ctypes.c_void_p,))
+        return not is_command_letter(*_key_equivalent_of(view))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def key_equivalent(window):
+    """``(key, modifier mask)`` of wx button `window`'s native view, or None.
+    For tests."""
+    if not IS_MACOS or _runtime() is None:
+        return None
+    try:
+        handle = window.GetHandle()
+        if not handle:
+            return None
+        view = ctypes.c_void_p(handle)
+        if not _responds(view, "keyEquivalent"):
+            return None
+        return _key_equivalent_of(view)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 _MENU_CLASS = b"wxNSTableView"  # the NSTableView inside every wx.ListBox

@@ -38,11 +38,9 @@ COULD_NOT_SAY = 'Codex could not say.'
 
 def _press(label, platform=None):
     """Copy with Tool On or Off, named for pressing: "Copy with Tool On
-    (Alt+O)" (both labels have &O). A Mac's buttons have no Alt mnemonic, so
-    there it's the button's name alone."""
+    (Alt+O)" (both labels have &O); Option+O on a Mac, where a dialog's
+    access keys are Option+letter (#675)."""
     name = label.replace('&', '')
-    if (platform or sys.platform) == 'darwin':
-        return name
     return f"{name} ({key_name('Alt+O', platform)})"
 
 

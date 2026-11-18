@@ -2,7 +2,8 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M). The Alt keys listed beside a dialog's settings work on Windows and Linux only.
+VO+M). The Alt keys given in a dialog work as Option keys on a Mac, and a button never takes
+Command and a letter, so Command+V and Command+A always edit.
 
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude, Codex
 and GitHub Copilot CLI chats share one list: read, find and export conversations, hear replies,
