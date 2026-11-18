@@ -258,8 +258,10 @@ def _hook_button_class(cls) -> bool:
     mask_method = objc.class_getInstanceMethod(cls, mask_selector)
     if not key_method or not mask_method:
         return False
-    original_key = _SET_KEY_TYPE(objc.method_getImplementation(key_method))
-    original_mask = _SET_MASK_TYPE(objc.method_getImplementation(mask_method))
+    original_key_address = objc.method_getImplementation(key_method)
+    original_mask_address = objc.method_getImplementation(mask_method)
+    original_key = _SET_KEY_TYPE(original_key_address)
+    original_mask = _SET_MASK_TYPE(original_mask_address)
 
     def drop(view):
         try:
@@ -284,6 +286,19 @@ def _hook_button_class(cls) -> bool:
     objc.class_replaceMethod(cls, key_selector, ctypes.cast(key_imp, ctypes.c_void_p), b"v@:@")
     objc.class_replaceMethod(cls, mask_selector, ctypes.cast(mask_imp, ctypes.c_void_p),
                              b"v@:Q")
+
+    def unhook():
+        # Put AppKit's own methods back before Python shuts down: a button
+        # torn down during interpreter finalization would otherwise call
+        # into a Python that can no longer run it, and the process hangs
+        # instead of exiting (seen once on CI's Mac runner, #677).
+        try:
+            objc.class_replaceMethod(cls, key_selector, original_key_address, b"v@:@")
+            objc.class_replaceMethod(cls, mask_selector, original_mask_address, b"v@:Q")
+        except Exception:  # noqa: BLE001 - nothing to do at exit if it can't
+            pass
+    import atexit
+    atexit.register(unhook)
     return True
 
 
