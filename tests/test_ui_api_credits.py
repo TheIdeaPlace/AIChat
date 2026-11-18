@@ -176,7 +176,7 @@ def test_the_status_bar_shows_what_an_api_chat_and_the_app_spent(frame):
     open_chat(frame, "api-1")
     part = frame.status_parts.get("api_credits")
     assert part.IsShown()
-    assert part.GetLabel() == "API credits: this chat $0.42, The Chat Place $0.42 of $190"
+    assert part.GetLabel() == "API credits: this chat $0.42, The Chat Place $0.42 of $20"
     open_chat(frame, "own-1")
     assert not frame.status_parts.get("api_credits").IsShown()
 
@@ -491,8 +491,8 @@ def test_stop_and_failures_say_what_they_cost(frame, env, monkeypatch):
     assert "It cost" not in env["spoken"][-1]
     # Said once, not twice, when the words already say it.
     _send(frame)
-    ended(frame, kind="failed", text="Claude stopped at your per-message limit. It cost $5.03, "
-          "as a message can run over the limit by one request.", cost_usd=5.03)
+    ended(frame, kind="failed", text="Claude stopped at your per-message limit. It cost $2.03, "
+          "as a message can run over the limit by one request.", cost_usd=2.03)
     assert env["spoken"][-1].count("It cost") == 1
 
 
@@ -772,7 +772,7 @@ def test_usage_has_an_api_credits_section(frame, monkeypatch):
     lines = shown[-1]
     assert lines[1] == usage.PLAN_LIMITS_NOT_FOR_API
     assert "API credits today: nothing" in lines
-    assert "API credits left of your $190.00 limit: $190.00" in lines
+    assert "API credits left of your $20.00 limit: $20.00" in lines
 
 
 def test_settings_show_the_api_credit_choices(frame):

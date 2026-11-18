@@ -479,9 +479,9 @@ class ApiKeysDialog(wx.Dialog):
 
     def on_save_limits(self) -> bool:
         overall, per_message = self._typed_limits()
-        for value, box, which, example in ((overall, self.overall, "overall limit", "190"),
+        for value, box, which, example in ((overall, self.overall, "overall limit", "20"),
                                            (per_message, self.per_message,
-                                            "per-message limit", "5")):
+                                            "per-message limit", "2")):
             if value is None:
                 self._tell(f"Type the {which} as a number of dollars, such as {example}.")
                 box.SetFocus()

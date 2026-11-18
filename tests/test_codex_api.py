@@ -48,7 +48,7 @@ def connect(tmp_path):
             return child
         events = []
         ledger = ledger or spend_ledger.SpendLedger(tmp_path / ('spend-' + str(len(connections))),
-                                                   defaults=spend_ledger.Limits(5, .50))
+                                                   defaults=spend_ledger.Limits())
         conn = CodexApiConnection(start=start, key_loader=lambda: FAKE, ledger=ledger, on_event=events.append)
         connections.append(conn)
         return conn, events
@@ -121,7 +121,7 @@ def test_no_usage_on_disconnect_is_held_after_restart(connect, tmp_path):
     CodexTurnExecutor(conn).start(proof, 'Hello')
     wait(lambda: any(e.kind == 'api_sent' for e in events))
     conn.close()
-    assert spend_ledger.SpendLedger(conn.ledger.folder).totals().held == .5
+    assert spend_ledger.SpendLedger(conn.ledger.folder).totals().held == 2
 
 
 def test_unknown_model_native_inference_and_routing_override_never_send(connect, tmp_path):
@@ -142,8 +142,8 @@ def test_provider_defaults_limits_and_store_keep_routes_separate(tmp_path, monke
     monkeypatch.setattr(spend_ledger, '_DEFAULT', None)
     monkeypatch.setattr(spend_ledger, '_OPENAI_DEFAULT', None)
     claude, api = spend_ledger.default_ledger(), spend_ledger.default_ledger('openai')
-    assert claude.limits() == spend_ledger.Limits(190, 5)
-    assert api.limits() == spend_ledger.Limits(5, .5)
+    assert claude.limits() == spend_ledger.Limits(20, 2)
+    assert api.limits() == spend_ledger.Limits(20, 2)
     api.set_limits(.5, .5)
     api.reserve('codex-api:one')
     assert api.can_spend() and claude.can_spend() is None
@@ -287,7 +287,7 @@ def test_reroute_invalidates_previous_baseline_and_recovery_uses_last(connect, t
     assert proof.native_id not in conn._totals
     assert proof.native_id not in json.loads(conn._baseline_path.read_text())
     assert conn.ledger.totals().spent == pytest.approx(.000061)
-    assert conn.ledger.totals().held >= .499999
+    assert conn.ledger.totals().held >= 1.999999
     restarted, _ = connect(ledger=conn.ledger)
     assert proof.native_id not in restarted._totals
 
@@ -313,7 +313,7 @@ def test_queued_rpc_failure_keeps_hold_and_preserves_baseline(connect, tmp_path)
               'input': [{'type': 'text', 'text': 'Hello'}]}
     with pytest.raises(CodexRpcError):
         conn.request('turn/start', params)
-    assert conn.ledger.totals().held == .5
+    assert conn.ledger.totals().held == 2
     assert conn._totals[proof.native_id]['inputTokens'] == 0
 
 
@@ -411,10 +411,13 @@ def test_new_and_fork_baselines_are_durable(connect, tmp_path):
     assert saved[proof.native_id] == saved[copied.native_id] == dict.fromkeys(conn._totals[proof.native_id], 0)
 
 
-def test_damaged_openai_limits_keep_openai_defaults(tmp_path):
-    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits(5, .5))
+def test_damaged_openai_limits_keep_openai_defaults(tmp_path, monkeypatch):
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path)
+    monkeypatch.setattr(spend_ledger, '_OPENAI_DEFAULT', None)
+    ledger = spend_ledger.default_ledger('openai')
+    ledger.limits_path.parent.mkdir(parents=True, exist_ok=True)
     ledger.limits_path.write_text('{')
-    assert ledger.limits() == spend_ledger.Limits(5, .5) and ledger.can_spend()
+    assert ledger.limits() == spend_ledger.Limits(20, 2) and ledger.can_spend()
 
 
 def test_decreasing_counter_is_rejected_even_when_dollar_cost_rises(connect, tmp_path):
@@ -547,7 +550,7 @@ def test_api_model_change_uses_priced_catalog_when_native_catalog_is_empty(conne
 
 
 def test_unknown_and_known_chat_cost_words_use_reservations(tmp_path):
-    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits(5, .5))
+    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits())
     chat = 'codex-api:unknown'
     held = ledger.reserve(chat)
     ledger.close(held, complete=False)

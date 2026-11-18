@@ -33,12 +33,12 @@ def lines(tmp_path):
 def test_defaults_and_a_first_reservation(tmp_path):
     book = ledger(tmp_path)
     limits = book.limits()
-    assert (limits.overall, limits.per_message) == (190.0, 5.0)
+    assert (limits.overall, limits.per_message) == (20.0, 2.0)
     assert book.can_spend() is None
     held = book.reserve("chat-1")
-    assert held.amount == 5.0 and held.chat_id == "chat-1" and held.purpose == "turn"
+    assert held.amount == 2.0 and held.chat_id == "chat-1" and held.purpose == "turn"
     totals = book.totals()
-    assert totals.held == 5.0 and totals.spent == 0 and totals.counted == 5.0
+    assert totals.held == 2.0 and totals.spent == 0 and totals.counted == 2.0
     assert lines(tmp_path)[0]["type"] == "reserve"
 
 
@@ -47,7 +47,7 @@ def test_settle_then_close_frees_the_rest(tmp_path):
     held = book.reserve("chat-1")
     book.settle(held, 0.42, {"claude-opus-5-5": 0.40, "claude-haiku-5-5": 0.02})
     totals = book.totals()
-    assert totals.spent == pytest.approx(0.42) and totals.held == pytest.approx(4.58)
+    assert totals.spent == pytest.approx(0.42) and totals.held == pytest.approx(1.58)
     book.close(held, complete=True)
     totals = book.totals()
     assert totals.spent == pytest.approx(0.42) and totals.held == 0
@@ -66,7 +66,7 @@ def test_an_incomplete_close_or_a_crash_keeps_the_reservation_counted(tmp_path):
     again = ledger(tmp_path)                   # the next run
     totals = again.totals()
     assert totals.spent == pytest.approx(1.0)
-    assert totals.held == pytest.approx(4.0 + 5.0)
+    assert totals.held == pytest.approx(1.0 + 2.0)
 
 
 def test_the_overall_limit_caps_and_then_refuses(tmp_path):
@@ -155,7 +155,7 @@ def test_reset_keeps_history_and_this_runs_live_turns(tmp_path):
     assert crashed.id != running.id
     book.reset()
     totals = book.totals()
-    assert totals.spent == 0 and totals.held == 5.0          # only the running turn
+    assert totals.spent == 0 and totals.held == 2.0          # only the running turn
     assert totals.today == pytest.approx(2.0)                  # history is kept
     assert totals.reset_at == NOON and totals.by_chat == {}
     book.settle(running, 0.25)                 # it settles after the reset
@@ -495,7 +495,7 @@ def test_a_torn_last_line_can_still_be_reset(tmp_path):
     book.reset()                               # its own line, not the torn one's end
     assert book.can_spend() is None
     held = book.reserve("chat-2")
-    assert held.amount == 5.0
+    assert held.amount == 2.0
     raw = (tmp_path / spend_ledger.LEDGER_FILE).read_bytes().split(b"\n")
     assert raw[1] == b'{"v":1,"type":"sett'    # left as it was, on a line of its own
 
@@ -513,11 +513,11 @@ def test_release_held_lets_go_of_old_holds_but_not_running_ones_or_spending(tmp_
     assert json.loads((tmp_path / spend_ledger.LEDGER_FILE).read_text(
         encoding="utf-8").splitlines()[0])["run"] == crashed.run_id
     totals = book.totals()
-    assert totals.held == pytest.approx(4.0 + 5.0 + 4.5)
-    assert totals.releasable == pytest.approx(4.0 + 4.5)
-    assert book.release_held() == pytest.approx(8.5)
+    assert totals.held == pytest.approx(1.0 + 2.0 + 1.5)
+    assert totals.releasable == pytest.approx(1.0 + 1.5)
+    assert book.release_held() == pytest.approx(2.5)
     totals = book.totals()
-    assert totals.held == pytest.approx(5.0) and totals.releasable == 0
+    assert totals.held == pytest.approx(2.0) and totals.releasable == 0
     assert totals.spent == pytest.approx(1.5)            # spending stays counted
     assert book.release_held() == 0                      # nothing more to let go
     book.settle(running, 0.2)
@@ -581,7 +581,7 @@ def test_any_damaged_line_stops_spending_and_reset_always_recovers(tmp_path, lin
         book.reserve("chat-2")
     book.reset()
     assert book.can_spend() is None
-    assert book.reserve("chat-2").amount == pytest.approx(5.0)
+    assert book.reserve("chat-2").amount == pytest.approx(2.0)
 
 
 def test_a_replay_that_would_raise_is_damage_and_reset_recovers(tmp_path, monkeypatch):
@@ -598,7 +598,7 @@ def test_a_replay_that_would_raise_is_damage_and_reset_recovers(tmp_path, monkey
 
 
 def test_a_failed_settlement_write_keeps_the_reservation_counted(tmp_path, monkeypatch):
-    # The review's case (#663): reserve $5, spend $4, the settle append fails
+    # The review's case (#663): reserve $2, spend $1.50, the settle append fails
     # once, the close succeeds. The hold must stay: nothing was recorded.
     book = ledger(tmp_path)
     held = book.reserve("chat-1")
@@ -610,11 +610,11 @@ def test_a_failed_settlement_write_keeps_the_reservation_counted(tmp_path, monke
             raise OSError("disk full for a moment")
         return real(self, record)
     monkeypatch.setattr(SpendLedger, "_append", flaky)
-    assert book.settle(held, 4.0) is False
+    assert book.settle(held, 1.5) is False
     book.close(held, complete=True)
     totals = book.totals()
-    assert totals.spent == 0 and totals.held == pytest.approx(5.0)
-    assert totals.counted == pytest.approx(5.0)
+    assert totals.spent == 0 and totals.held == pytest.approx(2.0)
+    assert totals.counted == pytest.approx(2.0)
     close = json.loads((tmp_path / spend_ledger.LEDGER_FILE).read_text(
         encoding="utf-8").splitlines()[-1])
     assert close["type"] == "close" and close["complete"] is False
@@ -622,7 +622,7 @@ def test_a_failed_settlement_write_keeps_the_reservation_counted(tmp_path, monke
     other = book.reserve("chat-2")
     assert book.settle(other, 0.1) is True
     book.close(other, complete=True)
-    assert book.totals().held == pytest.approx(5.0)
+    assert book.totals().held == pytest.approx(2.0)
 
 
 def test_settle_refuses_a_cost_that_isnt_one(tmp_path):
@@ -631,7 +631,7 @@ def test_settle_refuses_a_cost_that_isnt_one(tmp_path):
     for odd in (None, float("nan"), -1.0, float("inf"), "1"):
         assert book.settle(held, odd) is False
     book.close(held, complete=True)
-    assert book.totals().held == pytest.approx(5.0)
+    assert book.totals().held == pytest.approx(2.0)
 
 
 @pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -0.01, "0.1", True])
