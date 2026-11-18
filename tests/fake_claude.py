@@ -164,6 +164,12 @@ def answer_controls(until):
             continue
         request, rid = message.get("request", {}), message.get("request_id")
         subtype = request.get("subtype")
+        # Log before answering: an answer can end the turn, and the runner may
+        # end this process before a log written afterwards gets to disk (a
+        # Stop test failed that way on a slow Mac runner).
+        log(controls=[m.get("request", {}).get("subtype") for m in received
+                      if m.get("type") == "control_request"
+                      and m.get("request", {}).get("subtype") != "initialize"])
         if subtype == refuse:
             out(type="control_response", response={
                 "subtype": "error", "request_id": rid,
@@ -199,9 +205,6 @@ def answer_controls(until):
                 session_id="abc-1", **COST)
         else:
             continue
-        log(controls=[m.get("request", {}).get("subtype") for m in received
-                      if m.get("type") == "control_request"
-                      and m.get("request", {}).get("subtype") != "initialize"])
         if until(subtype):
             return
 
