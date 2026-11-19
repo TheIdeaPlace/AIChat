@@ -548,10 +548,13 @@ question, cost setting and API-credit labels also apply to Codex:
   (Claude Code's rule); your own MCP servers still work. Remote Control isn't available in
   chats on API credits either, so neither is Chat, Other Machines; Session, Remote Control says
   so. Your plan's usage limits don't apply.
-- **Always knowing.** The chat's row in the session list says "Claude API credits" in its
-  Charged to column, and the window's title says "API credits" after its name, as do the heading and the messages list's name; the reply box is
-  named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
-  chat $0.42, The Chat Place $12.30 of $20" (Enter there opens Tools, API Keys). Every message
+- **Always knowing.** The chat's row in the session list says "Claude API credits" (or "OpenAI
+  API credits" for Codex) in its Charged to column. The window's title, the heading and the
+  messages list's name say so too, and the reply box is named "Your message, API credits".
+  While it's loaded, the status bar shows "API credits: this chat $0.42, The Chat Place $12.30
+  of $20" for a Claude chat; a Codex chat's figures are estimates and include what's held. The
+  status bar part is a button: reach it with F6 (or Ctrl+9) and the arrows, and Enter opens
+  Tools, API Keys. Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
   gone on API credits once Claude Code has it, always, even when announcements are off. When
   you send, the status bar says "Sending on API credits…" at once, and what's read back a

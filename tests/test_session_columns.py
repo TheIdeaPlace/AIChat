@@ -237,5 +237,35 @@ def test_upgrade_without_title_places_provider_first(tmp_path):
                                                         'last_message']
 
 
+def test_charged_to_is_added_once_and_a_removal_is_kept(tmp_path):
+    # Kelly's rule for Provider holds for Charged to (#658): added once to
+    # older choices, and never put back after you remove it.
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({'session_fields': ['title', 'provider', 'status'],
+                                'provider_column_added': True}))
+    settings = SpeechSettings.load(path)
+    assert settings.session_fields == ['title', 'provider', 'charged', 'status']
+    settings.session_fields.remove('charged')
+    settings.save(path)
+    assert json.loads(path.read_text())['charged_column_added'] is True
+    assert 'charged' not in SpeechSettings.load(path).session_fields
+    # A new install that removes it keeps it removed too.
+    fresh = SpeechSettings()
+    fresh.session_fields.remove('charged')
+    fresh.save(path)
+    assert 'charged' not in SpeechSettings.load(path).session_fields
+
+
+@pytest.mark.parametrize('saved,expected', [
+    (['status', 'title', 'folder'], ['status', 'title', 'charged', 'folder']),
+    (['status', 'folder'], ['charged', 'status', 'folder']),
+])
+def test_charged_to_goes_after_title_or_first_without_provider(tmp_path, saved, expected):
+    path = tmp_path / 'settings.json'
+    # Provider was added before and then removed, so only Charged to is new.
+    path.write_text(json.dumps({'session_fields': saved, 'provider_column_added': True}))
+    assert SpeechSettings.load(path).session_fields == expected
+
+
 def test_default_columns_read_provider_immediately_after_title():
     assert DEFAULT_FIELDS[:2] == ['title', 'provider']

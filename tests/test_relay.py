@@ -64,7 +64,7 @@ def test_the_chat_that_sent_here_comes_first():
     assert [s.title for s in found] == ["A", "B"]
 
 
-def test_a_target_says_its_title_provider_folder_and_status():
+def test_a_target_says_its_title_provider_charging_folder_and_status():
     assert relay.describe(_chat("codex:x", "Codex review", provider="codex")) == \
         "Codex review, Codex, ChatGPT subscription, Repo, idle"
 

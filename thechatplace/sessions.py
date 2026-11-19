@@ -147,8 +147,8 @@ class SessionInfo:
     #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
     #: Copilot copy's first message carries the history (#423).
     continued_from: str = ""
-    #: One of The Chat Place's own Claude chats charged to API credits
-    #: (#658): its row says so after the name.
+    #: One of The Chat Place's own chats charged to API credits (#658): its
+    #: row says so in the Charged to column.
     api_credits: bool = False
 
     #: Only set by the Claude adapter after the original has disappeared.
@@ -183,7 +183,7 @@ class SessionInfo:
         if self.provider == "codex-api":
             return "OpenAI API credits"
         if self.provider == "claude":
-            return "Claude API credits" if self.api_credits else "Claude subscription"
+            return "Claude subscription"
         if self.provider == "codex":
             return "ChatGPT subscription"
         if self.provider == "copilot":

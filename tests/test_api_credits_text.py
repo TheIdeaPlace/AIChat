@@ -96,10 +96,10 @@ def test_the_charged_to_column_says_how_each_own_chat_is_paid_for():
 
 
 @pytest.mark.parametrize("fields", [["title", "charged", "status"], ["charged", "status"], None])
-def test_a_row_on_api_credits_always_says_so_kept_or_not_owned(fields):
+def test_charged_to_says_api_credits_for_kept_and_not_owned_rows(fields):
     # Review of the Charged to column: a kept row of an API chat, and a
-    # Codex row on API credits that no record of ours covers, must still say
-    # API credits in every choice of columns.
+    # Codex row on API credits that no record of ours covers, say API credits
+    # in Charged to, as one of our own does.
     from dataclasses import replace
     from thechatplace.sessions import KEPT, OWN, SessionInfo
     kept = replace(OwnSession("a-1", "Budget", "C:\\G", billing="api").to_info(),
