@@ -10,7 +10,7 @@ from decimal import Decimal, ROUND_CEILING
 
 from .. import platform_paths
 from ..billing import scrub, cost_words as shared_cost_words
-from ..openai_prices import is_priced, valid_counters, estimate, pricing_day, PRICE_DATE
+from ..openai_prices import is_priced, valid_counters, estimate, pricing_time, PRICE_DATE
 from ..spend_ledger import default_ledger, SpendRefused
 from .codex import CodexProvider
 from .codex_execution import CodexExecutionConnection
@@ -283,7 +283,7 @@ class CodexApiConnection(CodexExecutionConnection):
                 raise ApiCreditsRefused('The API-credit token baseline could not be recorded. Nothing was sent.') from None
             self._payment_number += 1
             payment = Payment(reservation, model, self._totals.get(tid), ordinal=self._payment_number,
-                              priced=is_priced(model), priced_on=pricing_day())
+                              priced=is_priced(model), priced_on=pricing_time())
             self._payments[tid] = payment
 
         def queued():

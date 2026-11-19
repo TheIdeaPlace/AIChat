@@ -4,7 +4,7 @@ Exact IDs only. Reasoning is included in output. Long-context families use
 surcharge rates conservatively: app-server's cumulative counters cannot prove
 that earlier requests in a session stayed in the short-context band.
 """
-from datetime import date
+from datetime import datetime, timezone
 from decimal import Decimal
 
 PRICE_DATE = LIMITS_CHECKED = '2026-11-19'
@@ -25,7 +25,8 @@ PRICES = {
 }
 SOURCES = {model: 'https://developers.openai.com/api/docs/models/' + model for model in PRICES}
 # Maximum INPUT, maximum output, not the combined context window. Checked on
-# each model's own page. For 5.4/5.5, input = context minus maximum output.
+# each model's own page in SOURCES, including all seven 5.6/6.x entries.
+# For 5.4/5.5, input = context minus maximum output.
 TOKEN_LIMITS = {
     'gpt-5-nano': (272_000, 128_000),
     'gpt-5.4-nano': (272_000, 128_000),
@@ -45,7 +46,9 @@ CACHE_WRITE_RATES = {
     model: str(Decimal(PRICES[model][0]) * Decimal('1.25'))
     for model in LONG_CONTEXT - {'gpt-5.4', 'gpt-5.5'}
 }
-EXPIRES = {'gpt-5.6-sol': date(2026, 11, 30)}
+# The model page says "until November 30, 2026", without a time or zone.
+# Earliest possible start of that date is UTC+14: Nov 29 at 10:00 UTC.
+EXPIRES = {'gpt-5.6-sol': datetime(2026, 11, 29, 10, tzinfo=timezone.utc)}
 for alias, snapshot in {
     'gpt-5-nano': 'gpt-5-nano-2025-08-07',
     'gpt-5.4-nano': 'gpt-5.4-nano-2026-03-17',
@@ -64,12 +67,12 @@ class Unpriced(ValueError):
     """No valid dated price for this exact model and service."""
 
 
-def pricing_day():
-    return date.today()
+def pricing_time():
+    return datetime.now(timezone.utc)
 
 
 def require_price(model, service_tier=None, *, as_of=None):
-    if model not in PRICES or (model in EXPIRES and (as_of or pricing_day()) > EXPIRES[model]):
+    if model not in PRICES or (model in EXPIRES and (as_of or pricing_time()) >= EXPIRES[model]):
         raise Unpriced(f'No API-credit price is known for model {model!r}.')
     if service_tier not in (None, 'default', 'standard'):
         raise Unpriced(f'No API-credit price is known for service {service_tier!r}.')
@@ -115,7 +118,7 @@ def model_choices(catalog=()):
                                          next((e for e in m.efforts if e != 'ultra'), 'low')),
                          is_default=m.model == 'gpt-5-nano')
                  for m in sorted(choices.values(), key=lambda m: m.model != 'gpt-5-nano')
-                 if any(e != 'ultra' for e in m.efforts))
+                 if not m.efforts or any(e != 'ultra' for e in m.efforts))
 
 
 def valid_counters(counters):

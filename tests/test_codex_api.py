@@ -914,14 +914,14 @@ def test_unpriced_token_snapshots_reset_rename_and_overlap(tmp_path):
 
 
 def test_active_promotional_expiry_keeps_unknown_allowance(connect, tmp_path, monkeypatch):
-    from datetime import date
-    monkeypatch.setattr(openai_prices, 'pricing_day', lambda: date(2026, 11, 30))
+    from datetime import datetime, timezone
+    monkeypatch.setattr(openai_prices, 'pricing_time', lambda: datetime(2026, 11, 29, 9, tzinfo=timezone.utc))
     conn, events = connect('hang')
     proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Expiry', model='gpt-5.6-sol')
     runner = CodexTurnExecutor(conn)
     runner.start(proof, 'Hi')
     wait(lambda: conn._payments[proof.native_id].usage)
-    monkeypatch.setattr(openai_prices, 'pricing_day', lambda: date(2026, 12, 1))
+    monkeypatch.setattr(openai_prices, 'pricing_time', lambda: datetime(2026, 11, 29, 10, tzinfo=timezone.utc))
     runner.interrupt(proof)
     wait(lambda: any(e.kind == 'finished' for e in events))
     report = next(e.data for e in events if e.kind == 'finished')
