@@ -3,7 +3,7 @@
 Token telemetry is consumed before the normal event queue coalesces it. Missing,
 inconsistent or interrupted usage never releases an unaccounted reservation.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import threading
 from decimal import Decimal, ROUND_CEILING
@@ -49,6 +49,7 @@ class Payment:
     priced: bool = True
     tokens: dict | None = None
     priced_on: object = None
+    steer_allowances: list = field(default_factory=list)
 
 
 class CodexApiConnection(CodexExecutionConnection):
@@ -170,6 +171,8 @@ class CodexApiConnection(CodexExecutionConnection):
         if method in ACTION_METHODS - {'thread/backgroundTerminals/terminate'}:
             raise ApiCreditsRefused('No API-credit price is known for ' + self._service_name(method) + '. Nothing was sent.')
         if method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
+            if params.get('effort') == 'ultra' or (params.get('config') or {}).get('model_reasoning_effort') == 'ultra':
+                raise ApiCreditsRefused('Automatic task delegation is unavailable on API credits. Nothing was sent.')
             if params.get('serviceTier', 'default') != 'default' or params.get('serviceTierForTurn', 'default') != 'default':
                 raise ApiCreditsRefused('API credits require standard service. Nothing was sent.')
             params['serviceTier'] = 'default'
@@ -224,6 +227,8 @@ class CodexApiConnection(CodexExecutionConnection):
                     self._persist_baseline(tid, source)
             if method in ('thread/start', 'thread/resume', 'thread/fork'):
                 self._require_price(result.get('model'), result.get('serviceTier'))
+                if result.get('reasoningEffort') == 'ultra':
+                    raise ApiCreditsRefused('Automatic task delegation is unavailable on API credits. Choose an explicit effort. Nothing was sent.')
             return result
         if not self._api_logged_in:
             raise CodexTurnRejected('billing_route')
@@ -234,8 +239,25 @@ class CodexApiConnection(CodexExecutionConnection):
                 payment = self._payments.get(tid)
                 if payment is None or payment.stopping or payment.cost >= payment.reservation.amount:
                     raise CodexTurnRejected('billing_route')
-            return super()._request(method, params, on_sent=on_sent,
-                on_written=lambda: self._emit_api('api_sent', tid, sent=True, kind_of_send='steer'))
+                extra = None
+                if not payment.priced:
+                    try:
+                        extra = self.ledger.reserve('codex-api:' + tid, purpose=self._purpose, unpriced=True)
+                    except SpendRefused as error:
+                        raise ApiCreditsRefused(str(error)) from None
+                    payment.steer_allowances.append(extra)
+            queued = []
+            def sent():
+                queued.append(True)
+                if on_sent:
+                    on_sent()
+            try:
+                return super()._request(method, params, on_sent=sent,
+                    on_written=lambda: self._emit_api('api_sent', tid, sent=True, kind_of_send='steer'))
+            except Exception:
+                if extra is not None and not queued:
+                    self.ledger.close(extra, complete=True)
+                raise
         model = params.get('model')
         self._require_price(model)
         with self._payments_lock:
@@ -270,10 +292,13 @@ class CodexApiConnection(CodexExecutionConnection):
                 on_sent()
 
         def written():
-            payment.sent = True
-            if not payment.priced:
-                self.ledger.record_openai_tokens(reservation, model, dict.fromkeys(COUNTERS, 0), unpriced=True, measured=False)
-            self._emit_api('api_sent', tid, sent=True)
+            with self._payments_lock:
+                payment.sent = True
+                # A fast reply can reach the reader before the writer's
+                # callback. Never overwrite measured tokens with a placeholder.
+                if not payment.priced and payment.tokens is None:
+                    self.ledger.record_openai_tokens(reservation, model, dict.fromkeys(COUNTERS, 0), unpriced=True, measured=False)
+                self._emit_api('api_sent', tid, sent=True)
             if on_written:
                 on_written()
 
@@ -485,10 +510,13 @@ class CodexApiConnection(CodexExecutionConnection):
                 payment.timer.cancel()
             if payment.stop_timer:
                 payment.stop_timer.cancel()
-            if payment.refused and not payment.usage:
+            refused_without_usage = payment.refused and not payment.usage and not payment.steer_allowances
+            if refused_without_usage:
                 self.ledger.record_openai_tokens(payment.reservation, payment.model,
                     dict.fromkeys(COUNTERS, 0), unpriced=False)
-            complete = payment.refused or (payment.priced and payment.usage and not payment.uncertain and payment.terminal == 'completed')
+            complete = ((payment.refused if payment.priced else refused_without_usage)
+                        or (payment.priced and payment.usage and not payment.uncertain
+                            and payment.terminal == 'completed'))
             upper_bound = payment.upper_bound
             if upper_bound:
                 complete = True
@@ -509,7 +537,19 @@ class CodexApiConnection(CodexExecutionConnection):
             except OSError:
                 complete = False
             if not keep:
+                if not payment.priced and payment.sent and not refused_without_usage:
+                    self.ledger.record_openai_tokens(payment.reservation, payment.model,
+                        payment.tokens or dict.fromkeys(COUNTERS, 0), unpriced=True,
+                        measured=bool(payment.tokens is not None and not payment.uncertain
+                                      and not payment.inconsistent and payment.terminal == 'completed'))
                 self.ledger.close(payment.reservation, complete=complete)
+                for allowance in payment.steer_allowances:
+                    # A steer's tokens are already included in the main turn's
+                    # absolute snapshot. Mark that attribution without adding
+                    # them again or inventing missing telemetry for each steer.
+                    self.ledger.record_openai_tokens(allowance, payment.model,
+                        dict.fromkeys(COUNTERS, 0), unpriced=True)
+                    self.ledger.close(allowance, complete=refused_without_usage)
                 if not late:
                     self._payments.pop(tid, None)
                     if payment.turn_id:
@@ -535,7 +575,7 @@ class CodexApiConnection(CodexExecutionConnection):
     @staticmethod
     def _cost_words(payment, complete, upper_bound):
         from ..billing import COST_NOT_KNOWN, money
-        if payment.refused and not payment.usage:
+        if payment.refused and not payment.usage and not payment.steer_allowances:
             return 'nothing was charged'
         if not payment.priced:
             from ..openai_billing import token_words

@@ -44,3 +44,13 @@ def test_promotional_expiry_uses_clock_and_labels_unknown(monkeypatch):
     assert 'price unknown' in next(m.label for m in prices.model_choices() if m.model == 'gpt-5.6-sol')
     with pytest.raises(prices.Unpriced):
         prices.request_ceiling('gpt-5.6-sol')
+
+
+def test_unknown_catalog_label_is_decorated_once():
+    from thechatplace.providers.codex_models import CodexModel
+    raw = (CodexModel('future', 'Future', ('low', 'ultra'), 'low', False),)
+    api_catalog = prices.model_choices(raw)
+    dialog_catalog = prices.model_choices(api_catalog)
+    model = next(m for m in dialog_catalog if m.model == 'future')
+    assert model.label == 'Future (price unknown)'
+    assert model.efforts == ('low',)

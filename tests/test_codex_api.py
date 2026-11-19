@@ -938,3 +938,121 @@ def test_missing_unpriced_tokens_are_not_measured_zero(connect, tmp_path):
     conn.close()
     words = openai_billing.chat_cost_words(spend_ledger.SpendLedger(conn.ledger.folder), proof.record().to_info().key)
     assert 'tokens not reported' in words and 'used 0 tokens' not in words
+
+
+def test_unpriced_steers_also_reserve_message_allowances(connect, tmp_path):
+    conn, events = connect('hang')
+    conn.ledger.set_limits(4, 2)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Steer allowances', model='future-model')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Hi')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    runner.drain()
+    runner.steer(proof, 'One short addition')
+    assert conn.ledger.totals().unpriced_allowance == 4
+    assert conn.ledger.totals().releasable == 0
+    with pytest.raises(ApiCreditsRefused, match='reached your limit'):
+        runner.steer(proof, 'No allowance left')
+    runner.interrupt(proof)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert conn.ledger.totals().releasable == 4
+
+
+def test_effective_ultra_cannot_bypass_blocked_automatic_delegation(connect, tmp_path):
+    conn, events = connect('default-ultra')
+    with pytest.raises(ApiCreditsRefused, match='Automatic task delegation'):
+        CodexOwnedThreads(conn).start(str(tmp_path), 'Default ultra', model='future-model')
+    assert not events and conn.ledger.totals().counted == 0
+
+
+def test_unpriced_crash_before_first_token_record_stays_unknown_after_release(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits())
+    r = ledger.reserve('codex-api:crash-window', unpriced=True)
+    restarted = spend_ledger.SpendLedger(tmp_path)
+    assert 'tokens not reported' in openai_billing.spending_words(restarted.totals())
+    restarted.release_held()
+    assert restarted.totals().held == 0
+    assert 'unpriced usage' in openai_billing.spending_words(restarted.totals())
+    # A proven unsent reservation does not invent usage.
+    unsent = ledger.reserve('codex-api:unsent', unpriced=True)
+    ledger.close(unsent, complete=True)
+    assert unsent.chat_id not in ledger.totals().unpriced_all_time
+
+
+def test_measured_steer_tokens_are_counted_once_without_missing_markers(connect, tmp_path):
+    conn, events = connect('hang')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Measured steer', model='future-model')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Hi')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    runner.drain()
+    runner.steer(proof, 'Addition')
+    turn = conn._payments[proof.native_id].turn_id
+    counters = dict(inputTokens=2000, cachedInputTokens=400, cacheWriteInputTokens=0,
+                    outputTokens=100, reasoningOutputTokens=20)
+    conn._receive({'method': 'thread/tokenUsage/updated', 'params': {
+        'threadId': proof.native_id, 'turnId': turn, 'tokenUsage': {'total': counters, 'last': counters}}})
+    conn._receive({'method': 'turn/completed', 'params': {
+        'threadId': proof.native_id, 'turn': {'id': turn, 'status': 'completed'}}})
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    restarted = spend_ledger.SpendLedger(conn.ledger.folder)
+    totals = restarted.totals()
+    assert totals.held == totals.unpriced_allowance == 4
+    assert totals.unpriced_all_time[proof.record().to_info().key] == counters
+    assert not totals.unpriced_missing_all_time
+    restarted.release_held()
+    words = openai_billing.spending_words(restarted.totals())
+    assert 'used 2,100 tokens' in words and 'not reported' not in words
+
+
+def test_fast_usage_cannot_be_overwritten_by_late_sent_callback(connect, tmp_path, monkeypatch):
+    import threading
+    conn, events = connect()
+    measured = threading.Event()
+    record = conn.ledger.record_openai_tokens
+    def tokens(reservation, model, counters, **kwargs):
+        result = record(reservation, model, counters, **kwargs)
+        if counters['inputTokens']:
+            measured.set()
+        return result
+    monkeypatch.setattr(conn.ledger, 'record_openai_tokens', tokens)
+    put = conn._outgoing.put
+    def outgoing(message):
+        if isinstance(message, tuple):
+            payload, callback = message
+            def delayed():
+                assert measured.wait(4), 'Usage did not arrive before the send callback'
+                callback()
+            message = (payload, delayed)
+        put(message)
+    monkeypatch.setattr(conn._outgoing, 'put', outgoing)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Fast usage', model='future-model')
+    CodexTurnExecutor(conn).start(proof, 'Hi')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    totals = conn.ledger.totals()
+    assert totals.unpriced_all_time[proof.record().to_info().key]['inputTokens'] == 1000
+    assert not totals.unpriced_missing_all_time
+
+
+def test_unpriced_confirmed_first_key_refusal_does_not_invent_spending(connect, tmp_path):
+    conn, events = connect('401')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Refused', model='future-model')
+    CodexTurnExecutor(conn).start(proof, 'Hi')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    totals = conn.ledger.totals()
+    assert totals.held == totals.spent == 0
+    assert not totals.unpriced_all_time
+
+
+def test_unpriced_partial_usage_before_key_refusal_keeps_allowance(connect, tmp_path):
+    conn, events = connect('hang')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Partial refusal', model='future-model')
+    CodexTurnExecutor(conn).start(proof, 'Hi')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    turn = conn._payments[proof.native_id].turn_id
+    conn._receive({'method': 'error', 'params': {'threadId': proof.native_id, 'turnId': turn,
+                  'willRetry': False, 'error': {'codexErrorInfo': 'unauthorized'}}})
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    totals = conn.ledger.totals()
+    assert totals.held == totals.unpriced_allowance == 2
+    assert proof.record().to_info().key in totals.unpriced_all_time

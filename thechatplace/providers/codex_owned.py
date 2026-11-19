@@ -254,7 +254,9 @@ class CodexOwnedThreads:
             # first, even after restarting TCP; never overwrite unfinished work.
             self._verify_idle(native_id)
         if is_api(self.connection):
-            from ..openai_prices import require_price, Unpriced
+            from ..openai_prices import Unpriced
+            if effort == 'ultra':
+                raise Unpriced('Automatic task delegation is unavailable on API credits. Nothing was sent.')
             if apps or mcp_servers or policy.reviewer != 'user':
                 services = list(apps or ()) + list(mcp_servers or ())
                 if policy.reviewer != 'user':

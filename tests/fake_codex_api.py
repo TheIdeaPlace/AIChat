@@ -50,7 +50,7 @@ for line in sys.stdin:
         thread = {'id': tid, 'createdAt': 100, 'cwd': params['cwd'], 'modelProvider': 'openai',
                   'ephemeral': params.get('ephemeral', False), 'status': {'type': 'idle'}}
         result = {'thread': thread, 'cwd': params['cwd'], 'model': threads[tid]['model'],
-                  'reasoningEffort': params.get('config', {}).get('model_reasoning_effort'),
+                  'reasoningEffort': ('ultra' if scenario == 'default-ultra' else params.get('config', {}).get('model_reasoning_effort')),
                   'modelProvider': 'openai', 'serviceTier': params.get('serviceTier', 'priority'), 'approvalPolicy': params['approvalPolicy'],
                   'approvalsReviewer': 'user', 'sandbox': {'type': 'readOnly'}}
     elif method == 'thread/read':
@@ -106,6 +106,8 @@ for line in sys.stdin:
             timer.daemon = True
             timer.start()
         continue
+    elif method == 'turn/steer':
+        result = {'turnId': params['expectedTurnId']}
     elif method == 'turn/interrupt':
         if scenario == 'unanswered-stop':
             continue

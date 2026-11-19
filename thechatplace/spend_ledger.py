@@ -720,6 +720,16 @@ class SpendLedger:
                     if record['unpriced'] and rid in reservations:
                         reservations[rid].unpriced = True
                     continue
+                if record['type'] == 'reserve' and record.get('unpriced'):
+                    # A crash can happen between a paid write and its first
+                    # token record. The reservation itself proves uncertainty.
+                    token_records[record['id']] = dict(record, tokens={
+                        'inputTokens': 0, 'cachedInputTokens': 0, 'cacheWriteInputTokens': 0,
+                        'outputTokens': 0, 'reasoningOutputTokens': 0}, measured=False,
+                        _reservation_only=True)
+                if (record['type'] == 'close' and record.get('complete') is True
+                        and token_records.get(record['id'], {}).get('_reservation_only')):
+                    token_records.pop(record['id'])
                 if record['type'] in ('settle', 'correction'):
                     rid, cost = record['id'], record['cost']
                     if record['type'] == 'correction' and -cost > settled_all.get(rid, 0) + .000001:

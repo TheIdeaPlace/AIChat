@@ -111,7 +111,11 @@ def model_choices(catalog=()):
     return tuple(replace(m, label=m.label.removesuffix(' (price unknown)') +
                          (' (price unknown)' if not is_priced(m.model) else ''),
                          efforts=tuple(e for e in m.efforts if e != 'ultra'),
-                         is_default=m.model == 'gpt-5-nano') for m in choices.values())
+                         default_effort=(m.default_effort if m.default_effort != 'ultra' else
+                                         next((e for e in m.efforts if e != 'ultra'), 'low')),
+                         is_default=m.model == 'gpt-5-nano')
+                 for m in sorted(choices.values(), key=lambda m: m.model != 'gpt-5-nano')
+                 if any(e != 'ultra' for e in m.efforts))
 
 
 def valid_counters(counters):

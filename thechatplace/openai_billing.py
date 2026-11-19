@@ -79,7 +79,7 @@ def spending_words(totals, chat_id=None):
         field: sum(row.get(field, 0) for row in book.values())
         for field in ('inputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'outputTokens')}
     cost = totals.chat_all_time.get(chat_id, 0) if chat_id else totals.spent
-    words = f'priced spending ${cost:,.2f}'
+    words = f'estimated priced spending ${cost:,.2f}'
     if (chat_id in book) if chat_id else bool(book):
         missing = totals.unpriced_missing_all_time if chat_id else totals.unpriced_missing
         incomplete = chat_id in missing if chat_id else bool(missing)
