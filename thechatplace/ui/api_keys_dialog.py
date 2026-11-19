@@ -108,6 +108,14 @@ def totals_text(totals) -> str:
             f"Left: {_amount(totals.left)}.")
 
 
+def provider_labels() -> list:
+    """Provider's choices, each saying whether a key is kept for it (never
+    reading the key): "Claude (Anthropic), key added" or "..., no key"."""
+    def label(name, keys):
+        return f"{name}, {'key added' if keys.has_api_key() else 'no key'}"
+    return [label('Claude (Anthropic)', billing), label('Codex (OpenAI)', openai_billing)]
+
+
 class ApiKeysDialog(wx.Dialog):
     """Tools, API Keys (#658). ``speak`` says what each action did (the
     window's ``_feedback``). ``ledger``, ``find_claude`` and
@@ -134,7 +142,7 @@ class ApiKeysDialog(wx.Dialog):
         self._test_token = None
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label='&Provider:'), 0, wx.LEFT | wx.TOP, 8)
-        self.provider_choice = wx.Choice(self, choices=['Claude (Anthropic)', 'Codex (OpenAI)'])
+        self.provider_choice = wx.Choice(self, choices=provider_labels())
         self.provider_choice.SetSelection(0)
         set_accessible_name(self.provider_choice, 'Provider')
         sizer.Add(self.provider_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -238,8 +246,10 @@ class ApiKeysDialog(wx.Dialog):
     # -- state ------------------------------------------------------------------
 
     def first_control(self) -> wx.Window:
-        """Where focus starts: the key box with no key, Test Key with one."""
-        return self.test_btn if self.test_btn.IsEnabled() else self.key_box
+        """Where focus starts: Provider, which says which provider the rest
+        of the dialog is about and whether each has a key. Starting on Test
+        Key left you guessing which key it would test."""
+        return self.provider_choice
 
     def _focus_start(self):
         if self and not self.IsBeingDeleted():
@@ -254,6 +264,13 @@ class ApiKeysDialog(wx.Dialog):
         self.remove_btn.Enable(has and not self._key_change_pending)
         self.add_btn.Enable(not self._key_change_pending)
         self.provider_choice.Enable(not self._key_change_pending)
+        # Each choice says whether its provider has a key, kept current as
+        # keys are added and removed.
+        chosen = self.provider_choice.GetSelection()
+        for index, label in enumerate(provider_labels()):
+            if self.provider_choice.GetString(index) != label:
+                self.provider_choice.SetString(index, label)
+        self.provider_choice.SetSelection(chosen)
         self.Layout()
 
     def _show_totals(self):

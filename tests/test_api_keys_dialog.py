@@ -108,13 +108,15 @@ def _shown_text(dialog):
 # -- how it opens ---------------------------------------------------------------------
 
 
-def test_with_no_key_it_opens_on_the_key_box_with_test_and_remove_off(dialog):
+def test_with_no_key_it_opens_on_provider_with_test_and_remove_off(dialog):
     from thechatplace.ui import api_keys_dialog as akd
     assert dialog.GetTitle() == "API Keys"
     assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
-    assert dialog.first_control() is dialog.key_box
+    assert dialog.first_control() is dialog.provider_choice
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), no key"
+    assert dialog.provider_choice.GetString(1) == "Codex (OpenAI), no key"
     assert dialog.key_box.GetWindowStyle() & wx.TE_PASSWORD
     assert dialog.result.GetValue() == akd.TEST_INTRO
     assert dialog.about.GetValue() == akd.ABOUT_SPENDING
@@ -125,11 +127,15 @@ def test_with_no_key_it_opens_on_the_key_box_with_test_and_remove_off(dialog):
     assert not dialog.limits_edited()
 
 
-def test_with_a_key_it_opens_on_test_key(parent, ledger, env):
+def test_with_a_key_it_opens_on_provider_saying_so(parent, ledger, env):
+    # Not on Test Key: which key it would test wasn't said (bld05 feedback).
     billing.save_api_key(KEY)
     window = make(parent, ledger)
     try:
-        assert window.first_control() is window.test_btn
+        assert window.first_control() is window.provider_choice
+        assert window.provider_choice.GetSelection() == 0
+        assert window.provider_choice.GetString(0) == "Claude (Anthropic), key added"
+        assert window.provider_choice.GetString(1) == "Codex (OpenAI), no key"
         assert window.add_btn.GetLabel() == "&Replace Key"
         assert window.test_btn.IsEnabled() and window.remove_btn.IsEnabled()
         assert window.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")

@@ -4092,14 +4092,22 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What fills it, after the context line (#468).
         lines[1:1] = self._context_breakdown(self._open)
         if self._is_api_chat(self._open):
-            # Right after the context, before the plan's limits (#658).
+            # Right after the context, before the plan's limits (#658);
+            # then the whole API credits section, which is this chat's.
             lines.insert(1, usage.PLAN_LIMITS_NOT_FOR_API)
-        lines += self._api_usage_lines()  # #658
+            lines += self._api_usage_lines()
+        else:
+            # On the subscription, the plan's limits stay last, where End
+            # finds them: API credits get one line before them.
+            summary = self._api_usage_lines(summary=True)
+            plan = len(usage.limit_lines(self._limits))
+            lines[len(lines) - plan:len(lines) - plan] = summary
         self._modal(UsageDialog(self, lines, self._copy_usage))
 
-    def _api_usage_lines(self) -> List[str]:
+    def _api_usage_lines(self, summary: bool = False) -> List[str]:
         """Usage's API credits section (#658): shown once a key has been
-        added, anything spent, or an API chat is loaded."""
+        added, anything spent, or an API chat is loaded. ``summary``: one
+        line, for a chat on the subscription."""
         from ..spend_ledger import default_ledger
         try:
             totals = default_ledger().totals()
@@ -4109,6 +4117,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not (api_open or self._has_api_key() or totals.spent or totals.today
                 or totals.last_7_days or totals.held or totals.problem):
             return []
+        if summary:
+            return [usage.api_credit_summary(totals)]
         names = {own.cli_session_id: own.title for own in self.store.all()
                  if own.provider == "claude"}
         return usage.api_credit_lines(totals, names)

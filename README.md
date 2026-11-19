@@ -503,7 +503,9 @@ API credits.
 The following details describe Claude API chats; the shared send notice, first-message
 question, cost setting and API-credit labels also apply to Codex:
 
-- **Add a Claude key** with Tools, API Keys (Alt+T, P), with Provider on Claude (Anthropic). Its Key status box
+- **Add a Claude key** with Tools, API Keys (Alt+T, P). It opens on **Provider**, whose choices
+  say whether each has a key ("Claude (Anthropic), key added", "Codex (OpenAI), no key"); the
+  rest of the dialog is about the one chosen. With Provider on Claude (Anthropic), its Key status box
   says "Claude: No key", or "Claude: key ending in 7Q2x, added November 16"; it never shows the
   key. Paste the key (it starts with
   `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
@@ -582,9 +584,11 @@ question, cost setting and API-credit labels also apply to Codex:
 - **Older releases.** Chats on API credits are kept in a file of their own, which releases of
   The Chat Place from before API credits don't read: they don't list those chats at all, rather
   than run them on your subscription.
-- **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
-  today, the last 7 days, since the total was reset, what's held, what's left of the limit, and
-  spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
+- **Usage and Properties.** In a chat on API credits, Tools, Usage and Context (Ctrl+Shift+U)
+  has an API credits section at the end: today, the last 7 days, since the total was reset,
+  what's held, what's left of the limit, and spending by model and by chat. In a chat on your
+  subscription, API credits are one line (what's spent and what's left) just before your plan's
+  limits, so the last line is still a plan limit. Properties (Alt+Enter) on a chat says "Charged to: API
   credits" or "Claude subscription", and for API credits what the chat has spent. These totals
   count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
   everything charged to your account, including other apps using the same key, so theirs can
