@@ -108,12 +108,13 @@ def totals_text(totals) -> str:
             f"Left: {_amount(totals.left)}.")
 
 
-def provider_labels() -> list:
-    """Provider's choices, each saying whether a key is kept for it (never
-    reading the key): "Claude (Anthropic), key added" or "..., no key"."""
-    def label(name, keys):
-        return f"{name}, {'key added' if keys.has_api_key() else 'no key'}"
-    return [label('Claude (Anthropic)', billing), label('Codex (OpenAI)', openai_billing)]
+PROVIDER_NAMES = ('Claude (Anthropic)', 'Codex (OpenAI)')
+
+
+def provider_label(index: int, has_key: bool) -> str:
+    """A Provider choice, saying whether a key is kept for it (never the
+    key): "Claude (Anthropic), key added" or "Codex (OpenAI), no key"."""
+    return f"{PROVIDER_NAMES[index]}, {'key added' if has_key else 'no key'}"
 
 
 class ApiKeysDialog(wx.Dialog):
@@ -142,7 +143,11 @@ class ApiKeysDialog(wx.Dialog):
         self._test_token = None
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label='&Provider:'), 0, wx.LEFT | wx.TOP, 8)
-        self.provider_choice = wx.Choice(self, choices=provider_labels())
+        # Each key store asked once here; after that only the chosen
+        # provider's key can change, and _sync relabels just that one.
+        self.provider_choice = wx.Choice(self, choices=[
+            provider_label(0, billing.has_api_key()),
+            provider_label(1, openai_billing.has_api_key())])
         self.provider_choice.SetSelection(0)
         set_accessible_name(self.provider_choice, 'Provider')
         sizer.Add(self.provider_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -248,7 +253,11 @@ class ApiKeysDialog(wx.Dialog):
     def first_control(self) -> wx.Window:
         """Where focus starts: Provider, which says which provider the rest
         of the dialog is about and whether each has a key. Starting on Test
-        Key left you guessing which key it would test."""
+        Key left you guessing which key it would test. On a Mac with
+        keyboard navigation off, a pop-up button can't take focus, so the
+        key box does."""
+        if not self.provider_choice.AcceptsFocusFromKeyboard():
+            return self.key_box
         return self.provider_choice
 
     def _focus_start(self):
@@ -264,13 +273,14 @@ class ApiKeysDialog(wx.Dialog):
         self.remove_btn.Enable(has and not self._key_change_pending)
         self.add_btn.Enable(not self._key_change_pending)
         self.provider_choice.Enable(not self._key_change_pending)
-        # Each choice says whether its provider has a key, kept current as
-        # keys are added and removed.
-        chosen = self.provider_choice.GetSelection()
-        for index, label in enumerate(provider_labels()):
-            if self.provider_choice.GetString(index) != label:
-                self.provider_choice.SetString(index, label)
-        self.provider_choice.SetSelection(chosen)
+        # The chosen provider's choice says whether it has a key, kept current
+        # as its key is added and removed. SetString on Windows deletes and
+        # reinserts the item, so the selection is put back.
+        label = provider_label(self._provider_index, has)
+        if self.provider_choice.GetString(self._provider_index) != label:
+            chosen = self.provider_choice.GetSelection()
+            self.provider_choice.SetString(self._provider_index, label)
+            self.provider_choice.SetSelection(chosen)
         self.Layout()
 
     def _show_totals(self):

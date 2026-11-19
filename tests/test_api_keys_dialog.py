@@ -203,6 +203,9 @@ def test_adding_a_key_keeps_it_empties_the_box_and_says_so(dialog, env):
     assert dialog.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")
     assert dialog.add_btn.GetLabel() == "&Replace Key"
     assert dialog.test_btn.IsEnabled() and dialog.remove_btn.IsEnabled()
+    # Provider says so now, and stays on Claude.
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), key added"
+    assert dialog.provider_choice.GetSelection() == 0
     assert dialog.said == ["Key saved."]
     assert env["boxes"] == []
     # The key is nowhere in the dialog, nor in the plain file beside it.
@@ -282,6 +285,8 @@ def test_removing_the_key_asks_first(dialog, env, monkeypatch):
     assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), no key"
+    assert dialog.provider_choice.GetSelection() == 0
     assert dialog.said[-1] == "Key removed."
 
 
@@ -599,6 +604,10 @@ def test_openai_has_separate_key_limits_total_and_release(parent, env, monkeypat
         assert window.on_add() and window.key_box.GetValue() == ''
         assert fake_env.pump(lambda: not window._key_change_pending)
         assert openai_billing.has_api_key() and not billing.has_api_key()
+        # Saved in the background; Provider then says so, still on Codex.
+        assert window.provider_choice.GetString(1) == 'Codex (OpenAI), key added'
+        assert window.provider_choice.GetString(0) == 'Claude (Anthropic), no key'
+        assert window.provider_choice.GetSelection() == 1
         monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.YES)
         assert window.on_release_held() and openai.totals().held == 0
         window.on_billing_page()
