@@ -691,6 +691,7 @@ class SpendLedger:
         renamed: Dict[str, str] = {}
         settled_all, settled_counted, settlement_dates = {}, {}, {}
         token_records = {}
+        unknown_priced = {}  # rid -> chat; releasing a hold does not resolve its cost
         usage_excluded = set()
 
         def chat_of(chat: str) -> str:
@@ -705,6 +706,20 @@ class SpendLedger:
                 damage = damage or f"line {number}"
                 continue
             try:
+                if record['type'] in ('release', 'reset'):
+                    ids = record.get('ids', []) if record['type'] == 'release' else list(reservations)
+                    for rid in ids:
+                        entry = reservations.get(rid)
+                        if entry is not None and not entry.unpriced and rid not in self._live:
+                            unknown_priced[rid] = entry.chat_id
+                if record['type'] == 'close':
+                    rid = record['id']
+                    if record.get('complete') is True:
+                        unknown_priced.pop(rid, None)
+                    else:
+                        entry = reservations.get(rid)
+                        if entry is not None and not entry.unpriced:
+                            unknown_priced[rid] = entry.chat_id
                 if record["type"] == "reset":
                     keep = record.get("keep", [])
                     reservations = {rid: entry for rid, entry in reservations.items()
@@ -719,6 +734,8 @@ class SpendLedger:
                     rid = record['id']
                     first = token_records.get(rid, record)['at']
                     token_records[rid] = dict(record, at=first)
+                    if record['unpriced']:
+                        unknown_priced.pop(rid, None)
                     if record['unpriced'] and rid in reservations:
                         reservations[rid].unpriced = True
                     continue
@@ -771,7 +788,10 @@ class SpendLedger:
                                         for e in reservations.values() if e.unpriced)
         totals.unpriced_releasable = sum(max(0, e.amount-e.settled)
                                         for rid, e in reservations.items() if e.unpriced and rid not in self._live)
-        totals.priced_unknown_chats = {e.chat_id for e in reservations.values() if not e.unpriced}
+        totals.priced_unknown_chats = ({e.chat_id for rid, e in reservations.items()
+                                        if not e.unpriced and rid not in self._live}
+                                       | {chat_of(chat) for rid, chat in unknown_priced.items()
+                                          if rid not in self._live})
         for rid, record in token_records.items():
             if not record['unpriced']:
                 continue

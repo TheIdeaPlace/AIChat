@@ -56,6 +56,7 @@ def chat_cost_words(ledger, chat_id):
     if chat_id in totals.unpriced_all_time:
         return spending_words(totals, chat_id)
     cost, held, unknown = ledger.chat_cost(chat_id)
+    unknown = unknown or chat_id in totals.priced_unknown_chats
     words = billing.cost_words(cost if cost or not unknown else None, complete=not unknown)
     return words if words == billing.COST_NOT_KNOWN else 'estimated ' + words
 
