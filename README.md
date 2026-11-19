@@ -71,15 +71,15 @@ too).
   **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
   available with Codex or Copilot turned off; each is empty until its provider is enabled.
   **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
-  Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
-  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started**, **Last message** and
-  **Charged to**, which aren't shown until you add them. Provider says which AI; Kind says where the session started.
-  Charged to says how one of The Chat Place's own chats is paid for: "Claude subscription",
-  "Claude API credits", "ChatGPT subscription", "OpenAI API credits" or "Copilot plan". It says
-  nothing for sessions started elsewhere, whose charging can't be known for sure, or for agent
-  conversations. Without it, a chat on API credits still says "API credits" after its name (or
-  first, with Title hidden). Other
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot),
+  Charged to, Folder, Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
+  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**,
+  which aren't shown until you add them. Provider says which AI; Kind says where the session started.
+  **Charged to** says how each of The Chat Place's own chats is paid for: "Claude subscription",
+  "Claude API credits", "ChatGPT subscription", "OpenAI API credits" or "Copilot plan". It's the
+  one place a row says a chat is on API credits. It's left out of the line for sessions started
+  outside The Chat Place, whose charging can't be known for sure, and for agent conversations.
+  Saved column choices from before it existed gain it once, just after Provider. Other
   clients may be identified as an editor, command-line or external session. Saved custom choices
   gain Provider immediately after Title (or first if Title is hidden), without changing their other columns; removing it afterward is remembered. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
@@ -548,10 +548,13 @@ question, cost setting and API-credit labels also apply to Codex:
   (Claude Code's rule); your own MCP servers still work. Remote Control isn't available in
   chats on API credits either, so neither is Chat, Other Machines; Session, Remote Control says
   so. Your plan's usage limits don't apply.
-- **Always knowing.** The chat's row in the session list says "API credits" after its name,
-  and so do the window's title, the heading and the messages list's name; the reply box is
-  named "Your message, API credits". While it's loaded, the status bar shows "API credits: this
-  chat $0.42, The Chat Place $12.30 of $20" (Enter there opens Tools, API Keys). Every message
+- **Always knowing.** The chat's row in the session list says "Claude API credits" (or "OpenAI
+  API credits" for Codex) in its Charged to column. The window's title, the heading and the
+  messages list's name say so too, and the reply box is named "Your message, API credits".
+  While it's loaded, the status bar shows "API credits: this chat $0.42, The Chat Place $12.30
+  of $20" for a Claude chat; a Codex chat's figures are estimates and include what's held. The
+  status bar part is a button: reach it with F6 (or Ctrl+9) and the arrows, and Enter opens
+  Tools, API Keys. Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
   gone on API credits once Claude Code has it, always, even when announcements are off. When
   you send, the status bar says "Sending on API credits…" at once, and what's read back a

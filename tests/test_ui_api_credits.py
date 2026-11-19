@@ -157,7 +157,7 @@ def ended(frame, session_id="api-1", title="Paid", kind="finished", text="Done."
 
 def test_the_row_title_and_reply_box_say_api_credits(frame):
     rows = [frame.session_list.GetString(i) for i in range(frame.session_list.GetCount())]
-    assert any(row.startswith("Paid, API credits") for row in rows)
+    assert any(row.startswith("Paid, Claude, Claude API credits, ") for row in rows)
     assert not any("API credits" in row for row in rows if row.startswith("Mine"))
     open_chat(frame, "api-1")
     assert frame.GetTitle() == "Paid, API credits — The Chat Place"

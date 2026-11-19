@@ -214,6 +214,8 @@ class SpeechSettings:
     #: One-time Provider-column upgrade (#184). Save this even if the user
     #: removes Provider, so later starts respect that choice.
     provider_column_added: bool = True
+    #: One-time Charged to upgrade (#658), kept the same way.
+    charged_column_added: bool = True
     #: "The Chat Place Update Installed" after an update (#141); Settings
     #: turns it off.
     update_installed_notice: bool = True
@@ -324,12 +326,19 @@ class SpeechSettings:
                                          if raw.get("new_session_provider") in ("codex", "copilot")
                                          else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
-        from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
+        from .sessions import clean_fields, FIELD_CHARGED, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:
             index = (settings.session_fields.index(FIELD_TITLE) + 1
                      if FIELD_TITLE in settings.session_fields else 0)
             settings.session_fields.insert(index, FIELD_PROVIDER)
+        # Charged to (#658) once, after Provider (or Title, or first), so a
+        # chat on API credits says so; removing it later is remembered.
+        if raw.get("charged_column_added") is not True and FIELD_CHARGED not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_CHARGED)
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""

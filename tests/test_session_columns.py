@@ -24,7 +24,8 @@ def _info(key="x", **extra):
 def test_the_default_row_identifies_the_provider_and_source():
     info = _info(source=OWN, state=NEEDS_YOU, detail="Pick a name", unread=True, remote=True,
                  groups=("Work",))
-    line = ("Fix the build, Claude, Repo, needs you: Pick a name, new reply, active 5 minutes ago, "
+    line = ("Fix the build, Claude, Claude subscription, Repo, needs you: Pick a name, new reply, "
+            "active 5 minutes ago, "
             "Chat Place session, Remote Control, group Work")
     assert info.list_line(NOW) == line
     assert info.list_line(NOW, DEFAULT_FIELDS) == line
@@ -53,9 +54,9 @@ def test_cowork_and_chat_place_kind_is_one_column():
 
 
 def test_every_column_has_a_name_and_a_short_name():
-    # Provider and Kind are regular defaults; Started, Last message and
-    # Charged to (listed next to Provider) are optional.
-    assert [f for f in FIELD_IDS if f not in ("started", "last_message", "charged")] == DEFAULT_FIELDS
+    # Provider, Charged to (#658, just after it) and Kind are regular
+    # defaults; Started and Last message are optional.
+    assert [f for f in FIELD_IDS if f not in ("started", "last_message")] == DEFAULT_FIELDS
     assert FIELD_IDS.index("charged") == FIELD_IDS.index("provider") + 1
     assert field_short_name("charged") == "Charged to"
     assert len(set(FIELD_IDS)) == len(FIELDS)
@@ -108,7 +109,7 @@ def test_a_newer_versions_columns_are_ignored_on_load(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"session_fields": ["model", "status", "title"]}),
                     encoding="utf-8")
-    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider"]
+    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider", "charged"]
 
 
 def test_default_settings_do_not_share_one_list():
@@ -199,7 +200,8 @@ def test_older_custom_columns_gain_provider_once_without_losing_choices(tmp_path
                 'codex_enabled': codex_enabled, 'announce_own': False}
     path.write_text(json.dumps(original), encoding='utf-8')
     settings = SpeechSettings.load(path)
-    assert settings.session_fields == ['last_message', 'status', 'title', 'provider', 'kind']
+    assert settings.session_fields == ['last_message', 'status', 'title', 'provider', 'charged',
+                                       'kind']
     assert not settings.announce_own
     assert json.loads(path.read_text()) == original  # loading never overwrites the old file
     settings.save(path)
@@ -213,7 +215,9 @@ def test_existing_provider_position_is_preserved_on_upgrade(tmp_path):
     path = tmp_path / 'settings.json'
     columns = ['provider', 'title', 'started', 'last_message']
     path.write_text(json.dumps({'session_fields': columns}), encoding='utf-8')
-    assert SpeechSettings.load(path).session_fields == columns
+    # Charged to (#658) goes in once, just after Provider.
+    assert SpeechSettings.load(path).session_fields == [
+        'provider', 'charged', 'title', 'started', 'last_message']
 
 
 @pytest.mark.parametrize('provider', ['claude', 'codex', 'ollama'])
@@ -229,7 +233,38 @@ def test_kind_describes_source_independently_of_provider(provider, source, kind)
 def test_upgrade_without_title_places_provider_first(tmp_path):
     path = tmp_path / 'settings.json'
     path.write_text(json.dumps({'session_fields': ['status', 'last_message']}))
-    assert SpeechSettings.load(path).session_fields == ['provider', 'status', 'last_message']
+    assert SpeechSettings.load(path).session_fields == ['provider', 'charged', 'status',
+                                                        'last_message']
+
+
+def test_charged_to_is_added_once_and_a_removal_is_kept(tmp_path):
+    # Kelly's rule for Provider holds for Charged to (#658): added once to
+    # older choices, and never put back after you remove it.
+    path = tmp_path / 'settings.json'
+    path.write_text(json.dumps({'session_fields': ['title', 'provider', 'status'],
+                                'provider_column_added': True}))
+    settings = SpeechSettings.load(path)
+    assert settings.session_fields == ['title', 'provider', 'charged', 'status']
+    settings.session_fields.remove('charged')
+    settings.save(path)
+    assert json.loads(path.read_text())['charged_column_added'] is True
+    assert 'charged' not in SpeechSettings.load(path).session_fields
+    # A new install that removes it keeps it removed too.
+    fresh = SpeechSettings()
+    fresh.session_fields.remove('charged')
+    fresh.save(path)
+    assert 'charged' not in SpeechSettings.load(path).session_fields
+
+
+@pytest.mark.parametrize('saved,expected', [
+    (['status', 'title', 'folder'], ['status', 'title', 'charged', 'folder']),
+    (['status', 'folder'], ['charged', 'status', 'folder']),
+])
+def test_charged_to_goes_after_title_or_first_without_provider(tmp_path, saved, expected):
+    path = tmp_path / 'settings.json'
+    # Provider was added before and then removed, so only Charged to is new.
+    path.write_text(json.dumps({'session_fields': saved, 'provider_column_added': True}))
+    assert SpeechSettings.load(path).session_fields == expected
 
 
 def test_default_columns_read_provider_immediately_after_title():

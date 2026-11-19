@@ -147,8 +147,8 @@ class SessionInfo:
     #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
     #: Copilot copy's first message carries the history (#423).
     continued_from: str = ""
-    #: One of The Chat Place's own Claude chats charged to API credits
-    #: (#658): its row says so after the name.
+    #: One of The Chat Place's own chats charged to API credits (#658): its
+    #: row says so in the Charged to column.
     api_credits: bool = False
 
     #: Only set by the Claude adapter after the original has disappeared.
@@ -183,7 +183,7 @@ class SessionInfo:
         if self.provider == "codex-api":
             return "OpenAI API credits"
         if self.provider == "claude":
-            return "Claude API credits" if self.api_credits else "Claude subscription"
+            return "Claude subscription"
         if self.provider == "codex":
             return "ChatGPT subscription"
         if self.provider == "copilot":
@@ -266,14 +266,6 @@ class SessionInfo:
         if (self.provider in LISTED_PROVIDERS and self.state == STATUS_UNAVAILABLE
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
-        # A chat on API credits always says so (#658): in Charged to when
-        # that's shown, otherwise after its name, or first with no Title.
-        if self.api_credits and not (FIELD_CHARGED in order and values.get(FIELD_CHARGED)):
-            if FIELD_TITLE in order:
-                values[FIELD_TITLE] += ", API credits"
-            else:
-                order = [FIELD_CHARGED] + order
-                values[FIELD_CHARGED] = "API credits"
         parts = [values[f] for f in order if values.get(f)]
         return ", ".join(parts) or values[FIELD_TITLE]
 
@@ -342,12 +334,12 @@ FIELD_NAMES = dict(FIELDS)
 #: Columns there are but rows don't read until you add them: Last message
 #: (#146) reads each session's transcript, and makes every row long; Started
 #: (#209) is there for those who want it, not news for everyone.
-#: Charged to (#658 feedback) is there for those on API credits; a chat on
-#: API credits says so after its name without it.
-OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE, FIELD_CHARGED)
+OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: The columns rows read unless you choose otherwise, in the order they
 #: are read. Provider is added once to older saved choices by SpeechSettings;
-#: users can subsequently remove it like any other column.
+#: users can subsequently remove it like any other column. Charged to
+#: (#658) is the one place a row says it's on API credits, so it's shown
+#: too, and added once to older choices the same way.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
 

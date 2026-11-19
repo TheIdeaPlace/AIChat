@@ -415,8 +415,8 @@ your Claude subscription.
    makes a new chat that picks up from the old one, whose first message costs more because the
    whole conversation goes again.
 
-You always know when a message is on API credits: the chat's row and the window's title say
-"API credits", each message you send is said to have gone on API credits once Claude Code has
+You always know when a message is on API credits: the chat's row says "Claude API credits" in
+its Charged to column, the window's title says "API credits", each message you send is said to have gone on API credits once Claude Code has
 it ("Sent on API credits to Budget", with your message read back after it; always said, even
 when announcements are off, and said once more if another announcement cuts it off before
 Budget says anything of its own. Until it's said, the status bar shows "Sending on API
@@ -2723,15 +2723,15 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New
-reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the others in "The
-kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started,
-Last message and Charged to are read only once you add them. Charged to says how each of The
-Chat Place's own chats is paid for: "Claude subscription", "Claude API credits", "ChatGPT
-subscription", "OpenAI API credits" or "Copilot plan". It says nothing for chats started
-elsewhere or for agent conversations. Without it, a chat on API credits still says "API
-credits" after its name (or first, with Title hidden). Older saved choices gain Provider once, just after
-Title (or first if Title is hidden), without changing their other columns. If you remove
+The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Folder,
+Status, New reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the
+others in "The kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at
+first. Started and Last message are read only once you add them. Charged to says how each of
+The Chat Place's own chats is paid for: "Claude subscription", "Claude API credits", "ChatGPT
+subscription", "OpenAI API credits" or "Copilot plan". It's the one place a chat's line says
+it's on API credits. It's left out for chats started outside The Chat Place and for agent
+conversations. Older saved choices gain Provider once, just after Title (or first if Title is
+hidden), and Charged to once, just after Provider, without changing their other columns. If you remove
 Provider afterward, it stays removed. A column with nothing to say for a chat, such as New reply
 when there isn't one, is simply left out of that line.
 

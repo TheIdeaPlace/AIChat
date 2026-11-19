@@ -308,7 +308,12 @@ The keyboard walk in the VM (ClaudeTesting-2 on THESTADIUM) reached every contro
 
 The main window, 1000 by 720, with a chat on API credits loaded. The title bar reads
 "Release notes on credits, API credits — The Chat Place"; its session row reads "Release
-notes on credits, API credits, Claude, Scratch, idle, ..."; the heading above the messages
+notes on credits, Claude, Claude API credits, Scratch, idle, ..." (since #684, Charged to is
+shown at first and the title no longer has ", API credits"; every own chat's row also gains
+"Claude subscription" or similar after Provider, so every main-window picture with one of The
+Chat Place's own chats in the list is wider in that row, and Session List Columns shows twelve
+columns with Charged to third. The probe couldn't run for #684 (no networked VM was free);
+these pictures are retaken with #668's run); the heading above the messages
 ends "on API credits."; the messages list's label ends "API credits)". The status bar gains
 a button between the chat's state and "1 session needs you": "API credits: this chat
 $0.42, The Chat Place $0.42 of $190", black on white (20.6:1; 15.7:1 in Desert). The
@@ -704,7 +709,7 @@ The same dialog for "Codex policy preview", a Codex chat the app started: "Kind:
 
 This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude, Codex or Copilot)" (#355), Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right. At 175% the dialog is 1190 by 956 (the earlier 175% picture was 1120 wide, from before #300): the two lists are 567 wide, all seven buttons fit on one row with Reset to Default at its end, and the preview wraps onto two lines, ending "desktop app session".
 
-**Since #682 (2026-11-19):** "Available columns:" has three rows: "Charged to (subscription, plan or API credits)" first, then Started and Last message. A VM screenshot at 100% shows the new row fits inside the list, and once added it fits in Shown too. The probe couldn't be run for this change (the only free VM had no network), so the picture will be retaken with #668's probe run.
+**Since #682 (2026-11-19):** "Charged to (subscription, plan or API credits)" is a column; a VM screenshot at 100% showed it fits in either list. **Since #684,** it's shown at first, third in "Shown columns" (twelve rows), and "Available columns" is back to Started and Last message. The probe couldn't be run for this change (the only free VM had no network), so the picture will be retaken with #668's probe run.
 
 **What looks off:** Nothing (#289).
 

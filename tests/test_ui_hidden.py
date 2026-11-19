@@ -261,7 +261,7 @@ def fake_runner(monkeypatch):
 def test_list_order_and_lines(frame):
     items = list(frame.session_list.GetStrings())
     assert items[0].startswith("Blocked one, Claude, Repo, needs you: Pick a name")
-    assert items[1].startswith("Hub probe, Claude, Scratch, idle")
+    assert items[1].startswith("Hub probe, Claude, Claude subscription, Scratch, idle")
     assert items[1].endswith("Chat Place session")
     assert items[2].startswith("Quiet one, Claude, Repo, idle, active 1 minute ago")
     assert frame.session_list.GetSelection() == 0
@@ -7156,7 +7156,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:4] == ["title", "provider", "folder", "status"]
+    assert seen["fields"][:4] == ["title", "provider", "charged", "folder"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -7264,32 +7264,31 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
     dialog, said, focused = _columns_dialog(frame)
     try:
         assert dialog.shown.GetString(0) == "Title"
-        # Charged to (#658), Started (#209) and Last message (#146) aren't
-        # shown by default.
+        # Started (#209) and Last message (#146) aren't shown by default;
+        # Charged to (#658) is, just after Provider.
         assert list(dialog.available.GetStrings()) == [
-            "Charged to (subscription, plan or API credits)",
             "Started (when the session began)", "Last message"]
-        assert dialog.preview.GetValue().startswith("Blocked one, Claude, Repo, needs you")
-        dialog.shown.SetSelection(3)  # Status
+        assert dialog.preview.GetValue().startswith("Blocked one, Claude, ")
+        dialog.shown.SetSelection(4)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
-        assert dialog.fields()[:4] == ["status", "title", "provider", "folder"]
+        assert said[-1] == "Status moved to top, 1 of 12."
+        assert dialog.fields()[:4] == ["status", "title", "provider", "charged"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 11." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 12." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 11 of 11."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 10
+        assert said[-1] == "Status moved to bottom, 12 of 12."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 11
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
+        assert said[-1] == "Status moved to top, 1 of 12."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 11."
+        assert said[-1] == "Status moved down, 2 of 12."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -7320,20 +7319,16 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.shown.GetSelection() == 1  # on what it added
         assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 11 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
+        assert said[-1] == "Columns reset to the default: 12 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 12
         assert list(dialog.available.GetStrings()) == [
-            "Charged to (subscription, plan or API credits)",
             "Started (when the session began)", "Last message"]
         dialog.shown.SetSelection(dialog.fields().index("provider"))
         dialog.remove()
-        assert said[-1] == "Provider removed. 10 columns shown."
+        assert said[-1] == "Provider removed. 11 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Provider added, 11 of 11."
-        dialog.available.SetSelection(0)
-        dialog.add()
-        assert said[-1] == "Charged to added, 12 of 12."
+        assert said[-1] == "Provider added, 12 of 12."
         dialog.available.SetSelection(0)
         dialog.add()
         assert said[-1] == "Started added, 13 of 13."
@@ -7378,7 +7373,7 @@ def test_columns_preview_has_a_sample_when_nothing_is_selected(frame, env, monke
             pass
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Looks)
     frame.on_session_columns()
-    assert seen["line"].startswith("Example session, Claude, Example, needs you: Choose a version "
+    assert seen["line"].startswith("Example session, Claude, Claude subscription, Example, needs you: Choose a version "
                                    "number, new reply, active 2 minutes ago")
 
 
@@ -12971,7 +12966,7 @@ def test_relay_sends_a_claude_reply_to_another_chat_and_goes_there(frame, env, f
     targets, text, title = relay_dialog.seen
     assert title == "Send Reply to Another Chat: Builder"
     # Not Builder itself, nor desktop ones; then a new chat (#378).
-    assert targets == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert targets == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     assert text == ('From Claude, another AI agent, forwarded by the user from their chat '
                     '"Builder":\n\nBuilt it. Tests pass.')
     assert frame._open.title == "Hub probe"
@@ -13040,7 +13035,7 @@ def test_relay_from_a_desktop_session_reads_only(frame, env, fake_runner, relay_
     assert pump(lambda: frame._chat_loaded and frame._chat_messages)
     relay_dialog.pick = lambda text: (0, text)
     frame.on_send_reply_to()
-    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert relay_dialog.seen[0] == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     # A desktop session can't be in an agent conversation (#378).
     assert relay_dialog.problems[0].short == "this chat wasn't started here"
     assert fake_runner.instances[-1].prompt.endswith("Desktop answer")
