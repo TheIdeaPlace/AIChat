@@ -174,8 +174,11 @@ class SessionInfo:
     def charged_to(self) -> str:
         """What the Charged to column says: how one of The Chat Place's own
         chats is paid for, "" for any other session, whose charging can't be
-        known for sure (a terminal Claude Code may be on an API key)."""
-        if not self.is_own:
+        known for sure (a terminal Claude Code may be on an API key). A row
+        on API credits always says so, kept or not (#658)."""
+        if self.api_credits:
+            return "OpenAI API credits" if self.provider == "codex-api" else "Claude API credits"
+        if not (self.is_own or (self.source == KEPT and self.kept_from == OWN)):
             return ""
         if self.provider == "codex-api":
             return "OpenAI API credits"
@@ -265,7 +268,7 @@ class SessionInfo:
             values[FIELD_STATUS] = ""
         # A chat on API credits always says so (#658): in Charged to when
         # that's shown, otherwise after its name, or first with no Title.
-        if self.api_credits and FIELD_CHARGED not in order:
+        if self.api_credits and not (FIELD_CHARGED in order and values.get(FIELD_CHARGED)):
             if FIELD_TITLE in order:
                 values[FIELD_TITLE] += ", API credits"
             else:
@@ -321,7 +324,7 @@ FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
     (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
-    (FIELD_CHARGED, "Charged to (subscription or API credits)"),
+    (FIELD_CHARGED, "Charged to (subscription, plan or API credits)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),

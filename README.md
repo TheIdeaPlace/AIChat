@@ -77,8 +77,9 @@ too).
   **Charged to**, which aren't shown until you add them. Provider says which AI; Kind says where the session started.
   Charged to says how one of The Chat Place's own chats is paid for: "Claude subscription",
   "Claude API credits", "ChatGPT subscription", "OpenAI API credits" or "Copilot plan". It says
-  nothing for sessions started elsewhere, whose charging can't be known for sure. Without it,
-  a chat on API credits still says "API credits" after its name. Other
+  nothing for sessions started elsewhere, whose charging can't be known for sure, or for agent
+  conversations. Without it, a chat on API credits still says "API credits" after its name (or
+  first, with Title hidden). Other
   clients may be identified as an editor, command-line or external session. Saved custom choices
   gain Provider immediately after Title (or first if Title is hidden), without changing their other columns; removing it afterward is remembered. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
