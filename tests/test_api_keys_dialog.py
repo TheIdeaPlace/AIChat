@@ -707,4 +707,3 @@ def test_openai_release_held_warns_cost_unknown_and_keeps_token_history(parent, 
         assert ledger.totals().unpriced_all_time[r.chat_id]['inputTokens'] == 100
     finally:
         window.Destroy()
-

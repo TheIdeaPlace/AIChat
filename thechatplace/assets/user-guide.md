@@ -390,19 +390,23 @@ The model list offers priced models and other models advertised by Codex's API-k
 Priced models are gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5,
 gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and
 gpt-6.1-sol. Other models say **price unknown**. Availability depends on your OpenAI account.
+Ultra effort is not offered on API credits.
 
 Every priced OpenAI cost says **estimated**, using prices checked November 19, 2026.
-Standard service is pinned. Reasoning is included in output, and cache writes are counted
+Standard service is selected at thread and turn boundaries, but Codex 0.163 omits
+the explicit tier from its API request. Project settings can therefore choose another rate.
+Standard billing is an unresolved release blocker. Reasoning is included in output, and
+cache writes are counted
 where reported. Long-context models use conservative surcharge rates: twice input and cache,
 one and a half times output, because cumulative counters cannot prove the request's band.
 Each model uses its own maximum input and output. GPT-5.6 Sol's promotional price expires
-November 30, 2026; after that it says price unknown unless the table is updated.
+at 10:00 UTC on November 29, 2026; after that it says price unknown unless the table is updated.
 
 Before your first message with **price unknown**, a required question explains that your
 OpenAI key will be charged and your dollar limits cannot stop a message. Cancel is the
-default. Enter or Escape on the warning keeps your message; Tab reaches Send on API credits,
-then Cancel. Changing the model requires the question again. Turning off the optional
-first-message question in Settings does not turn this warning off.
+default. Enter or Escape on the warning keeps your message; Tab reaches Cancel,
+then Send on API credits. Changing the model or restarting the app requires the question again.
+Turning off the optional first-message question in Settings does not turn this warning off.
 
 Every paid send still says **Sent on API credits to** the chat's name, even with announcements
 off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens,
@@ -411,8 +415,11 @@ output; cached input and reasoning are included in those figures.
 
 Each unpriced message keeps a per-message **allowance** against the overall limit, normally
 $2, or the remaining overall allowance. This can block later messages but cannot cap a
-message's actual cost. Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the status
-bar and Tools, API Keys say **priced spending $X, plus unpriced usage**, with token details.
+message's actual cost. Send Now (Ctrl+Enter) holds another allowance for a steer.
+Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the status
+bar and Tools, API Keys identify unpriced usage. Unknown-only spending says **cost unknown**.
+Mixed spending says **priced spending $X, plus unpriced usage**. The status bar gives a short
+total; Usage and Context gives the token details.
 Input, cached-input, cache-write and output tokens are saved across restarts. Reset Total
 starts a new overall usage total; Properties keeps the chat's history. Release Held frees
 inactive allowances without deleting token history.
@@ -424,6 +431,11 @@ becomes available once that message is no longer running. A refused key releases
 hold; replace it in API Keys and send again. Connected services, hosted search, automatic
 review, subagents, compaction, goals, Ask Aside and copies cut at an earlier turn are not
 available on OpenAI credits. Human approvals and full-history API copies are available.
+
+If a price expires during a turn, the turn continues with cost unknown and its allowance
+held. Only later tokens enter unpriced usage. Queued messages come back unsent with a
+confirmation reason. Stopped or failed unpriced replies say **stopped** or **failed**;
+incomplete counts say **at least** or **tokens not reported**.
 
 For **Claude**, the existing Anthropic API options work as follows.
 

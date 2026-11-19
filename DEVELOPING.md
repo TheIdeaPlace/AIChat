@@ -196,12 +196,26 @@ checks the key generation, so replacement affects existing processes and removal
 blocks queued messages. Model changes use the API-key home's catalog plus dated priced
 choices, not ChatGPT's. Models without valid prices require mandatory consent and retain
 per-message allowances; token snapshots are separate from dollar settlements. Steers also
-reserve an allowance for unpriced sends. GPT-5.6 Sol's rate expires after 2026-11-30,
-tested with a fake clock; active turns then become unknown and keep their allowances.
+reserve an allowance for unpriced sends. Consent is stored per connection, thread, model
+and standard tier, and checked by the backend before every paid send, including queue
+advancement. GPT-5.6 Sol's page specifies no end time or zone: the conservative cutoff is
+2026-11-29 10:00 UTC (the start of November 30 in UTC+14), tested with a fake clock.
+Active turns continue without a dollar stop after expiry and keep their allowances. A frozen
+priced token prefix prevents duplicate unpriced accounting; later updates keep all new tokens.
+Queued messages return unsent with the confirmation reason if consent is missing.
 Unknown per-chat spending is read from reservations, never displayed as zero.
 Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
 until the user sends a message. Failed or cancelled sends restore only user text. Native
 attachment parts survive the prefix. The writer event clears the deferred context.
+
+Service-tier verification remains a release blocker on Codex 0.163.0. A free native
+CLI test with a fake key and a local synthetic endpoint confirms that Responses omits
+`service_tier` despite explicit thread/turn/config `default`. Versioned native source
+`ModelInfo::service_tier_for_request` deliberately filters it out. Omission means API
+`auto`, which can inherit a project's tier; our thread setting alone cannot guarantee
+standard billing. Do not treat the synthetic boundary test as upstream response proof.
+No paid check can establish that guarantee for every project. See
+[the review evidence](dev-notes/codex-more-models-review.md) before shipping this backend.
 
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
@@ -227,8 +241,8 @@ isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
 3. In New Session choose Codex, then API credits. Confirm that dated priced models
    and API-home models marked price unknown are offered, with human approval modes.
    Choose a price-unknown model. Listen for the warning that dollar limits cannot stop
-   a message. Enter on the warning must cancel. Reopen it, Tab to Send on API credits,
-   Tab to Cancel, Shift+Tab back, and Escape; the message must stay in the reply box.
+   a message. Enter on the warning must cancel. Reopen it, Tab to Cancel,
+   Tab to Send on API credits, Shift+Tab back to Cancel, and Escape; the message must stay in the reply box.
    Change models and verify that the warning returns. The required warning must still
    appear with the optional first-send setting off. Cancel the ordinary first-send question: the
    message stays in the reply box. Send it, then listen for one guaranteed
