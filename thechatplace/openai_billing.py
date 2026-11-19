@@ -102,7 +102,21 @@ def spending_words(totals, chat_id=None, *, details=True):
 
 
 def status_words(totals):
-    return f'API credits: {spending_words(totals, details=False)}; ${totals.held:,.2f} held.'
+    """One compact button; Usage carries holds, uncertainty and counter details."""
+    if totals.problem:
+        return 'API: spending record needs attention'
+    cost = totals.spent
+    priced = (f'priced ${cost:,.2f}' if not totals.priced_unknown_chats
+              else 'priced cost not known')
+    if totals.unpriced_usage:
+        count = sum(row.get('inputTokens', 0) + row.get('outputTokens', 0)
+                    for row in totals.unpriced_usage.values())
+        tokens = (f'{count:,} unpriced tokens' if not totals.unpriced_missing else
+                  f'at least {count:,} unpriced tokens' if count else 'unpriced tokens not reported')
+        if not cost and not totals.priced_unknown_chats:
+            return f'API: cost unknown; {tokens}'
+        return f'API: {priced} + {tokens}'
+    return f'API: {priced}'
 
 
 def usage_lines(ledger, chat_id):

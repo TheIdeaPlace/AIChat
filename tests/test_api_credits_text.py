@@ -237,6 +237,19 @@ def test_unpriced_text_and_release_allowance_without_zero_cost(tmp_path):
     assert 'priced spending $0.42' in mixed and 'plus unpriced usage' in mixed
     assert 'priced cost not known' in mixed
     status = words.status_words(ledger.totals())
-    assert 'cached input' not in status and len(status) < 230
+    assert status == 'API: priced cost not known + 12,400 unpriced tokens'
+    assert len(status) < 80
     assert 'cached input' in '\n'.join(words.usage_lines(ledger, 'codex-api:chat'))
     assert words.token_words(tokens, complete=False).startswith('used at least 12,400 tokens')
+
+
+def test_status_keeps_unpriced_and_unsettled_priced_use_distinct(tmp_path):
+    from thechatplace import openai_billing as words
+    ledger = spend_ledger.SpendLedger(tmp_path)
+    unknown = ledger.reserve('codex-api:unknown', unpriced=True)
+    ledger.close(unknown, complete=False)
+    assert words.status_words(ledger.totals()) == 'API: cost unknown; unpriced tokens not reported'
+    priced = ledger.reserve('codex-api:priced')
+    ledger.close(priced, complete=False)
+    status = words.status_words(ledger.totals())
+    assert 'priced cost not known' in status and 'unpriced tokens not reported' in status

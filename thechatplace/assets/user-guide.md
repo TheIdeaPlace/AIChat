@@ -409,8 +409,7 @@ then Send on API credits. Changing the model or restarting the app requires the 
 Turning off the optional first-message question in Settings does not turn this warning off.
 
 Every paid send still says **Sent on API credits to** the chat's name, even with announcements
-off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens,
-cost unknown**. This notice stays spoken with the cost setting off. Tokens count input plus
+off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens, cost unknown**. This notice stays spoken with the cost setting off. Tokens count input plus
 output; cached input and reasoning are included in those figures.
 
 Each unpriced message keeps a per-message **allowance** against the overall limit, normally
