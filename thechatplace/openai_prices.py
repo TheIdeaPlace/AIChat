@@ -79,9 +79,9 @@ def require_price(model, service_tier=None, *, as_of=None):
     return tuple(Decimal(x) for x in PRICES[model])
 
 
-def is_priced(model, service_tier=None):
+def is_priced(model, service_tier=None, *, as_of=None):
     try:
-        require_price(model, service_tier)
+        require_price(model, service_tier, as_of=as_of)
         return True
     except Unpriced:
         return False

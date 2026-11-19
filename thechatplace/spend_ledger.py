@@ -235,6 +235,8 @@ class Totals:
     unpriced_allowance: float = 0.0
     unpriced_missing: set = field(default_factory=set)
     unpriced_missing_all_time: set = field(default_factory=set)
+    unpriced_releasable: float = 0.0
+    priced_unknown_chats: set = field(default_factory=set)
 
     @property
     def counted(self) -> float:
@@ -767,6 +769,9 @@ class SpendLedger:
                                 for rid, e in reservations.items() if rid not in self._live)
         totals.unpriced_allowance = sum(max(0, e.amount-e.settled)
                                         for e in reservations.values() if e.unpriced)
+        totals.unpriced_releasable = sum(max(0, e.amount-e.settled)
+                                        for rid, e in reservations.items() if e.unpriced and rid not in self._live)
+        totals.priced_unknown_chats = {e.chat_id for e in reservations.values() if not e.unpriced}
         for rid, record in token_records.items():
             if not record['unpriced']:
                 continue
