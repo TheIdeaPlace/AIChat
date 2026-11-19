@@ -731,7 +731,9 @@ class AsideRunner:
         self._cost_known = True
         if event.is_error:
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
-                                 self.reservation.amount if self.reservation else None)
+                                 self.reservation.amount if self.reservation else None,
+                                 bool(self.reservation and self.reservation.overall_cap),
+                                 bool(self.reservation and self.reservation.others_held))
             if plain:
                 event.text = _in_aside_words(plain)
 

@@ -466,15 +466,32 @@ def key_refused(retry: Optional[dict]) -> bool:
     return isinstance(error, str) and bool(_AUTH_WORDS.search(error))
 
 
+def overall_limit_text(provider: str, limit: Optional[float], others_held: bool) -> str:
+    """What's said when a message used up what was left of the overall limit
+    (``Reservation.overall_cap``), for Claude and Codex alike. Other chats'
+    messages holding part of it may give some back when they finish."""
+    said = f"; {money(limit)} of it was left for this message" if limit is not None else ""
+    if others_held:
+        return (f"Your overall limit for {provider} API credits ran out{said}, as other "
+                "chats' messages were holding the rest. Send again once they finish, or "
+                "raise the limit or reset the total in Tools, API Keys.")
+    return (f"Your overall limit for {provider} API credits ran out{said}. Raise the limit "
+            "or reset the total in Tools, API Keys to send more on API credits.")
+
+
 def failure_text(subtype: str, text: str, cost_usd: Optional[float] = None,
-                 limit: Optional[float] = None) -> Optional[str]:
+                 limit: Optional[float] = None, overall: bool = False,
+                 others_held: bool = False) -> Optional[str]:
     """A plain message for an API chat's turn that ended on a budget, credit
-    or key problem, or None for any other ending."""
+    or key problem, or None for any other ending. ``overall``: the limit was
+    what was left of the overall one (``Reservation.overall_cap``)."""
     text = text or ""
     if subtype == "error_max_budget_usd":
-        said = f" of {money(limit)}" if limit is not None else ""
         cost = (f" It cost {money(cost_usd)}, as a message can run over the limit by one "
                 "request." if cost_usd else "")
+        if overall:
+            return f"Claude stopped.{cost} {overall_limit_text('Claude', limit, others_held)}"
+        said = f" of {money(limit)}" if limit is not None else ""
         return (f"Claude stopped at your per-message limit{said} for API credits.{cost} "
                 "Send another message to carry on, or change the limit in Tools, API Keys.")
     if _CREDIT_LOW.search(text):

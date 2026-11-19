@@ -572,7 +572,11 @@ question, cost setting and API-credit labels also apply to Codex:
   Anthropic's API (`https://api.anthropic.com`), even if a settings file of yours or a
   project's points Claude Code somewhere else. A chat on the subscription is checked the same
   way the other round: it never uses a key, or any sign-in but your Claude subscription's. A
-  message that reaches its per-message limit stops, says so and what it cost; one refused for no
+  message that reaches its per-message limit stops, says so and what it cost. One that runs out
+  of what's left of the overall limit stops at that instead, and says it was the overall limit,
+  and, if other chats' messages were holding some of it, that you can send again once they
+  finish. Once the overall limit is reached, nothing more is sent on API credits until you raise
+  it or reset the total. One refused for no
   credit says that plainly, and a key Anthropic refuses is said within seconds, with the message
   back in the reply box, rather than after minutes of Claude Code trying again.
 - **Older releases.** Chats on API credits are kept in a file of their own, which releases of
@@ -581,7 +585,10 @@ question, cost setting and API-credit labels also apply to Codex:
 - **Usage and Properties.** Tools, Usage and Context (Ctrl+Shift+U) has an API credits section:
   today, the last 7 days, since the total was reset, what's held, what's left of the limit, and
   spending by model and by chat. Properties (Alt+Enter) on a chat says "Charged to: API
-  credits" or "Claude subscription", and for API credits what the chat has spent.
+  credits" or "Claude subscription", and for API credits what the chat has spent. These totals
+  count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
+  everything charged to your account, including other apps using the same key, so theirs can
+  be higher.
 
 ### Going back: Retry from Here and Branch from Here
 

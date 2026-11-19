@@ -242,6 +242,63 @@ def test_over_the_per_message_limit_is_said_plainly(tmp_path, book):
     assert totals.spent == pytest.approx(2.03) and totals.held == 0
 
 
+def test_running_out_of_the_overall_limit_says_so_not_the_per_message_one(tmp_path, book):
+    # Only 50 cents left of the overall limit, under the $2 per message: the
+    # message is stopped at 50 cents, and blaming the per-message limit
+    # would send you to the wrong box.
+    book.set_limits(0.50, 2.00)
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="result", subtype="error_max_budget_usd", is_error=True, session_id="s1",
+           errors=["Reached maximum budget"], total_cost_usd=0.52,
+           modelUsage={"claude-opus-5-5": {"costUSD": 0.52}}),
+    ])
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--session-id", "chat-1"])
+    final = events[-1]
+    assert final.is_error and "overall limit for Claude API credits ran out" in final.text
+    assert "50 cents of it was left" in final.text and "per-message" not in final.text
+    assert "reset the total" in final.text and "(" not in final.text
+    assert "other chats" not in final.text
+
+
+@pytest.mark.parametrize("overall,per_message,capped", [
+    (20.00, 2.00, False),   # plenty left: the per-message limit is what stops it
+    (1.00, 2.00, True),     # less left than a message may spend
+    (2.00, 2.00, True),     # the two meet: nothing could be sent afterwards
+    (2.004, 2.00, True),    # within a cent of meeting, after rounding down
+    (2.02, 2.00, False),    # 2 cents would be left, enough for another message
+])
+def test_a_reservation_knows_when_the_overall_limit_capped_it(tmp_path, overall,
+                                                              per_message, capped):
+    book = spend_ledger.SpendLedger(tmp_path)
+    book.set_limits(overall, per_message)
+    reservation = book.reserve("chat-1")
+    assert reservation.overall_cap is capped and not reservation.others_held
+
+
+def test_other_chats_holding_the_overall_limit_are_said(tmp_path, book):
+    # Another chat's message holds $2 of $2.50, so this one gets 50 cents,
+    # and may get more once that message finishes.
+    book.set_limits(2.50, 2.00)
+    held = book.reserve("chat-other")
+    assert not held.overall_cap
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="result", subtype="error_max_budget_usd", is_error=True, session_id="s1",
+           errors=["Reached maximum budget"], total_cost_usd=0.51,
+           modelUsage={"claude-opus-5-5": {"costUSD": 0.51}}),
+    ])
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--session-id", "chat-1"])
+    final = events[-1]
+    assert "overall limit for Claude API credits ran out" in final.text
+    assert "other chats' messages were holding the rest" in final.text
+    assert "Send again once they finish" in final.text
+
+
 @pytest.mark.parametrize("said,expected", [
     ("Credit balance is too low to access the Anthropic API.", "no credit left"),
     ("Invalid API key · Fix external API key", "refused your Claude API key")])
