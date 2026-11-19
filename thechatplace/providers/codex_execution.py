@@ -323,6 +323,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                     'sandboxPolicy': proof.policy.turn_policy()}
         if is_api(self):
             expected['config'] = route_config(self)
+            expected['serviceTier'] = 'default'
         if proof.effort is not None:
             expected['effort'] = proof.effort
         if proof.instructions is not None:
@@ -463,6 +464,7 @@ class CodexTurnExecutor:
                 'input': inputs}
             if is_api(self.connection):
                 params['config'] = route_config(self.connection)
+                params['serviceTier'] = 'default'
             if proof.effort is not None:
                 params['effort'] = proof.effort
             if proof.instructions is not None:

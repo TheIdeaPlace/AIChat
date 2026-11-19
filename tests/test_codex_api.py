@@ -110,7 +110,7 @@ def test_stop_and_disconnect_keep_unknown_cost_held(connect, tmp_path, scenario)
     if scenario == 'malformed':
         assert conn.ledger.totals().held > 0
     else:
-        assert .071 <= conn.ledger.totals().spent < .072
+        assert .0648 <= conn.ledger.totals().spent < .065
         assert conn.ledger.totals().held == 0
         assert 'estimated, at most' in next(e for e in events if e.kind == 'finished').data['cost_words']
 
@@ -127,7 +127,6 @@ def test_no_usage_on_disconnect_is_held_after_restart(connect, tmp_path):
 def test_unknown_model_native_inference_and_routing_override_never_send(connect, tmp_path):
     conn, events = connect()
     for method, params in [
-        ('thread/start', {'model': 'unpriced-model', 'config': {}}),
         ('thread/start', {'model': 'gpt-5-nano', 'config': {'openai_base_url': 'http://example.invalid'}}),
         ('thread/compact/start', {'threadId': 'not-owned'}),
         ('thread/goal/set', {'threadId': 'not-owned'}),
@@ -830,3 +829,112 @@ def test_overlap_correction_is_attributed_to_original_settlement_day(tmp_path, d
     assert totals.spent == pytest.approx(.02) and totals.today == 0
     assert totals.last_7_days == pytest.approx(.02 if days == 1 else 0)
     assert not totals.problem
+
+
+@pytest.mark.parametrize('scenario', ['normal', 'duplicate', 'hang', 'missing', 'late-usage'])
+def test_unpriced_tokens_persist_and_allowance_stays_held(connect, tmp_path, scenario):
+    conn, events = connect(scenario)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Unknown price', model='future-model')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Hello')
+    wait(lambda: any(e.kind == 'api_sent' for e in events))
+    if scenario in ('hang', 'missing'):
+        runner.interrupt(proof)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    report = next(e.data for e in events if e.kind == 'finished')
+    assert report['unpriced'] and report['cost_usd'] is None
+    assert not report['cost_complete'] and not report['cost_upper_bound']
+    if scenario == 'late-usage':
+        wait(lambda: len([e for e in events if e.kind == 'finished']) == 2)
+    totals = spend_ledger.SpendLedger(conn.ledger.folder).totals()
+    assert totals.spent == 0 and totals.held == totals.unpriced_allowance == 2
+    tokens = totals.unpriced_all_time[proof.record().to_info().key]
+    assert tokens['inputTokens'] == (0 if scenario == 'missing' else 1000)
+    assert 'plus unpriced usage' in openai_billing.chat_cost_words(conn.ledger, proof.record().to_info().key)
+    if scenario == 'hang':
+        assert 'allowance kept' in report['cost_words']
+    conn.ledger.release_held()
+    assert conn.ledger.totals().held == 0
+    assert proof.record().to_info().key in conn.ledger.totals().unpriced_all_time
+
+
+def test_unpriced_uses_up_overall_allowance(connect, tmp_path):
+    conn, events = connect()
+    conn.ledger.set_limits(4, 2)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Allowance', model='future-model')
+    runner = CodexTurnExecutor(conn)
+    for n in (1, 2):
+        runner.start(proof, 'Hello')
+        wait(lambda: len([e for e in events if e.kind == 'finished']) == n)
+        runner.drain()
+    with pytest.raises(ApiCreditsRefused, match='reached your limit'):
+        runner.start(proof, 'Blocked')
+    totals = conn.ledger.totals()
+    assert totals.counted == 4 and totals.spent == 0
+    assert totals.unpriced_usage[proof.record().to_info().key]['inputTokens'] == 2000
+
+
+def test_standard_service_is_pinned_despite_priority_default(connect, tmp_path, monkeypatch):
+    conn, events = connect()
+    writes = []
+    encode = conn._encode
+    def capture(message):
+        if message.get('method') in ('thread/start', 'turn/start'):
+            writes.append(message)
+        return encode(message)
+    monkeypatch.setattr(conn, '_encode', capture)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Standard', model='gpt-6-luna')
+    CodexTurnExecutor(conn).start(proof, 'Hi')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert len(writes) == 2
+    assert all(m['params']['serviceTier'] == 'default' for m in writes)
+    assert all(m['params']['config']['service_tier'] == 'default' for m in writes)
+    with pytest.raises(ApiCreditsRefused, match='standard service'):
+        conn.request('turn/start', {'threadId': proof.native_id, 'model': proof.model, 'serviceTier': 'priority'})
+
+
+def test_unpriced_token_snapshots_reset_rename_and_overlap(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path, defaults=spend_ledger.Limits())
+    r = ledger.reserve('codex-api:old', unpriced=True)
+    counters = dict(inputTokens=100, cachedInputTokens=20, cacheWriteInputTokens=10,
+                    outputTokens=30, reasoningOutputTokens=5)
+    assert ledger.record_openai_tokens(r, 'future', counters, unpriced=True)
+    assert ledger.record_openai_tokens(r, 'future', counters, unpriced=True)
+    ledger.close(r, complete=False)
+    assert ledger.totals().unpriced_usage[r.chat_id] == counters
+    ledger.rename_chat(r.chat_id, 'codex-api:new')
+    assert ledger.totals().unpriced_all_time['codex-api:new'] == counters
+    ledger.reset()
+    assert not ledger.totals().unpriced_usage
+    assert ledger.totals().unpriced_all_time['codex-api:new'] == counters
+    # A late corrected absolute snapshot changes history without double-counting.
+    assert ledger.record_openai_tokens(r, 'future', {**counters, 'inputTokens': 80}, unpriced=True)
+    assert ledger.totals().unpriced_all_time['codex-api:new']['inputTokens'] == 80
+    assert not ledger.totals().unpriced_usage
+
+
+def test_active_promotional_expiry_keeps_unknown_allowance(connect, tmp_path, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr(openai_prices, 'pricing_day', lambda: date(2026, 11, 30))
+    conn, events = connect('hang')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Expiry', model='gpt-5.6-sol')
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Hi')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    monkeypatch.setattr(openai_prices, 'pricing_day', lambda: date(2026, 12, 1))
+    runner.interrupt(proof)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    report = next(e.data for e in events if e.kind == 'finished')
+    assert report['unpriced'] and report['cost_usd'] is None
+    assert conn.ledger.totals().held > 0
+    assert 'unpriced usage' in openai_billing.spending_words(conn.ledger.totals())
+
+
+def test_missing_unpriced_tokens_are_not_measured_zero(connect, tmp_path):
+    conn, events = connect('missing')
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Missing', model='future-model')
+    CodexTurnExecutor(conn).start(proof, 'Hi')
+    wait(lambda: any(e.kind == 'api_sent' for e in events))
+    conn.close()
+    words = openai_billing.chat_cost_words(spend_ledger.SpendLedger(conn.ledger.folder), proof.record().to_info().key)
+    assert 'tokens not reported' in words and 'used 0 tokens' not in words

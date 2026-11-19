@@ -64,8 +64,12 @@ class Unpriced(ValueError):
     """No valid dated price for this exact model and service."""
 
 
-def require_price(model, service_tier=None):
-    if model not in PRICES or (model in EXPIRES and date.today() > EXPIRES[model]):
+def pricing_day():
+    return date.today()
+
+
+def require_price(model, service_tier=None, *, as_of=None):
+    if model not in PRICES or (model in EXPIRES and (as_of or pricing_day()) > EXPIRES[model]):
         raise Unpriced(f'No API-credit price is known for model {model!r}.')
     if service_tier not in (None, 'default', 'standard'):
         raise Unpriced(f'No API-credit price is known for service {service_tier!r}.')
@@ -80,16 +84,16 @@ def is_priced(model, service_tier=None):
         return False
 
 
-def _rates(model):
-    inp, cached, out = require_price(model)
+def _rates(model, as_of=None):
+    inp, cached, out = require_price(model, as_of=as_of)
     write = Decimal(CACHE_WRITE_RATES.get(model, str(inp)))
     if model in LONG_CONTEXT:
         inp, cached, write, out = inp * 2, cached * 2, write * 2, out * Decimal('1.5')
     return inp, cached, write, out
 
 
-def request_ceiling(model, context_window=None):
-    inp, _, write, out = _rates(model)
+def request_ceiling(model, context_window=None, *, as_of=None):
+    inp, _, write, out = _rates(model, as_of)
     maximum_input, output = TOKEN_LIMITS[model]
     # Telemetry's combined context is not a maximum input override (#685).
     return float((maximum_input * max(inp, write) + output * out) / 1_000_000)
@@ -102,7 +106,11 @@ def model_choices(catalog=()):
     for i, model in enumerate(PRICES):
         if model not in choices and model in SOURCES and SOURCES[model].endswith('/' + model):
             choices[model] = CodexModel(model, model, ('low', 'medium', 'high'), 'low', i == 0)
-    return tuple(replace(m, label=m.label + (' (price unknown)' if not is_priced(m.model) else ''),
+    # Ultra automatically delegates work. API subagents remain blocked until
+    # their usage can be attributed, even if the catalog advertises it.
+    return tuple(replace(m, label=m.label.removesuffix(' (price unknown)') +
+                         (' (price unknown)' if not is_priced(m.model) else ''),
+                         efforts=tuple(e for e in m.efforts if e != 'ultra'),
                          is_default=m.model == 'gpt-5-nano') for m in choices.values())
 
 
@@ -116,11 +124,11 @@ def valid_counters(counters):
             and counters['reasoningOutputTokens'] <= counters['outputTokens'])
 
 
-def estimate(model, counters, service_tier=None):
-    require_price(model, service_tier)
+def estimate(model, counters, service_tier=None, *, as_of=None):
+    require_price(model, service_tier, as_of=as_of)
     if not valid_counters(counters):
         raise ValueError('Cost not known: invalid OpenAI token usage.')
-    inp, cached, write, out = _rates(model)
+    inp, cached, write, out = _rates(model, as_of)
     n, c, o = (counters[k] for k in ('inputTokens', 'cachedInputTokens', 'outputTokens'))
     w = counters.get('cacheWriteInputTokens', 0)
     if w and model not in CACHE_WRITE_RATES:

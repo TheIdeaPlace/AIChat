@@ -481,7 +481,7 @@ class CodexChatRuntime:
                 from .codex_billing import is_api
                 if is_api(connection):
                     from ..openai_prices import model_choices
-                    models = model_choices()
+                    models = model_choices(read_models(connection))
                 else:
                     models = read_models(connection)
                 choice = next((m for m in models if m.model == checked.model), None)

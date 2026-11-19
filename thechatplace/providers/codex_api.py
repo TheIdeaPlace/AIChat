@@ -10,14 +10,14 @@ from decimal import Decimal, ROUND_CEILING
 
 from .. import platform_paths
 from ..billing import scrub, cost_words as shared_cost_words
-from ..openai_prices import require_price, estimate, PRICE_DATE
+from ..openai_prices import is_priced, valid_counters, estimate, pricing_day, PRICE_DATE
 from ..spend_ledger import default_ledger, SpendRefused
 from .codex import CodexProvider
 from .codex_execution import CodexExecutionConnection
 from .codex_rpc import CodexRpcError, CodexTurnRejected, ApiCreditsRefused
 from .codex_billing import account_matches, config_matches, route_config
 
-COUNTERS = ('inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens')
+COUNTERS = ('inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'cacheWriteInputTokens')
 _BASELINES_LOCK = threading.RLock()
 
 
@@ -46,6 +46,9 @@ class Payment:
     upper_bound: bool = False
     last_total: dict | None = None
     ordinal: int = 0
+    priced: bool = True
+    tokens: dict | None = None
+    priced_on: object = None
 
 
 class CodexApiConnection(CodexExecutionConnection):
@@ -74,7 +77,8 @@ class CodexApiConnection(CodexExecutionConnection):
         try:
             raw = json.loads(self._baseline_path.read_text(encoding='utf-8'))
             if isinstance(raw, dict):
-                self._totals = {k: v for k, v in raw.items() if self._valid_counters(v)}
+                self._totals = {k: {field: v.get(field, 0) for field in COUNTERS}
+                                for k, v in raw.items() if self._valid_counters(v)}
         except (OSError, ValueError):
             pass  # unknown baseline holds the reservation, never guesses
         if 'start' not in kwargs:
@@ -110,11 +114,7 @@ class CodexApiConnection(CodexExecutionConnection):
 
     @staticmethod
     def _valid_counters(value):
-        return (isinstance(value, dict)
-                and all(type(value.get(k)) is int and 0 <= value[k] <= 2**63-1 for k in COUNTERS)
-                and value['cachedInputTokens'] <= value['inputTokens']
-                and value['reasoningOutputTokens'] <= value['outputTokens']
-                and value.get('cacheWriteInputTokens', 0) == 0)
+        return valid_counters(value)
 
     def accept_key_test(self, proof):
         # Like the separate aside executor, but only for a tiny paid key test.
@@ -139,11 +139,11 @@ class CodexApiConnection(CodexExecutionConnection):
 
     @staticmethod
     def _require_price(model, service_tier=None):
-        from ..openai_prices import Unpriced
-        try:
-            return require_price(model, service_tier)
-        except Unpriced as error:
-            raise ApiCreditsRefused(str(error)) from None
+        if not isinstance(model, str) or not model.strip():
+            raise ApiCreditsRefused('Choose an API-credit model. Nothing was sent.')
+        if service_tier not in (None, 'default', 'standard'):
+            raise ApiCreditsRefused('API credits require standard service. Nothing was sent.')
+        return is_priced(model, service_tier)
 
     def request(self, method, params):
         from .codex_features import ACTION_METHODS
@@ -170,6 +170,9 @@ class CodexApiConnection(CodexExecutionConnection):
         if method in ACTION_METHODS - {'thread/backgroundTerminals/terminate'}:
             raise ApiCreditsRefused('No API-credit price is known for ' + self._service_name(method) + '. Nothing was sent.')
         if method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
+            if params.get('serviceTier', 'default') != 'default' or params.get('serviceTierForTurn', 'default') != 'default':
+                raise ApiCreditsRefused('API credits require standard service. Nothing was sent.')
+            params['serviceTier'] = 'default'
             config = dict(params.get('config') or {})
             invariants = route_config(self)
             for key in ('model_provider', 'openai_base_url', 'forced_login_method', 'cli_auth_credentials_store'):
@@ -246,7 +249,7 @@ class CodexApiConnection(CodexExecutionConnection):
             if self._api_draining:
                 raise ApiCreditsRefused('The API connection is stopping. Send again after it closes. Nothing was sent.')
             try:
-                reservation = self.ledger.reserve('codex-api:' + tid, purpose=self._purpose)
+                reservation = self.ledger.reserve('codex-api:' + tid, purpose=self._purpose, unpriced=not is_priced(model))
             except SpendRefused as error:
                 raise ApiCreditsRefused(str(error)) from None
             # Invalidate the durable baseline BEFORE a possible paid write.
@@ -257,7 +260,8 @@ class CodexApiConnection(CodexExecutionConnection):
                 self.ledger.close(reservation, complete=True)
                 raise ApiCreditsRefused('The API-credit token baseline could not be recorded. Nothing was sent.') from None
             self._payment_number += 1
-            payment = Payment(reservation, model, self._totals.get(tid), ordinal=self._payment_number)
+            payment = Payment(reservation, model, self._totals.get(tid), ordinal=self._payment_number,
+                              priced=is_priced(model), priced_on=pricing_day())
             self._payments[tid] = payment
 
         def queued():
@@ -267,6 +271,8 @@ class CodexApiConnection(CodexExecutionConnection):
 
         def written():
             payment.sent = True
+            if not payment.priced:
+                self.ledger.record_openai_tokens(reservation, model, dict.fromkeys(COUNTERS, 0), unpriced=True, measured=False)
             self._emit_api('api_sent', tid, sent=True)
             if on_written:
                 on_written()
@@ -331,6 +337,7 @@ class CodexApiConnection(CodexExecutionConnection):
                 # matching reservation. A later turn can recover total-last.
                 pass
             if payment:
+                self._expire_payment(payment)
                 turn_id = params.get('turnId') or params.get('turn', {}).get('id')
                 if payment.turn_id and turn_id and payment.turn_id != turn_id:
                     payment.uncertain = True
@@ -341,12 +348,14 @@ class CodexApiConnection(CodexExecutionConnection):
                     was_usage, prior_total = payment.usage, payment.last_total
                     usage = params.get('tokenUsage')
                     value = usage.get('total') if isinstance(usage, dict) else None
+                    if self._valid_counters(value):
+                        value = {k: value.get(k, 0) for k in COUNTERS}
                     if not payment.turn_id and turn_id:
                         payment.turn_id = turn_id
                     if payment.baseline is None and turn_id == payment.turn_id and self._valid_counters(value):
                         last = usage.get('last')
                         if self._valid_counters(last):
-                            before = {k: value[k] - last[k] for k in COUNTERS}
+                            before = {k: value[k] - last.get(k, 0) for k in COUNTERS}
                             if self._valid_counters(before) and (payment.baseline is None or all(before[k] >= payment.baseline[k] for k in COUNTERS)):
                                 payment.baseline = before
                     if payment.model_unknown or not self._valid_counters(value) or payment.baseline is None:
@@ -355,16 +364,22 @@ class CodexApiConnection(CodexExecutionConnection):
                     else:
                         delta = {k: value[k]-payment.baseline[k] for k in COUNTERS}
                         try:
+                            if not self._valid_counters(delta):
+                                raise ValueError('Invalid token delta')
                             previous = payment.last_total or payment.baseline
                             if any(value[k] < previous[k] for k in COUNTERS):
                                 raise ValueError('Usage counters decreased')
-                            cost = estimate(payment.model, delta)
+                            cost = estimate(payment.model, delta, as_of=payment.priced_on) if payment.priced else 0
                             if not payment.upper_bound and cost < payment.cost:
                                 raise ValueError('Usage decreased')
                             accounted = float(Decimal(str(cost)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
                             increment = max(0, accounted-payment.accounted)
-                            recorded = self.ledger.settle(payment.reservation, increment,
-                                                      {payment.model: increment})
+                            recorded = self.ledger.record_openai_tokens(payment.reservation, payment.model,
+                                delta, unpriced=not payment.priced)
+                            if payment.priced:
+                                recorded = self.ledger.settle(payment.reservation, increment,
+                                    {payment.model: increment}) and recorded
+                            payment.tokens = delta
                             if not recorded:
                                 payment.uncertain = True
                             payment.accounted = max(payment.accounted, accounted)
@@ -431,7 +446,13 @@ class CodexApiConnection(CodexExecutionConnection):
             if not payment.usage or payment.upper_bound:
                 continue
             try:
-                cost = estimate(payment.model, {k: payment.last_total[k]-baseline[k] for k in COUNTERS})
+                delta = {k: payment.last_total[k]-baseline[k] for k in COUNTERS}
+                if not self._valid_counters(delta):
+                    raise ValueError('Usage overlap is inconsistent')
+                if not self.ledger.record_openai_tokens(payment.reservation, payment.model, delta, unpriced=not payment.priced):
+                    payment.uncertain = True
+                payment.tokens = delta
+                cost = estimate(payment.model, delta, as_of=payment.priced_on) if payment.priced else 0
             except ValueError:
                 payment.uncertain = payment.inconsistent = True
                 continue
@@ -459,17 +480,21 @@ class CodexApiConnection(CodexExecutionConnection):
         with self._payments_lock:
             if not late and self._payments.get(tid) is not payment:
                 return
+            self._expire_payment(payment)
             if payment.timer:
                 payment.timer.cancel()
             if payment.stop_timer:
                 payment.stop_timer.cancel()
-            complete = payment.refused or (payment.usage and not payment.uncertain and payment.terminal == 'completed')
+            if payment.refused and not payment.usage:
+                self.ledger.record_openai_tokens(payment.reservation, payment.model,
+                    dict.fromkeys(COUNTERS, 0), unpriced=False)
+            complete = payment.refused or (payment.priced and payment.usage and not payment.uncertain and payment.terminal == 'completed')
             upper_bound = payment.upper_bound
             if upper_bound:
                 complete = True
-            if payment.stopping and not payment.uncertain and not payment.refused and not upper_bound:
+            if payment.priced and payment.stopping and not payment.uncertain and not payment.refused and not upper_bound:
                 from ..openai_prices import request_ceiling
-                maximum = payment.accounted + request_ceiling(payment.model, payment.context_window)
+                maximum = payment.accounted + request_ceiling(payment.model, payment.context_window, as_of=payment.priced_on)
                 if maximum <= payment.reservation.amount:
                     extra = float(Decimal(str(maximum-payment.accounted)).quantize(Decimal('.000001'), rounding=ROUND_CEILING))
                     if self.ledger.settle(payment.reservation, extra, {payment.model: extra}):
@@ -491,7 +516,8 @@ class CodexApiConnection(CodexExecutionConnection):
                         self._past_payments[(tid, payment.turn_id)] = payment
             if not payment.reported or late:
                 payment.reported = True
-                self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.usage else None,
+                self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.priced and payment.usage else None,
+                    unpriced=not payment.priced, tokens=payment.tokens, allowance=payment.reservation.amount,
                     outcome=payment.terminal,
                     cost_complete=complete, cost_upper_bound=upper_bound, price_date=PRICE_DATE,
                     cost_words=self._cost_words(payment, complete, upper_bound))
@@ -511,10 +537,24 @@ class CodexApiConnection(CodexExecutionConnection):
         from ..billing import COST_NOT_KNOWN, money
         if payment.refused and not payment.usage:
             return 'nothing was charged'
+        if not payment.priced:
+            from ..openai_billing import token_words
+            return (token_words(payment.tokens) + ', cost unknown' if payment.tokens else
+                    'tokens not reported, cost unknown') + ('; allowance kept' if payment.stopping else '')
         if upper_bound:
             return 'estimated, at most ' + money(payment.cost)
         words = shared_cost_words(payment.cost if payment.usage else None, complete)
         return words if words == COST_NOT_KNOWN else 'estimated ' + words
+
+    def _expire_payment(self, payment):
+        # One turn can issue requests on both sides of midnight. There is no
+        # guarantee that the earlier promotional rate applies to later ones.
+        if payment.priced and not payment.reported and not is_priced(payment.model):
+            payment.priced = False
+            payment.upper_bound = False
+            self.ledger.record_openai_tokens(payment.reservation, payment.model,
+                payment.tokens or dict.fromkeys(COUNTERS, 0), unpriced=True,
+                measured=payment.tokens is not None)
 
     def _persist_baseline(self, tid, value):
         if tid in self._ephemeral_threads:
@@ -588,17 +628,18 @@ class CodexApiProvider(CodexProvider):
 
     def model_choices(self):
         from ..openai_prices import model_choices
-        return model_choices()
+        from .codex_models import read_models
+        return model_choices(read_models(self.connection))
 
     def usage_lines(self, session):
         self._check(session)
         totals = self.ledger.totals()
-        from ..openai_billing import chat_cost_words
+        from ..openai_billing import chat_cost_words, spending_words
         from ..billing import money
-        return [f'OpenAI API credits: estimated spending {money(totals.spent)} of {money(totals.limits.overall)}.',
+        return [f'OpenAI API credits: {spending_words(totals)}. Overall allowance {money(totals.limits.overall)}.',
                 f'This chat: {chat_cost_words(self.ledger, session.key)}. Prices dated {PRICE_DATE}.',
-                f'Held {money(totals.held)}; estimated remaining {money(totals.left)}.',
-                'Limits are approximate; one request can pass a limit.']
+                f'Held {money(totals.held)}, including {money(totals.unpriced_allowance)} in unpriced allowances; remaining allowance {money(totals.left)}.',
+                'Priced limits are approximate; one request can pass a limit. Dollar limits cannot stop an unpriced message. Long-context models use conservative surcharge rates.']
 
     def usage_warnings(self, session):
         self._check(session)

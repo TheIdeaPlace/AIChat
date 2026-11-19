@@ -19,7 +19,7 @@ def route_config(connection):
         return {'model_provider': 'openai', 'model_providers': {},
                 'forced_login_method': 'api', 'openai_base_url': API_BASE,
                 'cli_auth_credentials_store': 'ephemeral',
-                'service_tier': None, 'web_search': 'disabled',
+                'service_tier': 'default', 'web_search': 'disabled',
                 'features': {'hooks': False, 'multi_agent': False, 'goals': False,
                              'apps': False, 'plugins': False, 'memories': False}}
     return {'model_provider': 'openai', 'model_providers': {},

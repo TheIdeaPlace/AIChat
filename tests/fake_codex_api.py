@@ -39,9 +39,9 @@ for line in sys.stdin:
     elif method == 'config/read':
         result = {'config': {'model_provider': 'openai', 'forced_login_method': 'api',
             'openai_base_url': 'https://api.openai.com/v1', 'cli_auth_credentials_store': 'ephemeral',
-            'web_search': 'disabled', 'features': {k: False for k in ('hooks', 'multi_agent', 'goals', 'apps', 'plugins', 'memories')}},
+            'service_tier': 'default', 'web_search': 'disabled', 'features': {k: False for k in ('hooks', 'multi_agent', 'goals', 'apps', 'plugins', 'memories')}},
             'layers': [{'name': {'type': 'user', 'file': str(home / 'config.toml')}}]}
-    elif method in ('mcpServerStatus/list', 'thread/turns/list'):
+    elif method in ('mcpServerStatus/list', 'thread/turns/list', 'model/list'):
         result = {'data': [], 'nextCursor': None}
     elif method in ('thread/start', 'thread/fork', 'thread/resume'):
         tid = params.get('threadId') if method == 'thread/resume' else 'chat-' + str(len(threads)+1)
@@ -51,7 +51,7 @@ for line in sys.stdin:
                   'ephemeral': params.get('ephemeral', False), 'status': {'type': 'idle'}}
         result = {'thread': thread, 'cwd': params['cwd'], 'model': threads[tid]['model'],
                   'reasoningEffort': params.get('config', {}).get('model_reasoning_effort'),
-                  'modelProvider': 'openai', 'serviceTier': None, 'approvalPolicy': params['approvalPolicy'],
+                  'modelProvider': 'openai', 'serviceTier': params.get('serviceTier', 'priority'), 'approvalPolicy': params['approvalPolicy'],
                   'approvalsReviewer': 'user', 'sandbox': {'type': 'readOnly'}}
     elif method == 'thread/read':
         t = threads[params['threadId']]
