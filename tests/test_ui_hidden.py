@@ -7264,8 +7264,10 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
     dialog, said, focused = _columns_dialog(frame)
     try:
         assert dialog.shown.GetString(0) == "Title"
-        # Started (#209) and Last message (#146) aren't shown by default.
+        # Charged to (#658), Started (#209) and Last message (#146) aren't
+        # shown by default.
         assert list(dialog.available.GetStrings()) == [
+            "Charged to (subscription, plan or API credits)",
             "Started (when the session began)", "Last message"]
         assert dialog.preview.GetValue().startswith("Blocked one, Claude, Repo, needs you")
         dialog.shown.SetSelection(3)  # Status
@@ -7321,6 +7323,7 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert said[-1] == "Columns reset to the default: 11 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
         assert list(dialog.available.GetStrings()) == [
+            "Charged to (subscription, plan or API credits)",
             "Started (when the session began)", "Last message"]
         dialog.shown.SetSelection(dialog.fields().index("provider"))
         dialog.remove()
@@ -7330,13 +7333,16 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert said[-1] == "Provider added, 11 of 11."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Started added, 12 of 12."
+        assert said[-1] == "Charged to added, 12 of 12."
+        dialog.available.SetSelection(0)
+        dialog.add()
+        assert said[-1] == "Started added, 13 of 13."
         # Adding the last one left moves you to Shown, on it.
         dialog.available.SetSelection(0)
         focused.clear()
         dialog.add()
-        assert said[-1] == "Last message added, 13 of 13."
-        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 12
+        assert said[-1] == "Last message added, 14 of 14."
+        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 13
         assert list(dialog.available.GetStrings()) == ["Every column is shown."]
         dialog.add()
         assert said[-1] == "Every column is shown already."

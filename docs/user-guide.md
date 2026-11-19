@@ -442,7 +442,8 @@ stay last.
 
 These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
 show everything charged to your account, including other apps using the same key, so their
-totals can be higher.
+totals can be higher. To see The Chat Place's spending there too, make a key just for it: both
+let you create several keys and show spending for each.
 
 ### You want several chats or agents working at once
 
@@ -2724,8 +2725,12 @@ or "idle", so you can stop on the one you want before hearing its title.
 
 The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New
 reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the others in "The
-kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started and
-Last message are read only once you add them. Older saved choices gain Provider once, just after
+kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started,
+Last message and Charged to are read only once you add them. Charged to says how each of The
+Chat Place's own chats is paid for: "Claude subscription", "Claude API credits", "ChatGPT
+subscription", "OpenAI API credits" or "Copilot plan". It says nothing for chats started
+elsewhere or for agent conversations. Without it, a chat on API credits still says "API
+credits" after its name (or first, with Title hidden). Older saved choices gain Provider once, just after
 Title (or first if Title is hidden), without changing their other columns. If you remove
 Provider afterward, it stays removed. A column with nothing to say for a chat, such as New reply
 when there isn't one, is simply left out of that line.

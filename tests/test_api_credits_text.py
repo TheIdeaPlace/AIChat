@@ -3,6 +3,8 @@ the settings and their defaults, the reply's cost, the session list row,
 Properties, Usage's API credits section, and the menu commands."""
 import json
 
+import pytest
+
 from thechatplace import announce, commands, properties, sound_events, spend_ledger, usage
 from thechatplace.own_store import OwnSession
 from thechatplace.speech import (ANNOUNCE_FULL, ANNOUNCE_SUMMARY, API_NOTICE_SOUND,
@@ -68,6 +70,57 @@ def test_the_row_says_api_credits_after_the_name():
     assert api.list_line(0, ["status"]).startswith("API credits, ")
     # A Codex chat is never on API credits.
     assert not OwnSession("c-1", "Codex", "C:\\G", provider="codex").to_info().api_credits
+
+
+def test_the_charged_to_column_says_how_each_own_chat_is_paid_for():
+    from thechatplace.sessions import DEFAULT_FIELDS, FIELD_CHARGED, OPTIONAL_FIELDS
+    # Not shown until added, so rows stay as they were for everyone else.
+    assert FIELD_CHARGED in OPTIONAL_FIELDS and FIELD_CHARGED not in DEFAULT_FIELDS
+    cases = [
+        (OwnSession("a-1", "Budget", "C:\\G", billing="api"), "Claude API credits"),
+        (OwnSession("s-1", "Budget", "C:\\G"), "Claude subscription"),
+        (OwnSession("c-1", "Budget", "C:\\G", provider="codex"), "ChatGPT subscription"),
+        (OwnSession("o-1", "Budget", "C:\\G", provider="codex-api", billing="api"),
+         "OpenAI API credits"),
+        (OwnSession("p-1", "Budget", "C:\\G", provider="copilot"), "Copilot plan"),
+    ]
+    for own, said in cases:
+        info = own.to_info()
+        assert info.charged_to == said
+        line = info.list_line(0, ["title", "charged", "status"])
+        assert line.startswith(f"Budget, {said}"), line
+        # Shown in its column, so not said again after the name.
+        assert line.count("API credits") <= 1
+
+
+@pytest.mark.parametrize("fields", [["title", "charged", "status"], ["charged", "status"],
+                                    ["title", "status"], ["status"]])
+def test_a_row_on_api_credits_always_says_so_kept_or_not_owned(fields):
+    # Review of the Charged to column: a kept row of an API chat, and a
+    # Codex row on API credits that no record of ours covers, must still say
+    # API credits in every choice of columns.
+    from dataclasses import replace
+    from thechatplace.sessions import KEPT, OWN, SessionInfo
+    kept = replace(OwnSession("a-1", "Budget", "C:\\G", billing="api").to_info(),
+                   source=KEPT, kept_from=OWN)
+    foreign = SessionInfo(source="app_server", key="codex-api:t", title="Thread", cwd="C:\\G",
+                          cli_session_id="t", provider="codex-api", api_credits=True)
+    for info in (kept, foreign):
+        assert "API credits" in info.list_line(0, fields), (info.source, fields)
+    assert kept.charged_to == "Claude API credits"
+    assert foreign.charged_to == "OpenAI API credits"
+    # A kept subscription chat of ours says so too.
+    plain = replace(OwnSession("s-1", "Plain", "C:\\G").to_info(), source=KEPT, kept_from=OWN)
+    assert plain.charged_to == "Claude subscription"
+
+
+def test_charged_to_says_nothing_for_sessions_the_app_didnt_start():
+    from thechatplace.sessions import DESKTOP, TERMINAL, SessionInfo
+    for source in (DESKTOP, TERMINAL):
+        info = SessionInfo(source=source, key="d", title="Desk", cwd="C:\\G",
+                           cli_session_id="d")
+        assert info.charged_to == ""
+        assert info.list_line(0, ["title", "charged"]) == "Desk"
 
 
 def test_properties_say_how_a_chat_is_charged_and_what_it_spent():

@@ -73,8 +73,13 @@ too).
   **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
   it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot), Folder,
   Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
-  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
-  until you add them. Provider says which AI; Kind says where the session started. Other
+  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started**, **Last message** and
+  **Charged to**, which aren't shown until you add them. Provider says which AI; Kind says where the session started.
+  Charged to says how one of The Chat Place's own chats is paid for: "Claude subscription",
+  "Claude API credits", "ChatGPT subscription", "OpenAI API credits" or "Copilot plan". It says
+  nothing for sessions started elsewhere, whose charging can't be known for sure, or for agent
+  conversations. Without it, a chat on API credits still says "API credits" after its name (or
+  first, with Title hidden). Other
   clients may be identified as an editor, command-line or external session. Saved custom choices
   gain Provider immediately after Title (or first if Title is hidden), without changing their other columns; removing it afterward is remembered. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
@@ -592,7 +597,8 @@ question, cost setting and API-credit labels also apply to Codex:
   credits" or "Claude subscription", and for API credits what the chat has spent. These totals
   count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
   everything charged to your account, including other apps using the same key, so theirs can
-  be higher.
+  be higher. To see The Chat Place's spending there too, make a key just for it: both let you
+  create several keys and show spending for each.
 
 ### Going back: Retry from Here and Branch from Here
 
