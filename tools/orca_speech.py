@@ -212,6 +212,19 @@ STEPS = [
     Step('API Keys, OpenAI total', ['Tab'], expect=['Total', 'Estimated OpenAI costs']),
     Step("API Keys closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    Step('Price unknown question', [], trigger='openai-unpriced-confirm',
+         expect=['Price unknown warning', 'This spends OpenAI API credits'],
+         refuse=['unlabeled', 'unlabelled']),
+    # Re-focus the read-only warning: selecting it only says document selected.
+    Step('Read the price unknown warning by focus', ['Tab', 'shift+Tab'],
+         expect=['Price unknown warning', 'This spends OpenAI API credits']),
+    Step('Price unknown Cancel button', ['Tab'], expect=['Cancel', 'push button']),
+    Step('Price unknown Send button', ['Tab'], expect=['Send on API credits', 'push button']),
+    Step('Price unknown back to Cancel', ['shift+Tab'], expect=['Cancel']),
+    Step('Price unknown Escape cancels', ['Escape'], expect=['Messages in Visual probe']),
+    Step('Price unknown asks again', [], trigger='openai-unpriced-confirm',
+         expect=['Price unknown warning', 'This spends OpenAI API credits']),
+    Step('Price unknown Enter cancels', ['Return'], expect=['Messages in Visual probe']),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -816,6 +829,7 @@ def refresh(frame) -> None:
 
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),

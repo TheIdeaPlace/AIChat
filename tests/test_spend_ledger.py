@@ -690,3 +690,35 @@ def test_per_result_costs_when_not_cumulative():
 @pytest.mark.parametrize("cost", [None, "0.1", True, float("nan"), -0.5])
 def test_an_odd_cost_adds_nothing(cost):
     assert CostTracker().add(cost, {"m": "x", 5: 1.0}) == (0.0, {})
+
+
+def test_priced_uncertainty_excludes_live_and_survives_release_restart_and_rename(tmp_path):
+    from thechatplace import openai_billing
+    ledger = SpendLedger(tmp_path)
+    chat = 'codex-api:uncertain'
+    reservation = ledger.reserve(chat)
+    ledger.settle(reservation, .03)
+    assert not ledger.totals().priced_unknown_chats
+    assert 'priced cost not known' not in openai_billing.status_words(ledger.totals())
+    ledger.close(reservation, complete=False)
+    assert ledger.totals().priced_unknown_chats == {chat}
+    assert ledger.release_held() > 0
+    restarted = SpendLedger(tmp_path)
+    assert restarted.totals().held == 0
+    assert restarted.totals().priced_unknown_chats == {chat}
+    assert 'at least' in openai_billing.chat_cost_words(restarted, chat)
+    restarted.rename_chat(chat, 'codex-api:renamed')
+    assert restarted.totals().priced_unknown_chats == {'codex-api:renamed'}
+    restarted.reset()
+    assert restarted.totals().priced_unknown_chats == {'codex-api:renamed'}
+    # A late, complete accounting can resolve it even after Release Held.
+    restarted.close(reservation, complete=True)
+    assert not restarted.totals().priced_unknown_chats
+
+
+def test_complete_priced_message_never_adds_uncertainty(tmp_path):
+    ledger = SpendLedger(tmp_path)
+    reservation = ledger.reserve('codex-api:complete')
+    ledger.settle(reservation, .03)
+    ledger.close(reservation, complete=True)
+    assert not SpendLedger(tmp_path).totals().priced_unknown_chats

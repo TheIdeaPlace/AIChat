@@ -214,3 +214,42 @@ def test_an_asides_answer_says_its_cost_as_a_cost():
         "Not answered. It failed. Cost not known.")
     assert _aside_with_cost("Not answered. It failed.", "2 cents", True) == (
         "Not answered. It failed. It cost 2 cents.")
+
+
+def test_unpriced_text_and_release_allowance_without_zero_cost(tmp_path):
+    from thechatplace import openai_billing as words
+    ledger = spend_ledger.SpendLedger(tmp_path)
+    r = ledger.reserve('codex-api:chat', unpriced=True)
+    tokens = dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
+                  outputTokens=400, reasoningOutputTokens=100)
+    ledger.record_openai_tokens(r, 'future', tokens, unpriced=True)
+    ledger.close(r, complete=False)
+    totals = ledger.totals()
+    assert words.spending_words(totals).startswith('cost unknown; unpriced usage:')
+    assert '$0.00' not in words.chat_cost_words(ledger, 'codex-api:chat')
+    assert 'may be more' in words.release_question(totals)
+    assert 'up to' not in words.release_question(totals)
+    assert totals.unpriced_releasable == 2
+    priced = ledger.reserve('codex-api:chat')
+    ledger.settle(priced, .42)
+    ledger.close(priced, complete=False)
+    mixed = words.spending_words(ledger.totals())
+    assert 'priced spending $0.42' in mixed and 'plus unpriced usage' in mixed
+    assert 'priced cost not known' in mixed
+    status = words.status_words(ledger.totals())
+    assert status == 'API: priced cost not known + 12,400 unpriced tokens'
+    assert len(status) < 80
+    assert 'cached input' in '\n'.join(words.usage_lines(ledger, 'codex-api:chat'))
+    assert words.token_words(tokens, complete=False).startswith('used at least 12,400 tokens')
+
+
+def test_status_keeps_unpriced_and_unsettled_priced_use_distinct(tmp_path):
+    from thechatplace import openai_billing as words
+    ledger = spend_ledger.SpendLedger(tmp_path)
+    unknown = ledger.reserve('codex-api:unknown', unpriced=True)
+    ledger.close(unknown, complete=False)
+    assert words.status_words(ledger.totals()) == 'API: cost unknown; unpriced tokens not reported'
+    priced = ledger.reserve('codex-api:priced')
+    ledger.close(priced, complete=False)
+    status = words.status_words(ledger.totals())
+    assert 'priced cost not known' in status and 'unpriced tokens not reported' in status

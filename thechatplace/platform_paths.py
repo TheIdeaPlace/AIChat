@@ -2431,7 +2431,7 @@ def start_codex_api_server(executable=None, *, home=None) -> CodexServerProcess:
     config.update(log_dir=str(home / 'logs'))
     args = [executable, 'app-server', '--listen', 'stdio://']
     for key, value in config.items():
-        # TOML has no null. A missing service tier is the standard tier.
+        # TOML has no null. Standard service is explicitly pinned (#685).
         if isinstance(value, dict) and value:
             for field, setting in value.items():
                 args += ['-c', f'{key}.{field}={json.dumps(setting)}']

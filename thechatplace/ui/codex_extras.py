@@ -219,6 +219,9 @@ class CodexExtras:
                     self._feedback(with_stop_key(change or f'Could not change the Codex {what}. The chat keeps its current one.'))
                     return
                 updated = change.record()
+                if (record.provider == 'codex-api'
+                        and current.get('model') != updated.provider_options.get('model')):
+                    self._unpriced_confirmed.pop(info.key, None)
                 saved = self.store.get(record.cli_session_id, provider=record.provider) is record and self._store_write(self.store.update, record.cli_session_id,
                     provider=record.provider, provider_options=updated.provider_options)
                 if not saved:

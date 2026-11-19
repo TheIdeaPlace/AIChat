@@ -24,6 +24,10 @@ class CodexRpcError(RuntimeError):
     """Public diagnostics never include raw RPC payloads or stderr."""
 
 
+class CodexRuntimeProblem(CodexRpcError):
+    """A latched, app-written runtime reason that may be shown to the user."""
+
+
 class CodexApprovalNotSent(CodexRpcError):
     """Approval failed before queueing bytes; manual Answer is still usable."""
 

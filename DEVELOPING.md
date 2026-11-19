@@ -193,16 +193,47 @@ a draining state before rejecting new sends and closing, so it cannot kill a new
 Checkpoint 3 exposes these routes in Tools, API Keys with a Provider choice and in
 New Session's Charge to. OpenAI key updates run off the UI thread; each paid write
 checks the key generation, so replacement affects existing processes and removal
-blocks queued messages. Model changes use the priced API catalog, not ChatGPT's.
-Unknown per-chat spending is read from reservations, never displayed as zero.
+blocks queued messages. Model changes use the API-key home's catalog plus dated priced
+choices, not ChatGPT's. Models without valid prices require mandatory consent and retain
+per-message allowances; token snapshots are separate from dollar settlements. Steers also
+reserve an allowance for unpriced sends. Consent is stored per connection, thread, model
+and standard tier, and checked by the backend before every paid send, including queue
+advancement. GPT-5.6 Sol's page specifies no end time or zone: the conservative cutoff is
+2026-11-29 10:00 UTC (the start of November 30 in UTC+14), tested with a fake clock.
+Active turns continue without a dollar stop after expiry and keep their allowances. A frozen
+priced token prefix prevents duplicate unpriced accounting; later updates keep all new tokens.
+Reply events and speech use only that unpriced delta and explain that the price expired.
+The finished event carries stopping even when no terminal outcome arrived, so speech says
+stopped after a timed-out Stop or a disconnect while stopping.
+Queued messages return unsent with the confirmation reason if consent is missing.
+Unknown per-chat spending is read from reservations, never displayed as zero. Live priced
+reservations do not set priced-cost-unknown flags. Release Held and Reset do not resolve
+uncertain costs; a later complete accounting does.
 Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
 until the user sends a message. Failed or cancelled sends restore only user text. Native
 attachment parts survive the prefix. The writer event clears the deferred context.
 
+Codex estimates assume OpenAI's standard pricing. Standard intent stays selected at
+thread and turn boundaries, but CLI 0.163 omits the explicit standard tier from its
+Responses request. The API defaults to `auto`: the Project's configured tier, normally
+`default`. Kelly's decision is to keep API-credit sends enabled and document that
+Priority projects cost more than the app estimates. There is no send block.
+
+The free native completion fixture supplies upstream `service_tier: priority`, then
+checks usage, turn and raw-response events. CLI 0.163 does not forward that actual tier,
+even with `experimentalRawEvents`; its generated usage/turn schemas have no actual-tier
+field. Raw response usage metadata is opaque and is not evidence of a tier without an
+explicit service-provided value. Consequently the current adapter cannot convert a
+message to unpriced mode on an unreported tier. If a future app-server exposes an actual
+nonstandard tier, mark that message price unknown, announce it and retain its allowance;
+do not confuse the requested/configured tier with the tier actually used. See
+[the review evidence](dev-notes/codex-more-models-review.md).
+
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
 `openai-keys-updating`, `openai-properties`, and
-`openai-usage`. Each uses made-up keys and fake data. The first-send question is
+`openai-usage`, `new-session-unpriced`, `openai-unpriced-confirm`, and
+`main-openai-unpriced`. Each uses made-up keys and fake data. The optional first-send question is
 a native `wx.MessageDialog`, not an app-defined dialog surface: native message
 boxes do not use the probe's modal capture hook. Run them through the existing
 VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
@@ -219,8 +250,13 @@ isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
 2. Add a test key, then Test Key. Listen for Testing and its result with estimated
    cost, or the refusal. Replace or remove the key while a request is delayed;
    the dialog must remain usable and say the update is pending before it finishes.
-3. In New Session choose Codex, then API credits. Confirm that only priced models
-   and human approval modes are offered. Cancel the first-send question: the
+3. In New Session choose Codex, then API credits. Confirm that dated priced models
+   and API-home models marked price unknown are offered, with human approval modes.
+   Choose a price-unknown model. Listen for the warning that dollar limits cannot stop
+   a message. Enter on the warning must cancel. Reopen it, Tab to Cancel,
+   Tab to Send on API credits, Shift+Tab back to Cancel, and Escape; the message must stay in the reply box.
+   Change models and verify that the warning returns. The required warning must still
+   appear with the optional first-send setting off. Cancel the ordinary first-send question: the
    message stays in the reply box. Send it, then listen for one guaranteed
    Sent on API credits notice, including with ordinary announcements off.
 4. Read the row, window title, messages name, reply field, Properties and Usage.

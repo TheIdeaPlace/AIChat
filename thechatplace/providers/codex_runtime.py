@@ -8,7 +8,7 @@ from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
 from .codex_rpc import (CodexMessageTooLong, MAX_MESSAGE_CHARS, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
-                        CodexRememberedApprovalError, CodexSteerRefused, STOP_TO_RECONNECT)
+                        CodexRememberedApprovalError, CodexSteerRefused, CodexRuntimeProblem, STOP_TO_RECONNECT)
 from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
@@ -481,13 +481,13 @@ class CodexChatRuntime:
                 from .codex_billing import is_api
                 if is_api(connection):
                     from ..openai_prices import model_choices
-                    models = model_choices()
+                    models = model_choices(read_models(connection))
                 else:
                     models = read_models(connection)
                 choice = next((m for m in models if m.model == checked.model), None)
                 if choice is None:
                     raise CodexRpcError('Codex model effort could not be verified')
-                checked = replace(checked, effort=choice.default_effort)
+                checked = replace(checked, effort=choice.default_effort or None)
             updated = replace(proof, cwd=checked.cwd, policy=checked.policy,
                               model=checked.model, effort=checked.effort, saved_effort=checked.saved_effort,
                               saved_model=checked.saved_model,
@@ -781,7 +781,7 @@ class CodexChatRuntime:
             reopening = record.cli_session_id in self._reopening
             problem = self._problems.get(record.cli_session_id)
         if problem and not allow_problem:
-            raise CodexRpcError(problem)
+            raise CodexRuntimeProblem(problem)
         if (record.provider != self.provider_id or proof is None or executor is None
                 or (reopening and not allow_reopening) or not proof.connection.owns_runtime(proof)):
             raise CodexRpcError('Reopen this Codex chat before sending')
@@ -926,6 +926,7 @@ class CodexChatRuntime:
         native_id = proof.native_id
         self._notify(native_id)
         rejected = False
+        rejection_reason = ''
         proof = self._follow_default(proof)
         try:
             executor.start(proof, text)
@@ -934,10 +935,11 @@ class CodexChatRuntime:
                 stopping = native_id in self._stopping
             if stopping:
                 executor.interrupt(proof)
-        except (CodexTurnRejected, CodexMessageTooLong):
+        except (CodexTurnRejected, CodexMessageTooLong) as error:
             # No prompt was sent, so a fresh verified retry is safe. Do not
             # latch an uncertain-turn problem or make this chat unrecoverable.
             rejected = True
+            rejection_reason = str(error)
             raise
         except CodexConnectionFailure as error:
             with self._lock:
@@ -956,7 +958,7 @@ class CodexChatRuntime:
                 if executor.snapshot(proof).status != 'inProgress':
                     self._stopping.discard(native_id)
             recovery = (((text,) if automatic else ()) + remaining) if rejected else ()
-            self._notify(native_id, unsent=recovery)
+            self._notify(native_id, unsent=recovery, notice=rejection_reason if automatic else '')
             if not rejected:
                 self._advance(proof, executor)
 
@@ -1334,7 +1336,7 @@ class CodexChatRuntime:
                               getattr(state, 'compaction', False), proof.unavailable_mode == 'plan', getattr(state, 'retry', ''), getattr(state, 'reasoning', ()),
                               tools_started=state.tools_started, edits_made=state.edits_made, model=proof.model)
 
-    def _notify(self, native_id, *, unsent=()):
+    def _notify(self, native_id, *, unsent=(), notice=''):
         if not self._stop.is_set():
             state = self.snapshot(native_id)
             with self._lock:
@@ -1362,6 +1364,8 @@ class CodexChatRuntime:
                     record_failure(error)
             if unsent:
                 state = self.snapshot(native_id, unsent=unsent)
+            if notice:
+                state = replace(state, notice=notice)
             try:
                 self._on_update(state)
             except Exception:

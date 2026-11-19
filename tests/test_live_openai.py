@@ -132,7 +132,7 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key, monkeypatch):
             assert conn.ledger.totals().held == 0
             usage = conn.live_usage[-1]
             assert usage['turnId'] == state.turn_id
-            assert all(usage['tokenUsage']['total'][k] - before[k] == usage['tokenUsage']['last'][k] for k in COUNTERS)
+            assert all(usage['tokenUsage']['total'].get(k, 0) - before.get(k, 0) == usage['tokenUsage']['last'].get(k, 0) for k in COUNTERS)
         record = proof.record()
         before_resume = dict(conn._totals[proof.native_id])
     finally:
@@ -150,7 +150,7 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key, monkeypatch):
         assert state.status == 'completed' and report['cost_complete']
         assert 0 < report['cost_usd'] < .01 and conn.ledger.totals().held == 0
         usage = conn.live_usage[-1]['tokenUsage']
-        assert all(usage['total'][k] - before_resume[k] == usage['last'][k] for k in COUNTERS)
+        assert all(usage['total'].get(k, 0) - before_resume.get(k, 0) == usage['last'].get(k, 0) for k in COUNTERS)
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
@@ -260,7 +260,7 @@ def test_paid_fork(native, tmp_path, key):
         state, report = finished(conn, runner, copy, events, 2)
         assert state.status == 'completed' and report['cost_complete']
         usage = conn.live_usage[-1]['tokenUsage']
-        assert all(usage['total'][k] - before[k] == usage['last'][k] for k in COUNTERS)
+        assert all(usage['total'].get(k, 0) - before.get(k, 0) == usage['last'].get(k, 0) for k in COUNTERS)
         assert conn.ledger.totals().held == 0
     finally:
         conn.close()
@@ -295,14 +295,41 @@ def test_paid_application_key_test(native, tmp_path, key, monkeypatch):
 
 
 class Listener:
-    def __init__(self, cut=False):
+    def __init__(self, cut=False, completion_tier=None):
         self.requests = []
+        self.service_tiers = []
         owner = self
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
             def do_GET(self):
-                self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                if payload and self.path.endswith('/responses'):
+                    owner.service_tiers.append(json.loads(payload).get('service_tier'))
                 owner.requests.append((self.command, self.path, self.headers.get('Authorization') == 'Bearer '+FAKE))
+                if completion_tier is not None and self.path.endswith('/responses'):
+                    item = {'id': 'synthetic-item', 'type': 'message', 'role': 'assistant',
+                            'status': 'completed', 'content': [{'type': 'output_text', 'text': 'OK.'}]}
+                    response = {'id': 'synthetic-response', 'status': 'completed',
+                        'service_tier': completion_tier, 'output': [item],
+                        'usage': {'input_tokens': 100, 'output_tokens': 2, 'total_tokens': 102,
+                                  'input_tokens_details': {'cached_tokens': 0},
+                                  'output_tokens_details': {'reasoning_tokens': 0}}}
+                    events = [
+                        {'type': 'response.created', 'response': {'id': response['id'], 'status': 'in_progress'}},
+                        {'type': 'response.output_item.added', 'output_index': 0, 'item': {**item, 'content': []}},
+                        {'type': 'response.output_text.delta', 'item_id': item['id'], 'output_index': 0,
+                         'content_index': 0, 'delta': 'OK.'},
+                        {'type': 'response.output_item.done', 'output_index': 0, 'item': item},
+                        {'type': 'response.completed', 'response': response}]
+                    body = ''.join('event: '+e['type']+'\ndata: '+json.dumps(e)+'\n\n' for e in events).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/event-stream')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.send_header('Connection', 'close')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    self.close_connection = True
+                    return
                 if cut:
                     import socket
                     self.send_response(200)
@@ -467,3 +494,120 @@ def test_cut_stream_reports_error(native, tmp_path):
             conn.close()
         listener.close()
         assert_no_disk_key(tmp_path, FAKE)
+
+
+@pytest.mark.skipif(not PAID, reason='Paid OpenAI checks are opt-in')
+def test_paid_unpriced_luna_uses_tokens_and_keeps_allowance(native, tmp_path, key, monkeypatch):
+    from thechatplace import openai_prices
+    events = []
+    conn = connection(native, tmp_path, key, events)
+    try:
+        # Cheapest newly advertised model. Omit only in this isolated fixture,
+        # exercising actual unknown-price accounting without buying a costly model.
+        with monkeypatch.context() as omission:
+            omission.delitem(openai_prices.PRICES, 'gpt-6-luna')
+            proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Unpriced live check',
+                                                model='gpt-6-luna', effort='low')
+            conn.authorize_unpriced(proof.native_id, proof.model)
+            runner = CodexTurnExecutor(conn)
+            runner.start(proof, 'No tools. Reply OK.')
+            state, report = finished(conn, runner, proof, events)
+            assert state.status == 'completed'
+            assert report['unpriced'] and report['cost_usd'] is None
+            assert report['tokens']['inputTokens'] > 0
+            assert conn.ledger.totals().held == .5 and conn.ledger.totals().spent == 0
+            assert report['cost_words'].endswith('cost unknown')
+        estimate = openai_prices.estimate('gpt-6-luna', report['tokens'])
+        assert 0 < estimate < .01
+        print(json.dumps({'unpriced_fixture_model': 'gpt-6-luna',
+                          'published_rate_conservative_estimate_usd': estimate,
+                          'retained_allowance_usd': conn.ledger.totals().held}))
+    finally:
+        conn.close()
+        assert_no_disk_key(tmp_path, key)
+
+
+@pytest.mark.skipif(not FREE, reason='Free native CLI service-tier verification is opt-in')
+@pytest.mark.parametrize('thread_tier,turn_tier', [('default', None), ('priority', 'default')])
+def test_standard_service_tier_on_native_wire(native, tmp_path, thread_tier, turn_tier):
+    """Inspect the real CLI's Responses request with a fake key, without spending."""
+    listener = Listener()
+    class Control(ReadOnlyCodexConnection):
+        billing_route = 'api'
+        METHODS = ReadOnlyCodexConnection.METHODS | {'account/login/start', 'thread/start', 'turn/start'}
+        def _verify_turn_route(self, params):
+            pass
+    home = tmp_path / 'isolated-tier-home'
+    home.mkdir()
+    (home / 'config.toml').write_text('openai_base_url='+json.dumps(listener.url)+'\n[features]\nfast_mode=true\n', encoding='utf-8')
+    def start(exe):
+        tree = platform_paths.ProcessTree()
+        env = platform_paths.codex_child_environment()
+        env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+        process = subprocess.Popen([native, 'app-server', '--listen', 'stdio://',
+            '-c', 'cli_auth_credentials_store="ephemeral"', '-c', 'forced_login_method="api"',
+            '-c', 'features.fast_mode=true', '-c', 'service_tier="default"'],
+            env=env, cwd=home, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+        tree.attach(process)
+        return platform_paths.CodexServerProcess(process, tree)
+    conn = Control(start=start)
+    try:
+        conn.request('account/login/start', {'type': 'apiKey', 'apiKey': FAKE})
+        tid = conn.request('thread/start', {'cwd': str(tmp_path), 'model': 'gpt-5-nano',
+            'serviceTier': thread_tier, 'approvalPolicy': 'never', 'sandbox': 'read-only'})['thread']['id']
+        params = {'threadId': tid, 'input': [{'type': 'text', 'text': 'Reply OK.'}]}
+        if turn_tier:
+            params['serviceTier'] = turn_tier
+        conn.request('turn/start', params)
+        wait(lambda: listener.service_tiers, timeout=15)
+        # 0.163 deliberately strips explicit default at the model request layer.
+        # Keep this observable limitation covered, rather than claim a wire pin.
+        assert listener.service_tiers == [None]
+        print('Native Responses service_tier omitted; thread='+thread_tier+'; turn='+str(turn_tier)+'; no paid request.')
+    finally:
+        conn.close()
+        listener.close()
+
+
+@pytest.mark.skipif(not FREE, reason='Free native completion-tier capture is opt-in')
+def test_native_completion_does_not_expose_actual_service_tier(native, tmp_path):
+    """The upstream reports Priority; check whether app-server forwards it."""
+    listener = Listener(completion_tier='priority')
+    notifications = []
+    class Control(ReadOnlyCodexConnection):
+        billing_route = 'api'
+        METHODS = ReadOnlyCodexConnection.METHODS | {'account/login/start', 'thread/start', 'turn/start'}
+        def _verify_turn_route(self, params):
+            pass
+        def _receive(self, message):
+            if 'method' in message:
+                notifications.append(message)
+            super()._receive(message)
+    home = tmp_path / 'completion-tier-home'
+    home.mkdir()
+    def start(exe):
+        tree = platform_paths.ProcessTree()
+        env = platform_paths.codex_child_environment()
+        env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+        process = subprocess.Popen([native, 'app-server', '--listen', 'stdio://',
+            '-c', 'cli_auth_credentials_store="ephemeral"', '-c', 'forced_login_method="api"',
+            '-c', 'openai_base_url='+json.dumps(listener.url)], env=env, cwd=home,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+        tree.attach(process)
+        return platform_paths.CodexServerProcess(process, tree)
+    conn = Control(start=start)
+    try:
+        conn.request('account/login/start', {'type': 'apiKey', 'apiKey': FAKE})
+        tid = conn.request('thread/start', {'cwd': str(tmp_path), 'model': 'gpt-5-nano',
+            'approvalPolicy': 'never', 'sandbox': 'read-only', 'experimentalRawEvents': True})['thread']['id']
+        conn.request('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': 'Reply OK.'}]})
+        wait(lambda: any(n['method'] == 'turn/completed' for n in notifications), timeout=20)
+        relevant = [n for n in notifications if n['method'] in ('thread/tokenUsage/updated', 'turn/completed', 'turn/started')
+                    or 'response' in n['method'].lower()]
+        assert any(n['method'] == 'thread/tokenUsage/updated' for n in relevant)
+        assert 'serviceTier' not in json.dumps(relevant) and 'service_tier' not in json.dumps(relevant)
+        print('Upstream Priority tier not forwarded; observed events: '+', '.join(sorted({n['method'] for n in relevant})))
+    finally:
+        conn.close()
+        listener.close()

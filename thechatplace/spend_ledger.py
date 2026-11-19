@@ -197,6 +197,7 @@ class _Open:
     chat_id: str
     settled: float = 0.0
     closed: bool = False
+    unpriced: bool = False
 
 
 @dataclass
@@ -227,6 +228,15 @@ class Totals:
     #: earlier run or a crash, or by a Stop whose cost wasn't known. Release
     #: Held lets it go.
     releasable: float = 0.0
+    # Token snapshots are independent of dollar settlements (#685). A chat
+    # remains unpriced even after its retained allowance is released.
+    unpriced_usage: dict = field(default_factory=dict)
+    unpriced_all_time: dict = field(default_factory=dict)
+    unpriced_allowance: float = 0.0
+    unpriced_missing: set = field(default_factory=set)
+    unpriced_missing_all_time: set = field(default_factory=set)
+    unpriced_releasable: float = 0.0
+    priced_unknown_chats: set = field(default_factory=set)
 
     @property
     def counted(self) -> float:
@@ -680,6 +690,9 @@ class SpendLedger:
         #: Chats renamed (#663): old id -> new id.
         renamed: Dict[str, str] = {}
         settled_all, settled_counted, settlement_dates = {}, {}, {}
+        token_records = {}
+        unknown_priced = {}  # rid -> chat; releasing a hold does not resolve its cost
+        usage_excluded = set()
 
         def chat_of(chat: str) -> str:
             seen = set()
@@ -693,6 +706,20 @@ class SpendLedger:
                 damage = damage or f"line {number}"
                 continue
             try:
+                if record['type'] in ('release', 'reset'):
+                    ids = record.get('ids', []) if record['type'] == 'release' else list(reservations)
+                    for rid in ids:
+                        entry = reservations.get(rid)
+                        if entry is not None and not entry.unpriced and rid not in self._live:
+                            unknown_priced[rid] = entry.chat_id
+                if record['type'] == 'close':
+                    rid = record['id']
+                    if record.get('complete') is True:
+                        unknown_priced.pop(rid, None)
+                    else:
+                        entry = reservations.get(rid)
+                        if entry is not None and not entry.unpriced:
+                            unknown_priced[rid] = entry.chat_id
                 if record["type"] == "reset":
                     keep = record.get("keep", [])
                     reservations = {rid: entry for rid, entry in reservations.items()
@@ -700,8 +727,28 @@ class SpendLedger:
                     totals.spent, totals.by_chat, totals.by_model = 0.0, {}, {}
                     settled_counted.clear()
                     totals.reset_at = record["at"]
+                    usage_excluded = set(token_records) - set(keep)
                     damage = ""  # Reset is how damage is put behind you
                     continue
+                if record['type'] == 'token_usage':
+                    rid = record['id']
+                    first = token_records.get(rid, record)['at']
+                    token_records[rid] = dict(record, at=first)
+                    if record['unpriced']:
+                        unknown_priced.pop(rid, None)
+                    if record['unpriced'] and rid in reservations:
+                        reservations[rid].unpriced = True
+                    continue
+                if record['type'] == 'reserve' and record.get('unpriced'):
+                    # A crash can happen between a paid write and its first
+                    # token record. The reservation itself proves uncertainty.
+                    token_records[record['id']] = dict(record, tokens={
+                        'inputTokens': 0, 'cachedInputTokens': 0, 'cacheWriteInputTokens': 0,
+                        'outputTokens': 0, 'reasoningOutputTokens': 0}, measured=False,
+                        _reservation_only=True)
+                if (record['type'] == 'close' and record.get('complete') is True
+                        and token_records.get(record['id'], {}).get('_reservation_only')):
+                    token_records.pop(record['id'])
                 if record['type'] in ('settle', 'correction'):
                     rid, cost = record['id'], record['cost']
                     if record['type'] == 'correction' and -cost > settled_all.get(rid, 0) + .000001:
@@ -737,6 +784,27 @@ class SpendLedger:
         totals.held = sum(max(0.0, e.amount - e.settled) for e in reservations.values())
         totals.releasable = sum(max(0.0, e.amount - e.settled)
                                 for rid, e in reservations.items() if rid not in self._live)
+        totals.unpriced_allowance = sum(max(0, e.amount-e.settled)
+                                        for e in reservations.values() if e.unpriced)
+        totals.unpriced_releasable = sum(max(0, e.amount-e.settled)
+                                        for rid, e in reservations.items() if e.unpriced and rid not in self._live)
+        totals.priced_unknown_chats = ({e.chat_id for rid, e in reservations.items()
+                                        if not e.unpriced and rid not in self._live}
+                                       | {chat_of(chat) for rid, chat in unknown_priced.items()
+                                          if rid not in self._live})
+        for rid, record in token_records.items():
+            if not record['unpriced']:
+                continue
+            chat = chat_of(record['chat'])
+            if not record.get('measured', True):
+                totals.unpriced_missing_all_time.add(chat)
+                if rid not in usage_excluded:
+                    totals.unpriced_missing.add(chat)
+            for book in (totals.unpriced_all_time, totals.unpriced_usage
+                         if rid not in usage_excluded else {}):
+                target = book.setdefault(chat, dict.fromkeys(record['tokens'], 0))
+                for key, value in record['tokens'].items():
+                    target[key] = target.get(key, 0) + value
         if not (math.isfinite(totals.held) and math.isfinite(totals.spent)):
             damage = damage or "its totals"
         if damage:
@@ -769,7 +837,8 @@ class SpendLedger:
             return
         rid = record["id"]
         if kind == "reserve":
-            reservations[rid] = _Open(record["amount"], chat_of(record.get("chat", "")))
+            reservations[rid] = _Open(record["amount"], chat_of(record.get("chat", "")),
+                                      unpriced=record.get('unpriced', False))
             return
         entry = reservations.get(rid)
         if kind in ("settle", "correction"):
@@ -818,13 +887,21 @@ class SpendLedger:
             old, new = record.get("from"), record.get("to")
             return record if isinstance(old, str) and old and isinstance(new, str) \
                 and new else None
-        if kind not in ("reserve", "settle", "correction", "close") or not isinstance(record.get("id"), str) \
+        if kind not in ("reserve", "settle", "correction", "close", "token_usage") or not isinstance(record.get("id"), str) \
                 or not record["id"]:
             return None
         if not isinstance(record.get("chat", ""), str):
             return None
         if kind == "reserve" and _amount(record.get("amount")) is None:
             return None
+        if kind in ('reserve', 'token_usage') and type(record.get('unpriced', False)) is not bool:
+            return None
+        if kind == 'token_usage':
+            from .openai_prices import valid_counters
+            if (not valid_counters(record.get('tokens')) or type(record.get('measured', True)) is not bool
+                    or not isinstance(record.get('model'), str)
+                    or not record.get('chat', '').startswith('codex-api:')):
+                return None
         if kind in ("settle", "correction"):
             sign = -1 if kind == "correction" else 1
             if not isinstance(record.get("cost"), (int, float)) or isinstance(record["cost"], bool) or _amount(sign * record["cost"]) is None:
@@ -884,7 +961,7 @@ class SpendLedger:
             handle.flush()
             os.fsync(handle.fileno())
 
-    def reserve(self, chat_id: str = "", purpose: str = "turn") -> Reservation:
+    def reserve(self, chat_id: str = "", purpose: str = "turn", *, unpriced=False) -> Reservation:
         """Hold the most the next API process may spend, or raise SpendRefused.
         Reading the total and writing the reservation are one step under the
         lock, so another chat can't be given the same money."""
@@ -906,12 +983,31 @@ class SpendLedger:
             try:
                 self._append({"type": "reserve", "id": reservation.id, "amount": amount,
                               "chat": reservation.chat_id, "purpose": reservation.purpose,
-                              "run": self.run_id})
+                              "run": self.run_id, **({'unpriced': True} if unpriced else {})})
             except OSError as exc:
                 raise SpendRefused(f"The Chat Place couldn't record API spending ({exc}), so "
                                    "it didn't send this message. Nothing was sent.") from None
             self._live.add(reservation.id)
             return reservation
+
+    def record_openai_tokens(self, reservation, model, tokens, *, unpriced=False, measured=True):
+        """Replace one turn's token snapshot, without treating it as dollars.
+
+        Absolute per-reservation snapshots make duplicate and late usage
+        idempotent and allow overlap corrections after an earlier turn ends.
+        """
+        from .openai_prices import valid_counters
+        if not valid_counters(tokens) or not reservation.chat_id.startswith('codex-api:'):
+            return False
+        with _LOCK:
+            try:
+                self._append({'type': 'token_usage', 'id': reservation.id,
+                              'chat': reservation.chat_id, 'model': model,
+                              'tokens': tokens, 'unpriced': unpriced, 'measured': measured})
+                return True
+            except OSError:
+                self._unrecorded.add(reservation.id)
+                return False
 
     def settle(self, reservation: Reservation, cost: float,
                models: Optional[Dict[str, float]] = None) -> bool:

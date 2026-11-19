@@ -45,6 +45,13 @@ def frame(env, folder, monkeypatch):
     store.add(OwnSession("api-1", "Paid", folder, last_activity_ms=now_ms(), billing="api"))
     window = MainFrame(store=store, check_updates_at_start=False)
     assert pump(lambda: window.session_list.GetCount() == 2)
+    original_action = window.sessions.owned_action
+    api_connection = object()
+    def owned_action(action, record, *args, **kwargs):
+        if action == 'api_billing':
+            return record.provider_options.get('model', 'gpt-5-nano'), api_connection
+        return original_action(action, record, *args, **kwargs)
+    monkeypatch.setattr(window.sessions, 'owned_action', owned_action)
     yield window
     window._runners.clear()
     window.stop_timers()
@@ -90,7 +97,7 @@ SENT_PAID = "Sent on API credits to Paid."
 
 def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, folder):
     from thechatplace.ui.dialogs import NewSessionDialog
-    from thechatplace.openai_prices import SOURCES
+    from thechatplace.openai_prices import model_choices
     dialog = NewSessionDialog(frame, folder, providers=('claude', 'codex'), provider='codex', openai_key=True)
     try:
         assert dialog.charge.IsShown() and dialog.billing() == 'subscription'
@@ -98,7 +105,7 @@ def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, fo
         dialog.charge.SetSelection(1)
         dialog._on_charge()
         assert dialog.billing() == 'api'
-        assert dialog.model.GetStrings() == list(SOURCES)
+        assert dialog.model.GetStrings() == [m.label for m in model_choices()]
         assert dialog.values()[-1] == 'gpt-5-nano'
         assert dialog.mode.GetCount() == 2
         assert 'estimated' in dialog.note.GetValue()
@@ -131,8 +138,11 @@ def test_codex_api_unknown_cost_is_not_zero_in_status_and_properties(frame, fold
     key = record.to_info().key
     ledger = spend_ledger.default_ledger('openai')
     reservation = ledger.reserve(key)
+    assert frame._api_spend_line(key) == 'API: priced $0.00'
     ledger.close(reservation, complete=False)
-    assert 'this chat cost not known' in frame._api_spend_line(key)
+    assert frame._api_spend_line(key) == 'API: priced cost not known'
+    ledger.release_held()
+    assert frame._api_spend_line(key) == 'API: priced cost not known'
     words = openai_billing.chat_cost_words(ledger, key)
     lines = properties.session_properties(record.to_info(), own=record, api_cost=words)
     assert 'Spending on API credits by this chat: cost not known' in lines
@@ -1130,3 +1140,138 @@ def test_api_relay_checks_own_route_and_actual_running_state(frame, folder):
     assert frame._relay_source_working(info)
     frame._codex_states[info.key] = SimpleNamespace(outcome='completed', state='idle')
     assert not frame._relay_source_working(info)
+
+
+def test_unpriced_confirmation_is_required_with_first_send_setting_off(frame, folder, monkeypatch):
+    record = OwnSession('unpriced-api', 'Unknown price', folder, provider='codex-api', billing='api',
+                        provider_options={'model': 'future-model'})
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    frame.speech.api_confirm_first = False
+    answers = [wx.ID_CANCEL, wx.ID_OK, wx.ID_OK]
+    questions = []
+    def question(dialog):
+        questions.append(dialog.warning.GetValue())
+        assert dialog.GetDefaultItem() is dialog.cancel
+        assert dialog.GetChildren().index(dialog.cancel) < dialog.GetChildren().index(dialog.send)
+        try:
+            return answers.pop(0)
+        finally:
+            dialog.Destroy()
+    monkeypatch.setattr(frame, '_modal', question)
+    key = record.to_info().key
+    assert frame._api_send_problem(key) == ''
+    assert key not in frame._unpriced_confirmed
+    assert frame._api_send_problem(key) is None
+    assert frame._unpriced_confirmed[key][:2] == ('future-model', 'default')
+    assert frame._api_send_problem(key) is None
+    assert len(questions) == 2
+    record.provider_options['model'] = 'other-future-model'
+    assert frame._api_send_problem(key, ask=False).startswith('Confirm this price-unknown')
+    assert frame._api_send_problem(key) is None
+    assert len(questions) == 3
+    assert "your dollar limits can't stop a message" in questions[-1]
+
+
+def test_api_picker_uses_separate_catalog_and_preserves_unknown_id(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, folder, providers=('codex',), provider='codex', openai_key=True)
+    try:
+        dialog._set_codex_models((CodexModel('subscription-only', 'Subscription', ('high',), 'high', True),), False)
+        dialog._set_api_models((CodexModel('future-model', 'Future', ('low', 'ultra'), 'low', False),), False)
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert 'Subscription' not in dialog.model.GetStrings()
+        dialog.model.SetSelection(dialog.model.GetStrings().index('Future (price unknown)'))
+        dialog._on_codex_model()
+        assert dialog.values()[-1] == 'future-model'
+        assert 'ultra' not in dialog.effort_choice.GetStrings()
+    finally:
+        dialog.Destroy()
+
+
+def test_unpriced_reply_reports_tokens_even_with_cost_setting_off(frame, folder, env):
+    record = OwnSession('unpriced-reply', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame.speech.api_say_cost = False
+    frame._on_codex_api_event(TurnEvent('finished', session_id=record.cli_session_id,
+        data={'sent': True, 'unpriced': True, 'cost_usd': None,
+              'cost_words': 'used 12,400 tokens, cost unknown'}))
+    assert 'Budget replied; used 12,400 tokens, cost unknown.' in env['feedback']
+
+
+@pytest.mark.parametrize('outcome,verb', [('interrupted', 'stopped'), ('failed', 'failed')])
+def test_unpriced_late_report_speaks_only_changed_counts(frame, folder, env, outcome, verb):
+    record = OwnSession('late-unknown', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    data = dict(sent=True, unpriced=True, outcome=outcome, payment_id=(1, 1),
+                tokens={'inputTokens': 100, 'outputTokens': 20},
+                cost_words='used at least 120 tokens; some tokens not reported, cost unknown')
+    event = TurnEvent('finished', session_id=record.cli_session_id, data=data)
+    frame._on_codex_api_event(event)
+    said = f'Budget {verb}; used at least 120 tokens; some tokens not reported, cost unknown.'
+    assert env['feedback'].count(said) == 1
+    frame._on_codex_api_event(event)
+    assert env['feedback'].count(said) == 1
+    data['tokens'] = {'inputTokens': 110, 'outputTokens': 20}
+    data['cost_words'] = 'used at least 130 tokens; some tokens not reported, cost unknown'
+    frame._on_codex_api_event(event)
+    assert any('at least 130 tokens' in line for line in env['feedback'])
+
+
+def test_missing_saved_model_uses_reported_model_for_required_question(frame, folder, monkeypatch):
+    record = OwnSession('missing-model', 'Unknown', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    connection = object()
+    monkeypatch.setattr(frame.sessions, 'owned_action', lambda *args: ('reported-future', connection))
+    questions = []
+    def cancel(dialog):
+        questions.append(dialog.warning.GetValue())
+        dialog.Destroy()
+        return wx.ID_CANCEL
+    monkeypatch.setattr(frame, '_modal', cancel)
+    assert frame._api_send_problem(record.to_info().key) == ''
+    assert 'reported-future' in questions[0]
+
+
+@pytest.mark.parametrize('steer', [False, True])
+def test_api_send_and_steer_preserve_latched_runtime_reason(frame, folder, env, monkeypatch, steer):
+    from thechatplace.providers.codex_rpc import CodexRuntimeProblem
+    record = OwnSession('latched-api', 'Priced', folder, provider='codex-api', billing='api',
+                        provider_options={'model': 'gpt-5-nano'})
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    reason = 'Could not confirm this Codex turn. Use Stop to recheck this chat.'
+    def refused(*args, **kwargs):
+        raise CodexRuntimeProblem(reason)
+    monkeypatch.setattr(frame.sessions, 'owned_action', refused)
+    if steer:
+        restored = []
+        monkeypatch.setattr(frame, '_restore_codex_text', lambda key, texts: restored.extend(texts))
+        frame._steer_codex_owned(record, 'Keep this')
+        assert reason in env['feedback'] and restored == ['Keep this']
+    else:
+        assert frame._api_send_problem(record.to_info().key) == reason
+
+
+def test_api_billing_lookup_does_not_mask_unexpected_errors(frame, folder, monkeypatch):
+    record = OwnSession('unexpected-api', 'Priced', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    def broken(*args, **kwargs):
+        raise RuntimeError('programming error')
+    monkeypatch.setattr(frame.sessions, 'owned_action', broken)
+    with pytest.raises(RuntimeError, match='programming error'):
+        frame._api_send_problem(record.to_info().key)
+
+
+@pytest.mark.parametrize('outcome', ['', 'unknown', 'failed'])
+def test_unpriced_reply_after_stop_is_said_as_stopped(frame, folder, env, outcome):
+    record = OwnSession('stopping-unknown', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame._on_codex_api_event(TurnEvent('finished', session_id=record.cli_session_id,
+        data={'sent': True, 'unpriced': True, 'stopping': True, 'outcome': outcome,
+              'cost_words': 'used at least 100 tokens, cost unknown; allowance kept'}))
+    assert 'Budget stopped; used at least 100 tokens, cost unknown; allowance kept.' in env['feedback']

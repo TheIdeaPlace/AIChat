@@ -684,3 +684,26 @@ def test_openai_key_save_does_not_wait_on_the_ui_thread(parent, env, monkeypatch
         assert openai_billing.has_api_key()
     finally:
         window.Destroy()
+
+
+def test_openai_release_held_warns_cost_unknown_and_keeps_token_history(parent, env, monkeypatch):
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog, totals_text
+    window = ApiKeysDialog(parent)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        ledger = spend_ledger.default_ledger('openai')
+        r = ledger.reserve('codex-api:unknown', unpriced=True)
+        ledger.record_openai_tokens(r, 'future', dict(inputTokens=100, cachedInputTokens=0,
+            cacheWriteInputTokens=0, outputTokens=10, reasoningOutputTokens=0), unpriced=True)
+        ledger.close(r, complete=False)
+        assert 'of it for messages no longer running' in totals_text(ledger.totals(), openai=True)
+        questions = []
+        monkeypatch.setattr(window, '_ask', lambda text: questions.append(text) or True)
+        assert window.on_release_held()
+        assert 'cost is unknown and may be more' in questions[0]
+        assert 'up to' not in questions[0]
+        assert ledger.totals().held == 0
+        assert ledger.totals().unpriced_all_time[r.chat_id]['inputTokens'] == 100
+    finally:
+        window.Destroy()

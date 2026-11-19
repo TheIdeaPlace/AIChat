@@ -1081,6 +1081,30 @@ def s_main_status_bar(frame, env):
     frame.status_parts.layout()
 
 
+def _openai_probe_ledger(env, name):
+    from thechatplace import spend_ledger
+    ledger = spend_ledger.SpendLedger(env['tmp'] / name)
+    chat = 'codex-api:openai-probe'
+    priced = ledger.reserve(chat)
+    ledger.settle(priced, .42)
+    ledger.close(priced, complete=True)
+    unknown = ledger.reserve(chat, unpriced=True)
+    ledger.record_openai_tokens(unknown, 'future-model',
+        dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
+             outputTokens=400, reasoningOutputTokens=100), unpriced=True)
+    ledger.close(unknown, complete=False)
+    return ledger, chat
+
+
+def s_main_openai_unpriced(frame, env):
+    """Production status text from mixed ledger spending (#685)."""
+    from thechatplace import openai_billing
+    s_main_status_bar(frame, env)
+    ledger, _ = _openai_probe_ledger(env, 'status-openai')
+    frame.status_parts.set('api_credits', openai_billing.status_words(ledger.totals()))
+    frame.status_parts.layout()
+
+
 def s_main_narrow(frame, env):
     _open(frame, "Visual probe")
     from thechatplace.ui.sizes import dip
@@ -1323,6 +1347,22 @@ def d_new_session_openai(frame, env):
     dialog.charge.SetSelection(1)
     dialog._on_charge()
     return lambda: frame._modal(dialog)
+
+
+def d_new_session_unpriced(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',),
+                              provider='codex', openai_key=True)
+    dialog._api_models = (CodexModel('future-model', 'Future model', ('low',), 'low', False),)
+    dialog.charge.SetSelection(1)
+    dialog._on_charge()
+    return lambda: frame._modal(dialog)
+
+
+def d_openai_unpriced(frame, env):
+    from thechatplace.ui.dialogs import UnpricedApiDialog
+    return lambda: frame._modal(UnpricedApiDialog(frame, 'future-model', 2))
 
 
 def d_codex_new(frame, env):
@@ -2314,6 +2354,10 @@ def _openai_keys(frame, env, state):
     if state != 'empty':
         openai_billing.save_api_key('sk-proj-probe-' + '0' * 30)
         held = ledger.reserve('codex-api:probe')
+        if state == 'held':
+            ledger.record_openai_tokens(held, 'future-model',
+                dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
+                     outputTokens=400, reasoningOutputTokens=100), unpriced=True)
         ledger.close(held, complete=False)
     class Test:
         def __init__(self, *args, **kwargs):
@@ -2364,17 +2408,18 @@ def d_openai_properties(frame, env):
     from thechatplace.ui.dialogs import PropertiesDialog
     record = OwnSession('openai-probe', 'OpenAI budget', env['folders']['Scratch'],
                         provider='codex-api', billing='api', provider_options={'model': 'gpt-5-nano'})
-    lines = session_properties(record.to_info(), own=record, api_cost='cost not known')
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'properties-openai')
+    lines = session_properties(record.to_info(), own=record,
+        api_cost=openai_billing.chat_cost_words(ledger, chat))
     return lambda: frame._modal(PropertiesDialog(frame, 'Properties of OpenAI budget', lines, frame._copy_properties))
 
 
 def d_openai_usage(frame, env):
     from thechatplace.ui.dialogs import UsageDialog
-    lines = ['OpenAI API credits: estimated spending less than a cent of $20.00.',
-             'This chat: cost not known. Prices dated 2026-11-17.',
-             'Held $2.00; estimated remaining $18.00.',
-             'Stopped message: estimated, at most 7 cents.',
-             'Limits are approximate; one request can pass a limit.']
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'usage-openai')
+    lines = openai_billing.usage_lines(ledger, chat)
     return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
 
 
@@ -2484,6 +2529,7 @@ def d_rename(frame, env):
 #: name -> (kind, function, what it shows). Order is the order photographed:
 #: main-window states first, then dialogs.
 SURFACES = {
+    'main-openai-unpriced': ('window', s_main_openai_unpriced, 'Status bar with priced spending, unpriced tokens and an allowance'),
     "main-compacted": ("window", s_main_compacted,
                        "Compaction and command output remain visible with tool activity off."),
     "main-start": ("window", s_main_start, "Main window as it opens: session list, no session loaded"),
@@ -2559,6 +2605,8 @@ SURFACES = {
                                 "New Session once a Claude API key is added, with Charge to "
                                 "on API credits and Fable chosen (#658)"),
     'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
+    'new-session-unpriced': ('dialog', d_new_session_unpriced, 'New Session offers a model with price unknown'),
+    'openai-unpriced-confirm': ('dialog', d_openai_unpriced, 'Mandatory price-unknown warning, Cancel default'),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
     "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
@@ -2726,6 +2774,8 @@ DIALOG_CLASSES = {
     "new-session": "NewSessionDialog",
     "new-session-api-credits": "NewSessionDialog",
     'new-session-openai': 'NewSessionDialog',
+    'new-session-unpriced': 'NewSessionDialog',
+    'openai-unpriced-confirm': 'UnpricedApiDialog',
     "new-session-worktree": "NewSessionDialog",
     "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",

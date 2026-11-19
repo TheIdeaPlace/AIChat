@@ -386,19 +386,54 @@ is the default and a chat's billing never changes. The app uses a separate Codex
 keeps your ChatGPT sign-in separate. Continue on API Credits waits for your first Send; the conversation is a hidden prefix to your message. Cancelling Send keeps only your message in the reply box. **Continue on API Credits** makes a new chat with a text
 copy of the earlier conversation; that first message may cost more.
 
-Every OpenAI cost says **estimated**, using a price table dated November 17, 2026. Only priced
-models are offered. A missing model or service price stops the send. The row, title, messages,
-reply box and status bar say API credits; every paid send says **Sent on API credits to** the
-chat's name, even with announcements off. The first message in each chat per app run asks
-before sending. Usage and Context (Ctrl+Shift+U) and Properties (Alt+Enter) show estimated
-spending, or **cost not known** when usage is missing. A limit can be passed by one request.
+The model list offers priced models and other models advertised by Codex's API-key home.
+Priced models are gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5,
+gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and
+gpt-6.1-sol. Other models say **price unknown**. Availability depends on your OpenAI account.
+Ultra effort is not offered on API credits.
+
+Every priced OpenAI cost says **estimated**, using prices checked November 19, 2026.
+Codex costs assume OpenAI's standard pricing. If your OpenAI project is set to use Priority processing, Codex chats cost more than The Chat Place estimates.
+Reasoning is included in output, and cache writes are counted
+where reported. Long-context models use conservative surcharge rates: twice input and cache,
+one and a half times output, because cumulative counters cannot prove the request's band.
+Each model uses its own maximum input and output. GPT-5.6 Sol's promotional price expires
+at 10:00 UTC on November 29, 2026; after that it says price unknown unless the table is updated.
+
+Before your first message with **price unknown**, a required question explains that your
+OpenAI key will be charged and your dollar limits cannot stop a message. Cancel is the
+default. Enter or Escape on the warning keeps your message; Tab reaches Cancel,
+then Send on API credits. Changing the model or restarting the app requires the question again.
+Turning off the optional first-message question in Settings does not turn this warning off.
+
+Every paid send still says **Sent on API credits to** the chat's name, even with announcements
+off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens, cost unknown**. This notice stays spoken with the cost setting off. Tokens count input plus
+output; cached input and reasoning are included in those figures.
+
+Each unpriced message keeps a per-message **allowance** against the overall limit, normally
+$2, or the remaining overall allowance. This can block later messages but cannot cap a
+message's actual cost. Send Now (Ctrl+Enter) holds another allowance for a steer.
+Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the status
+bar and Tools, API Keys identify unpriced usage. Unknown-only spending says **cost unknown**.
+Mixed spending says **priced spending $X, plus unpriced usage**. The status bar gives a short
+total; Usage and Context gives the token details.
+Input, cached-input, cache-write and output tokens are saved across restarts. Reset Total
+starts a new overall usage total; Properties keeps the chat's history. Release Held frees
+inactive allowances without deleting token history.
 
 **Stop** counts reported usage and, when possible, adds a ceiling for one interrupted request:
-**estimated, at most**. Missing usage or a stream error can keep credit held. Release Held
+**estimated, at most**. With price unknown, Stop says cost unknown and keeps the allowance;
+it cannot give a dollar ceiling. Missing usage or a stream error can keep credit held. Release Held
 becomes available once that message is no longer running. A refused key releases the unused
 hold; replace it in API Keys and send again. Connected services, hosted search, automatic
 review, subagents, compaction, goals, Ask Aside and copies cut at an earlier turn are not
 available on OpenAI credits. Human approvals and full-history API copies are available.
+
+If a price expires during a turn, the turn continues with cost unknown and its allowance
+held. Only later tokens enter unpriced usage. The reply notice says the price expired
+and counts only those unpriced tokens. Queued messages come back unsent with a
+confirmation reason. Stopped or failed unpriced replies say **stopped** or **failed**;
+incomplete counts say **at least** or **tokens not reported**.
 
 For **Claude**, the existing Anthropic API options work as follows.
 
@@ -423,7 +458,10 @@ Budget says anything of its own. Until it's said, the status bar shows "Sending 
 credits…"), the first one in each
 chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
 Ask Aside answer says what it cost, and
-the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
+the status bar shows what the chat and The Chat Place have spent in a Claude chat. In a
+Codex chat it shows The Chat Place's estimated priced total and any unpriced token count.
+Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.
+A chat's charging can't be
 changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
 key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
 available in Claude API chats. Copilot chats cannot use API credits. Older releases of

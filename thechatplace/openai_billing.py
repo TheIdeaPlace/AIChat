@@ -52,6 +52,86 @@ def remove_api_key():
 
 
 def chat_cost_words(ledger, chat_id):
+    totals = ledger.totals()
+    if chat_id in totals.unpriced_all_time:
+        return spending_words(totals, chat_id)
     cost, held, unknown = ledger.chat_cost(chat_id)
+    unknown = unknown or chat_id in totals.priced_unknown_chats
     words = billing.cost_words(cost if cost or not unknown else None, complete=not unknown)
     return words if words == billing.COST_NOT_KNOWN else 'estimated ' + words
+
+
+def token_words(tokens, *, complete=True):
+    if tokens is None:
+        return 'tokens not reported'
+    count = tokens.get('inputTokens', 0) + tokens.get('outputTokens', 0)
+    return (f'used {count:,} tokens' if complete else
+            f'used at least {count:,} tokens; some tokens not reported')
+
+
+def token_details(tokens):
+    return (f"{token_words(tokens)} ({tokens.get('inputTokens', 0):,} input, "
+            f"{tokens.get('cachedInputTokens', 0):,} cached input, "
+            f"{tokens.get('cacheWriteInputTokens', 0):,} cache writes, "
+            f"{tokens.get('outputTokens', 0):,} output; reasoning included)")
+
+
+def spending_words(totals, chat_id=None, *, details=True):
+    book = totals.unpriced_all_time if chat_id else totals.unpriced_usage
+    tokens = book.get(chat_id) if chat_id else {
+        field: sum(row.get(field, 0) for row in book.values())
+        for field in ('inputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'outputTokens')}
+    cost = totals.chat_all_time.get(chat_id, 0) if chat_id else totals.spent
+    unpriced = chat_id in book if chat_id else bool(book)
+    unknown = bool(totals.problem) or (chat_id in totals.priced_unknown_chats if chat_id else bool(totals.priced_unknown_chats))
+    words = f'estimated priced spending ${cost:,.2f}'
+    if unknown:
+        words += '; priced cost not known'
+    if unpriced:
+        missing = totals.unpriced_missing_all_time if chat_id else totals.unpriced_missing
+        incomplete = chat_id in missing if chat_id else bool(missing)
+        described = token_details(tokens) if details else token_words(tokens)
+        if incomplete:
+            described = ('recorded ' + described.removeprefix('used ') + '; some tokens not reported'
+                       if tokens.get('inputTokens', 0) + tokens.get('outputTokens', 0) else 'tokens not reported')
+        if not cost:
+            words = 'cost unknown' + ('; priced cost not known' if unknown else '')
+            words += '; unpriced usage: ' + described
+        else:
+            words += ', plus unpriced usage: ' + described + ', cost unknown'
+    return words
+
+
+def status_words(totals):
+    """One compact button; Usage carries holds, uncertainty and counter details."""
+    if totals.problem:
+        return 'API: spending record needs attention'
+    cost = totals.spent
+    priced = (f'priced ${cost:,.2f}' if not totals.priced_unknown_chats
+              else 'priced cost not known')
+    if totals.unpriced_usage:
+        count = sum(row.get('inputTokens', 0) + row.get('outputTokens', 0)
+                    for row in totals.unpriced_usage.values())
+        tokens = (f'{count:,} unpriced tokens' if not totals.unpriced_missing else
+                  f'at least {count:,} unpriced tokens' if count else 'unpriced tokens not reported')
+        if not cost and not totals.priced_unknown_chats:
+            return f'API: cost unknown; {tokens}'
+        return f'API: {priced} + {tokens}'
+    return f'API: {priced}'
+
+
+def usage_lines(ledger, chat_id):
+    from .openai_prices import PRICE_DATE
+    from .billing import money
+    totals = ledger.totals()
+    return [f'OpenAI API credits: {spending_words(totals)}. Overall allowance {money(totals.limits.overall)}.',
+            f'This chat: {chat_cost_words(ledger, chat_id)}. Prices dated {PRICE_DATE}.',
+            f'Held {money(totals.held)}, including {money(totals.unpriced_allowance)} in unpriced allowances; remaining allowance {money(totals.left)}.',
+            'Priced limits are approximate; one request can pass a limit. Dollar limits cannot stop an unpriced message. Long-context models use conservative surcharge rates.']
+
+
+def release_question(totals):
+    return (f'Release ${totals.releasable:,.2f} held for messages no longer running? '
+            f'This includes ${totals.unpriced_releasable:,.2f} in unpriced allowances. '
+            'Their cost is unknown and may be more than the held amount. '
+            'Releasing gives these allowances back without removing token history.')
