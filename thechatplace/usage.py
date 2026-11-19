@@ -140,6 +140,18 @@ PLAN_LIMITS_NOT_FOR_API = ("This chat is on API credits, so your plan's usage li
                            "apply to it.")
 
 
+def api_credit_summary(totals) -> str:
+    """Usage's one line about API credits for a chat on the subscription:
+    most people never use them, so the whole section (``api_credit_lines``)
+    is kept for chats on API credits, and the plan's limits stay last."""
+    from .billing import money
+    if totals.problem:
+        return f"API credits: {totals.problem}"
+    spent = money(totals.spent) if totals.spent >= 0.00005 else "nothing"
+    return (f"API credits: {spent} spent since the total was reset, {money(totals.left)} left "
+            f"of your {money(totals.limits.overall)} limit. A chat on API credits lists more.")
+
+
 def api_credit_lines(totals, chat_names: Optional[dict] = None) -> List[str]:
     """Usage's API credits section (#658), one line each: today, the last 7
     days, since the total was reset, what's held for running messages, what's

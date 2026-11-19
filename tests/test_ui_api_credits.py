@@ -773,6 +773,20 @@ def test_usage_has_an_api_credits_section(frame, monkeypatch):
     assert lines[1] == usage.PLAN_LIMITS_NOT_FOR_API
     assert "API credits today: nothing" in lines
     assert "API credits left of your $20.00 limit: $20.00" in lines
+    # A chat on the subscription: one line about API credits, before the
+    # plan's limits, so the last line (End) is still a plan limit.
+    frame._limits = {"status": "allowed", "unifiedWindows": {
+        "five_hour": {"utilization": 0.08}, "seven_day": {"utilization": 0.34}}}
+    expected_plan = usage.limit_lines(frame._limits)
+    assert expected_plan[-1] == "Weekly limit 34% used."
+    open_chat(frame, "own-1")
+    frame.on_usage()
+    lines = shown[-1]
+    api = [line for line in lines if line.startswith("API credits")]
+    assert api == ["API credits: nothing spent since the total was reset, $20.00 left of "
+                   "your $20.00 limit. A chat on API credits lists more."]
+    assert lines[-len(expected_plan):] == expected_plan
+    assert lines.index(api[0]) == len(lines) - len(expected_plan) - 1
 
 
 def test_settings_show_the_api_credit_choices(frame):

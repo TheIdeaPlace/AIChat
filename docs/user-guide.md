@@ -370,6 +370,10 @@ job.
 
 ### You want to use API credits instead of your plan
 
+Tools, API Keys opens on **Provider**, whose choices say whether each has a key, for example
+"Claude (Anthropic), key added" and "Codex (OpenAI), no key". The rest of the dialog is about
+the provider chosen there.
+
 For **Codex**, open **Tools, API Keys** (Alt+T, P), choose **Codex (OpenAI)** under
 **Provider** (Alt+P), paste your OpenAI key into the masked box, and choose **Add Key**.
 **Test Key** checks it with a small paid request. Each provider has its own limits and total:
@@ -431,6 +435,10 @@ stops at what was left of it and says it was the overall limit. After that, noth
 on API credits until you raise the limit or reset the total in Tools, API Keys; your message
 stays in the reply box. If other chats' messages were holding part of the limit, you can send
 again once they finish.
+
+In a Claude chat on API credits, Usage and Context (Ctrl+Shift+U) ends with the API credits
+details. In a chat on your subscription, they're one line just before your plan's limits, which
+stay last.
 
 These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
 show everything charged to your account, including other apps using the same key, so their

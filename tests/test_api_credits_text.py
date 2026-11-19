@@ -105,6 +105,21 @@ def test_usage_lists_the_tally_by_model_and_by_chat_name(tmp_path):
     assert not any("chat-gone" in line or "chat-1" in line for line in lines)
 
 
+def test_a_subscription_chats_usage_has_one_api_credits_line(tmp_path):
+    ledger = spend_ledger.SpendLedger(tmp_path)
+    assert usage.api_credit_summary(ledger.totals()) == (
+        "API credits: nothing spent since the total was reset, $20.00 left of your $20.00 "
+        "limit. A chat on API credits lists more.")
+    one = ledger.reserve("chat-1")
+    ledger.settle(one, 1.25)
+    ledger.close(one, complete=True)
+    assert usage.api_credit_summary(ledger.totals()).startswith(
+        "API credits: $1.25 spent since the total was reset, $18.75 left")
+    (tmp_path / spend_ledger.LEDGER_FILE).write_text("not json\n", encoding="utf-8")
+    assert usage.api_credit_summary(ledger.totals()).startswith(
+        "API credits: The Chat Place's record of API spending is damaged")
+
+
 def test_a_chat_keeps_its_total_across_a_reset(tmp_path):
     ledger = spend_ledger.SpendLedger(tmp_path)
     one = ledger.reserve("chat-1")

@@ -174,10 +174,15 @@ STEPS = [
          expect=["New Session, Ctrl+N, File menu"]),
     Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Tools, API Keys (#658), by its access key. The probe's world has no key,
-    # so it opens on the key box, and Test Key and Remove Key are off: Tab
-    # goes past them, through every other control in turn, to Close.
-    Step("API Keys", ["alt+t", "p"], expect=["API Keys", "Claude API key"],
+    # Tools, API Keys (#658), by its access key. It opens on Provider, which
+    # says whether each provider has a key. The probe's world has no key, so
+    # Test Key and Remove Key are off: Tab goes past them, through every
+    # other control in turn, to Close.
+    Step("API Keys", ["alt+t", "p"],
+         expect=["API Keys", "Provider", "Claude (Anthropic), no key"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("API Keys, key status", ["Tab"], expect=["Key status", "Claude: No key"]),
+    Step("API Keys, key box", ["Tab"], expect=["Claude API key"],
          refuse=["unlabeled", "unlabelled"]),
     Step("API Keys, Add Key", ["Tab"], expect=["Add Key", "push button"]),
     Step("API Keys, test result", ["Tab"], expect=["Test result"],

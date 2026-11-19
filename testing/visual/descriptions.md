@@ -287,6 +287,8 @@ no Charge to row and the dialog is as before.
 
 **Since 2026-11-18, the limit boxes start at 20.00 and 2.00 for both providers** (they were 190.00 and 5.00 for Claude, 5.00 and 0.50 for OpenAI), so the amounts in the API Keys, OpenAI and Usage pictures below change too; the pictures will be updated in the next probe run.
 
+**Since #680 (2026-11-19), API Keys opens on Provider, and each choice says whether that provider has a key** ("Claude (Anthropic), no key", "Claude (Anthropic), key added", "Codex (OpenAI), no key"). In every API Keys picture the Provider dropdown has the focus (its dotted focus outline; in High Contrast the selected text is highlighted), and Test Key is no longer focused in api-keys-with-key. A VM screenshot at 100% shows the longer text fits the dropdown with room to spare. The probe couldn't be run for this change (the only free VM had no network to install Python), so the pictures will be retaken with the next API Keys change (#668). Usage on a chat on the subscription now has one "API credits: ..." line just before the plan's limits, instead of the full API credits section at the end.
+
 ## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
 
 The same dialog with "Codex (OpenAI)" chosen. The key box is labelled "OpenAI API key:", and Key status reads "OpenAI: No key" or "OpenAI: key ending in ...".
