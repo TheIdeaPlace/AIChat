@@ -1064,7 +1064,7 @@ class CodexChats(SoundHost, CodexExtras):
             if own is not None and data.get('sent') and (data.get('unpriced') or self.speech.api_say_cost):
                 from ..billing import cost_sentence
                 outcome = data.get('outcome')
-                verb = 'stopped' if outcome == 'interrupted' else 'failed' if outcome in ('failed', 'unknown', '') else 'replied'
+                verb = 'stopped' if data.get('stopping') or outcome == 'interrupted' else 'failed' if outcome in ('failed', 'unknown', '') else 'replied'
                 words = (f"{own.title} {verb}; {data.get('cost_words', 'tokens not reported, cost unknown')}."
                          if data.get('unpriced') else cost_sentence(data.get('cost_words', 'cost not known'), own.title))
                 self._speak_announcement(words,

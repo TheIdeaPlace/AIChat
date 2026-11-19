@@ -93,7 +93,7 @@ for line in sys.stdin:
             event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
             if scenario == 'duplicate':
                 event('thread/tokenUsage/updated', {'threadId': tid, 'turnId': turn, 'tokenUsage': usage})
-        if (scenario == 'delayed-stop' and t['count'] == 1) or scenario in ('hang', 'missing', 'malformed', 'unanswered-stop', 'cap') or (scenario == 'stop-once' and t['count'] == 1):
+        if (scenario == 'delayed-stop' and t['count'] == 1) or scenario in ('hang', 'missing', 'malformed', 'unanswered-stop', 'drop-stop', 'cap') or (scenario == 'stop-once' and t['count'] == 1):
             pending = (tid, turn)
             continue
         event('item/completed', {'threadId': tid, 'turnId': turn,
@@ -109,6 +109,8 @@ for line in sys.stdin:
     elif method == 'turn/steer':
         result = {'turnId': params['expectedTurnId']}
     elif method == 'turn/interrupt':
+        if scenario == 'drop-stop':
+            sys.exit(0)
         if scenario == 'unanswered-stop':
             continue
         tid, turn = params['threadId'], params['turnId']

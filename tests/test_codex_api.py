@@ -1138,3 +1138,74 @@ def test_expiry_update_keeps_running_and_records_only_new_unpriced_tokens(connec
     assert totals.spent == spent
     assert totals.unpriced_all_time[proof.record().to_info().key]['inputTokens'] == 1000
     assert totals.unpriced_all_time[proof.record().to_info().key]['outputTokens'] == 50
+    conn._receive({'method': 'turn/completed', 'params': {
+        'threadId': proof.native_id, 'turn': {'id': payment.turn_id, 'status': 'completed'}}})
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    report = next(e.data for e in events if e.kind == 'finished')
+    assert report['tokens']['inputTokens'] == 1000 and report['tokens']['outputTokens'] == 50
+    assert report['cost_words'] == 'price expired during the reply; used 1,050 tokens, cost unknown'
+
+
+@pytest.mark.parametrize('change', ['model', 'connection'])
+def test_real_api_provider_rejects_consent_selection_changed_during_dialog(connect, tmp_path, monkeypatch, change):
+    from dataclasses import replace
+    from thechatplace.providers.codex_api import CodexApiProvider
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path / 'app')
+    conn, events = connect()
+    provider = CodexApiProvider(ledger=conn.ledger, key_loader=lambda: FAKE)
+    provider.runtime._managed._factory = lambda exe: conn
+    try:
+        record = provider.runtime.create(str(tmp_path), 'Consent race', model='future-model')
+        model, connection = provider.api_billing_owned(record)
+        grant = (model, 'default', connection)
+        proof = provider.runtime._proofs[record.cli_session_id]
+        if change == 'model':
+            new = replace(proof, model='other-future', saved_model='other-future')
+            conn._accept_owned_thread(new)
+        else:
+            replacement, _ = connect()
+            new = CodexOwnedThreads(replacement).start(str(tmp_path), 'Replacement', model=model)
+            assert new.native_id == proof.native_id
+        with provider.runtime._lock:
+            provider.runtime._proofs[record.cli_session_id] = new
+        with pytest.raises(ApiCreditsRefused, match='model or connection changed'):
+            provider.api_billing_owned(record, grant)
+        assert not conn._unpriced_allowed and not new.connection._unpriced_allowed
+        selected = provider.api_billing_owned(record)
+        provider.api_billing_owned(record, (selected[0], 'default', selected[1]))
+        assert (new.native_id, new.model, 'default') in new.connection._unpriced_allowed
+        assert not events and conn.ledger.totals().held == 0
+    finally:
+        provider.close()
+
+
+def test_real_api_provider_priced_model_without_runtime_requires_reopen(tmp_path, monkeypatch):
+    from thechatplace.providers.codex_api import CodexApiProvider
+    monkeypatch.setattr(platform_paths, 'app_data_dir', lambda: tmp_path / 'app')
+    ledger = spend_ledger.SpendLedger(tmp_path / 'ledger')
+    provider = CodexApiProvider(ledger=ledger, key_loader=lambda: FAKE)
+    try:
+        record = OwnSession('unopened', 'Priced', str(tmp_path), provider='codex-api',
+                            billing='api', started=True, provider_options={'model': 'gpt-5-nano'})
+        with pytest.raises(CodexRpcError, match='Reopen this Codex chat'):
+            provider.api_billing_owned(record)
+        assert ledger.totals().held == 0
+    finally:
+        provider.close()
+
+
+@pytest.mark.parametrize('scenario', ['drop-stop', 'unanswered-stop'])
+def test_unpriced_disconnect_or_timeout_after_stop_keeps_stopping_flag(connect, tmp_path, scenario):
+    conn, events = connect(scenario)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Stop unknown', model='future-model')
+    conn.authorize_unpriced(proof.native_id, proof.model)
+    runner = CodexTurnExecutor(conn)
+    runner.start(proof, 'Synthetic prompt')
+    wait(lambda: conn._payments[proof.native_id].usage)
+    conn.STOP_TIMEOUT = .1
+    with pytest.raises(CodexRpcError):
+        runner.interrupt(proof)
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    report = next(e.data for e in events if e.kind == 'finished')
+    assert report['stopping'] is True and report['outcome'] == ''
+    assert 'at least' in report['cost_words'] and 'allowance kept' in report['cost_words']

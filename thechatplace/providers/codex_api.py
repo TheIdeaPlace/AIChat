@@ -598,7 +598,9 @@ class CodexApiConnection(CodexExecutionConnection):
             if not payment.reported or late:
                 payment.reported = True
                 self._emit_api('finished', tid, sent=payment.sent, cost_usd=payment.cost if payment.priced and payment.usage else None,
-                    unpriced=not payment.priced, tokens=payment.tokens, allowance=payment.reservation.amount,
+                    unpriced=not payment.priced,
+                    tokens=payment.tokens if payment.priced else self._unpriced_tokens(payment),
+                    allowance=payment.reservation.amount, stopping=payment.stopping,
                     turn_id=payment.turn_id, payment_id=(id(self), payment.ordinal),
                     outcome=payment.terminal,
                     cost_complete=complete, cost_upper_bound=upper_bound, price_date=PRICE_DATE,
@@ -623,7 +625,9 @@ class CodexApiConnection(CodexExecutionConnection):
             from ..openai_billing import token_words
             measured = (payment.usage and not payment.uncertain and not payment.inconsistent
                         and payment.terminal == 'completed')
-            return (token_words(payment.tokens, complete=measured) + ', cost unknown' if payment.tokens else
+            tokens = CodexApiConnection._unpriced_tokens(payment)
+            expired = 'price expired during the reply; ' if payment.priced_tokens is not None else ''
+            return expired + (token_words(tokens, complete=measured) + ', cost unknown' if tokens is not None else
                     'tokens not reported, cost unknown') + ('; allowance kept' if payment.stopping else '')
         if upper_bound:
             return 'estimated, at most ' + money(payment.cost)

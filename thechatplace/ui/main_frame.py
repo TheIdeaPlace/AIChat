@@ -2152,10 +2152,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return refusal
         if api:
             from ..openai_prices import is_priced
+            from ..providers.codex_rpc import CodexRpcError
+            from ..codex_diagnostics import safe_reason
             try:
                 model, connection = self.sessions.owned_action('api_billing', own)
-            except Exception:
-                return 'Wait for this API chat to be ready, then review its model before sending. Nothing was sent.'
+            except (CodexRpcError, ValueError) as exc:
+                return safe_reason(exc) or 'Reopen this API chat before sending. Nothing was sent.'
             tier = 'default'  # API lifecycle and turn boundaries pin this.
             binding = (model, tier, connection)
             if is_priced(model, tier):
@@ -2169,8 +2171,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     return ''
                 try:
                     self.sessions.owned_action('api_billing', own, binding)
-                except Exception:
-                    return 'The API model or connection changed. Review its price before sending. Nothing was sent.'
+                except (CodexRpcError, ValueError) as exc:
+                    return safe_reason(exc) or 'The API model or connection changed. Review its price before sending. Nothing was sent.'
                 self._unpriced_confirmed[session_id] = binding
                 # This mandatory question also answers the optional paid-send one.
                 self._api_confirm_pending.add(session_id)

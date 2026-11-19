@@ -8,7 +8,7 @@ from .codex_execution import CodexExecutionConnection, CodexTurnExecutor
 from .codex_owned import CodexOwnedThreads
 from .codex_policy import CodexPolicy
 from .codex_rpc import (CodexMessageTooLong, MAX_MESSAGE_CHARS, CodexRpcError, CodexTurnRejected, CodexConnectionFailure, CodexApprovalNotSent,
-                        CodexRememberedApprovalError, CodexSteerRefused, STOP_TO_RECONNECT)
+                        CodexRememberedApprovalError, CodexSteerRefused, CodexRuntimeProblem, STOP_TO_RECONNECT)
 from .codex_permissions import CodexPermissionStore, CodexReviewStore, candidate, matches
 from .codex_tokens import CodexTokenUsage
 from ..codex_diagnostics import record_failure, safe_reason
@@ -487,7 +487,7 @@ class CodexChatRuntime:
                 choice = next((m for m in models if m.model == checked.model), None)
                 if choice is None:
                     raise CodexRpcError('Codex model effort could not be verified')
-                checked = replace(checked, effort=choice.default_effort)
+                checked = replace(checked, effort=choice.default_effort or None)
             updated = replace(proof, cwd=checked.cwd, policy=checked.policy,
                               model=checked.model, effort=checked.effort, saved_effort=checked.saved_effort,
                               saved_model=checked.saved_model,
@@ -781,7 +781,7 @@ class CodexChatRuntime:
             reopening = record.cli_session_id in self._reopening
             problem = self._problems.get(record.cli_session_id)
         if problem and not allow_problem:
-            raise CodexRpcError(problem)
+            raise CodexRuntimeProblem(problem)
         if (record.provider != self.provider_id or proof is None or executor is None
                 or (reopening and not allow_reopening) or not proof.connection.owns_runtime(proof)):
             raise CodexRpcError('Reopen this Codex chat before sending')
