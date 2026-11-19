@@ -295,7 +295,7 @@ def test_paid_application_key_test(native, tmp_path, key, monkeypatch):
 
 
 class Listener:
-    def __init__(self, cut=False):
+    def __init__(self, cut=False, completion_tier=None):
         self.requests = []
         self.service_tiers = []
         owner = self
@@ -306,6 +306,30 @@ class Listener:
                 if payload and self.path.endswith('/responses'):
                     owner.service_tiers.append(json.loads(payload).get('service_tier'))
                 owner.requests.append((self.command, self.path, self.headers.get('Authorization') == 'Bearer '+FAKE))
+                if completion_tier is not None and self.path.endswith('/responses'):
+                    item = {'id': 'synthetic-item', 'type': 'message', 'role': 'assistant',
+                            'status': 'completed', 'content': [{'type': 'output_text', 'text': 'OK.'}]}
+                    response = {'id': 'synthetic-response', 'status': 'completed',
+                        'service_tier': completion_tier, 'output': [item],
+                        'usage': {'input_tokens': 100, 'output_tokens': 2, 'total_tokens': 102,
+                                  'input_tokens_details': {'cached_tokens': 0},
+                                  'output_tokens_details': {'reasoning_tokens': 0}}}
+                    events = [
+                        {'type': 'response.created', 'response': {'id': response['id'], 'status': 'in_progress'}},
+                        {'type': 'response.output_item.added', 'output_index': 0, 'item': {**item, 'content': []}},
+                        {'type': 'response.output_text.delta', 'item_id': item['id'], 'output_index': 0,
+                         'content_index': 0, 'delta': 'OK.'},
+                        {'type': 'response.output_item.done', 'output_index': 0, 'item': item},
+                        {'type': 'response.completed', 'response': response}]
+                    body = ''.join('event: '+e['type']+'\ndata: '+json.dumps(e)+'\n\n' for e in events).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/event-stream')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.send_header('Connection', 'close')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    self.close_connection = True
+                    return
                 if cut:
                     import socket
                     self.send_response(200)
@@ -541,6 +565,49 @@ def test_standard_service_tier_on_native_wire(native, tmp_path, thread_tier, tur
         # Keep this observable limitation covered, rather than claim a wire pin.
         assert listener.service_tiers == [None]
         print('Native Responses service_tier omitted; thread='+thread_tier+'; turn='+str(turn_tier)+'; no paid request.')
+    finally:
+        conn.close()
+        listener.close()
+
+
+@pytest.mark.skipif(not FREE, reason='Free native completion-tier capture is opt-in')
+def test_native_completion_does_not_expose_actual_service_tier(native, tmp_path):
+    """The upstream reports Priority; check whether app-server forwards it."""
+    listener = Listener(completion_tier='priority')
+    notifications = []
+    class Control(ReadOnlyCodexConnection):
+        billing_route = 'api'
+        METHODS = ReadOnlyCodexConnection.METHODS | {'account/login/start', 'thread/start', 'turn/start'}
+        def _verify_turn_route(self, params):
+            pass
+        def _receive(self, message):
+            if 'method' in message:
+                notifications.append(message)
+            super()._receive(message)
+    home = tmp_path / 'completion-tier-home'
+    home.mkdir()
+    def start(exe):
+        tree = platform_paths.ProcessTree()
+        env = platform_paths.codex_child_environment()
+        env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+        process = subprocess.Popen([native, 'app-server', '--listen', 'stdio://',
+            '-c', 'cli_auth_credentials_store="ephemeral"', '-c', 'forced_login_method="api"',
+            '-c', 'openai_base_url='+json.dumps(listener.url)], env=env, cwd=home,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+        tree.attach(process)
+        return platform_paths.CodexServerProcess(process, tree)
+    conn = Control(start=start)
+    try:
+        conn.request('account/login/start', {'type': 'apiKey', 'apiKey': FAKE})
+        tid = conn.request('thread/start', {'cwd': str(tmp_path), 'model': 'gpt-5-nano',
+            'approvalPolicy': 'never', 'sandbox': 'read-only', 'experimentalRawEvents': True})['thread']['id']
+        conn.request('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': 'Reply OK.'}]})
+        wait(lambda: any(n['method'] == 'turn/completed' for n in notifications), timeout=20)
+        relevant = [n for n in notifications if n['method'] in ('thread/tokenUsage/updated', 'turn/completed', 'turn/started')
+                    or 'response' in n['method'].lower()]
+        assert any(n['method'] == 'thread/tokenUsage/updated' for n in relevant)
+        assert 'serviceTier' not in json.dumps(relevant) and 'service_tier' not in json.dumps(relevant)
+        print('Upstream Priority tier not forwarded; observed events: '+', '.join(sorted({n['method'] for n in relevant})))
     finally:
         conn.close()
         listener.close()

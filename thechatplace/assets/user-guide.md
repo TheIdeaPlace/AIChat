@@ -393,10 +393,8 @@ gpt-6.1-sol. Other models say **price unknown**. Availability depends on your Op
 Ultra effort is not offered on API credits.
 
 Every priced OpenAI cost says **estimated**, using prices checked November 19, 2026.
-Standard service is selected at thread and turn boundaries, but Codex 0.163 omits
-the explicit tier from its API request. Project settings can therefore choose another rate.
-Standard billing is an unresolved release blocker. Reasoning is included in output, and
-cache writes are counted
+Codex costs assume OpenAI's standard pricing. If your OpenAI project is set to use Priority processing, Codex chats cost more than The Chat Place estimates.
+Reasoning is included in output, and cache writes are counted
 where reported. Long-context models use conservative surcharge rates: twice input and cache,
 one and a half times output, because cumulative counters cannot prove the request's band.
 Each model uses its own maximum input and output. GPT-5.6 Sol's promotional price expires

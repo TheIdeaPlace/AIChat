@@ -208,14 +208,21 @@ Subscription-to-API continuation stores quoted history in `api_context`; no turn
 until the user sends a message. Failed or cancelled sends restore only user text. Native
 attachment parts survive the prefix. The writer event clears the deferred context.
 
-Service-tier verification remains a release blocker on Codex 0.163.0. A free native
-CLI test with a fake key and a local synthetic endpoint confirms that Responses omits
-`service_tier` despite explicit thread/turn/config `default`. Versioned native source
-`ModelInfo::service_tier_for_request` deliberately filters it out. Omission means API
-`auto`, which can inherit a project's tier; our thread setting alone cannot guarantee
-standard billing. Do not treat the synthetic boundary test as upstream response proof.
-No paid check can establish that guarantee for every project. See
-[the review evidence](dev-notes/codex-more-models-review.md) before shipping this backend.
+Codex estimates assume OpenAI's standard pricing. Standard intent stays selected at
+thread and turn boundaries, but CLI 0.163 omits the explicit standard tier from its
+Responses request. The API defaults to `auto`: the Project's configured tier, normally
+`default`. Kelly's decision is to keep API-credit sends enabled and document that
+Priority projects cost more than the app estimates. There is no send block.
+
+The free native completion fixture supplies upstream `service_tier: priority`, then
+checks usage, turn and raw-response events. CLI 0.163 does not forward that actual tier,
+even with `experimentalRawEvents`; its generated usage/turn schemas have no actual-tier
+field. Raw response usage metadata is opaque and is not evidence of a tier without an
+explicit service-provided value. Consequently the current adapter cannot convert a
+message to unpriced mode on an unreported tier. If a future app-server exposes an actual
+nonstandard tier, mark that message price unknown, announce it and retain its allowance;
+do not confuse the requested/configured tier with the tier actually used. See
+[the review evidence](dev-notes/codex-more-models-review.md).
 
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,

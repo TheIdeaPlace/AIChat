@@ -486,11 +486,9 @@ API credits.
   gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and gpt-6.1-sol.
   Other models advertised by Codex's API-key home say **price unknown** in the model list.
   Model availability still depends on your OpenAI account. Ultra effort is not offered on API credits.
+- **Codex costs assume OpenAI's standard pricing.** If your OpenAI project is set to use Priority processing, Codex chats cost more than The Chat Place estimates.
 - **Prices are estimates**, from token counts and the table checked November 19, 2026.
-  Standard service is selected at thread and turn boundaries, but Codex 0.163 omits
-  the explicit tier from its API request. Project settings can therefore choose another rate.
-  Standard billing is an unresolved release blocker. Cache writes are counted where reported;
-  reasoning is included
+  Cache writes are counted where reported; reasoning is included
   in output. Long-context models use conservative surcharge rates (twice input and cache,
   one and a half times output), because cumulative counters cannot prove the request's band.
   Each model uses its own maximum input and output limits. GPT-5.6 Sol's promotional price

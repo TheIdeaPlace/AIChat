@@ -21,7 +21,7 @@ Sol's promotion says "until November 30, 2026", without a time or zone. The cuto
 at November 29, 10:00 UTC is our conservative inference: the earliest start of
 November 30 anywhere (UTC+14). It is not a published precise deadline.
 
-## Native service tier remains unresolved (review item 15)
+## Accepted standard-pricing assumption (review item 15)
 
 Codex CLI 0.163.0 was run against a local synthetic Responses endpoint using a
 made-up key and isolated temporary homes. Both explicit standard on the thread
@@ -35,14 +35,22 @@ both lifecycle and turn configuration. The app-server's accepted settings cannot
 prove a wire-level standard pin. The [Responses API definition](https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_create_params.py)
 says omission defaults to `auto`, which can use the project's configured tier.
 
-Our standard settings and refusal of explicit Priority remain in place, but are
-not a guarantee for all OpenAI projects. A paid nano response saying `default`
-would only establish the current project's behavior; it would not fix this gap.
-A temporary refusal of all API-credit sends was proposed, but automatic approval
-review rejected that consequential availability change without explicit user approval.
-That decision is pending; the refusal has not been applied. Current sends remain enabled.
-Shipping needs an upstream Codex fix exposing an explicit standard wire value,
-or a separately reviewed transport change. Do not claim item 15 is fixed.
+The [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
+specifies that `auto` follows Project settings, normally `default`. Kelly decided to
+keep sends enabled, document the standard-pricing assumption, and warn that Priority
+projects cost more than estimated. No send block was applied or remains pending.
+
+A second free native fixture supplies a synthetic upstream completion with
+`service_tier: priority`. It receives `rawResponse/completed`,
+`rawResponseItem/completed`, `thread/tokenUsage/updated`, `turn/started` and
+`turn/completed`; none forwards the actual tier, even with `experimentalRawEvents`.
+Generated CLI 0.163 usage and turn schemas likewise expose no actual-tier field;
+raw response usage metadata is arbitrary, rather than a defined service-tier field.
+The check establishes what this fixture reports, not what every possible opaque
+metadata payload could contain. The current adapter cannot switch to unknown cost
+based on information it does not receive. Future actual nonstandard-tier reporting
+must mark the message price unknown, say so, and retain the allowance. A configured
+or requested tier is not the tier actually used.
 
 ## Other review findings
 
@@ -63,10 +71,27 @@ or a separately reviewed transport change. Do not claim item 15 is fixed.
 
 ## Validation
 
-391 affected windowless regression tests passed. The free real-CLI suite passed four
-checks and skipped seven paid checks; this review spent $0. Window tests and probe/Orca runs
+After the PR 686 fixes, 412 affected windowless regression tests passed. The free
+real-CLI suite passed five checks and skipped seven paid checks; this review spent $0. Window tests and probe/Orca runs
 were not run on Kelly's PC. The new paths are in the existing CI/probe surfaces:
 `openai-unpriced-confirm`, `openai-keys-held`, `openai-properties`, `openai-usage`,
 and `main-openai-unpriced`. In the confirmation, listen for the warning, Tab to
 Cancel, Tab to Send on API credits, Shift+Tab back to Cancel, and Escape. Reopen
 and press Enter on the warning: it must cancel and keep the message.
+
+
+## PR 686 CI fixes
+
+Read the first-push Windows/Linux failures. All three `UnpricedApiDialog` sizer
+borders now use integer `dip_width`; Cancel-before-Send creation order and Orca
+steps agree. The guide's emphasized example no longer spans a source newline,
+which the single-line plain-text emphasis converter did not strip. The status
+button now uses a compact total from the real ledger; token details and holds
+remain in Usage and API Keys. CI's first-push long button expanded until other
+status parts overlapped; no known-layout exception was added.
+
+The guide, rendering and billing text checks passed 43 tests; the full affected
+windowless suite then passed 412. Free native checks passed five, with seven paid
+checks skipped. Changed modules compiled without importing wx. Independent review
+found no remaining issues. Window/layout/Orca checks await CI; they were not run on
+Kelly's PC. No paid check or real key was needed.
