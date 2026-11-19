@@ -387,6 +387,21 @@ def test_cap_trips_stop_and_over_ceiling_reservation_stays_held(connect, tmp_pat
     wait(lambda: any(e.kind == 'finished' for e in events))
     assert conn.ledger.totals().spent == pytest.approx(.061)
     assert not next(e for e in events if e.kind == 'finished').data['cost_complete']
+    limit = next(e for e in events if e.kind == 'api_error')
+    assert limit.data['failure'] == 'message_limit' and limit.data['overall'] is False
+
+
+def test_cap_at_what_is_left_of_the_overall_limit_says_so(connect, tmp_path):
+    # Only a cent overall, under 2 cents a message: the overall limit stopped
+    # it, and the connection says so for the window to name it.
+    conn, events = connect('cap')
+    conn.ledger.set_limits(.01, .02)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Cap', model='gpt-5-nano')
+    CodexTurnExecutor(conn).start(proof, 'Exceeds one cent')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    limit = next(e for e in events if e.kind == 'api_error')
+    assert limit.data['failure'] == 'message_limit'
+    assert limit.data['overall'] is True and limit.data['others_held'] is False
 
 
 def test_hyphenated_text_and_protocol_paths_are_not_scrubbed(connect, tmp_path):

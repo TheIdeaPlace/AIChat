@@ -382,7 +382,9 @@ class CodexApiConnection(CodexExecutionConnection):
                             self._adjust_successors(tid, payment)
                         self._finish_payment(tid, payment, late=True)
                     if not archived and payment.cost >= payment.reservation.amount and not payment.stopping:
-                        self._emit_api('api_error', tid, failure='message_limit', limit=payment.reservation.amount)
+                        self._emit_api('api_error', tid, failure='message_limit', limit=payment.reservation.amount,
+                                       overall=payment.reservation.overall_cap,
+                                       others_held=payment.reservation.others_held)
                     if not archived and (payment.cost >= payment.reservation.amount or payment.inconsistent):
                         self._interrupt_payment(tid, payment, turn_id)
                 elif method == 'model/rerouted':

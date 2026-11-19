@@ -180,6 +180,15 @@ class Reservation:
     amount: float
     chat_id: str = ""
     purpose: str = "turn"
+    #: This reservation takes what's left of the overall limit (all but less
+    #: than a cent of it): a message stopped at it ran out of the overall
+    #: limit, and is told so rather than blaming the per-message one. When the
+    #: two limits meet, the overall one is the true answer, as nothing more
+    #: could be sent afterwards.
+    overall_cap: bool = False
+    #: Other messages were holding some of the overall limit when this was
+    #: reserved, so with overall_cap, some may come free when they finish.
+    others_held: bool = False
 
 
 @dataclass
@@ -891,7 +900,9 @@ class SpendLedger:
                                    "so this message wasn't sent. Nothing was sent. Raise it in "
                                    "Tools, API Keys.")
             reservation = Reservation(str(uuid.uuid4()), amount, chat_id or "",
-                                      purpose if purpose in PURPOSES else "turn")
+                                      purpose if purpose in PURPOSES else "turn",
+                                      overall_cap=totals.left - amount < MIN_RESERVATION,
+                                      others_held=totals.held > 0)
             try:
                 self._append({"type": "reserve", "id": reservation.id, "amount": amount,
                               "chat": reservation.chat_id, "purpose": reservation.purpose,

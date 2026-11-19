@@ -425,6 +425,17 @@ key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Co
 available in Claude API chats. Copilot chats cannot use API credits. Older releases of
 The Chat Place don't list chats on API credits.
 
+**When a limit is reached**, for Claude and Codex alike: a message that reaches the per-message
+limit stops and says so, and you can send another. Once the overall limit is used up, a message
+stops at what was left of it and says it was the overall limit. After that, nothing is sent
+on API credits until you raise the limit or reset the total in Tools, API Keys; your message
+stays in the reply box. If other chats' messages were holding part of the limit, you can send
+again once they finish.
+
+These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
+show everything charged to your account, including other apps using the same key, so their
+totals can be higher.
+
 ### You want several chats or agents working at once
 
 - **Several jobs:** start another chat with **Ctrl+N** and leave the first working. You hear when each

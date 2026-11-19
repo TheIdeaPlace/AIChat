@@ -1057,8 +1057,11 @@ class CodexChats(SoundHost, CodexExtras):
         elif event.kind == 'api_error':
             own = self._api_own(key)
             name = own.title if own else 'Codex'
+            from ..billing import overall_limit_text
             reason = ('OpenAI refused your key. Replace it in Tools, API Keys.'
                       if data.get('failure') == 'key_refused' else
+                      overall_limit_text('OpenAI', data.get('limit'), bool(data.get('others_held')))
+                      if data.get('failure') == 'message_limit' and data.get('overall') else
                       'The approximate per-message API-credit limit was reached. You can send again, or change the limit in Tools, API Keys.'
                       if data.get('failure') == 'message_limit' else
                       "OpenAI is still stopping this chat. Its unknown cost stays held. Other chats can continue; wait for this chat to finish before sending again."

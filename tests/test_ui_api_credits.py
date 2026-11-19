@@ -1080,6 +1080,18 @@ def test_codex_cost_and_failure_are_spoken_with_announcements_off(frame, env, fo
     assert (env['feedback'][-1], record.to_info().key) in env['about']
     frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={'failure': 'connection_dropped'}))
     assert "OpenAI's connection dropped" in env['feedback'][-1]
+    # Stopped at what was left of the overall limit, the overall limit is
+    # named, not the per-message one.
+    frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={
+        'failure': 'message_limit', 'limit': 0.5, 'overall': True}))
+    assert 'overall limit for OpenAI API credits ran out' in env['feedback'][-1]
+    assert '50 cents of it was left' in env['feedback'][-1]
+    frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={
+        'failure': 'message_limit', 'limit': 0.5, 'overall': True, 'others_held': True}))
+    assert 'Send again once they finish' in env['feedback'][-1]
+    frame._on_codex_api_event(TurnEvent('api_error', session_id='cost-api', data={
+        'failure': 'message_limit', 'limit': 2.0, 'overall': False}))
+    assert 'per-message API-credit limit was reached' in env['feedback'][-1]
     frame.speech.api_say_cost = False
     before = list(env['feedback'])
     frame._on_codex_api_event(TurnEvent('finished', session_id='cost-api', data={'sent': True, 'cost_words': 'estimated 3 cents'}))

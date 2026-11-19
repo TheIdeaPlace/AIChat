@@ -2109,7 +2109,9 @@ class TurnRunner:
                 self.ledger.settle(self.reservation, added, by_model)
         if event.is_error:
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
-                                 self.reservation.amount if self.reservation else None)
+                                 self.reservation.amount if self.reservation else None,
+                                 bool(self.reservation and self.reservation.overall_cap),
+                                 bool(self.reservation and self.reservation.others_held))
             if plain:
                 event.text = plain
 
@@ -2173,7 +2175,9 @@ class TurnRunner:
                       "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()}}
         if event.is_error and event.kind == "failed":
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
-                                 self.reservation.amount if self.reservation else None)
+                                 self.reservation.amount if self.reservation else None,
+                                 bool(self.reservation and self.reservation.overall_cap),
+                                 bool(self.reservation and self.reservation.others_held))
             if plain:
                 event.text = plain
 
