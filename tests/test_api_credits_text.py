@@ -70,6 +70,36 @@ def test_the_row_says_api_credits_after_the_name():
     assert not OwnSession("c-1", "Codex", "C:\\G", provider="codex").to_info().api_credits
 
 
+def test_the_charged_to_column_says_how_each_own_chat_is_paid_for():
+    from thechatplace.sessions import DEFAULT_FIELDS, FIELD_CHARGED, OPTIONAL_FIELDS
+    # Not shown until added, so rows stay as they were for everyone else.
+    assert FIELD_CHARGED in OPTIONAL_FIELDS and FIELD_CHARGED not in DEFAULT_FIELDS
+    cases = [
+        (OwnSession("a-1", "Budget", "C:\\G", billing="api"), "Claude API credits"),
+        (OwnSession("s-1", "Budget", "C:\\G"), "Claude subscription"),
+        (OwnSession("c-1", "Budget", "C:\\G", provider="codex"), "ChatGPT subscription"),
+        (OwnSession("o-1", "Budget", "C:\\G", provider="codex-api", billing="api"),
+         "OpenAI API credits"),
+        (OwnSession("p-1", "Budget", "C:\\G", provider="copilot"), "Copilot plan"),
+    ]
+    for own, said in cases:
+        info = own.to_info()
+        assert info.charged_to == said
+        line = info.list_line(0, ["title", "charged", "status"])
+        assert line.startswith(f"Budget, {said}"), line
+        # Shown in its column, so not said again after the name.
+        assert line.count("API credits") <= 1
+
+
+def test_charged_to_says_nothing_for_sessions_the_app_didnt_start():
+    from thechatplace.sessions import DESKTOP, TERMINAL, SessionInfo
+    for source in (DESKTOP, TERMINAL):
+        info = SessionInfo(source=source, key="d", title="Desk", cwd="C:\\G",
+                           cli_session_id="d")
+        assert info.charged_to == ""
+        assert info.list_line(0, ["title", "charged"]) == "Desk"
+
+
 def test_properties_say_how_a_chat_is_charged_and_what_it_spent():
     api = OwnSession("a-1", "Budget", "C:\\G\\Repo", billing="api")
     lines = properties.session_properties(api.to_info(), own=api, now_ms=0, api_spent=0.4234)

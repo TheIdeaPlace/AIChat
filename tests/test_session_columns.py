@@ -53,8 +53,11 @@ def test_cowork_and_chat_place_kind_is_one_column():
 
 
 def test_every_column_has_a_name_and_a_short_name():
-    # Provider and Kind are regular defaults; Started and Last message are optional.
-    assert FIELD_IDS == DEFAULT_FIELDS + ["started", "last_message"]
+    # Provider and Kind are regular defaults; Started, Last message and
+    # Charged to (listed next to Provider) are optional.
+    assert [f for f in FIELD_IDS if f not in ("started", "last_message", "charged")] == DEFAULT_FIELDS
+    assert FIELD_IDS.index("charged") == FIELD_IDS.index("provider") + 1
+    assert field_short_name("charged") == "Charged to"
     assert len(set(FIELD_IDS)) == len(FIELDS)
     assert field_short_name("last_message") == "Last message"
     assert field_short_name("status") == "Status"

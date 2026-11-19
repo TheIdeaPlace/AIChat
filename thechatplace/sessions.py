@@ -171,6 +171,23 @@ class SessionInfo:
         return self.source == OWN
 
     @property
+    def charged_to(self) -> str:
+        """What the Charged to column says: how one of The Chat Place's own
+        chats is paid for, "" for any other session, whose charging can't be
+        known for sure (a terminal Claude Code may be on an API key)."""
+        if not self.is_own:
+            return ""
+        if self.provider == "codex-api":
+            return "OpenAI API credits"
+        if self.provider == "claude":
+            return "Claude API credits" if self.api_credits else "Claude subscription"
+        if self.provider == "codex":
+            return "ChatGPT subscription"
+        if self.provider == "copilot":
+            return "Copilot plan"
+        return ""
+
+    @property
     def is_terminal(self) -> bool:
         return self.source == TERMINAL
 
@@ -246,9 +263,15 @@ class SessionInfo:
         if (self.provider in LISTED_PROVIDERS and self.state == STATUS_UNAVAILABLE
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
+        # A chat on API credits always says so (#658): in Charged to when
+        # that's shown, otherwise after its name, or first with no Title.
+        if self.api_credits and FIELD_CHARGED not in order:
+            if FIELD_TITLE in order:
+                values[FIELD_TITLE] += ", API credits"
+            else:
+                order = [FIELD_CHARGED] + order
+                values[FIELD_CHARGED] = "API credits"
         parts = [values[f] for f in order if values.get(f)]
-        if self.api_credits and FIELD_TITLE not in order:
-            parts.insert(0, "API credits")  # said whatever the columns (#658)
         return ", ".join(parts) or values[FIELD_TITLE]
 
     def field_values(self, now_ms: Optional[int] = None) -> Dict[str, str]:
@@ -259,10 +282,9 @@ class SessionInfo:
             groups = (("group " if len(self.groups) == 1 else "groups ")
                       + ", ".join(self.groups))
         return {
-            # A chat on API credits says so after its name (#658).
-            FIELD_TITLE: (self.title or "Untitled session")
-            + (", API credits" if self.api_credits else ""),
+            FIELD_TITLE: self.title or "Untitled session",
             FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
+            FIELD_CHARGED: self.charged_to,
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
@@ -284,6 +306,7 @@ class SessionInfo:
 #: what order. The ids are saved in settings.json; never rename one.
 FIELD_TITLE = "title"
 FIELD_PROVIDER = "provider"
+FIELD_CHARGED = "charged"
 FIELD_FOLDER = "folder"
 FIELD_STATUS = "status"
 FIELD_NEW_REPLY = "new_reply"
@@ -298,6 +321,7 @@ FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
     (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
+    (FIELD_CHARGED, "Charged to (subscription or API credits)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -315,7 +339,9 @@ FIELD_NAMES = dict(FIELDS)
 #: Columns there are but rows don't read until you add them: Last message
 #: (#146) reads each session's transcript, and makes every row long; Started
 #: (#209) is there for those who want it, not news for everyone.
-OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
+#: Charged to (#658 feedback) is there for those on API credits; a chat on
+#: API credits says so after its name without it.
+OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE, FIELD_CHARGED)
 #: The columns rows read unless you choose otherwise, in the order they
 #: are read. Provider is added once to older saved choices by SpeechSettings;
 #: users can subsequently remove it like any other column.
