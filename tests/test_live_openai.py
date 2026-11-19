@@ -297,11 +297,14 @@ def test_paid_application_key_test(native, tmp_path, key, monkeypatch):
 class Listener:
     def __init__(self, cut=False):
         self.requests = []
+        self.service_tiers = []
         owner = self
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
             def do_GET(self):
-                self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                if payload and self.path.endswith('/responses'):
+                    owner.service_tiers.append(json.loads(payload).get('service_tier'))
                 owner.requests.append((self.command, self.path, self.headers.get('Authorization') == 'Bearer '+FAKE))
                 if cut:
                     import socket
@@ -481,6 +484,7 @@ def test_paid_unpriced_luna_uses_tokens_and_keeps_allowance(native, tmp_path, ke
             omission.delitem(openai_prices.PRICES, 'gpt-6-luna')
             proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Unpriced live check',
                                                 model='gpt-6-luna', effort='low')
+            conn.authorize_unpriced(proof.native_id, proof.model)
             runner = CodexTurnExecutor(conn)
             runner.start(proof, 'No tools. Reply OK.')
             state, report = finished(conn, runner, proof, events)
@@ -497,3 +501,46 @@ def test_paid_unpriced_luna_uses_tokens_and_keeps_allowance(native, tmp_path, ke
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
+
+
+@pytest.mark.skipif(not FREE, reason='Free native CLI service-tier verification is opt-in')
+@pytest.mark.parametrize('thread_tier,turn_tier', [('default', None), ('priority', 'default')])
+def test_standard_service_tier_on_native_wire(native, tmp_path, thread_tier, turn_tier):
+    """Inspect the real CLI's Responses request with a fake key, without spending."""
+    listener = Listener()
+    class Control(ReadOnlyCodexConnection):
+        billing_route = 'api'
+        METHODS = ReadOnlyCodexConnection.METHODS | {'account/login/start', 'thread/start', 'turn/start'}
+        def _verify_turn_route(self, params):
+            pass
+    home = tmp_path / 'isolated-tier-home'
+    home.mkdir()
+    (home / 'config.toml').write_text('openai_base_url='+json.dumps(listener.url)+'\n[features]\nfast_mode=true\n', encoding='utf-8')
+    def start(exe):
+        tree = platform_paths.ProcessTree()
+        env = platform_paths.codex_child_environment()
+        env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+        process = subprocess.Popen([native, 'app-server', '--listen', 'stdio://',
+            '-c', 'cli_auth_credentials_store="ephemeral"', '-c', 'forced_login_method="api"',
+            '-c', 'features.fast_mode=true', '-c', 'service_tier="default"'],
+            env=env, cwd=home, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+        tree.attach(process)
+        return platform_paths.CodexServerProcess(process, tree)
+    conn = Control(start=start)
+    try:
+        conn.request('account/login/start', {'type': 'apiKey', 'apiKey': FAKE})
+        tid = conn.request('thread/start', {'cwd': str(tmp_path), 'model': 'gpt-5-nano',
+            'serviceTier': thread_tier, 'approvalPolicy': 'never', 'sandbox': 'read-only'})['thread']['id']
+        params = {'threadId': tid, 'input': [{'type': 'text', 'text': 'Reply OK.'}]}
+        if turn_tier:
+            params['serviceTier'] = turn_tier
+        conn.request('turn/start', params)
+        wait(lambda: listener.service_tiers, timeout=15)
+        # 0.163 deliberately strips explicit default at the model request layer.
+        # Keep this observable limitation covered, rather than claim a wire pin.
+        assert listener.service_tiers == [None]
+        print('Native Responses service_tier omitted; thread='+thread_tier+'; turn='+str(turn_tier)+'; no paid request.')
+    finally:
+        conn.close()
+        listener.close()
