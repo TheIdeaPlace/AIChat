@@ -442,7 +442,8 @@ stay last.
 
 These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
 show everything charged to your account, including other apps using the same key, so their
-totals can be higher.
+totals can be higher. To see The Chat Place's spending there too, make a key just for it: both
+let you create several keys and show spending for each.
 
 ### You want several chats or agents working at once
 

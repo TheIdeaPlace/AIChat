@@ -592,7 +592,8 @@ question, cost setting and API-credit labels also apply to Codex:
   credits" or "Claude subscription", and for API credits what the chat has spent. These totals
   count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
   everything charged to your account, including other apps using the same key, so theirs can
-  be higher.
+  be higher. To see The Chat Place's spending there too, make a key just for it: both let you
+  create several keys and show spending for each.
 
 ### Going back: Retry from Here and Branch from Here
 
