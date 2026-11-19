@@ -60,22 +60,24 @@ def test_a_reply_says_its_cost_before_the_reply():
     assert announce.cost_after("") == ""
 
 
-def test_the_row_says_api_credits_after_the_name():
+def test_the_default_row_says_api_credits_in_charged_to_not_the_title():
+    # Kelly on bld07: one kind of information per column, no if-then rules.
     api = OwnSession("a-1", "Budget", "C:\\G\\Repo", billing="api").to_info()
     plain = OwnSession("s-1", "Budget", "C:\\G\\Repo").to_info()
     assert api.api_credits and not plain.api_credits
-    assert api.list_line(0, ["title", "status"]).startswith("Budget, API credits, ")
-    assert "API credits" not in plain.list_line(0, ["title", "status"])
-    # Said even with the Title column turned off.
-    assert api.list_line(0, ["status"]).startswith("API credits, ")
+    assert api.list_line(0).startswith("Budget, Claude, Claude API credits, Repo, ")
+    assert plain.list_line(0).startswith("Budget, Claude, Claude subscription, Repo, ")
+    assert api.field_values(0)["title"] == "Budget"
+    # Only Charged to says it: with that column removed, nothing does.
+    assert "API credits" not in api.list_line(0, ["title", "status"])
     # A Codex chat is never on API credits.
     assert not OwnSession("c-1", "Codex", "C:\\G", provider="codex").to_info().api_credits
 
 
 def test_the_charged_to_column_says_how_each_own_chat_is_paid_for():
-    from thechatplace.sessions import DEFAULT_FIELDS, FIELD_CHARGED, OPTIONAL_FIELDS
-    # Not shown until added, so rows stay as they were for everyone else.
-    assert FIELD_CHARGED in OPTIONAL_FIELDS and FIELD_CHARGED not in DEFAULT_FIELDS
+    from thechatplace.sessions import DEFAULT_FIELDS, FIELD_CHARGED, FIELD_PROVIDER
+    # Shown at first, just after Provider.
+    assert DEFAULT_FIELDS.index(FIELD_CHARGED) == DEFAULT_FIELDS.index(FIELD_PROVIDER) + 1
     cases = [
         (OwnSession("a-1", "Budget", "C:\\G", billing="api"), "Claude API credits"),
         (OwnSession("s-1", "Budget", "C:\\G"), "Claude subscription"),
@@ -93,8 +95,7 @@ def test_the_charged_to_column_says_how_each_own_chat_is_paid_for():
         assert line.count("API credits") <= 1
 
 
-@pytest.mark.parametrize("fields", [["title", "charged", "status"], ["charged", "status"],
-                                    ["title", "status"], ["status"]])
+@pytest.mark.parametrize("fields", [["title", "charged", "status"], ["charged", "status"], None])
 def test_a_row_on_api_credits_always_says_so_kept_or_not_owned(fields):
     # Review of the Charged to column: a kept row of an API chat, and a
     # Codex row on API credits that no record of ours covers, must still say
