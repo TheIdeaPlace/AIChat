@@ -481,16 +481,37 @@ API credits.
   about $2 per message until you change them. Save limits before switching
   providers, or answer the unsaved-changes question. Release Held warns that spending may
   be left uncounted and never releases money reserved by running messages.
-- **Choose Codex, then API credits** under **Charge to** in New Session. Only models in the
-  dated price table are offered: currently gpt-5-nano, gpt-5.4-nano and gpt-5.4-mini. A missing
-  model or service price stops the send, naming what cannot be priced. Every OpenAI cost is
-  **estimated**, from token counts and the table dated November 17, 2026. Prices can change;
-  OpenAI's billing page is authoritative. Usage and Context and Properties show this chat's
-  spending; the status bar and announcements also say estimated. Unknown cost says **cost
-  not known**, rather than zero. Limits are approximate and can be exceeded by one request.
+- **Choose Codex, then API credits** under **Charge to** in New Session. Priced models are
+  gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5, gpt-5.6-sol,
+  gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and gpt-6.1-sol.
+  Other models advertised by Codex's API-key home say **price unknown** in the model list.
+  Model availability still depends on your OpenAI account.
+- **Prices are estimates**, from token counts and the table checked November 19, 2026.
+  Standard service is pinned. Cache writes are counted where reported; reasoning is included
+  in output. Long-context models use conservative surcharge rates (twice input and cache,
+  one and a half times output), because cumulative counters cannot prove the request's band.
+  Each model uses its own maximum input and output limits. GPT-5.6 Sol's promotional price
+  expires November 30, 2026; after that it says price unknown unless the table is updated.
+  OpenAI's billing page is authoritative. Priced limits are approximate and can be exceeded
+  by one request.
+- **Before sending with price unknown**, a required question explains that your OpenAI key
+  will be charged and dollar limits cannot stop a message. Cancel is the default; Enter or
+  Escape on the warning keeps your message. Tab reaches Send on API credits, then Cancel.
+  The question returns after changing the model. It is required even if the optional
+  first-message question is turned off. Every paid send is still announced.
+- **After an unpriced reply**, you hear the chat's name, then **used 12,400 tokens, cost
+  unknown**, for example. Tokens count input plus output, including reasoning; cached input
+  is part of input. These notices remain spoken with the cost setting off.
+- **Unpriced messages keep an allowance** against your overall limit: normally $2 per
+  message, or what remains of that overall allowance. This can block later sends; it cannot
+  cap what a message costs. Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the
+  status bar and API Keys say **priced spending $X, plus unpriced usage**, with input,
+  cached-input, cache-write and output tokens. Token records survive restarting, Reset Total
+  and Release Held; Reset starts a new overall usage total while Properties keeps chat history.
 - **Stop in an OpenAI chat** counts reported usage and, when possible, an estimated maximum
   for one interrupted request: **estimated, at most**. For gpt-5-nano that request ceiling is
-  about seven cents. Missing or inconsistent usage and stream failures can leave credit held;
+  about six and a half cents. With price unknown, Stop says cost unknown and keeps the
+  allowance; it cannot give a cost ceiling. Missing or inconsistent usage and stream failures can leave credit held;
   Release Held is available after the message is no longer running. You can send again after
   Stop or replace a refused key and continue. A refused request releases its unused hold.
 - **OpenAI chat isolation.** Codex runs in an app-owned home, separate from your ChatGPT

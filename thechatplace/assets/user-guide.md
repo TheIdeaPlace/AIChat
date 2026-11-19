@@ -386,15 +386,40 @@ is the default and a chat's billing never changes. The app uses a separate Codex
 keeps your ChatGPT sign-in separate. Continue on API Credits waits for your first Send; the conversation is a hidden prefix to your message. Cancelling Send keeps only your message in the reply box. **Continue on API Credits** makes a new chat with a text
 copy of the earlier conversation; that first message may cost more.
 
-Every OpenAI cost says **estimated**, using a price table dated November 17, 2026. Only priced
-models are offered. A missing model or service price stops the send. The row, title, messages,
-reply box and status bar say API credits; every paid send says **Sent on API credits to** the
-chat's name, even with announcements off. The first message in each chat per app run asks
-before sending. Usage and Context (Ctrl+Shift+U) and Properties (Alt+Enter) show estimated
-spending, or **cost not known** when usage is missing. A limit can be passed by one request.
+The model list offers priced models and other models advertised by Codex's API-key home.
+Priced models are gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5,
+gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and
+gpt-6.1-sol. Other models say **price unknown**. Availability depends on your OpenAI account.
+
+Every priced OpenAI cost says **estimated**, using prices checked November 19, 2026.
+Standard service is pinned. Reasoning is included in output, and cache writes are counted
+where reported. Long-context models use conservative surcharge rates: twice input and cache,
+one and a half times output, because cumulative counters cannot prove the request's band.
+Each model uses its own maximum input and output. GPT-5.6 Sol's promotional price expires
+November 30, 2026; after that it says price unknown unless the table is updated.
+
+Before your first message with **price unknown**, a required question explains that your
+OpenAI key will be charged and your dollar limits cannot stop a message. Cancel is the
+default. Enter or Escape on the warning keeps your message; Tab reaches Send on API credits,
+then Cancel. Changing the model requires the question again. Turning off the optional
+first-message question in Settings does not turn this warning off.
+
+Every paid send still says **Sent on API credits to** the chat's name, even with announcements
+off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens,
+cost unknown**. This notice stays spoken with the cost setting off. Tokens count input plus
+output; cached input and reasoning are included in those figures.
+
+Each unpriced message keeps a per-message **allowance** against the overall limit, normally
+$2, or the remaining overall allowance. This can block later messages but cannot cap a
+message's actual cost. Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the status
+bar and Tools, API Keys say **priced spending $X, plus unpriced usage**, with token details.
+Input, cached-input, cache-write and output tokens are saved across restarts. Reset Total
+starts a new overall usage total; Properties keeps the chat's history. Release Held frees
+inactive allowances without deleting token history.
 
 **Stop** counts reported usage and, when possible, adds a ceiling for one interrupted request:
-**estimated, at most**. Missing usage or a stream error can keep credit held. Release Held
+**estimated, at most**. With price unknown, Stop says cost unknown and keeps the allowance;
+it cannot give a dollar ceiling. Missing usage or a stream error can keep credit held. Release Held
 becomes available once that message is no longer running. A refused key releases the unused
 hold; replace it in API Keys and send again. Connected services, hosted search, automatic
 review, subagents, compaction, goals, Ask Aside and copies cut at an earlier turn are not

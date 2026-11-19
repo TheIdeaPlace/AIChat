@@ -193,7 +193,11 @@ a draining state before rejecting new sends and closing, so it cannot kill a new
 Checkpoint 3 exposes these routes in Tools, API Keys with a Provider choice and in
 New Session's Charge to. OpenAI key updates run off the UI thread; each paid write
 checks the key generation, so replacement affects existing processes and removal
-blocks queued messages. Model changes use the priced API catalog, not ChatGPT's.
+blocks queued messages. Model changes use the API-key home's catalog plus dated priced
+choices, not ChatGPT's. Models without valid prices require mandatory consent and retain
+per-message allowances; token snapshots are separate from dollar settlements. Steers also
+reserve an allowance for unpriced sends. GPT-5.6 Sol's rate expires after 2026-11-30,
+tested with a fake clock; active turns then become unknown and keep their allowances.
 Unknown per-chat spending is read from reservations, never displayed as zero.
 Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
 until the user sends a message. Failed or cancelled sends restore only user text. Native
@@ -202,7 +206,8 @@ attachment parts survive the prefix. The writer event clears the deferred contex
 The visual probe includes `new-session-openai`, `openai-keys-empty`,
 `openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
 `openai-keys-updating`, `openai-properties`, and
-`openai-usage`. Each uses made-up keys and fake data. The first-send question is
+`openai-usage`, `new-session-unpriced`, `openai-unpriced-confirm`, and
+`main-openai-unpriced`. Each uses made-up keys and fake data. The optional first-send question is
 a native `wx.MessageDialog`, not an app-defined dialog surface: native message
 boxes do not use the probe's modal capture hook. Run them through the existing
 VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
@@ -219,8 +224,13 @@ isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
 2. Add a test key, then Test Key. Listen for Testing and its result with estimated
    cost, or the refusal. Replace or remove the key while a request is delayed;
    the dialog must remain usable and say the update is pending before it finishes.
-3. In New Session choose Codex, then API credits. Confirm that only priced models
-   and human approval modes are offered. Cancel the first-send question: the
+3. In New Session choose Codex, then API credits. Confirm that dated priced models
+   and API-home models marked price unknown are offered, with human approval modes.
+   Choose a price-unknown model. Listen for the warning that dollar limits cannot stop
+   a message. Enter on the warning must cancel. Reopen it, Tab to Send on API credits,
+   Tab to Cancel, Shift+Tab back, and Escape; the message must stay in the reply box.
+   Change models and verify that the warning returns. The required warning must still
+   appear with the optional first-send setting off. Cancel the ordinary first-send question: the
    message stays in the reply box. Send it, then listen for one guaranteed
    Sent on API credits notice, including with ordinary announcements off.
 4. Read the row, window title, messages name, reply field, Properties and Usage.

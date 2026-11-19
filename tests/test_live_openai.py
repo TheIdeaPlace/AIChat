@@ -132,7 +132,7 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key, monkeypatch):
             assert conn.ledger.totals().held == 0
             usage = conn.live_usage[-1]
             assert usage['turnId'] == state.turn_id
-            assert all(usage['tokenUsage']['total'][k] - before[k] == usage['tokenUsage']['last'][k] for k in COUNTERS)
+            assert all(usage['tokenUsage']['total'].get(k, 0) - before.get(k, 0) == usage['tokenUsage']['last'].get(k, 0) for k in COUNTERS)
         record = proof.record()
         before_resume = dict(conn._totals[proof.native_id])
     finally:
@@ -150,7 +150,7 @@ def test_paid_signin_two_turns_and_resume(native, tmp_path, key, monkeypatch):
         assert state.status == 'completed' and report['cost_complete']
         assert 0 < report['cost_usd'] < .01 and conn.ledger.totals().held == 0
         usage = conn.live_usage[-1]['tokenUsage']
-        assert all(usage['total'][k] - before_resume[k] == usage['last'][k] for k in COUNTERS)
+        assert all(usage['total'].get(k, 0) - before_resume.get(k, 0) == usage['last'].get(k, 0) for k in COUNTERS)
     finally:
         conn.close()
         assert_no_disk_key(tmp_path, key)
@@ -260,7 +260,7 @@ def test_paid_fork(native, tmp_path, key):
         state, report = finished(conn, runner, copy, events, 2)
         assert state.status == 'completed' and report['cost_complete']
         usage = conn.live_usage[-1]['tokenUsage']
-        assert all(usage['total'][k] - before[k] == usage['last'][k] for k in COUNTERS)
+        assert all(usage['total'].get(k, 0) - before.get(k, 0) == usage['last'].get(k, 0) for k in COUNTERS)
         assert conn.ledger.totals().held == 0
     finally:
         conn.close()
@@ -467,3 +467,33 @@ def test_cut_stream_reports_error(native, tmp_path):
             conn.close()
         listener.close()
         assert_no_disk_key(tmp_path, FAKE)
+
+
+@pytest.mark.skipif(not PAID, reason='Paid OpenAI checks are opt-in')
+def test_paid_unpriced_luna_uses_tokens_and_keeps_allowance(native, tmp_path, key, monkeypatch):
+    from thechatplace import openai_prices
+    events = []
+    conn = connection(native, tmp_path, key, events)
+    try:
+        # Cheapest newly advertised model. Omit only in this isolated fixture,
+        # exercising actual unknown-price accounting without buying a costly model.
+        with monkeypatch.context() as omission:
+            omission.delitem(openai_prices.PRICES, 'gpt-6-luna')
+            proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Unpriced live check',
+                                                model='gpt-6-luna', effort='low')
+            runner = CodexTurnExecutor(conn)
+            runner.start(proof, 'No tools. Reply OK.')
+            state, report = finished(conn, runner, proof, events)
+            assert state.status == 'completed'
+            assert report['unpriced'] and report['cost_usd'] is None
+            assert report['tokens']['inputTokens'] > 0
+            assert conn.ledger.totals().held == .5 and conn.ledger.totals().spent == 0
+            assert report['cost_words'].endswith('cost unknown')
+        estimate = openai_prices.estimate('gpt-6-luna', report['tokens'])
+        assert 0 < estimate < .01
+        print(json.dumps({'unpriced_fixture_model': 'gpt-6-luna',
+                          'published_rate_conservative_estimate_usd': estimate,
+                          'retained_allowance_usd': conn.ledger.totals().held}))
+    finally:
+        conn.close()
+        assert_no_disk_key(tmp_path, key)
