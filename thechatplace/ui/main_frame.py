@@ -2122,11 +2122,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._api_totals_cache = (stamp, totals)
         chat = totals.chat_all_time.get(session_id, 0.0)
         if api:
-            from ..openai_billing import chat_cost_words, spending_words
-            return (f'API credits: this chat {chat_cost_words(ledger, session_id)}, '
-                    f'The Chat Place {spending_words(totals)} plus {_dollars(totals.held)} held '
-                    f'(unpriced allowances {_dollars(totals.unpriced_allowance)}), '
-                    f'{_dollars(totals.counted)} of {_dollars(totals.limits.overall)} including holds')
+            from ..openai_billing import status_words
+            return status_words(totals)
         return (f"API credits: this chat {_dollars(chat)}, The Chat Place "
                 f"{_dollars(totals.counted)} of {_dollars(totals.limits.overall)}")
 
@@ -2155,9 +2152,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return refusal
         if api:
             from ..openai_prices import is_priced
-            model = own.provider_options.get('model') or 'gpt-5-nano'
+            try:
+                model, connection = self.sessions.owned_action('api_billing', own)
+            except Exception:
+                return 'Wait for this API chat to be ready, then review its model before sending. Nothing was sent.'
             tier = 'default'  # API lifecycle and turn boundaries pin this.
-            binding = (model, tier)
+            binding = (model, tier, connection)
             if is_priced(model, tier):
                 self._unpriced_confirmed.pop(session_id, None)
             elif self._unpriced_confirmed.get(session_id) != binding:
@@ -2167,6 +2167,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 totals = default_ledger('openai').totals()
                 if self._modal(UnpricedApiDialog(self, model, min(totals.limits.per_message, totals.left))) != wx.ID_OK:
                     return ''
+                try:
+                    self.sessions.owned_action('api_billing', own, binding)
+                except Exception:
+                    return 'The API model or connection changed. Review its price before sending. Nothing was sent.'
                 self._unpriced_confirmed[session_id] = binding
                 # This mandatory question also answers the optional paid-send one.
                 self._api_confirm_pending.add(session_id)

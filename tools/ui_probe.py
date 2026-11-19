@@ -1081,21 +1081,27 @@ def s_main_status_bar(frame, env):
     frame.status_parts.layout()
 
 
-def s_main_openai_unpriced(frame, env):
-    """Mixed OpenAI spending in the accessible status-bar part (#685)."""
-    from thechatplace import spend_ledger, openai_billing
-    s_main_status_bar(frame, env)
-    ledger = spend_ledger.SpendLedger(env['tmp'] / 'status-openai')
-    priced = ledger.reserve('codex-api:priced')
+def _openai_probe_ledger(env, name):
+    from thechatplace import spend_ledger
+    ledger = spend_ledger.SpendLedger(env['tmp'] / name)
+    chat = 'codex-api:openai-probe'
+    priced = ledger.reserve(chat)
     ledger.settle(priced, .42)
     ledger.close(priced, complete=True)
-    unknown = ledger.reserve('codex-api:unpriced', unpriced=True)
+    unknown = ledger.reserve(chat, unpriced=True)
     ledger.record_openai_tokens(unknown, 'future-model',
         dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
              outputTokens=400, reasoningOutputTokens=100), unpriced=True)
     ledger.close(unknown, complete=False)
-    frame.status_parts.set('api_credits', 'API credits: The Chat Place ' +
-                           openai_billing.spending_words(ledger.totals()) + '; $2.00 allowance held')
+    return ledger, chat
+
+
+def s_main_openai_unpriced(frame, env):
+    """Production status text from mixed ledger spending (#685)."""
+    from thechatplace import openai_billing
+    s_main_status_bar(frame, env)
+    ledger, _ = _openai_probe_ledger(env, 'status-openai')
+    frame.status_parts.set('api_credits', openai_billing.status_words(ledger.totals()))
     frame.status_parts.layout()
 
 
@@ -2402,18 +2408,18 @@ def d_openai_properties(frame, env):
     from thechatplace.ui.dialogs import PropertiesDialog
     record = OwnSession('openai-probe', 'OpenAI budget', env['folders']['Scratch'],
                         provider='codex-api', billing='api', provider_options={'model': 'gpt-5-nano'})
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'properties-openai')
     lines = session_properties(record.to_info(), own=record,
-        api_cost='priced spending $0.42, plus unpriced usage: used 12,400 tokens, cost unknown')
+        api_cost=openai_billing.chat_cost_words(ledger, chat))
     return lambda: frame._modal(PropertiesDialog(frame, 'Properties of OpenAI budget', lines, frame._copy_properties))
 
 
 def d_openai_usage(frame, env):
     from thechatplace.ui.dialogs import UsageDialog
-    lines = ['OpenAI API credits: priced spending $0.42, plus unpriced usage: used 12,400 tokens, cost unknown.',
-             'Unpriced tokens: 12,000 input, 4,000 cached input, 1,000 cache writes, 400 output.',
-             'Held $2.00 in unpriced allowances; remaining allowance $17.58.',
-             'Prices dated 2026-11-19. Long-context prices use conservative surcharge rates.',
-             'Dollar limits cannot stop an unpriced message. Stop keeps its allowance.']
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'usage-openai')
+    lines = openai_billing.usage_lines(ledger, chat)
     return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
 
 

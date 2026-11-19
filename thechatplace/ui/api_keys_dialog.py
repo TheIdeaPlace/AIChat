@@ -104,6 +104,7 @@ def totals_text(totals, openai=False) -> str:
         from ..openai_billing import spending_words
         return (f'{spending_words(totals)}. Held: ${totals.held:,.2f}, including '
                 f'${totals.unpriced_allowance:,.2f} in unpriced allowances. '
+                f'${totals.releasable:,.2f} of it for messages no longer running. '
                 f'Remaining allowance: ${totals.left:,.2f}. '
                 'Dollar limits cannot stop an unpriced message.')
     held = f"Held for running messages: {_amount(totals.held)}. "
@@ -558,7 +559,10 @@ class ApiKeysDialog(wx.Dialog):
         if totals.releasable <= RELEASABLE_MIN:
             self._refresh()
             return False
-        if not self._ask(RELEASE_QUESTION.format(amount=billing.money(totals.releasable))):
+        question = (openai_billing.release_question(totals)
+                    if self._provider_index and totals.unpriced_releasable else
+                    RELEASE_QUESTION.format(amount=billing.money(totals.releasable)))
+        if not self._ask(question):
             self.release_btn.SetFocus()
             return False
         try:

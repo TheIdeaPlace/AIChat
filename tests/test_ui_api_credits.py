@@ -45,6 +45,13 @@ def frame(env, folder, monkeypatch):
     store.add(OwnSession("api-1", "Paid", folder, last_activity_ms=now_ms(), billing="api"))
     window = MainFrame(store=store, check_updates_at_start=False)
     assert pump(lambda: window.session_list.GetCount() == 2)
+    original_action = window.sessions.owned_action
+    api_connection = object()
+    def owned_action(action, record, *args, **kwargs):
+        if action == 'api_billing':
+            return record.provider_options.get('model', 'gpt-5-nano'), api_connection
+        return original_action(action, record, *args, **kwargs)
+    monkeypatch.setattr(window.sessions, 'owned_action', owned_action)
     yield window
     window._runners.clear()
     window.stop_timers()
@@ -1143,6 +1150,7 @@ def test_unpriced_confirmation_is_required_with_first_send_setting_off(frame, fo
     def question(dialog):
         questions.append(dialog.warning.GetValue())
         assert dialog.GetDefaultItem() is dialog.cancel
+        assert dialog.GetChildren().index(dialog.cancel) < dialog.GetChildren().index(dialog.send)
         try:
             return answers.pop(0)
         finally:
@@ -1152,7 +1160,7 @@ def test_unpriced_confirmation_is_required_with_first_send_setting_off(frame, fo
     assert frame._api_send_problem(key) == ''
     assert key not in frame._unpriced_confirmed
     assert frame._api_send_problem(key) is None
-    assert frame._unpriced_confirmed[key] == ('future-model', 'default')
+    assert frame._unpriced_confirmed[key][:2] == ('future-model', 'default')
     assert frame._api_send_problem(key) is None
     assert len(questions) == 2
     record.provider_options['model'] = 'other-future-model'
@@ -1188,3 +1196,38 @@ def test_unpriced_reply_reports_tokens_even_with_cost_setting_off(frame, folder,
         data={'sent': True, 'unpriced': True, 'cost_usd': None,
               'cost_words': 'used 12,400 tokens, cost unknown'}))
     assert 'Budget replied; used 12,400 tokens, cost unknown.' in env['feedback']
+
+
+@pytest.mark.parametrize('outcome,verb', [('interrupted', 'stopped'), ('failed', 'failed')])
+def test_unpriced_late_report_speaks_only_changed_counts(frame, folder, env, outcome, verb):
+    record = OwnSession('late-unknown', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    data = dict(sent=True, unpriced=True, outcome=outcome, payment_id=(1, 1),
+                tokens={'inputTokens': 100, 'outputTokens': 20},
+                cost_words='used at least 120 tokens; some tokens not reported, cost unknown')
+    event = TurnEvent('finished', session_id=record.cli_session_id, data=data)
+    frame._on_codex_api_event(event)
+    said = f'Budget {verb}; used at least 120 tokens; some tokens not reported, cost unknown.'
+    assert env['feedback'].count(said) == 1
+    frame._on_codex_api_event(event)
+    assert env['feedback'].count(said) == 1
+    data['tokens'] = {'inputTokens': 110, 'outputTokens': 20}
+    data['cost_words'] = 'used at least 130 tokens; some tokens not reported, cost unknown'
+    frame._on_codex_api_event(event)
+    assert any('at least 130 tokens' in line for line in env['feedback'])
+
+
+def test_missing_saved_model_uses_reported_model_for_required_question(frame, folder, monkeypatch):
+    record = OwnSession('missing-model', 'Unknown', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    connection = object()
+    monkeypatch.setattr(frame.sessions, 'owned_action', lambda *args: ('reported-future', connection))
+    questions = []
+    def cancel(dialog):
+        questions.append(dialog.warning.GetValue())
+        dialog.Destroy()
+        return wx.ID_CANCEL
+    monkeypatch.setattr(frame, '_modal', cancel)
+    assert frame._api_send_problem(record.to_info().key) == ''
+    assert 'reported-future' in questions[0]

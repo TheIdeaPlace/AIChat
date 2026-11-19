@@ -1052,9 +1052,20 @@ class CodexChats(SoundHost, CodexExtras):
             self._api_confirm_pending.discard(key)
             self._api_totals_cache = None
             own = self._api_own(key)
+            if data.get('unpriced'):
+                counts = self._api_token_announcements = getattr(self, '_api_token_announcements', {})
+                identity = (key, data.get('payment_id', data.get('turn_id', '')))
+                tokens = data.get('tokens')
+                count = tokens.get('inputTokens', 0) + tokens.get('outputTokens', 0) if tokens is not None else None
+                if identity in counts and counts[identity] == count:
+                    self._update_status_api()
+                    return
+                counts[identity] = count
             if own is not None and data.get('sent') and (data.get('unpriced') or self.speech.api_say_cost):
                 from ..billing import cost_sentence
-                words = (f"{own.title} replied; {data.get('cost_words', 'tokens not reported, cost unknown')}."
+                outcome = data.get('outcome')
+                verb = 'stopped' if outcome == 'interrupted' else 'failed' if outcome in ('failed', 'unknown', '') else 'replied'
+                words = (f"{own.title} {verb}; {data.get('cost_words', 'tokens not reported, cost unknown')}."
                          if data.get('unpriced') else cost_sentence(data.get('cost_words', 'cost not known'), own.title))
                 self._speak_announcement(words,
                                          interrupt=False, about=key)
