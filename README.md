@@ -520,7 +520,8 @@ API credits.
   Stop or replace a refused key and continue. A refused request releases its unused hold.
 - **When a price expires during a turn**, it continues with cost unknown and its allowance
   held. Only later tokens enter unpriced usage. Queued messages come back unsent with a
-  confirmation reason. Incomplete reply counts say **at least** or **tokens not reported**.
+  confirmation reason. A reply notice says the price expired and counts only its unpriced
+  tokens. Incomplete reply counts say **at least** or **tokens not reported**.
 - **OpenAI chat isolation.** Codex runs in an app-owned home, separate from your ChatGPT
   sign-in. Each process receives the protected key through stdin with ephemeral sign-in;
   the app-owned home is excluded from backups. No key is put in tools' environments or on
@@ -580,8 +581,9 @@ question, cost setting and API-credit labels also apply to Codex:
   API credits" for Codex) in its Charged to column. The window's title, the heading and the
   messages list's name say so too, and the reply box is named "Your message, API credits".
   While it's loaded, the status bar shows "API credits: this chat $0.42, The Chat Place $12.30
-  of $20" for a Claude chat; a Codex chat's figures are estimates and include what's held. The
-  status bar part is a button: reach it with F6 (or Ctrl+9) and the arrows, and Enter opens
+  of $20" for a Claude chat. In a Codex chat it shows The Chat Place's estimated priced
+  total and any unpriced token count. Usage and Context (Ctrl+Shift+U) has the chat's
+  figure and what's held. The status bar part is a button: reach it with F6 (or Ctrl+9) and the arrows, and Enter opens
   Tools, API Keys. Every message
   you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
   gone on API credits once Claude Code has it, always, even when announcements are off. When

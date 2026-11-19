@@ -202,8 +202,13 @@ advancement. GPT-5.6 Sol's page specifies no end time or zone: the conservative 
 2026-11-29 10:00 UTC (the start of November 30 in UTC+14), tested with a fake clock.
 Active turns continue without a dollar stop after expiry and keep their allowances. A frozen
 priced token prefix prevents duplicate unpriced accounting; later updates keep all new tokens.
+Reply events and speech use only that unpriced delta and explain that the price expired.
+The finished event carries stopping even when no terminal outcome arrived, so speech says
+stopped after a timed-out Stop or a disconnect while stopping.
 Queued messages return unsent with the confirmation reason if consent is missing.
-Unknown per-chat spending is read from reservations, never displayed as zero.
+Unknown per-chat spending is read from reservations, never displayed as zero. Live priced
+reservations do not set priced-cost-unknown flags. Release Held and Reset do not resolve
+uncertain costs; a later complete accounting does.
 Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
 until the user sends a message. Failed or cancelled sends restore only user text. Native
 attachment parts survive the prefix. The writer event clears the deferred context.

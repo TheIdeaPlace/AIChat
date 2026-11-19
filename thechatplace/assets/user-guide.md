@@ -430,7 +430,8 @@ review, subagents, compaction, goals, Ask Aside and copies cut at an earlier tur
 available on OpenAI credits. Human approvals and full-history API copies are available.
 
 If a price expires during a turn, the turn continues with cost unknown and its allowance
-held. Only later tokens enter unpriced usage. Queued messages come back unsent with a
+held. Only later tokens enter unpriced usage. The reply notice says the price expired
+and counts only those unpriced tokens. Queued messages come back unsent with a
 confirmation reason. Stopped or failed unpriced replies say **stopped** or **failed**;
 incomplete counts say **at least** or **tokens not reported**.
 
@@ -457,7 +458,10 @@ Budget says anything of its own. Until it's said, the status bar shows "Sending 
 credits…"), the first one in each
 chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
 Ask Aside answer says what it cost, and
-the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
+the status bar shows what the chat and The Chat Place have spent in a Claude chat. In a
+Codex chat it shows The Chat Place's estimated priced total and any unpriced token count.
+Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.
+A chat's charging can't be
 changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
 key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
 available in Claude API chats. Copilot chats cannot use API credits. Older releases of

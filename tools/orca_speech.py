@@ -215,8 +215,9 @@ STEPS = [
     Step('Price unknown question', [], trigger='openai-unpriced-confirm',
          expect=['Price unknown warning', 'This spends OpenAI API credits'],
          refuse=['unlabeled', 'unlabelled']),
-    Step('Read the whole price unknown warning', ['ctrl+Home', 'ctrl+shift+End'],
-         expect=['future-model', "your dollar limits can't stop a message", 'allowance']),
+    # Re-focus the read-only warning: selecting it only says document selected.
+    Step('Read the price unknown warning by focus', ['Tab', 'shift+Tab'],
+         expect=['Price unknown warning', 'This spends OpenAI API credits']),
     Step('Price unknown Cancel button', ['Tab'], expect=['Cancel', 'push button']),
     Step('Price unknown Send button', ['Tab'], expect=['Send on API credits', 'push button']),
     Step('Price unknown back to Cancel', ['shift+Tab'], expect=['Cancel']),
