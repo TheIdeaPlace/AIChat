@@ -90,7 +90,7 @@ SENT_PAID = "Sent on API credits to Paid."
 
 def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, folder):
     from thechatplace.ui.dialogs import NewSessionDialog
-    from thechatplace.openai_prices import SOURCES
+    from thechatplace.openai_prices import model_choices
     dialog = NewSessionDialog(frame, folder, providers=('claude', 'codex'), provider='codex', openai_key=True)
     try:
         assert dialog.charge.IsShown() and dialog.billing() == 'subscription'
@@ -98,7 +98,7 @@ def test_codex_charge_to_uses_openai_key_priced_models_and_human_modes(frame, fo
         dialog.charge.SetSelection(1)
         dialog._on_charge()
         assert dialog.billing() == 'api'
-        assert dialog.model.GetStrings() == list(SOURCES)
+        assert dialog.model.GetStrings() == [m.label for m in model_choices()]
         assert dialog.values()[-1] == 'gpt-5-nano'
         assert dialog.mode.GetCount() == 2
         assert 'estimated' in dialog.note.GetValue()
@@ -1130,3 +1130,61 @@ def test_api_relay_checks_own_route_and_actual_running_state(frame, folder):
     assert frame._relay_source_working(info)
     frame._codex_states[info.key] = SimpleNamespace(outcome='completed', state='idle')
     assert not frame._relay_source_working(info)
+
+
+def test_unpriced_confirmation_is_required_with_first_send_setting_off(frame, folder, monkeypatch):
+    record = OwnSession('unpriced-api', 'Unknown price', folder, provider='codex-api', billing='api',
+                        provider_options={'model': 'future-model'})
+    frame.store.add(record)
+    platform_paths.save_secret(platform_paths.OPENAI_API_KEY_SECRET, 'sk-proj-'+'0'*30)
+    frame.speech.api_confirm_first = False
+    answers = [wx.ID_CANCEL, wx.ID_OK, wx.ID_OK]
+    questions = []
+    def question(dialog):
+        questions.append(dialog.warning.GetValue())
+        assert dialog.GetDefaultItem() is dialog.cancel
+        try:
+            return answers.pop(0)
+        finally:
+            dialog.Destroy()
+    monkeypatch.setattr(frame, '_modal', question)
+    key = record.to_info().key
+    assert frame._api_send_problem(key) == ''
+    assert key not in frame._unpriced_confirmed
+    assert frame._api_send_problem(key) is None
+    assert frame._unpriced_confirmed[key] == ('future-model', 'default')
+    assert frame._api_send_problem(key) is None
+    assert len(questions) == 2
+    record.provider_options['model'] = 'other-future-model'
+    assert frame._api_send_problem(key, ask=False).startswith('Confirm this price-unknown')
+    assert frame._api_send_problem(key) is None
+    assert len(questions) == 3
+    assert "your dollar limits can't stop a message" in questions[-1]
+
+
+def test_api_picker_uses_separate_catalog_and_preserves_unknown_id(frame, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, folder, providers=('codex',), provider='codex', openai_key=True)
+    try:
+        dialog._set_codex_models((CodexModel('subscription-only', 'Subscription', ('high',), 'high', True),), False)
+        dialog._set_api_models((CodexModel('future-model', 'Future', ('low', 'ultra'), 'low', False),), False)
+        dialog.charge.SetSelection(1)
+        dialog._on_charge()
+        assert 'Subscription' not in dialog.model.GetStrings()
+        dialog.model.SetSelection(dialog.model.GetStrings().index('Future (price unknown)'))
+        dialog._on_codex_model()
+        assert dialog.values()[-1] == 'future-model'
+        assert 'ultra' not in dialog.effort_choice.GetStrings()
+    finally:
+        dialog.Destroy()
+
+
+def test_unpriced_reply_reports_tokens_even_with_cost_setting_off(frame, folder, env):
+    record = OwnSession('unpriced-reply', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    frame.speech.api_say_cost = False
+    frame._on_codex_api_event(TurnEvent('finished', session_id=record.cli_session_id,
+        data={'sent': True, 'unpriced': True, 'cost_usd': None,
+              'cost_words': 'used 12,400 tokens, cost unknown'}))
+    assert 'Budget replied; used 12,400 tokens, cost unknown.' in env['feedback']

@@ -416,6 +416,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: on its way.
         self._api_confirmed: set = set()
         self._api_confirm_pending: set = set()
+        self._unpriced_confirmed = {}
         #: An API turn's cost already said (with an answer that left
         #: background work running), so its end says only what's more (#663).
         self._api_cost_said: Dict[str, float] = {}
@@ -2121,9 +2122,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._api_totals_cache = (stamp, totals)
         chat = totals.chat_all_time.get(session_id, 0.0)
         if api:
-            from ..openai_billing import chat_cost_words
+            from ..openai_billing import chat_cost_words, spending_words
             return (f'API credits: this chat {chat_cost_words(ledger, session_id)}, '
-                    f'The Chat Place estimated spending {_dollars(totals.spent)} plus {_dollars(totals.held)} held, '
+                    f'The Chat Place {spending_words(totals)} plus {_dollars(totals.held)} held '
+                    f'(unpriced allowances {_dollars(totals.unpriced_allowance)}), '
                     f'{_dollars(totals.counted)} of {_dollars(totals.limits.overall)} including holds')
         return (f"API credits: this chat {_dollars(chat)}, The Chat Place "
                 f"{_dollars(totals.counted)} of {_dollars(totals.limits.overall)}")
@@ -2151,6 +2153,24 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             refusal = f"The Chat Place couldn't check its record of API spending ({exc})."
         if refusal:
             return refusal
+        if api:
+            from ..openai_prices import is_priced
+            model = own.provider_options.get('model') or 'gpt-5-nano'
+            tier = 'default'  # API lifecycle and turn boundaries pin this.
+            binding = (model, tier)
+            if is_priced(model, tier):
+                self._unpriced_confirmed.pop(session_id, None)
+            elif self._unpriced_confirmed.get(session_id) != binding:
+                if not ask:
+                    return 'Confirm this price-unknown model before sending on API credits.'
+                from .dialogs import UnpricedApiDialog
+                totals = default_ledger('openai').totals()
+                if self._modal(UnpricedApiDialog(self, model, min(totals.limits.per_message, totals.left))) != wx.ID_OK:
+                    return ''
+                self._unpriced_confirmed[session_id] = binding
+                # This mandatory question also answers the optional paid-send one.
+                self._api_confirm_pending.add(session_id)
+                return None
         # Asked once a message has really gone (#663): a "Send" here that's
         # then refused, or a turn that never sends, asks again next time.
         # Meanwhile one being sent counts, so a message queued behind it
@@ -5290,6 +5310,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models if codex_available else None,
+                             "load_api_models": self._load_codex_api_models if codex_available else None,
                              "load_rules": self._load_codex_rules if codex_available else None,
                              "copilot_models": self._copilot_models() if copilot_available else ()}
                             if codex_available or copilot_available else {})
@@ -5542,7 +5563,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
                                       openai_key=self._has_api_key('codex-api'),
-                                      load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
+                                      load_models=self._load_codex_models, load_api_models=self._load_codex_api_models,
+                                      load_rules=self._load_codex_rules, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return

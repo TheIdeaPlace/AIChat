@@ -30,6 +30,43 @@ from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessi
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
 
+class UnpricedApiDialog(wx.Dialog):
+    """Mandatory consent to an unpriced paid chat; Cancel stays default (#685)."""
+
+    def __init__(self, parent, model, allowance):
+        super().__init__(parent, title='Send with price unknown?',
+                         size=dialog_size(parent, 600, 340),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        warning = ("This spends OpenAI API credits. The Chat Place has no price for "
+                   f"{model}, so it can't estimate the cost, and your dollar limits can't stop a message.")
+        self.warning = wx.TextCtrl(self, value=warning + '\n\n'
+            f'An allowance of up to ${allowance:,.2f} will be held for each message against your overall limit. '
+            'This allowance limits later sends; it cannot limit what this message costs. '
+            'Stop keeps the allowance when the cost is unknown.',
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.warning, 'Price unknown warning')
+        self.send = wx.Button(self, wx.ID_OK, '&Send on API credits')
+        self.cancel = wx.Button(self, wx.ID_CANCEL, 'Cancel')
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(self.send, 0, wx.RIGHT, dip(self, 8))
+        buttons.Add(self.cancel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.warning, 1, wx.EXPAND | wx.ALL, dip(self, 12))
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, dip(self, 12))
+        self.SetSizer(sizer)
+        self.cancel.SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL)
+        # Start on the warning so every reader can read it, including macOS.
+        # Enter on this read-only field must still choose Cancel, never Send.
+        def key(event):
+            if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                self.EndModal(wx.ID_CANCEL)
+            else:
+                event.Skip()
+        self.warning.Bind(wx.EVT_KEY_DOWN, key)
+        wx.CallAfter(self.warning.SetFocus)
+
+
 class ShortcutsDialog(wx.Dialog):
     def __init__(self, parent, keys=None):
         super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),
@@ -215,7 +252,7 @@ class NewSessionDialog(wx.Dialog):
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
                  copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False,
-                 openai_key: bool = False):
+                 openai_key: bool = False, load_api_models=None):
         """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
@@ -226,6 +263,9 @@ class NewSessionDialog(wx.Dialog):
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
+        self._load_api_models = load_api_models
+        self._api_models = ()
+        self._api_models_requested = False
         # Takes a folder off the recent list for good (#215): True if it did.
         self._remove_recent = remove_recent
         self._repo = None           # workplaces.RepoInfo of the folder, or None
@@ -1044,8 +1084,20 @@ class NewSessionDialog(wx.Dialog):
     def _codex_route_models(self):
         if self.billing() == 'api':
             from ..openai_prices import model_choices
-            return model_choices()
+            if self._load_api_models is not None and not self._api_models_requested:
+                self._api_models_requested = True
+                wx.CallAfter(self._load_api_models, self._set_api_models)
+            return model_choices(self._api_models)
         return self._codex_models
+
+    def _set_api_models(self, models, error):
+        if not self or self.IsBeingDeleted():
+            return
+        self._api_models = () if error else tuple(models)
+        if self.billing() == 'api':
+            self._on_charge()
+            self._feedback('OpenAI API model choices are available.' if not error else
+                           'OpenAI API model choices could not be loaded; dated choices remain available.')
 
     def _claude_note(self) -> str:
         note = (CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing \
@@ -1155,7 +1207,9 @@ class NewSessionDialog(wx.Dialog):
             if paid:
                 self.note.SetValue('API credits charge your OpenAI key, with estimated costs from a dated price table. '
                     'Limits are separate from Claude and can be passed by one request. '
-                    'Only priced models and human approval review are available. Hosted search, connected services, '
+                    'Models without a dated price say price unknown and require confirmation; dollar limits cannot stop those messages. '
+                    'Their per-message allowance stays held. Long-context prices use conservative surcharge rates. '
+                    'Human approval review is available. Hosted search, connected services, '
                     'subagents, background goals and native compaction are unavailable. Billing is fixed for this chat.')
                 if self.continuing:
                     self.note.SetValue('The first message sends a text copy of the earlier conversation.\n\n' + self.note.GetValue())

@@ -95,11 +95,17 @@ def _amount(value: float) -> str:
     return billing.money(max(0.0, value))
 
 
-def totals_text(totals) -> str:
+def totals_text(totals, openai=False) -> str:
     """The total line, from ledger.totals(): what's spent, held and left, or
     why nothing may be spent."""
     if totals.problem:
         return totals.problem
+    if openai:
+        from ..openai_billing import spending_words
+        return (f'{spending_words(totals)}. Held: ${totals.held:,.2f}, including '
+                f'${totals.unpriced_allowance:,.2f} in unpriced allowances. '
+                f'Remaining allowance: ${totals.left:,.2f}. '
+                'Dollar limits cannot stop an unpriced message.')
     held = f"Held for running messages: {_amount(totals.held)}. "
     if totals.releasable > RELEASABLE_MIN:
         held = (f"Held: {_amount(totals.held)}, {_amount(totals.releasable)} of it for "
@@ -287,7 +293,7 @@ class ApiKeysDialog(wx.Dialog):
         """The total, and Release Held: on only while something is held that
         no running message holds."""
         totals = self._ledger.totals()
-        _set_read_only(self.totals, ('Estimated OpenAI costs. ' if self._provider_index else '') + totals_text(totals))
+        _set_read_only(self.totals, ('Estimated OpenAI costs. ' if self._provider_index else '') + totals_text(totals, bool(self._provider_index)))
         self.release_btn.Enable(totals.releasable > RELEASABLE_MIN)
 
     def on_provider(self):

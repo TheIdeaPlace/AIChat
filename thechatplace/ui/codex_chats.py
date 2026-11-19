@@ -195,6 +195,9 @@ class CodexChats(SoundHost, CodexExtras):
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
+    def _load_codex_api_models(self, callback):
+        self._codex_work(lambda: self.sessions.model_choices('codex-api'), callback)
+
     def _create_codex_owned(self, folder, title, message, source=None, model='', effort='', sandbox=None,
                             approval_policy=None, made=None, joint=False, provider='codex', approvals_reviewer=None,
                             copilot_mode='', instructions=None, extra_roots=()):
@@ -1049,9 +1052,11 @@ class CodexChats(SoundHost, CodexExtras):
             self._api_confirm_pending.discard(key)
             self._api_totals_cache = None
             own = self._api_own(key)
-            if own is not None and data.get('sent') and self.speech.api_say_cost:
+            if own is not None and data.get('sent') and (data.get('unpriced') or self.speech.api_say_cost):
                 from ..billing import cost_sentence
-                self._speak_announcement(cost_sentence(data.get('cost_words', 'cost not known'), own.title),
+                words = (f"{own.title} replied; {data.get('cost_words', 'tokens not reported, cost unknown')}."
+                         if data.get('unpriced') else cost_sentence(data.get('cost_words', 'cost not known'), own.title))
+                self._speak_announcement(words,
                                          interrupt=False, about=key)
             self._update_status_api()
         elif event.kind == 'api_error':
