@@ -2074,9 +2074,27 @@ def remove_whole_chat_page() -> None:
         pass
 
 
+#: Set once a formatted page failed to load in this run (#693). The web view's
+#: browser is shared by every page, so after it dies each new page was blank
+#: until The Chat Place restarted. Pages open as plain text from then on.
+_FORMATTED_BROKEN = False
+#: How long a formatted page may take to say it's loaded before it's taken as
+#: broken. Generous: a whole long chat is written to a file and read in.
+FORMATTED_LOAD_TIMEOUT_MS = 10000
+#: Said once, when that happens.
+FORMATTED_BROKEN_TEXT = ("The formatted view stopped working, so this message is shown as plain "
+                         "text. Messages open as plain text until you restart The Chat Place.")
+
+
+def formatted_view_broken() -> bool:
+    return _FORMATTED_BROKEN
+
+
 def formatted_view_available() -> bool:
     """Whether this computer's web view (Edge WebView2 on Windows, WebKit on
     a Mac, WebKitGTK on Linux) can show the formatted page."""
+    if _FORMATTED_BROKEN:
+        return False
     try:
         import wx.html2
         return bool(wx.html2.WebView.IsBackendAvailable(_webview_backend()))
@@ -2170,7 +2188,15 @@ class FormattedMessageDialog(wx.Dialog):
         self.view.Bind(wx.html2.EVT_WEBVIEW_NAVIGATING, self._on_navigating)
         self.view.Bind(wx.html2.EVT_WEBVIEW_NEWWINDOW, self._on_new_window)
         self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_loaded)
+        self.view.Bind(wx.html2.EVT_WEBVIEW_ERROR, self._on_error)
+        #: The page never loaded, or the web view failed (#693): the caller
+        #: shows the message as plain text, and says why, once.
+        self.failed = False
         self._load(page_html)
+        # A dead web view never says it's loaded, and draws a blank page in
+        # which Escape does nothing, so a page that hasn't loaded in time is
+        # taken as broken rather than left blank.
+        self._watchdog = wx.CallLater(FORMATTED_LOAD_TIMEOUT_MS, self._check_loaded)
 
     def _load(self, page_html: str):
         from ..rendering import needs_page_file, page_file_bytes
@@ -2190,7 +2216,32 @@ class FormattedMessageDialog(wx.Dialog):
             return
         self.view.SetPage(page_html, "")
 
+    def _check_loaded(self):
+        if self and not self.IsBeingDeleted() and not self._loaded:
+            self._give_up()
+
+    def _on_error(self, _event):
+        # Only the page itself: links are vetoed before they load.
+        if not self._loaded:
+            self._give_up()
+
+    def _give_up(self):
+        """The web view couldn't show the page (#693): plain text instead,
+        here and for the rest of this run."""
+        global _FORMATTED_BROKEN
+        _FORMATTED_BROKEN = True
+        if self.failed:
+            return
+        self.failed = True
+        if self.IsModal():
+            self.EndModal(ID_PLAIN_TEXT)
+        else:
+            wx.CallAfter(lambda: self and self.IsModal() and self.EndModal(ID_PLAIN_TEXT))
+
     def Destroy(self):
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.Stop()
         if self._page_file is not None:
             try:
                 self._page_file.unlink()

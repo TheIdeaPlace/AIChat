@@ -140,7 +140,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac,
+                      formatted_view_available, FORMATTED_BROKEN_TEXT, press_focused_button_on_a_mac,
                       remove_whole_chat_page,
                       single_choice_dialog)
 
@@ -3106,8 +3106,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         try:
             shown = dialog.ShowModal() != ID_PLAIN_TEXT
             link = getattr(dialog, "app_link", None)
+            failed = getattr(dialog, "failed", False)
         finally:
             dialog.Destroy()
+        if failed:
+            # The web view died (#693): said once; plain text from now on.
+            self._feedback(FORMATTED_BROKEN_TEXT)
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown
