@@ -18,6 +18,7 @@ class _Kept(dialogs.FormattedMessageDialog):
         self._own_loop = None
         self._own_result = wx.ID_CANCEL
         self._parked = False
+        self._focus_on_show = False
         self._watchdog = None
         self._page_file = None
         wx.Button(self, wx.ID_CANCEL, "&Close")
