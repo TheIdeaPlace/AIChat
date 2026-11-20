@@ -189,18 +189,21 @@ def claude_column_words(totals, chat_id: str) -> str:
 def codex_column_words(totals, chat_id: str) -> str:
     """A Codex chat's Cost column, estimated as Properties says it (#685):
     "an estimated 3 cents", "cost not known", and for a model with no known
-    price "cost unknown, 12,400 tokens", never "$0.00". "" for nothing."""
+    price "cost unknown for 12,400 tokens", never "$0.00". "" for nothing."""
     spent = totals.chat_all_time.get(chat_id, 0.0)
     if chat_id in totals.unpriced_all_time:
         tokens = totals.unpriced_all_time[chat_id]
         count = tokens.get("inputTokens", 0) + tokens.get("outputTokens", 0)
-        if chat_id in totals.unpriced_missing_all_time:
-            said = f"at least {count:,} tokens" if count else "tokens not reported"
-        else:
-            said = f"{count:,} tokens"
+        # No comma between words of one column: the row joins its columns
+        # with commas, so one here would sound like a column of its own.
+        if chat_id in totals.unpriced_missing_all_time and not count:
+            return (f"{estimated(money(spent))} plus tokens at an unknown price"
+                    if spent >= 0.005 else "cost unknown and tokens not reported")
+        said = (f"at least {count:,} tokens" if chat_id in totals.unpriced_missing_all_time
+                else f"{count:,} tokens")
         if spent >= 0.005:
-            return f"{estimated(money(spent))}, plus {said} at an unknown price"
-        return "cost unknown, " + said
+            return f"{estimated(money(spent))} plus {said} at an unknown price"
+        return "cost unknown for " + said
     unknown = bool(totals.problem) or chat_id in totals.priced_unknown_chats
     if unknown:
         words = cost_words(spent if spent else None, complete=False)

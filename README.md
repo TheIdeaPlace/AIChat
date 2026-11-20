@@ -81,7 +81,7 @@ too).
   outside The Chat Place, whose charging can't be known for sure, and for agent conversations.
   Saved column choices from before it existed gain it once, just after Provider. **Cost**
   (#692) says what a chat on API credits has spent in all, in the words Properties uses: "$1.42",
-  or "an estimated 3 cents" for Codex ("cost unknown, 12,400 tokens" for a model with no known
+  or "an estimated 3 cents" for Codex ("cost unknown for 12,400 tokens" for a model with no known
   price, never $0). It's left out for subscription chats, sessions started elsewhere and chats
   that haven't spent anything; saved choices gain it once, just after Charged to, and removing
   it is remembered. Other

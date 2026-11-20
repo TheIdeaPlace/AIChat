@@ -209,12 +209,15 @@ def test_codex_column_is_estimated_and_never_zero_dollars():
                               key) == "at least an estimated 3 cents"
     tokens = {"inputTokens": 12_000, "outputTokens": 400}
     unpriced = codex_column_words(_totals(unpriced_all_time={key: tokens}), key)
-    assert unpriced == "cost unknown, 12,400 tokens" and "$" not in unpriced
+    assert unpriced == "cost unknown for 12,400 tokens" and "$" not in unpriced
     assert codex_column_words(_totals(unpriced_all_time={key: tokens},
                                       unpriced_missing_all_time={key}), key) == (
-        "cost unknown, at least 12,400 tokens")
+        "cost unknown for at least 12,400 tokens")
+    assert codex_column_words(_totals(unpriced_all_time={key: {}},
+                                      unpriced_missing_all_time={key}), key) == (
+        "cost unknown and tokens not reported")
     assert codex_column_words(_totals(chat_all_time={key: 0.05}, unpriced_all_time={key: tokens}),
-                              key) == "an estimated 5 cents, plus 12,400 tokens at an unknown price"
+                              key) == "an estimated 5 cents plus 12,400 tokens at an unknown price"
     assert codex_column_words(_totals(problem="damaged"), key) == "cost not known"
 
 

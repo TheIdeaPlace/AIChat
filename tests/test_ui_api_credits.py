@@ -1299,6 +1299,11 @@ def test_each_reply_ends_with_its_cost_even_when_it_isnt_said(frame, env, monkey
     assert pump(lambda: "Claude: Hi. Cost: 19 cents" in _chat_rows(frame))
     reply = next(m for m in frame._chat_messages if m.key == "m1")
     assert reply.whole == "Hi\n\nCost: 19 cents"
+    # What a screen reader reads for the row, with whole messages in the
+    # list (the default), ends with it too.
+    frame.speech.full_messages_in_list = True
+    row = frame._chat_keys.index("m1")
+    assert frame._message_item_text(row) == "Claude: Hi. Cost: 19 cents"
     # Kept in The Chat Place's own store, so a restart still has it; never
     # in Claude Code's transcript.
     again = OwnSessionStore(env["tmp"] / "own.json")

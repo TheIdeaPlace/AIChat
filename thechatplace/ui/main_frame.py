@@ -426,6 +426,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: The reply costs the loaded chat's messages last had (#692): a
         #: change shows even when the transcript itself didn't change.
         self._chat_costs_shown: Optional[tuple] = None
+        self._chat_costs_pending: Optional[tuple] = None
         #: A send's read-back in an API chat, held until the runner has
         #: really written the message, then said with "on API credits" in
         #: it (#663): "Sent on API credits to Budget: …".
@@ -2600,10 +2601,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What each reply on API credits cost (#692), from the store as it
         # is now; a change shows even if the transcript didn't change.
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
-        costs = dict(own.reply_costs) if own is not None and own.billing == "api" else {}
+        costs = (dict(getattr(own, "reply_costs", None) or {})
+                 if getattr(own, "billing", "") == "api" else {})
         shown_costs = (info.key, tuple(costs.items()))
         costs_changed = shown_costs != self._chat_costs_shown
-        self._chat_costs_shown = shown_costs
+        self._chat_costs_pending = shown_costs  # shown once a read is applied
 
         def work():
             active_reader = reader
@@ -2800,6 +2802,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         before_keys = {m.key for m in self._chat_messages}
         self._chat_messages = messages
+        # These messages carry the reply costs read with them (#692).
+        self._chat_costs_shown = getattr(self, "_chat_costs_pending", None)
         if any(m.key not in before_keys and m.kind in (ASSISTANT, COMPACTION) for m in messages):
             self._compaction_tokens.pop(self._open.cli_session_id, None)
         self._check_context()
@@ -2999,10 +3003,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Keyed by label too: a steering row's label says where it is, and
         # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != (message.label, message.text):
+        if cached is None or cached[0] != (message.label, message.text, message.cost):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
-            cached = ((message.label, message.text), f"{message.label}: {spoken}")
+            said = f"{message.label}: {spoken}"
+            if message.cost:
+                # A reply's cost is its last words (#692), as in its row.
+                said = said.rstrip()
+                said = (f"{said}{'' if said.endswith(('.', '!', '?', '…', ':')) else '.'}"
+                        f" {message.cost}")
+            cached = ((message.label, message.text, message.cost), said)
             self._spoken[message.key] = cached
         return cached[1]
 

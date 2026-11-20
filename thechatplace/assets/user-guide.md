@@ -467,7 +467,7 @@ Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.
 
 **What each chat and each reply cost.** The Session list's **Cost** column, just after Charged
 to, says what a chat on API credits has spent in all, in the words Properties (Alt+Enter) uses:
-"$1.42" for a Claude chat, "an estimated 3 cents" for a Codex chat, or "cost unknown, 12,400
+"$1.42" for a Claude chat, "an estimated 3 cents" for a Codex chat, or "cost unknown for 12,400
 tokens" for a Codex model with no known price. It's left out for chats on a subscription,
 chats started outside The Chat Place, and chats that haven't spent anything yet. Each reply in a
 chat on API credits ends with what it cost, in the words you heard: "Cost: 19 cents", "Cost: an
