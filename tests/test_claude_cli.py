@@ -20,6 +20,8 @@ DESKTOP = {"dddd-2222"}
 FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
          "--replay-user-messages"]
 PROMPTS = ["--permission-prompts", "host", "--permission-prompt-tool", "stdio"]
+#: Told to Claude on every turn (#319).
+NOTE = cli.APPEND_PROMPT + cli.UNAVAILABLE_NOTE
 
 
 # -- command construction --------------------------------------------------------
@@ -27,7 +29,7 @@ PROMPTS = ["--permission-prompts", "host", "--permission-prompt-tool", "stdio"]
 
 def test_new_command():
     command = build_new_command(EXE, "aaaa-1111", "  My   title ", "auto")
-    assert command == [EXE, *FLAGS, "--permission-mode", "auto", *PROMPTS,
+    assert command == [EXE, *FLAGS, "--permission-mode", "auto", *PROMPTS, NOTE,
                        "--session-id", "aaaa-1111", "--name", "My title"]
 
 
@@ -66,8 +68,23 @@ def test_new_command_rejects_bad_id():
 
 def test_resume_command_for_own_session():
     assert build_resume_command(EXE, "aaaa-1111", "plan", OWN, DESKTOP) == [
-        EXE, *FLAGS, "--permission-mode", "plan", *PROMPTS,
+        EXE, *FLAGS, "--permission-mode", "plan", *PROMPTS, NOTE,
         "--resume", "aaaa-1111"]
+
+
+def test_every_turn_says_what_isnt_available_here():
+    # #319: Claude Code's skills describe Claude in Chrome, computer use and
+    # the browser pane, none of which a chat run here has. New, resumed and
+    # forked turns all say so, in one --append-system-prompt.
+    commands = [build_new_command(EXE, "aaaa-1111", "t", "auto"),
+                build_resume_command(EXE, "aaaa-1111", "auto", OWN, DESKTOP),
+                cli.build_fork_command(EXE, "src-1", "new-1", "Copy", "auto")]
+    for command in commands:
+        appended = [arg for arg in command if arg.startswith("--append-system-prompt")]
+        assert appended == [NOTE]
+    for words in ("Claude in Chrome", "computer use", "browser pane", "Don't tell the user to enable"):
+        assert words in cli.UNAVAILABLE_NOTE
+    assert "--chrome" not in commands[0]
 
 
 def test_model_goes_on_every_turn():

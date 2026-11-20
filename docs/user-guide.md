@@ -242,7 +242,10 @@ between Claude and a website, so you can say "post this as a draft" instead.
   connecting anything. Just ask.
 
 Claude in Chrome, which lets Claude use your browser, and computer use aren't available in chats
-The Chat Place runs yet. For Chrome, use the Claude desktop app, or `claude --chrome` in a terminal.
+The Chat Place runs yet. Claude is told so in new chats and copies of chats, so it says so plainly
+and uses what it has, such as web search, rather than asking you to turn them on. A chat started
+before this version is told once Claude Code compacts it. For Chrome, use the Claude
+desktop app, or `claude --chrome` in a terminal.
 Computer use is a preview in the desktop app, off until you turn it on, and not on every plan.
 
 ### You're asked too often, or you want more control

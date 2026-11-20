@@ -5662,7 +5662,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 | set(self._snapshot.desktop_cli_ids),
                 cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
                 allowed_dirs=more_folders,
-                options=dataclasses.replace(chat_options, fresh=bool(chat_options)))
+                options=dataclasses.replace(chat_options, fresh=True))
         except (ResumeRefused, ValueError) as exc:
             # The dialog has gone, with the first message you typed in it.
             self._relay_kept(message, f"No copy was made: {exc} Your message wasn't sent.")
@@ -5673,8 +5673,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          remote_control=remote_control,
                          # The copy carries the source's recorded system
                          # prompt (checked: instructions given to a fork were
-                         # ignored), so its own options need it made afresh.
-                         prompt_fresh=bool(chat_options),
+                         # ignored), so it's made afresh: for its own options,
+                         # and for what this chat can't do (#319), which the
+                         # source's record may not have.
+                         prompt_fresh=True,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          billing=billing,  # fixed from now on (#658)
                          **_options_fields(chat_options, more_folders))
@@ -5796,7 +5798,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          # The copy carries the source's recorded system
                          # prompt, so its Chat Options come with it (#468).
                          agent=source.agent, instructions=source.instructions,
-                         output_style=source.output_style, prompt_fresh=source.prompt_fresh,
+                         # Made afresh, so the copy has #319's note too.
+                         output_style=source.output_style, prompt_fresh=True,
                          disabled_mcp=list(source.disabled_mcp),
                          allowed_dirs=list(source.allowed_dirs),
                          allowed_dirs_at=dict(source.allowed_dirs_at))

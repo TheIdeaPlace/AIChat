@@ -300,6 +300,35 @@ def is_safe_dir(folder: str) -> bool:
             and platform_paths.is_specific_folder(folder))
 
 
+APPEND_PROMPT = "--append-system-prompt="
+#: Told to Claude on every turn (#319). Claude Code's own skills describe
+#: Claude in Chrome, computer use and the desktop app's browser pane, but a
+#: chat run here has none of them: turns start without --chrome, and the
+#: other two exist only in the desktop app. Without this, a chat asked
+#: anything that needs a browser told Kelly, three times over, to turn on
+#: Claude in Chrome, which was already on.
+#:
+#: Claude Code records the system prompt on a chat's first request and
+#: reuses the record (--system-prompt-snapshot). So a chat started before
+#: this sees the note only once it's compacted, and a copy (Continue Here,
+#: Rewind or Branch from Here, Continue on API Credits) is made with
+#: prompt_fresh, or it would keep its source's record without the note.
+#: When #319 passes --chrome, the Chrome part must go, and chats recorded
+#: with it need their prompt made afresh too, or they'd be told Chrome
+#: isn't there when it is.
+UNAVAILABLE_NOTE = (
+    "This chat is run by The Chat Place, which starts Claude Code in print mode, not the "
+    "Claude desktop app. Claude in Chrome (mcp__claude-in-chrome__ tools), computer use "
+    "(mcp__computer-use__ tools) and the desktop app's built-in browser pane "
+    "(mcp__Claude_Browser__ tools) aren't available in this chat, even if a skill describes "
+    "them or the user's settings turn them on, and no setting the user can change here "
+    "turns them on. Don't tell the user to enable them. If a task needs one, say plainly "
+    "that it isn't available in The Chat Place, then use what this chat does have: web "
+    "fetch or search tools, or any browser or computer tools the user's own MCP servers "
+    "provide. Otherwise, ask the user to check in their own browser, or say the Claude "
+    "desktop app can do it.")
+
+
 def _common_flags(permission_mode: str, model: str = "",
                   allowed_tools: Collection[str] = (), effort: str = "",
                   allowed_dirs: Collection[str] = (),
@@ -325,10 +354,18 @@ def _common_flags(permission_mode: str, model: str = "",
             raise ValueError(f"Not a valid effort level: {effort!r}")
         # Every turn, as with the model: each turn is a new process (#189).
         flags += ["--effort", effort]
-    if options is not None:
-        # Agent, instructions and output style (#468), every turn, as the
-        # model is. Before the lists below, whose values run to the next flag.
-        flags += options.flags()
+    # Agent, instructions and output style (#468), every turn, as the model
+    # is. Before the lists below, whose values run to the next flag.
+    option_flags = options.flags() if options is not None else []
+    # What this chat can't do (#319), after any instructions of the chat's
+    # own, in the one --append-system-prompt Claude Code takes.
+    for index, flag in enumerate(option_flags):
+        if flag.startswith(APPEND_PROMPT):
+            option_flags[index] = flag + "\n\n" + UNAVAILABLE_NOTE
+            break
+    else:
+        option_flags.append(APPEND_PROMPT + UNAVAILABLE_NOTE)
+    flags += option_flags
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
         # "Allow for This Chat" (#187, #329). Claude Code keeps a session-scoped

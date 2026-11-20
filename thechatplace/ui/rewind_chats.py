@@ -137,6 +137,10 @@ class RewindChats:
             # From a chat started elsewhere there's no list to keep, so it's
             # a new chat here, as Continue Here's is.
             own.disabled_mcp = list(self.speech.mcp_off_for_new_chats)
+        if own.fork_source:
+            # A copy keeps the source's recorded system prompt, which may not
+            # have #319's note, so it's made afresh. A new chat records its own.
+            own.prompt_fresh = True
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:
