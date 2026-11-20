@@ -149,7 +149,8 @@ def api_credit_summary(totals) -> str:
         return f"API credits: {totals.problem}"
     spent = money(totals.spent) if totals.spent >= 0.00005 else "nothing"
     return (f"API credits: {spent} spent since the total was reset, {money(totals.left)} left "
-            f"of your {money(totals.limits.overall)} limit. A chat on API credits lists more.")
+            f"of your {money(totals.limits.overall)} limit. For today, the last 7 days and "
+            "spending by model and by chat, open Usage and Context from a chat that uses API credits.")
 
 
 def api_credit_lines(totals, chat_names: Optional[dict] = None) -> List[str]:
