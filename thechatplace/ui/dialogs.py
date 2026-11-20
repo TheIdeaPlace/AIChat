@@ -1962,6 +1962,14 @@ class FormattedMessageDialog(wx.Dialog):
         self.failed = False
         self._beats = False  # the heartbeat script went in
         self._watchdog = None
+        # The watchdog's state, set on every platform: the page's events
+        # touch it even where nothing watches (Mac and Linux, #693).
+        import time
+        self._clock = time.monotonic
+        self._heard = False
+        self._deadline = 0.0
+        self._last_tick = 0.0
+        self._focus_on_show = False  # loaded while still hidden (#693)
         self._parked = False  # hidden between messages, holding PARKED_PAGE
         self.app_link = None  # a thechatplace:// link chosen in the page (#144)
         try:
@@ -2060,6 +2068,7 @@ class FormattedMessageDialog(wx.Dialog):
         self._drop_page_file()
         self._start_at = start_at
         self._loaded = False
+        self._focus_on_show = False
         self.failed = False
         self.app_link = None
         self.SetTitle(title)
@@ -2105,22 +2114,33 @@ class FormattedMessageDialog(wx.Dialog):
     # dialog's would be, and Escape, Close, Alt+F4 and Read as Plain Text all
     # ending it through EndModal below.
 
-    def run_kept(self) -> int:
+    def run_kept(self, came_from=None) -> int:
         """Show the page and wait until it's closed; the result, as ShowModal's.
         A parked page (nothing loaded into it) is never shown: it would be
-        a blank window."""
+        a blank window. ``came_from``: the control to go back to afterwards,
+        taken before the page was loaded (show_formatted_page): the page's
+        owner is the main window, which may be disabled behind a dialog (the
+        Plan, a subagent's conversation), and Windows activates only an
+        enabled owner."""
         self._own_result = wx.ID_CANCEL
         if self._parked or self._own_loop is not None:
             return wx.ID_CANCEL
-        # Where you were, to go back to: the page's owner is the main window,
-        # which may be disabled behind a dialog (the Plan, a subagent's
-        # conversation), and Windows activates only an enabled owner.
-        came_from = wx.Window.FindFocus()
+        if came_from is None:
+            came_from = wx.Window.FindFocus()
+        try:
+            if came_from and wx.GetTopLevelParent(came_from) is self:
+                came_from = None  # never back into this page once it's hidden
+        except Exception:  # noqa: BLE001
+            came_from = None
         disabler = wx.WindowDisabler(self)
         try:
             self.Show()
             self.Raise()
             _trace(f"  run_kept shown={self.IsShown()} active={self.IsActive()}")
+            if self._focus_on_show:
+                # It loaded while hidden: into it now that it can be read.
+                self._focus_on_show = False
+                wx.CallAfter(lambda: self and self.IsModal() and self._into_page())
             loop = wx.GUIEventLoop()
             self._own_loop = loop
             loop.Run()
@@ -2298,18 +2318,28 @@ class FormattedMessageDialog(wx.Dialog):
         if not self._loaded:
             self._loaded = True
             self._heard_from_page()
-            # Into the page, so the screen reader starts reading it.
-            self.view.SetFocus()
-            gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
-            from ..rendering import go_to_script
-            script = go_to_script(self._start_at)
-            # Windows only: wx waits for its answer, and WebKit may never give one
-            # under the page's rules. The user script does it there.
-            if script and sys.platform == "win32":
-                try:
-                    self.view.RunScript(script)
-                except Exception:  # noqa: BLE001 - it's still open, at the top
-                    pass
+            if not self.IsShown():
+                # Loaded before its window showed (a short message in a
+                # running web view): focusing a hidden window would take
+                # focus off the list into nothing. run_kept does it on showing.
+                self._focus_on_show = True
+                return
+            self._into_page()
+
+    def _into_page(self):
+        """Into the page, so the screen reader starts reading it, at the
+        heading it opens on."""
+        self.view.SetFocus()
+        gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
+        from ..rendering import go_to_script
+        script = go_to_script(self._start_at)
+        # Windows only: wx waits for its answer, and WebKit may never give one
+        # under the page's rules. The user script does it there.
+        if script and sys.platform == "win32":
+            try:
+                self.view.RunScript(script)
+            except Exception:  # noqa: BLE001 - it's still open, at the top
+                pass
 
     def _on_script_message(self, event):
         message = event.GetString()
@@ -2462,8 +2492,18 @@ def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
         _PAGE_BUSY = False
 
 
+def _run_kept(page, came_from):
+    run = getattr(page, "run_kept", None)
+    return run(came_from) if run is not None else page.ShowModal()
+
+
 def _show_kept_page(page, owner, title, page_html, start_at):
     global _SHARED_PAGE
+    # Where you are now, before anything below can move focus: to go back to.
+    try:
+        came_from = wx.Window.FindFocus()
+    except Exception:  # noqa: BLE001 - no app (tests): nowhere to go back to
+        came_from = None
     if page and not page.IsBeingDeleted() and page.GetParent() is owner:
         _trace("  reusing the kept page: reload")
         page.reload(title, page_html, start_at)  # RuntimeError: plain text instead
@@ -2482,7 +2522,7 @@ def _show_kept_page(page, owner, title, page_html, start_at):
         wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
     import time
     opened = time.monotonic()
-    result = getattr(page, "run_kept", page.ShowModal)()
+    result = _run_kept(page, came_from)
     if (time.monotonic() - opened < 0.3 and result == wx.ID_CANCEL
             and not getattr(page, "_loaded", True) and not page.failed):
         # Closed before anything could happen: a stray key, not you. Once more.
@@ -2490,7 +2530,7 @@ def _show_kept_page(page, owner, title, page_html, start_at):
         _let_waiting_keys_through()
         if view is not None:
             wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
-        result = getattr(page, "run_kept", page.ShowModal)()
+        result = _run_kept(page, came_from)
     link, failed = page.app_link, page.failed
     _trace(f"  ShowModal returned {result} failed={failed} loaded={getattr(page, '_loaded', None)} "
            f"heard={getattr(page, '_heard', None)}")

@@ -6,6 +6,7 @@ left out (CI's machines can't draw WebView2 pages).
 """
 import wx
 
+from tests.markers import windows_layout
 from thechatplace.ui import dialogs
 
 
@@ -106,7 +107,6 @@ def test_a_parked_page_is_never_shown(app):
     page = _Kept(frame)
     try:
         page._parked = True
-        _after(500, lambda: page.EndModal(wx.ID_OK))  # never reached
         assert page.run_kept() == wx.ID_CANCEL
         assert not page.IsShown() and frame.IsEnabled()
     finally:
@@ -134,20 +134,118 @@ def test_the_loop_ends_if_the_page_is_destroyed_while_open(app):
     frame.Destroy()
 
 
+@windows_layout
 def test_focus_goes_back_where_it_was(app):
     frame = _frame()
     frame.Show()
     box = frame.GetChildren()[0]
-    box.SetFocus()
-    wx.Yield()
     page = _Kept(frame)
     try:
         _after(50, lambda: page.EndModal(wx.ID_CANCEL))
-        page.run_kept()
+        page.run_kept(came_from=box)
         wx.Yield()
-        # Where the window manager lets a test window have focus at all.
-        if wx.Window.FindFocus() is not None:
-            assert wx.Window.FindFocus() is box
+        assert wx.Window.FindFocus() is box
+    finally:
+        page.Destroy()
+        frame.Destroy()
+
+
+def test_never_back_into_the_hidden_page(app):
+    # #693 review: a page that loaded while hidden may hold focus itself;
+    # going back there would send every key into an invisible window.
+    frame = _frame()
+    page = _Kept(frame)
+    inside = wx.Button(page, label="In the page")
+    went = []
+    monkey = dialogs._return_to
+    dialogs._return_to = went.append
+    try:
+        _after(50, lambda: page.EndModal(wx.ID_CANCEL))
+        page.run_kept(came_from=inside)
+        assert went == [None]
+    finally:
+        dialogs._return_to = monkey
+        page.Destroy()
+        frame.Destroy()
+
+
+class _View(wx.Panel):
+    """Just enough of a web view to build a real FormattedMessageDialog."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.scripts, self.focused = [], 0
+
+    def EnableAccessToDevTools(self, _on):
+        pass
+
+    def AddScriptMessageHandler(self, _name):
+        pass
+
+    def AddUserScript(self, script):
+        self.scripts.append(script)
+
+    def SetPage(self, _html, _base):
+        pass
+
+    def LoadURL(self, _url):
+        pass
+
+    def GetCurrentTitle(self):
+        return "Message"
+
+    def RunScript(self, _script):
+        return True, ""
+
+    def SetFocus(self):
+        self.focused += 1
+
+
+class _Event:
+    def __init__(self, text=""):
+        self.text = text
+
+    def GetString(self):
+        return self.text
+
+    def GetURL(self):
+        return "about:blank"
+
+
+def _real_page(monkeypatch, frame, watch):
+    import wx.html2
+    monkeypatch.setattr(wx.html2.WebView, "New", staticmethod(lambda parent, backend=None: _View(parent)))
+    monkeypatch.setattr(dialogs, "_watch_pages", lambda: watch)
+    return dialogs.FormattedMessageDialog(frame, "Message", "<p>x</p>")
+
+
+def test_mac_and_linux_pages_still_answer_escape_and_take_focus(app, monkeypatch):
+    # #693 review: with nothing watching, the page's own events still work.
+    frame = _frame()
+    page = _real_page(monkeypatch, frame, watch=False)
+    try:
+        assert page._watchdog is None
+        assert dialogs._HEARTBEAT not in page.view.scripts
+        page.Show()
+        page._on_loaded(_Event())
+        assert page._loaded and page.view.focused
+        ended = []
+        monkeypatch.setattr(page, "EndModal", ended.append)
+        page._on_script_message(_Event("escape"))
+        page._on_navigated(_Event())
+        wx.Yield()
+        assert ended == [wx.ID_CANCEL]
+    finally:
+        page.Destroy()
+        frame.Destroy()
+
+
+def test_a_page_that_loads_while_hidden_is_focused_only_on_showing(app, monkeypatch):
+    frame = _frame()
+    page = _real_page(monkeypatch, frame, watch=True)
+    try:
+        page._on_loaded(_Event())
+        assert page._loaded and page._focus_on_show and not page.view.focused
     finally:
         page.Destroy()
         frame.Destroy()
