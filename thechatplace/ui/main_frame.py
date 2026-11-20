@@ -2734,7 +2734,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # The web view died (#693): said once; plain text from now on.
             # The caller opens the text box next, and the screen reader reads
             # that first, so this comes a moment after, rather than cut off.
-            wx.CallLater(1500, self._feedback, FORMATTED_BROKEN_TEXT)
+            # Not if the window has gone meanwhile (a timer on a destroyed
+            # frame can crash on a Mac).
+            wx.CallLater(1500, lambda: self._gone() or self._feedback(FORMATTED_BROKEN_TEXT))
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown

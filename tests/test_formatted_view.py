@@ -97,8 +97,12 @@ class _Page:
         F._heard_from_page(self)
 
     def tick_after(self, seconds):
-        self.now += seconds
-        F._tick(self)
+        # A tick a second, as the real timer: a bigger gap is taken as sleep.
+        while seconds > 0:
+            step = min(1, seconds)
+            self.now += step
+            seconds -= step
+            F._tick(self)
 
 
 class _Error:
@@ -114,6 +118,7 @@ class _Error:
 
 def _fresh(monkeypatch):
     monkeypatch.setattr(dialogs, "_FORMATTED_BROKEN", False)
+    monkeypatch.setattr(dialogs, "_watch_pages", lambda: True)  # as on Windows
     monkeypatch.setattr(wx.html2.WebView, "IsBackendAvailable", lambda backend: True)
 
 
@@ -308,3 +313,107 @@ def test_the_parked_page_says_nothing_for_the_next_message(monkeypatch):
     assert not page.failed
     F._on_error(page, _Error("about:blank"))
     assert not page.failed and not dialogs.formatted_view_broken()
+
+
+def test_a_first_beat_doesnt_cut_a_big_pages_time_to_finish(monkeypatch):
+    # #693 review: DOMContentLoaded beats, then a long chat keeps the page
+    # busy (layout, the screen reader's view of it) past the 8 seconds.
+    _fresh(monkeypatch)
+    page = _Page()
+    page.tick_after(1)
+    F._on_navigated(page, None)
+    F._heard_from_page(page)  # DOMContentLoaded, not loaded yet
+    page.tick_after(20)
+    assert not page.failed
+    page._loaded = True
+    F._heard_from_page(page)  # loaded: silence counts from here
+    page.tick_after(dialogs.FORMATTED_SILENCE_MS / 1000 + 1)
+    assert page.failed
+
+
+def test_a_long_gap_between_ticks_is_sleep_not_a_dead_page(monkeypatch):
+    # #693 review: the lid closed with a page open, and opened again.
+    _fresh(monkeypatch)
+    page = _Page(loaded=True)
+    F._heard_from_page(page)
+    page.tick_after(3)
+    page.now += 3600  # one tick, an hour later
+    F._tick(page)
+    assert not page.failed
+    page.tick_after(dialogs.FORMATTED_SILENCE_MS / 1000 + 1)  # and then truly silent
+    assert page.failed
+
+
+def test_watching_is_windows_only(monkeypatch):
+    monkeypatch.setattr(dialogs.sys, "platform", "win32")
+    assert dialogs._watch_pages()
+    for platform in ("darwin", "linux"):
+        monkeypatch.setattr(dialogs.sys, "platform", platform)
+        assert not dialogs._watch_pages()
+
+
+def test_elsewhere_errors_are_left_alone(monkeypatch):
+    # Mac and Linux are as before #693: WebKit's errors don't give up.
+    monkeypatch.setattr(dialogs, "_FORMATTED_BROKEN", False)
+    monkeypatch.setattr(dialogs, "_watch_pages", lambda: False)
+    page = _Page()
+    F._on_error(page, _Error("about:blank"))
+    assert not page.failed and not dialogs.formatted_view_broken()
+
+
+def _kept(monkeypatch):
+    _SharedFake.made = []
+    monkeypatch.setattr(dialogs, "FormattedMessageDialog", _SharedFake)
+    monkeypatch.setattr(dialogs, "_SHARED_PAGE", None)
+    monkeypatch.setattr(dialogs, "_PAGE_BUSY", False)
+    monkeypatch.setattr(dialogs, "_reuse_pages", lambda: True)
+
+
+def test_a_page_asked_for_while_one_is_opening_gets_plain_text(monkeypatch):
+    # #693 review: a queued call (the full chat finishing) run while waiting
+    # keys are let through must not load the kept page over this one, or the
+    # outer one shows it parked: blank, and Escape does nothing.
+    _kept(monkeypatch)
+    nested = []
+
+    def yield_runs_a_queued_call():
+        try:
+            dialogs.show_formatted_page(None, "Full chat", "<p>y</p>")
+        except RuntimeError as exc:
+            nested.append(str(exc))
+
+    monkeypatch.setattr(dialogs, "_let_waiting_keys_through", yield_runs_a_queued_call)
+    result, _link, failed = dialogs.show_formatted_page(None, "Message", "<p>x</p>")
+    assert nested and "already open" in nested[0]
+    page = _SharedFake.made[0]
+    assert len(_SharedFake.made) == 1 and page.titles == ["Message"] and page.parked == 1
+    assert result == wx.ID_CANCEL and not failed and not dialogs._PAGE_BUSY
+
+
+def test_a_page_asked_for_while_one_is_open_gets_plain_text(monkeypatch):
+    # Never a second web view: it would be destroyed after, and that's the crash.
+    _kept(monkeypatch)
+    dialogs.show_formatted_page(None, "First", "<p>x</p>")
+    monkeypatch.setattr(_SharedFake, "IsModal", lambda self: True)
+    try:
+        dialogs.show_formatted_page(None, "Second", "<p>x</p>")
+    except RuntimeError as exc:
+        assert "already open" in str(exc)
+    else:
+        raise AssertionError("a second page was made")
+    assert len(_SharedFake.made) == 1
+
+
+def test_a_failed_reload_leaves_nothing_busy(monkeypatch):
+    _kept(monkeypatch)
+    dialogs.show_formatted_page(None, "First", "<p>x</p>")
+
+    def refuse(self, *args, **kwargs):
+        raise RuntimeError("Couldn't show the formatted page")
+
+    monkeypatch.setattr(_SharedFake, "reload", refuse)
+    try:
+        dialogs.show_formatted_page(None, "Second", "<p>x</p>")
+    except RuntimeError:
+        pass
+    assert not dialogs._PAGE_BUSY
