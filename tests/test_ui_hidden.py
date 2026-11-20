@@ -2944,10 +2944,14 @@ def test_a_formatted_page_that_never_loads_opens_as_plain_text_and_says_why(fram
             opened.append(self.text.GetValue())
             return wx.ID_CANCEL
     monkeypatch.setattr(main_frame, "MessageDialog", Plain)
+    # Real timers don't fire in these tests; the delay is recorded instead.
+    delays = []
+    monkeypatch.setattr(main_frame.wx, "CallLater",
+                        lambda ms, fn, *args: delays.append(ms) or wx.CallAfter(fn, *args))
     frame.on_read_message()
     assert opened == ["## Result"]
     # Said a moment after the text box opens, so it isn't cut off by it.
-    assert FORMATTED_BROKEN_TEXT not in env["feedback"]
+    assert delays and delays[-1] >= 1000
     assert pump(lambda: env["feedback"] and env["feedback"][-1] == FORMATTED_BROKEN_TEXT)
 
 
