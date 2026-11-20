@@ -2286,6 +2286,14 @@ def _reuse_pages() -> bool:
     return sys.platform == "win32"
 
 
+def _let_waiting_keys_through() -> None:
+    """Deliver keystrokes already waiting (#693) before a modal page opens."""
+    try:
+        wx.SafeYield(None, True)
+    except Exception:  # noqa: BLE001 - nothing to deliver, or no event loop (tests)
+        pass
+
+
 def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
                         factory=None):
     """Show a formatted page modally and return (result, app_link, failed).
@@ -2326,7 +2334,25 @@ def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
         page = FormattedMessageDialog(owner, title, page_html, start_at, reusable=True)
         _SHARED_PAGE = page
     _trace(f"  ShowModal begins; shown={getattr(page, 'IsShown', lambda: None)()} title={_title_of(page)}")
+    # The key that opened this (Enter in the messages list) still has its
+    # character to come. Shown at once, a kept page took it on its Close
+    # button and closed in 0 ms (Kelly's log, #693), so let it go to the
+    # list first, and start the page with its web view focused, not Close.
+    _let_waiting_keys_through()
+    view = getattr(page, "view", None)
+    if view is not None:
+        wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+    import time
+    opened = time.monotonic()
     result = page.ShowModal()
+    if (time.monotonic() - opened < 0.3 and result == wx.ID_CANCEL
+            and not getattr(page, "_loaded", True) and not page.failed):
+        # Closed before anything could happen: a stray key, not you. Once more.
+        _trace("  closed at once by a stray key; showing again")
+        _let_waiting_keys_through()
+        if view is not None:
+            wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+        result = page.ShowModal()
     link, failed = page.app_link, page.failed
     _trace(f"  ShowModal returned {result} failed={failed} loaded={getattr(page, '_loaded', None)} "
            f"heard={getattr(page, '_heard', None)}")
