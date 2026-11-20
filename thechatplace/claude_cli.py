@@ -306,19 +306,27 @@ APPEND_PROMPT = "--append-system-prompt="
 #: chat run here has none of them: turns start without --chrome, and the
 #: other two exist only in the desktop app. Without this, a chat asked
 #: anything that needs a browser told Kelly, three times over, to turn on
-#: Claude in Chrome, which was already on. Remove the Chrome part once #319
-#: passes --chrome. Claude Code records the system prompt on a chat's first
-#: request (--system-prompt-snapshot), so a chat started before this sees it
-#: only once it's compacted.
+#: Claude in Chrome, which was already on.
+#:
+#: Claude Code records the system prompt on a chat's first request and
+#: reuses the record (--system-prompt-snapshot). So a chat started before
+#: this sees the note only once it's compacted, and a copy (Continue Here,
+#: Rewind or Branch from Here, Continue on API Credits) is made with
+#: prompt_fresh, or it would keep its source's record without the note.
+#: When #319 passes --chrome, the Chrome part must go, and chats recorded
+#: with it need their prompt made afresh too, or they'd be told Chrome
+#: isn't there when it is.
 UNAVAILABLE_NOTE = (
     "This chat is run by The Chat Place, which starts Claude Code in print mode, not the "
-    "Claude desktop app. Claude in Chrome (the mcp__claude-in-chrome__ tools), computer use "
-    "and the desktop app's built-in browser pane aren't available in this chat, even if a "
-    "skill describes them or the user's settings turn them on, and no setting the user can "
-    "change here turns them on. Don't suggest enabling them. If a task needs one, say "
-    "plainly that it isn't available in The Chat Place, then use what is available, such "
-    "as web fetch or search tools or the user's own MCP servers, or ask the user to check "
-    "in their browser.")
+    "Claude desktop app. Claude in Chrome (mcp__claude-in-chrome__ tools), computer use "
+    "(mcp__computer-use__ tools) and the desktop app's built-in browser pane "
+    "(mcp__Claude_Browser__ tools) aren't available in this chat, even if a skill describes "
+    "them or the user's settings turn them on, and no setting the user can change here "
+    "turns them on. Don't tell the user to enable them. If a task needs one, say plainly "
+    "that it isn't available in The Chat Place, then use what this chat does have: web "
+    "fetch or search tools, or any browser or computer tools the user's own MCP servers "
+    "provide. Otherwise, ask the user to check in their own browser, or say the Claude "
+    "desktop app can do it.")
 
 
 def _common_flags(permission_mode: str, model: str = "",

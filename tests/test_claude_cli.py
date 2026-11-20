@@ -82,7 +82,7 @@ def test_every_turn_says_what_isnt_available_here():
     for command in commands:
         appended = [arg for arg in command if arg.startswith("--append-system-prompt")]
         assert appended == [NOTE]
-    for words in ("Claude in Chrome", "computer use", "browser pane", "Don't suggest enabling"):
+    for words in ("Claude in Chrome", "computer use", "browser pane", "Don't tell the user to enable"):
         assert words in cli.UNAVAILABLE_NOTE
     assert "--chrome" not in commands[0]
 
