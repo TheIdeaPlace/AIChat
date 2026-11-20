@@ -794,7 +794,7 @@ def test_usage_has_an_api_credits_section(frame, monkeypatch):
     lines = shown[-1]
     api = [line for line in lines if line.startswith("API credits")]
     assert api == ["API credits: nothing spent since the total was reset, $20.00 left of "
-                   "your $20.00 limit. A chat on API credits lists more."]
+                   "your $20.00 limit. For today, the last 7 days and spending by model and by chat, open Usage and Context from a chat that uses API credits."]
     assert lines[-len(expected_plan):] == expected_plan
     assert lines.index(api[0]) == len(lines) - len(expected_plan) - 1
 

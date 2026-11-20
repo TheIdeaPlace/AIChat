@@ -163,7 +163,7 @@ def test_a_subscription_chats_usage_has_one_api_credits_line(tmp_path):
     ledger = spend_ledger.SpendLedger(tmp_path)
     assert usage.api_credit_summary(ledger.totals()) == (
         "API credits: nothing spent since the total was reset, $20.00 left of your $20.00 "
-        "limit. A chat on API credits lists more.")
+        "limit. For today, the last 7 days and spending by model and by chat, open Usage and Context from a chat that uses API credits.")
     one = ledger.reserve("chat-1")
     ledger.settle(one, 1.25)
     ledger.close(one, complete=True)
