@@ -152,11 +152,23 @@ class ChatMessage:
     #: Who it's from, said in place of the kind's label. In a subagent's
     #: conversation (#468) the words that start it come from Claude, not you.
     speaker: str = ""
+    #: A reply on API credits: what it cost, as its last line ("Cost: 19
+    #: cents", #692). From The Chat Place's own store, never the transcript.
+    cost: str = ""
+
+    @property
+    def whole_without_cost(self) -> str:
+        """The text with its detail: what Copy copies. A reply's cost line
+        is left out (#692), as a copied reply is pasted elsewhere, often
+        into a prompt."""
+        return f"{self.text}\n\n{self.detail}" if self.detail else self.text
 
     @property
     def whole(self) -> str:
-        """The text with its detail: what Enter shows and Copy copies."""
-        return f"{self.text}\n\n{self.detail}" if self.detail else self.text
+        """The text with its detail, and a reply's cost as its last line:
+        what Enter shows, Export saves and Find searches."""
+        text = self.whole_without_cost
+        return f"{text}\n\n{self.cost}" if self.cost else text
 
     @property
     def label(self) -> str:
@@ -187,11 +199,20 @@ class ChatMessage:
         return "(empty)"
 
     def list_line(self) -> str:
-        """One line for the chat list: who spoke, then the first line."""
-        return f"{self.label}: {self.first_line()}"
+        """One line for the chat list: who spoke, then the first line, and a
+        reply's cost at its end (#692)."""
+        line = f"{self.label}: {self.first_line()}"
+        if not self.cost:
+            return line
+        return f"{line}{'' if line.endswith(('.', '!', '?', '…', ':')) else '.'} {self.cost}"
 
     def full_text(self) -> str:
         return f"{self.label}:\n{self.whole}"
+
+    def copy_text(self) -> str:
+        """What Copy Message puts on the clipboard: ``full_text`` without a
+        reply's cost line (#692)."""
+        return f"{self.label}:\n{self.whole_without_cost}"
 
 
 #: The tools whose calls are listed as commands (#279): Claude Code's shell.

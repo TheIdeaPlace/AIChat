@@ -216,6 +216,8 @@ class SpeechSettings:
     provider_column_added: bool = True
     #: One-time Charged to upgrade (#658), kept the same way.
     charged_column_added: bool = True
+    #: One-time Cost upgrade (#692), kept the same way.
+    cost_column_added: bool = True
     #: "The Chat Place Update Installed" after an update (#141); Settings
     #: turns it off.
     update_installed_notice: bool = True
@@ -326,7 +328,7 @@ class SpeechSettings:
                                          if raw.get("new_session_provider") in ("codex", "copilot")
                                          else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
-        from .sessions import clean_fields, FIELD_CHARGED, FIELD_PROVIDER, FIELD_TITLE
+        from .sessions import clean_fields, FIELD_CHARGED, FIELD_COST, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:
             index = (settings.session_fields.index(FIELD_TITLE) + 1
@@ -339,6 +341,15 @@ class SpeechSettings:
             index = (fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
                      else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
             fields_now.insert(index, FIELD_CHARGED)
+        # Cost (#692) once, just after Charged to (or where Charged to would
+        # go), so what a chat on API credits has spent is in its row;
+        # removing it later is remembered.
+        if raw.get("cost_column_added") is not True and FIELD_COST not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_CHARGED) + 1 if FIELD_CHARGED in fields_now
+                     else fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_COST)
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""

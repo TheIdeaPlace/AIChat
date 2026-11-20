@@ -150,6 +150,10 @@ class SessionInfo:
     #: One of The Chat Place's own chats charged to API credits (#658): its
     #: row says so in the Charged to column.
     api_credits: bool = False
+    #: What such a chat has spent in all, as the Cost column says it (#692):
+    #: "$1.42", "an estimated 3 cents"; "" when there's nothing to say. Filled
+    #: in with each snapshot by ``reply_costs.fill_api_costs``.
+    api_cost: str = ""
 
     #: Only set by the Claude adapter after the original has disappeared.
     kept_transcript: Optional[Path] = None
@@ -280,6 +284,7 @@ class SessionInfo:
             FIELD_TITLE: self.title or "Untitled session",
             FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
             FIELD_CHARGED: self.charged_to,
+            FIELD_COST: self.api_cost if self.api_credits else "",
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
@@ -302,6 +307,7 @@ class SessionInfo:
 FIELD_TITLE = "title"
 FIELD_PROVIDER = "provider"
 FIELD_CHARGED = "charged"
+FIELD_COST = "cost"
 FIELD_FOLDER = "folder"
 FIELD_STATUS = "status"
 FIELD_NEW_REPLY = "new_reply"
@@ -317,6 +323,7 @@ FIELDS = [
     (FIELD_TITLE, "Title"),
     (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
     (FIELD_CHARGED, "Charged to (subscription, plan or API credits)"),
+    (FIELD_COST, "Cost (what a chat on API credits has spent)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -339,7 +346,8 @@ OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: are read. Provider is added once to older saved choices by SpeechSettings;
 #: users can subsequently remove it like any other column. Charged to
 #: (#658) is the one place a row says it's on API credits, so it's shown
-#: too, and added once to older choices the same way.
+#: too, and added once to older choices the same way. So is Cost (#692),
+#: just after it.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
 

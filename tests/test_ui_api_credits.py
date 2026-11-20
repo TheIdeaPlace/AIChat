@@ -1275,3 +1275,101 @@ def test_unpriced_reply_after_stop_is_said_as_stopped(frame, folder, env, outcom
         data={'sent': True, 'unpriced': True, 'stopping': True, 'outcome': outcome,
               'cost_words': 'used at least 100 tokens, cost unknown; allowance kept'}))
     assert 'Budget stopped; used at least 100 tokens, cost unknown; allowance kept.' in env['feedback']
+
+
+# -- what each reply cost, and the Cost column (#692) -----------------------------------------
+
+
+def _chat_rows(frame):
+    return [frame.chat_list.GetString(i) for i in range(frame.chat_list.GetCount())]
+
+
+def test_each_reply_ends_with_its_cost_even_when_it_isnt_said(frame, env, monkeypatch, folder):
+    add_key()
+    asked(frame, monkeypatch)
+    frame.speech.api_say_cost = False  # Settings only stops it being said
+    transcript = platform_paths.transcript_path(folder, "api-1", env["projects"])
+    before = transcript.read_bytes()
+    open_chat(frame, "api-1")
+    assert pump(lambda: "Claude: Hi" in _chat_rows(frame))
+    _send(frame)
+    ended(frame, text="Hi", cost_usd=0.19, reply_message_id="m1", reply_uuid="u1")
+    assert frame.store.get("api-1").reply_costs == {"m1": "Cost: 19 cents"}
+    # At the end of the row, and the message's last line, read in full.
+    assert pump(lambda: "Claude: Hi. Cost: 19 cents" in _chat_rows(frame))
+    reply = next(m for m in frame._chat_messages if m.key == "m1")
+    assert reply.whole == "Hi\n\nCost: 19 cents"
+    # What a screen reader reads for the row, with whole messages in the
+    # list (the default), ends with it too.
+    frame.speech.full_messages_in_list = True
+    row = frame._chat_keys.index("m1")
+    assert frame._message_item_text(row) == "Claude: Hi. Cost: 19 cents"
+    # Copy Message leaves the cost line out: a copied reply goes elsewhere.
+    copied = []
+    monkeypatch.setattr(frame, "_copy_text", lambda text: copied.append(text) or True)
+    frame.chat_list.SetSelection(row)
+    frame._copy_message()
+    assert copied == ["Claude:\nHi"]
+    # Kept in The Chat Place's own store, so a restart still has it; never
+    # in Claude Code's transcript.
+    again = OwnSessionStore(env["tmp"] / "own.json")
+    again.load()
+    assert again.get("api-1").reply_costs == {"m1": "Cost: 19 cents"}
+    assert transcript.read_bytes() == before
+    # A subscription chat's replies have no cost line.
+    open_chat(frame, "own-1")
+    assert pump(lambda: "Claude: Hi" in _chat_rows(frame))
+    assert not any("Cost:" in row for row in _chat_rows(frame))
+
+
+def test_an_answer_with_background_work_and_the_rest_each_have_their_cost(frame):
+    frame._on_turn_event({"id": "api-1"}, "Paid", TurnEvent(
+        "waiting", text="Started.", data={"tasks": ["x"], "billing": "api", "cost_usd": 0.01,
+                                          "sent": True, "cost_complete": True,
+                                          "reply_message_id": "m1"}))
+    assert frame.store.get("api-1").reply_costs == {"m1": "Cost: 1 cent"}
+    # Claude carried on with a new reply: it has what came after.
+    ended(frame, text="All done.", cost_usd=0.04, reply_message_id="m2")
+    assert frame.store.get("api-1").reply_costs == {"m1": "Cost: 1 cent", "m2": "Cost: 3 cents"}
+    # No new reply: the same one has the whole.
+    frame._on_turn_event({"id": "api-1"}, "Paid", TurnEvent(
+        "waiting", text="Started.", data={"tasks": ["x"], "billing": "api", "cost_usd": 0.02,
+                                          "sent": True, "cost_complete": True,
+                                          "reply_message_id": "m3"}))
+    ended(frame, text="", cost_usd=0.05, reply_message_id="m3")
+    assert frame.store.get("api-1").reply_costs["m3"] == "Cost: 5 cents"
+
+
+def test_a_codex_reply_keeps_the_words_it_was_said_in(frame, folder):
+    record = OwnSession('priced-reply', 'Budget', folder, provider='codex-api', billing='api')
+    frame.store.add(record)
+    unpriced = OwnSession('unpriced-cost', 'Unknown', folder, provider='codex-api', billing='api')
+    frame.store.add(unpriced)
+    frame._on_codex_api_event(TurnEvent('finished', session_id='priced-reply', data={
+        'billing': 'api', 'sent': True, 'turn_id': 't1', 'cost_words': 'estimated 3 cents'}))
+    frame._on_codex_api_event(TurnEvent('finished', session_id='unpriced-cost', data={
+        'billing': 'api', 'sent': True, 'unpriced': True, 'turn_id': 't9',
+        'tokens': {'inputTokens': 12_000, 'outputTokens': 400},
+        'cost_words': 'used 12,400 tokens, cost unknown'}))
+    # Nothing sent, nothing kept.
+    frame._on_codex_api_event(TurnEvent('finished', session_id='priced-reply', data={
+        'billing': 'api', 'sent': False, 'turn_id': 't2', 'cost_words': 'nothing was charged'}))
+    assert frame.store.get('priced-reply', provider='codex-api').reply_costs == {
+        'turn:t1': 'Cost: an estimated 3 cents'}
+    assert frame.store.get('unpriced-cost', provider='codex-api').reply_costs == {
+        'turn:t9': 'Cost: unknown, 12,400 tokens'}
+
+
+def test_the_cost_column_says_what_a_chat_on_api_credits_has_spent(frame):
+    book = spend_ledger.default_ledger()
+    reservation = book.reserve("api-1")
+    book.settle(reservation, 1.42)
+    book.close(reservation, complete=True)
+    frame.refresh_sessions()
+
+    def rows():
+        return [frame.session_list.GetString(i) for i in range(frame.session_list.GetCount())]
+    assert pump(lambda: any(r.startswith("Paid, Claude, Claude API credits, $1.42, ")
+                            for r in rows()))
+    mine = next(r for r in rows() if r.startswith("Mine"))
+    assert "$" not in mine and "cent" not in mine

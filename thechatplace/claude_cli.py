@@ -920,6 +920,12 @@ class StreamParser:
         #: ``<synthetic>`` error text): each is a request that went through,
         #: and so may have cost something (#663).
         self.assistant_messages = 0
+        #: The latest top-level assistant message with text: its record
+        #: uuid and API message id, which the transcript keys the reply by
+        #: (a reply merged from several records goes by the message id). A
+        #: turn on API credits keeps its cost with that reply (#692).
+        self.reply_uuid = ""
+        self.reply_message_id = ""
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -1102,6 +1108,11 @@ class StreamParser:
                             self._edits[use_id] = path
                         events.append(TurnEvent("tool", text=name,
                                                 detail=f"{name}: {target}" if target else name))
+            if any(e.kind == "text" for e in events) and reply_model != "<synthetic>":
+                record_id = event.get("uuid")
+                message_id = message.get("id") if isinstance(message, dict) else None
+                self.reply_uuid = record_id if isinstance(record_id, str) else ""
+                self.reply_message_id = message_id if isinstance(message_id, str) else ""
             return events
         if etype == "user" and event.get("isReplay"):
             # One of our own messages, echoed as Claude Code takes it in
@@ -2209,7 +2220,10 @@ class TurnRunner:
                       "cost_usd": None if guessed else round(self.costs.total, 6),
                       "cost_complete": self.cost_complete and not guessed,
                       "sent": self.messages_written > 0,
-                      "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()}}
+                      "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()},
+                      # The reply the cost is kept with, as its last line (#692).
+                      "reply_uuid": self.parser.reply_uuid,
+                      "reply_message_id": self.parser.reply_message_id}
         if event.is_error and event.kind == "failed":
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
                                  self.reservation.amount if self.reservation else None,

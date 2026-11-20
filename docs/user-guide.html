@@ -428,8 +428,21 @@ chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stop
 Ask Aside answer says what it cost, and
 the status bar shows what the chat and The Chat Place have spent in a Claude chat. In a
 Codex chat it shows The Chat Place's estimated priced total and any unpriced token count.
-Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.
-A chat's charging can't be
+Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.</p>
+<p><strong>What each chat and each reply cost.</strong> The Session list's <strong>Cost</strong> column, just after Charged
+to, says what a chat on API credits has spent in all, in the words Properties (Alt+Enter) uses:
+"$1.42" for a Claude chat, "an estimated 3 cents" for a Codex chat, or "cost unknown for 12,400
+tokens" for a Codex model with no known price. It's left out for chats on a subscription,
+chats started outside The Chat Place, and chats that haven't spent anything yet. Each reply in a
+chat on API credits ends with what it cost, in the words you heard: "Cost: 19 cents", "Cost: an
+estimated 3 cents", or "Cost: unknown, 12,400 tokens". It's at the end of the reply's line in the
+messages list, and the last line when you read the whole message (Enter) or its formatted page.
+It's kept with the chat in The Chat Place's own files, never in Claude Code's or Codex's, so it's
+still there after a restart. Copy leaves out the cost line, so a reply you paste elsewhere doesn't
+carry it; an exported chat keeps it. It's there even with "Give the cost of each API-credit reply"
+turned off in Tools, Settings; that setting only changes what you hear. A reply's cost covers
+the whole turn it ended, tool calls included.</p>
+<p>A chat's charging can't be
 changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
 key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
 available in Claude API chats. Copilot chats cannot use API credits. Older releases of
@@ -2786,16 +2799,18 @@ still listed.</p>
 <p><strong>View, Session List Columns</strong> (Alt+V, C) chooses which parts each chat's line reads, and in
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.</p>
-<p>The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Folder,
+<p>The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Cost, Folder,
 Status, New reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the
 others in "The kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at
 first. Started and Last message are read only once you add them. Charged to says how each of
 The Chat Place's own chats is paid for: "Claude subscription", "Claude API credits", "ChatGPT
 subscription", "OpenAI API credits" or "Copilot plan". It's the one place a chat's line says
 it's on API credits. It's left out for chats started outside The Chat Place and for agent
-conversations. Older saved choices gain Provider once, just after Title (or first if Title is
-hidden), and Charged to once, just after Provider, without changing their other columns. If you remove
-Provider afterward, it stays removed. A column with nothing to say for a chat, such as New reply
+conversations. Cost says what a chat on API credits has spent in all ("$1.42", or "an estimated
+3 cents" for Codex), and is left out when it hasn't spent anything. Older saved choices gain
+Provider once, just after Title (or first if Title is hidden), Charged to once, just after
+Provider, and Cost once, just after Charged to, without changing their other columns. If you
+remove one afterward, it stays removed. A column with nothing to say for a chat, such as New reply
 when there isn't one, is simply left out of that line.</p>
 <p><strong>Last activity</strong> ("active 5 minutes ago") is the last time the chat did anything, even in the
 middle of a long turn, or while it's being run outside The Chat Place. How long the turn now

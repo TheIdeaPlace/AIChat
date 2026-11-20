@@ -167,6 +167,27 @@ def test_an_api_turn_gets_the_key_only_through_its_one_settings(tmp_path, book):
     assert totals.by_chat == {"chat-1": pytest.approx(0.05)}
 
 
+def test_an_api_turn_names_the_reply_its_cost_is_kept_with(tmp_path, book):
+    # #692: the last reply with text, by its message id and record uuid.
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="assistant", uuid="u1", message={"id": "msg_1", "content": [
+            {"type": "text", "text": "Looking"}]}),
+        ev(type="assistant", uuid="u2", message={"id": "msg_1", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}),
+        ev(type="assistant", uuid="u3", message={"id": "msg_2", "content": [
+            {"type": "text", "text": "pong"}]}),
+        result("pong", cost=0.19),
+    ])
+    _runner, events, _captured = run(process, tmp_path, book)
+    final = events[-1]
+    assert final.data["reply_message_id"] == "msg_2" and final.data["reply_uuid"] == "u3"
+    from thechatplace.reply_costs import claude_reply_key, claude_words, cost_line
+    assert claude_reply_key(final.data) == "msg_2"
+    assert cost_line(claude_words(final.data)) == "Cost: 19 cents"
+
+
 @pytest.mark.parametrize("account", [SUBSCRIPTION, None, {**HELPER, "apiKeySource":
                                                           "ANTHROPIC_API_KEY"},
                                      {**HELPER, "apiProvider": "bedrock"}])
