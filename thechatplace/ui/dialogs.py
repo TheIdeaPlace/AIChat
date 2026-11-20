@@ -2249,8 +2249,8 @@ class FormattedMessageDialog(wx.Dialog):
                 platform_paths.open_local_file(url)
             except (OSError, ValueError) as exc:
                 wx.MessageBox(f"Couldn't open the file: {exc}\n\n"
-                              "Close this view, then use Links (Ctrl+L) for file actions "
-                              "and Copy.", self.GetTitle(),
+                              f"Close this view, then use Links ({key_name(your_key('Ctrl+L'))}) "
+                              "for file actions and Copy.", self.GetTitle(),
                               wx.OK | wx.ICON_INFORMATION, self)
         elif is_app_link(url):
             self.app_link = url
