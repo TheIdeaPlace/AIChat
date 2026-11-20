@@ -2946,7 +2946,9 @@ def test_a_formatted_page_that_never_loads_opens_as_plain_text_and_says_why(fram
     monkeypatch.setattr(main_frame, "MessageDialog", Plain)
     frame.on_read_message()
     assert opened == ["## Result"]
-    assert env["feedback"][-1] == FORMATTED_BROKEN_TEXT
+    # Said a moment after the text box opens, so it isn't cut off by it.
+    assert FORMATTED_BROKEN_TEXT not in env["feedback"]
+    assert pump(lambda: env["feedback"] and env["feedback"][-1] == FORMATTED_BROKEN_TEXT)
 
 
 def test_settings_dialog_has_the_formatted_page_choice(frame):

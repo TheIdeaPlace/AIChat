@@ -2074,16 +2074,37 @@ def remove_whole_chat_page() -> None:
         pass
 
 
-#: Set once a formatted page failed to load in this run (#693). The web view's
-#: browser is shared by every page, so after it dies each new page was blank
-#: until The Chat Place restarted. Pages open as plain text from then on.
+#: Set once a formatted page died in this run (#693). WebView2 157 crashed its
+#: browser process again and again on Kelly's ARM64 PC (msedge.dll+0xe5e3dc),
+#: and every page shown after that was blank, with Escape (relayed by the
+#: page's own script) doing nothing. Pages open as plain text from then on.
 _FORMATTED_BROKEN = False
-#: How long a formatted page may take to say it's loaded before it's taken as
-#: broken. Generous: a whole long chat is written to a file and read in.
-FORMATTED_LOAD_TIMEOUT_MS = 10000
-#: Said once, when that happens.
-FORMATTED_BROKEN_TEXT = ("The formatted view stopped working, so this message is shown as plain "
-                         "text. Messages open as plain text until you restart The Chat Place.")
+#: How long a page may take to show its first sign of life (navigation
+#: committed, a heartbeat, or loaded) before it's taken as dead, and how long
+#: it then has to finish: a whole long chat is a big file to read in.
+FORMATTED_START_TIMEOUT_MS = 10000
+FORMATTED_NAVIGATED_TIMEOUT_MS = 30000
+#: The page says it's alive this often (_HEARTBEAT), and is taken as dead
+#: after this long without a word while its window is active. A crashed
+#: browser carries no messages, so the heartbeat stops with it.
+FORMATTED_HEARTBEAT_MS = 2000
+FORMATTED_SILENCE_MS = 8000
+#: Said once, when that happens, after the plain text has opened.
+FORMATTED_BROKEN_TEXT = ("The formatted view stopped working. Showing plain text until you "
+                         "restart The Chat Place.")
+
+#: The page's heartbeat (#693), through the same "hub" handler as the keys.
+_HEARTBEAT = """
+(function () {
+  function hub() {
+    return (window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.hub) || window.hub;
+  }
+  function beat(word) { var h = hub(); if (h) { h.postMessage(word); } }
+  document.addEventListener('DOMContentLoaded', function () { beat('alive'); });
+  setInterval(function () { beat('alive'); }, %d);
+})();
+""" % FORMATTED_HEARTBEAT_MS
 
 
 def formatted_view_broken() -> bool:
@@ -2142,6 +2163,11 @@ class FormattedMessageDialog(wx.Dialog):
         _prepare_webview_data_folder()
         self._open_url = platform_paths.open_url
         self._loaded = False
+        #: The page never loaded, or stopped beating (#693): the caller shows
+        #: the message as plain text, and says why, once.
+        self.failed = False
+        self._beats = False  # the heartbeat script went in
+        self._watchdog = None
         self.app_link = None  # a thechatplace:// link chosen in the page (#144)
         try:
             self.view = wx.html2.WebView.New(self, backend=_webview_backend())
@@ -2182,6 +2208,9 @@ class FormattedMessageDialog(wx.Dialog):
                                         f"function(){{{start_script}}});")
             if wx.Platform == "__WXGTK__":
                 self.view.AddUserScript(_FOCUS_PAGE)
+            # Last, so a page that beats has its other scripts too (#693).
+            self.view.AddUserScript(_HEARTBEAT)
+            self._beats = True
         except Exception:  # noqa: BLE001 - Escape still works from the buttons
             pass
         self.view.Bind(wx.html2.EVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, self._on_script_message)
@@ -2189,14 +2218,53 @@ class FormattedMessageDialog(wx.Dialog):
         self.view.Bind(wx.html2.EVT_WEBVIEW_NEWWINDOW, self._on_new_window)
         self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_loaded)
         self.view.Bind(wx.html2.EVT_WEBVIEW_ERROR, self._on_error)
-        #: The page never loaded, or the web view failed (#693): the caller
-        #: shows the message as plain text, and says why, once.
-        self.failed = False
+        self.view.Bind(wx.html2.EVT_WEBVIEW_NAVIGATED, self._on_navigated)
         self._load(page_html)
-        # A dead web view never says it's loaded, and draws a blank page in
-        # which Escape does nothing, so a page that hasn't loaded in time is
-        # taken as broken rather than left blank.
-        self._watchdog = wx.CallLater(FORMATTED_LOAD_TIMEOUT_MS, self._check_loaded)
+        # A dead web view never loads, or stops beating, and is a blank page
+        # in which Escape does nothing (#693). The watchdog gives it up.
+        self._start_watchdog()
+
+    # -- is the page alive? (#693) ------------------------------------------------
+
+    def _start_watchdog(self, clock=None):
+        """Watch the page from now: it has FORMATTED_START_TIMEOUT_MS to show
+        a sign of life, then must keep beating while its window is active."""
+        import time
+        self._clock = clock or time.monotonic
+        self._heard = False
+        self._deadline = self._clock() + FORMATTED_START_TIMEOUT_MS / 1000
+        self._watchdog = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, lambda e: self._tick(), self._watchdog)
+        self._watchdog.Start(1000)
+
+    def _on_navigated(self, _event):
+        # Committed: a big page now has longer to finish reading in.
+        if not self._heard and not self._loaded:
+            self._deadline = max(self._deadline,
+                                 self._clock() + FORMATTED_NAVIGATED_TIMEOUT_MS / 1000)
+
+    def _heard_from_page(self):
+        self._heard = True
+        self._deadline = self._clock() + FORMATTED_SILENCE_MS / 1000
+
+    def _tick(self):
+        if not self or self.IsBeingDeleted() or self.failed:
+            return
+        now = self._clock()
+        if self._loaded and not self._beats:
+            return  # no heartbeat script could be added: nothing to listen for
+        if self._heard and not self.IsActive():
+            # Not in front: the page's timers may be slowed, so only an
+            # active window's silence counts.
+            self._deadline = now + FORMATTED_SILENCE_MS / 1000
+            return
+        if now > self._deadline:
+            self._give_up()
+
+    def _check_loaded(self):
+        """For the tests: as if the watchdog's time had run out."""
+        if self and not self.IsBeingDeleted() and not self._loaded:
+            self._give_up()
 
     def _load(self, page_html: str):
         from ..rendering import needs_page_file, page_file_bytes
@@ -2216,13 +2284,18 @@ class FormattedMessageDialog(wx.Dialog):
             return
         self.view.SetPage(page_html, "")
 
-    def _check_loaded(self):
-        if self and not self.IsBeingDeleted() and not self._loaded:
-            self._give_up()
-
-    def _on_error(self, _event):
-        # Only the page itself: links are vetoed before they load.
-        if not self._loaded:
+    def _on_error(self, event):
+        """Only a failure of the page itself: not a link (vetoed anyway), and
+        not the first about:blank being replaced by the page, which engines
+        report as a cancelled navigation."""
+        import wx.html2
+        if self._loaded or event is None:
+            return
+        if event.GetInt() == wx.html2.WEBVIEW_NAV_ERR_USER_CANCELLED:
+            return
+        url = event.GetURL() or ""
+        page = self._page_file.as_uri() if self._page_file is not None else ""
+        if url in ("", "about:blank", page) or (page and url.rstrip("/") == page):
             self._give_up()
 
     def _give_up(self):
@@ -2255,6 +2328,7 @@ class FormattedMessageDialog(wx.Dialog):
             return  # the page file couldn't be written, and the view's still finishing
         if not self._loaded:
             self._loaded = True
+            self._heard_from_page()
             # Into the page, so the screen reader starts reading it.
             self.view.SetFocus()
             gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
@@ -2270,6 +2344,10 @@ class FormattedMessageDialog(wx.Dialog):
 
     def _on_script_message(self, event):
         message = event.GetString()
+        # Any word from the page shows its browser is still alive (#693).
+        self._heard_from_page()
+        if message == "alive":
+            return
         if message == "escape":
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif message == "plain":
@@ -3288,6 +3366,9 @@ class PlanDialog(wx.Dialog):
     def _read_formatted(self, request):
         from ..rendering import message_page
         title = "Claude's plan"
+        if not formatted_view_available():
+            self._formatted_gone()  # it died earlier in this run (#693)
+            return
         try:
             dialog = FormattedMessageDialog(self, title, message_page(title, request.plan()))
         except RuntimeError:
@@ -3295,9 +3376,22 @@ class PlanDialog(wx.Dialog):
             return
         try:
             dialog.ShowModal()
+            failed = dialog.failed
         finally:
             dialog.Destroy()
+        if failed:
+            wx.MessageBox(FORMATTED_BROKEN_TEXT + " The plan is in the Plan box.",
+                          title, wx.OK | wx.ICON_INFORMATION, self)
+            self._formatted_gone()
+            return
         (self.formatted_button or self.plan_text).SetFocus()
+
+    def _formatted_gone(self):
+        """No formatted view for the rest of the run (#693): the button goes
+        quiet, and you're on the plan's text, which has it all."""
+        if self.formatted_button is not None:
+            self.formatted_button.Disable()
+        self.plan_text.SetFocus()
 
     def chosen_mode(self) -> str:
         index = self.mode.GetSelection()

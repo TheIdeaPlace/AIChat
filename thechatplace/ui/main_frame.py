@@ -3111,7 +3111,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             dialog.Destroy()
         if failed:
             # The web view died (#693): said once; plain text from now on.
-            self._feedback(FORMATTED_BROKEN_TEXT)
+            # The caller opens the text box next, and the screen reader reads
+            # that first, so this comes a moment after, rather than cut off.
+            wx.CallLater(1500, self._feedback, FORMATTED_BROKEN_TEXT)
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown

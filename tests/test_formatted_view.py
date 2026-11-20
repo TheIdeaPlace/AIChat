@@ -55,11 +55,21 @@ def test_webview2_data_folder_is_set_only_on_windows(monkeypatch, tmp_path):
     assert dialogs.os.environ["WEBVIEW2_USER_DATA_FOLDER"].startswith(str(tmp_path))
 
 
-class _Page:
-    """Just what the give-up logic touches (#693), without a web view."""
 
-    def __init__(self, modal=True, loaded=False):
-        self._loaded, self._modal, self.failed, self.ended = loaded, modal, False, []
+
+F = dialogs.FormattedMessageDialog
+
+
+class _Page:
+    """Just what the watchdog touches (#693), without a web view: the real
+    methods run against it, with a clock the test moves."""
+
+    def __init__(self, modal=True, loaded=False, beats=True, active=True):
+        self._loaded, self._modal, self._beats, self.active = loaded, modal, beats, active
+        self.failed, self.ended, self._page_file, self.now = False, [], None, 100.0
+        self._clock = lambda: self.now
+        self._heard = False
+        self._deadline = self.now + dialogs.FORMATTED_START_TIMEOUT_MS / 1000
 
     def __bool__(self):
         return True
@@ -70,35 +80,124 @@ class _Page:
     def IsModal(self):
         return self._modal
 
+    def IsActive(self):
+        return self.active
+
     def EndModal(self, code):
         self.ended.append(code)
 
     def _give_up(self):
-        dialogs.FormattedMessageDialog._give_up(self)
+        F._give_up(self)
+
+    def _heard_from_page(self):
+        F._heard_from_page(self)
+
+    def tick_after(self, seconds):
+        self.now += seconds
+        F._tick(self)
 
 
-def test_a_page_that_never_loads_gives_up_once_and_for_the_rest_of_the_run(monkeypatch):
+class _Error:
+    def __init__(self, url="", code=None):
+        self.url, self.code = url, code if code is not None else wx.html2.WEBVIEW_NAV_ERR_OTHER
+
+    def GetURL(self):
+        return self.url
+
+    def GetInt(self):
+        return self.code
+
+
+def _fresh(monkeypatch):
     monkeypatch.setattr(dialogs, "_FORMATTED_BROKEN", False)
     monkeypatch.setattr(wx.html2.WebView, "IsBackendAvailable", lambda backend: True)
+
+
+def test_a_page_that_never_shows_life_gives_up_once_and_for_the_rest_of_the_run(monkeypatch):
+    _fresh(monkeypatch)
     assert dialogs.formatted_view_available() and not dialogs.formatted_view_broken()
     page = _Page()
-    dialogs.FormattedMessageDialog._check_loaded(page)
+    page.tick_after(5)
+    assert not page.failed  # still within its start time
+    page.tick_after(6)
     assert page.failed and page.ended == [dialogs.ID_PLAIN_TEXT]
-    # Said and closed once, however many times it's told.
-    dialogs.FormattedMessageDialog._on_error(page, None)
-    assert page.ended == [dialogs.ID_PLAIN_TEXT]
+    page.tick_after(30)
+    assert page.ended == [dialogs.ID_PLAIN_TEXT]  # closed once
     # Every later message goes straight to plain text until a restart.
     assert dialogs.formatted_view_broken() and not dialogs.formatted_view_available()
 
 
-def test_a_loaded_page_is_left_alone(monkeypatch):
-    monkeypatch.setattr(dialogs, "_FORMATTED_BROKEN", False)
+def test_a_page_that_loads_then_goes_silent_gives_up(monkeypatch):
+    # Kelly's case: the page loads, then WebView2's browser dies seconds later.
+    _fresh(monkeypatch)
+    page = _Page()
+    page.tick_after(1)
+    F._heard_from_page(page)  # loaded
+    for _ in range(5):
+        page.tick_after(dialogs.FORMATTED_HEARTBEAT_MS / 1000)
+        F._heard_from_page(page)  # beating
+    assert not page.failed
+    page.tick_after(dialogs.FORMATTED_SILENCE_MS / 1000 + 1)  # the beats stop
+    assert page.failed and page.ended == [dialogs.ID_PLAIN_TEXT]
+
+
+def test_a_big_page_has_longer_once_its_navigation_commits(monkeypatch):
+    _fresh(monkeypatch)
+    page = _Page()
+    page.tick_after(2)
+    F._on_navigated(page, None)
+    page.tick_after(dialogs.FORMATTED_START_TIMEOUT_MS / 1000 + 5)
+    assert not page.failed  # a whole long chat still reading in
+    page.tick_after(dialogs.FORMATTED_NAVIGATED_TIMEOUT_MS / 1000)
+    assert page.failed
+
+
+def test_silence_counts_only_while_the_window_is_active(monkeypatch):
+    # In the background, the page's timers may be slowed: not a crash.
+    _fresh(monkeypatch)
+    page = _Page()
+    F._heard_from_page(page)
+    page.active = False
+    for _ in range(10):
+        page.tick_after(30)
+    assert not page.failed
+    page.active = True
+    page.tick_after(1)
+    assert not page.failed  # a fresh grace on coming back
+    page.tick_after(dialogs.FORMATTED_SILENCE_MS / 1000 + 1)
+    assert page.failed
+
+
+def test_a_loaded_page_without_a_heartbeat_script_is_left_alone(monkeypatch):
+    _fresh(monkeypatch)
+    page = _Page(loaded=True, beats=False)
+    page.tick_after(600)
+    assert not page.failed and not dialogs.formatted_view_broken()
+
+
+def test_only_the_pages_own_errors_count(monkeypatch):
+    _fresh(monkeypatch)
+    page = _Page()
+    # The first about:blank being replaced by the page is reported as cancelled.
+    F._on_error(page, _Error("about:blank", wx.html2.WEBVIEW_NAV_ERR_USER_CANCELLED))
+    F._on_error(page, _Error("https://example.com/"))  # not the page
+    F._on_error(page, None)
+    assert not page.failed
+    F._on_error(page, _Error("about:blank"))  # the page itself failed
+    assert page.failed and page.ended == [dialogs.ID_PLAIN_TEXT]
+
+
+def test_an_error_after_loading_is_left_alone(monkeypatch):
+    _fresh(monkeypatch)
     page = _Page(loaded=True)
-    dialogs.FormattedMessageDialog._check_loaded(page)
-    dialogs.FormattedMessageDialog._on_error(page, None)  # a link's error, after loading
-    assert not page.failed and page.ended == [] and not dialogs.formatted_view_broken()
+    F._on_error(page, _Error("about:blank"))
+    assert not page.failed and not dialogs.formatted_view_broken()
 
 
-def test_the_wait_is_long_enough_for_a_whole_chat():
-    assert dialogs.FORMATTED_LOAD_TIMEOUT_MS >= 8000
-    assert "plain text" in dialogs.FORMATTED_BROKEN_TEXT and "restart" in dialogs.FORMATTED_BROKEN_TEXT
+def test_the_timings_and_words():
+    assert dialogs.FORMATTED_START_TIMEOUT_MS >= 8000
+    assert dialogs.FORMATTED_NAVIGATED_TIMEOUT_MS > dialogs.FORMATTED_START_TIMEOUT_MS
+    assert dialogs.FORMATTED_SILENCE_MS >= 3 * dialogs.FORMATTED_HEARTBEAT_MS
+    assert str(dialogs.FORMATTED_HEARTBEAT_MS) in dialogs._HEARTBEAT
+    assert "plain text" in dialogs.FORMATTED_BROKEN_TEXT
+    assert "restart" in dialogs.FORMATTED_BROKEN_TEXT
