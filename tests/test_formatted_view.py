@@ -201,3 +201,85 @@ def test_the_timings_and_words():
     assert str(dialogs.FORMATTED_HEARTBEAT_MS) in dialogs._HEARTBEAT
     assert "plain text" in dialogs.FORMATTED_BROKEN_TEXT
     assert "restart" in dialogs.FORMATTED_BROKEN_TEXT
+
+
+class _SharedFake:
+    """Stands in for FormattedMessageDialog in show_formatted_page (#693)."""
+    made = []
+
+    def __init__(self, parent, title, page, start_at="", reusable=False):
+        self.parent, self.titles, self.reusable = parent, [title], reusable
+        self.app_link, self.failed, self.destroyed, self.stopped = None, False, False, 0
+        self.result = wx.ID_CANCEL
+        _SharedFake.made.append(self)
+
+    def __bool__(self):
+        return not self.destroyed
+
+    def IsBeingDeleted(self):
+        return self.destroyed
+
+    def GetParent(self):
+        return self.parent
+
+    def reload(self, title, page, start_at=""):
+        self.titles.append(title)
+
+    def ShowModal(self):
+        return self.result
+
+    def stop_watching(self):
+        self.stopped += 1
+
+    def Destroy(self):
+        self.destroyed = True
+
+
+def test_windows_keeps_one_page_and_reloads_it(monkeypatch):
+    _SharedFake.made = []
+    monkeypatch.setattr(dialogs, "FormattedMessageDialog", _SharedFake)
+    monkeypatch.setattr(dialogs, "_SHARED_PAGE", None)
+    monkeypatch.setattr(dialogs, "_reuse_pages", lambda: True)
+    for index in range(3):
+        result, link, failed = dialogs.show_formatted_page(None, f"Message {index}", "<p>x</p>")
+        assert result == wx.ID_CANCEL and link is None and not failed
+    # One page, never destroyed: closing a web view is what crashed (#693).
+    assert len(_SharedFake.made) == 1
+    page = _SharedFake.made[0]
+    assert page.reusable and not page.destroyed and page.stopped == 3
+    assert page.titles == ["Message 0", "Message 1", "Message 2"]
+
+
+def test_a_page_that_died_is_never_shown_again(monkeypatch):
+    _SharedFake.made = []
+    monkeypatch.setattr(dialogs, "FormattedMessageDialog", _SharedFake)
+    monkeypatch.setattr(dialogs, "_SHARED_PAGE", None)
+    monkeypatch.setattr(dialogs, "_reuse_pages", lambda: True)
+    dialogs.show_formatted_page(None, "First", "<p>x</p>")
+    _SharedFake.made[0].failed = True
+    _result, _link, failed = dialogs.show_formatted_page(None, "Second", "<p>x</p>")
+    assert failed and dialogs._SHARED_PAGE is None
+    assert not _SharedFake.made[0].destroyed  # it goes with the main window
+
+
+def test_elsewhere_or_with_another_factory_a_page_is_made_each_time(monkeypatch):
+    _SharedFake.made = []
+    monkeypatch.setattr(dialogs, "_SHARED_PAGE", None)
+    monkeypatch.setattr(dialogs, "_reuse_pages", lambda: False)
+    monkeypatch.setattr(dialogs, "FormattedMessageDialog", _SharedFake)
+    dialogs.show_formatted_page(None, "One", "<p>x</p>")
+    dialogs.show_formatted_page(None, "Two", "<p>x</p>")
+    assert len(_SharedFake.made) == 2 and all(p.destroyed for p in _SharedFake.made)
+    # A test's own factory is never kept either.
+    monkeypatch.setattr(dialogs, "_reuse_pages", lambda: True)
+    monkeypatch.setattr(dialogs, "FormattedMessageDialog", object)
+    dialogs.show_formatted_page(None, "Three", "<p>x</p>", factory=_SharedFake)
+    assert len(_SharedFake.made) == 3 and _SharedFake.made[-1].destroyed
+
+
+def test_reuse_is_windows_only(monkeypatch):
+    monkeypatch.setattr(dialogs.sys, "platform", "win32")
+    assert dialogs._reuse_pages()
+    for platform in ("darwin", "linux"):
+        monkeypatch.setattr(dialogs.sys, "platform", platform)
+        assert not dialogs._reuse_pages()

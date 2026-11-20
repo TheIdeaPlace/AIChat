@@ -2152,11 +2152,16 @@ class FormattedMessageDialog(wx.Dialog):
     MessageDialog.
     """
 
-    def __init__(self, parent, title: str, page_html: str, start_at: str = ""):
-        """``start_at``: the heading to open on (``export.message_anchor``)."""
+    def __init__(self, parent, title: str, page_html: str, start_at: str = "",
+                 reusable: bool = False):
+        """``start_at``: the heading to open on (``export.message_anchor``).
+        ``reusable``: kept by ``show_formatted_page`` and loaded again for each
+        message (#693), so its heading is found on loading, not by a script
+        fixed into the page."""
         import wx.html2
         from .. import platform_paths
         self._start_at = start_at
+        self._reusable = reusable
         self._page_file = None
         super().__init__(parent, title=title, size=dialog_size(parent, 820, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
@@ -2200,7 +2205,9 @@ class FormattedMessageDialog(wx.Dialog):
             self.view.AddUserScript(_KEY_RELAY)
             from ..rendering import go_to_script
             start_script = go_to_script(start_at)
-            if start_script:
+            if start_script and not reusable:
+                # A reused page (Windows) finds its heading on loading instead:
+                # a user script stays for every later page.
                 # As well as on loading, below: WebKit may refuse RunScript's eval
                 # under the page's rules, and this needs none. RunScript was seen
                 # working on WebView2; Mac and Linux haven't been run.
@@ -2231,11 +2238,38 @@ class FormattedMessageDialog(wx.Dialog):
         a sign of life, then must keep beating while its window is active."""
         import time
         self._clock = clock or time.monotonic
+        if self._watchdog is None:
+            self._watchdog = wx.Timer(self)
+            self.Bind(wx.EVT_TIMER, lambda e: self._tick(), self._watchdog)
         self._heard = False
         self._deadline = self._clock() + FORMATTED_START_TIMEOUT_MS / 1000
-        self._watchdog = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, lambda e: self._tick(), self._watchdog)
         self._watchdog.Start(1000)
+
+    def reload(self, title: str, page_html: str, start_at: str = ""):
+        """The next message in this same window and web view (#693): its
+        web view is never closed during the run, because closing one is what
+        crashed WebView2 157 on Kelly's PCs."""
+        self._drop_page_file()
+        self._start_at = start_at
+        self._loaded = False
+        self.failed = False
+        self.app_link = None
+        self.SetTitle(title)
+        self._load(page_html)
+        self._start_watchdog(self._clock)
+
+    def stop_watching(self):
+        """Hidden between messages: nothing to watch until the next one."""
+        if self._watchdog is not None:
+            self._watchdog.Stop()
+
+    def _drop_page_file(self):
+        if self._page_file is not None:
+            try:
+                self._page_file.unlink()
+            except OSError:
+                pass  # the next run removes it
+            self._page_file = None
 
     def _on_navigated(self, _event):
         # Committed: a big page now has longer to finish reading in.
@@ -2315,12 +2349,7 @@ class FormattedMessageDialog(wx.Dialog):
         watchdog = getattr(self, "_watchdog", None)
         if watchdog is not None:
             watchdog.Stop()
-        if self._page_file is not None:
-            try:
-                self._page_file.unlink()
-            except OSError:
-                pass  # the next run removes it
-            self._page_file = None
+        self._drop_page_file()
         return super().Destroy()
 
     def _on_loaded(self, _event):
@@ -2386,6 +2415,55 @@ class FormattedMessageDialog(wx.Dialog):
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif url.lower().startswith(("http:", "https:", "mailto:")):
             self._open_url(url)
+
+
+#: The one formatted page kept for the run on Windows (#693), or None.
+_SHARED_PAGE = None
+
+
+def _reuse_pages() -> bool:
+    """Windows only: there, destroying a WebView2 crashed its browser while
+    JAWS ran (WebView2 157; Kelly's x64 and ARM64 PCs), and on ARM64 left
+    every later page blank. Kept open and loaded again, a page closed only as
+    The Chat Place exits. Mac and Linux make a page per message, as before."""
+    return sys.platform == "win32"
+
+
+def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
+                        factory=None):
+    """Show a formatted page modally and return (result, app_link, failed).
+    ``factory``: what makes a page (FormattedMessageDialog unless a test
+    passes its own). The real one is kept and reused on Windows (#693);
+    anything else is made and destroyed each time. Raises RuntimeError if the
+    page can't be made, as FormattedMessageDialog does."""
+    global _SHARED_PAGE
+    factory = factory or FormattedMessageDialog
+    options = {"start_at": start_at} if start_at else {}
+    if factory is not FormattedMessageDialog or not _reuse_pages():
+        dialog = factory(parent, title, page_html, **options)
+        try:
+            result = dialog.ShowModal()
+            return result, getattr(dialog, "app_link", None), getattr(dialog, "failed", False)
+        finally:
+            dialog.Destroy()
+    # Owned by the main window, which lives the whole run: a page owned by a
+    # dialog would be destroyed with it, and that is the crash to avoid.
+    owner = wx.GetTopLevelParent(parent) if parent is not None else None
+    while owner is not None and owner.GetParent() is not None:
+        owner = wx.GetTopLevelParent(owner.GetParent())
+    page = _SHARED_PAGE
+    if page and not page.IsBeingDeleted() and page.GetParent() is owner:
+        page.reload(title, page_html, start_at)
+    else:
+        page = FormattedMessageDialog(owner, title, page_html, start_at, reusable=True)
+        _SHARED_PAGE = page
+    result = page.ShowModal()
+    page.stop_watching()
+    if page.failed:
+        # Its web view died: never shown again this run (plain text from now
+        # on). Not destroyed either; it goes with the main window.
+        _SHARED_PAGE = None
+    return result, page.app_link, page.failed
 
 
 # -- Claude is waiting for an answer (#187, #188) ---------------------------------------
@@ -3370,15 +3448,13 @@ class PlanDialog(wx.Dialog):
             self._formatted_gone()  # it died earlier in this run (#693)
             return
         try:
-            dialog = FormattedMessageDialog(self, title, message_page(title, request.plan()))
+            # The shared page on Windows (#693), never destroyed with this
+            # dialog: that would close its web view.
+            _result, _link, failed = show_formatted_page(
+                self, title, message_page(title, request.plan()))
         except RuntimeError:
             self.plan_text.SetFocus()
             return
-        try:
-            dialog.ShowModal()
-            failed = dialog.failed
-        finally:
-            dialog.Destroy()
         if failed:
             wx.MessageBox(FORMATTED_BROKEN_TEXT + " The plan is in the Plan box.",
                           title, wx.OK | wx.ICON_INFORMATION, self)

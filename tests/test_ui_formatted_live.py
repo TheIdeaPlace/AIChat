@@ -55,3 +55,45 @@ def test_a_healthy_page_loads_beats_and_is_never_given_up(app, tmp_path, monkeyp
             page.Destroy()
     finally:
         frame.Destroy()
+
+
+def test_the_shared_page_loads_each_message_in_the_same_web_view(app, tmp_path, monkeypatch):
+    # #693: on Windows one page is kept and loaded again, never destroyed
+    # during the run. Each message must load and be read in it.
+    import wx
+    from thechatplace.rendering import message_page
+    from thechatplace.ui import dialogs
+    monkeypatch.setenv("WEBVIEW2_USER_DATA_FOLDER", str(tmp_path / "webview2"))
+    monkeypatch.setattr(dialogs, "_SHARED_PAGE", None)
+    if not dialogs.formatted_view_available():
+        pytest.skip("no WebView2 runtime on this machine")
+    frame = wx.Frame(None)
+    pages, titles = [], []
+
+    def close_once_loaded(started):
+        page = dialogs._SHARED_PAGE
+        if page and page._loaded:
+            pages.append(page)
+            titles.append(page.GetTitle())
+            page.EndModal(wx.ID_CANCEL)
+        elif time.monotonic() - started < 60:
+            wx.CallLater(200, close_once_loaded, started)
+        elif page and page.IsModal():
+            page.EndModal(wx.ID_CANCEL)
+
+    try:
+        for index in range(2):
+            title = f"Message: Claude {index}"
+            wx.CallLater(200, close_once_loaded, time.monotonic())
+            result, _link, failed = dialogs.show_formatted_page(
+                frame, title, message_page(title, f"## Reply {index}\n\nText."))
+            assert result == wx.ID_CANCEL and not failed
+        assert len(pages) == 2 and pages[0] is pages[1], "the page wasn't reused"
+        assert titles == ["Message: Claude 0", "Message: Claude 1"]
+        assert not dialogs.formatted_view_broken()
+    finally:
+        page = dialogs._SHARED_PAGE
+        dialogs._SHARED_PAGE = None
+        if page:
+            page.Destroy()
+        frame.Destroy()
