@@ -1073,6 +1073,87 @@ def open_url(url: str) -> None:
         subprocess.Popen(["xdg-open", url])
 
 
+def _finder_alias(path: Path) -> bool:
+    """A Finder alias can launch an app despite having no file extension.
+
+    Apple's TN1150 FileInfo has the big-endian finderFlags at bytes 8–9;
+    kIsAlias is 0x8000. Alias files also use the 'alis' file type.
+    """
+    if sys.platform != 'darwin':
+        return False
+    import errno
+    try:
+        info = os.getxattr(path, 'com.apple.FinderInfo')
+    except OSError as exc:
+        absent = {getattr(errno, 'ENOATTR', None), errno.ENODATA, errno.ENOTSUP}
+        if exc.errno in absent:
+            return False
+        raise  # metadata we couldn't inspect mustn't allow an Open
+    return len(info) >= 10 and (info[:4] == b'alis' or int.from_bytes(info[8:10], 'big') & 0x8000 != 0)
+
+
+def local_file_status(value: str):
+    """What a reply's local reference may do now (#253), without opening it."""
+    from .local_files import FileStatus, blocked_type, local_path, plain_path
+    if not plain_path(value):
+        return FileStatus('', 'invalid', 'Unsafe file path. Copy only.')
+    path = local_path(value)
+    if not path or not plain_path(path):
+        return FileStatus(path, 'invalid', 'Unsafe file path. Copy only.')
+    if not os.path.isabs(path):
+        return FileStatus(path)  # a Windows path on another operating system
+    try:
+        resolved = Path(path).resolve(strict=True)
+        mode = resolved.stat().st_mode
+        if stat.S_ISDIR(mode):
+            return FileStatus(path, 'folder', 'Folder. Use Open folder or Copy.')
+        if not stat.S_ISREG(mode):
+            return FileStatus(path, 'invalid', 'Not a regular file. Copy only.')
+        executable = sys.platform != 'win32' and bool(mode & 0o111)
+        if blocked_type(path) or blocked_type(str(resolved)) or executable or _finder_alias(resolved):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'file', '')
+    except (OSError, ValueError, RuntimeError):
+        return FileStatus(path)
+
+
+def open_local_file(value: str, *, containing: bool = False) -> None:
+    """Act only on the item the user chose; recheck it immediately (#253)."""
+    status = local_file_status(value)
+    if containing:
+        if not status.can_reveal:
+            raise ValueError(status.reason)
+        if status.kind == 'folder':
+            open_local_folder(status.path)
+        else:
+            show_in_folder(Path(status.path))
+    else:
+        if not status.can_open:
+            raise ValueError(status.reason)
+        open_url(status.path)
+
+
+def open_local_folder(path: str) -> None:
+    """Open a directory in the file manager, including a Mac .app bundle.
+
+    The default Open verb on a bundle runs it, so ask Finder for a folder
+    window explicitly. Pass the path as an argument, never AppleScript code.
+    """
+    import subprocess
+    if sys.platform == 'win32':
+        subprocess.Popen([_windows_program('explorer.exe'), path])
+    elif sys.platform == 'darwin':
+        script = ('on run argv\n'
+                  'tell application "Finder"\n'
+                  'activate\n'
+                  'open folder (POSIX file (item 1 of argv) as alias)\n'
+                  'end tell\nend run')
+        subprocess.Popen(['osascript', '-e', script, path])
+    else:
+        subprocess.Popen(['xdg-open', path])
+
+
 def _windows_program(*parts: str) -> str:
     """A Windows program by its full path, never found by searching the
     current folder or the app's own first."""

@@ -8,31 +8,32 @@ in code (a fenced block or `inline code`) are listed too, marked as being in
 code, since Claude often gives an address that way. Each address is listed
 once, at its newest mention, newest first.
 
-Only http, https and mailto links open, in the default browser, as the
-formatted view's do (``rendering``), and links to sessions
-(``thechatplace://session/<id>``, #144), which The Chat Place opens itself.
-Anything else (a ``file:`` path, ``javascript:``) is listed so it can be
-copied, and says why it won't open.
+Web, email and session links open, as do existing safe local files (#253).
+Missing files can be copied; folders and executable types can be revealed.
 
 Nothing here imports wx, so it's all tested without a window.
 """
 from __future__ import annotations
 
 import bisect
+import ntpath
 import re
 import unicodedata
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Iterable, List, Optional, Tuple
 
 from .codeblocks import CodeBlock, split_code_blocks
 from .links import is_app_link, parse_link
 from .rendering import opens_in_browser
+from . import platform_paths
+from .local_files import (MARKDOWN, markdown_target, local_path,
+                          local_references, WINDOWS_ABSOLUTE)
 
 #: ``[words](address "title")`` and ``![alt](address)``. The address may be
 #: in angle brackets, and may hold one level of parentheses (Wikipedia's).
 #: The words can't hold "[" either, so a line of brackets is read in one pass.
-_MARKDOWN = re.compile(r"!?\[([^\[\]\n]*)\]\(\s*<?((?:[^()\s<>]|\([^()\s]*\))+)>?"
-                       r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)")
+_MARKDOWN = MARKDOWN
 #: ``<https://example.com>`` and ``<mailto:me@example.com>``.
 _ANGLE = re.compile(r"<((?:https?://|mailto:)[^<>\s]+)>", re.IGNORECASE)
 #: A bare address: starts at a word boundary, runs to whitespace or a mark
@@ -70,6 +71,16 @@ class FoundLink:
     in_code: bool = False
 
     @property
+    def file_path(self) -> str:
+        return local_path(self.url)
+
+    @cached_property
+    def file_status(self):
+        # One listing snapshot, especially for UNC paths that may be slow.
+        # platform_paths.open_local_file always checks again on activation.
+        return platform_paths.local_file_status(self.file_path)
+
+    @property
     def is_session_link(self) -> bool:
         return parse_link(self.url) is not None
 
@@ -77,6 +88,8 @@ class FoundLink:
     def can_open(self) -> bool:
         if not _plain(self.url):
             return False
+        if self.file_path:
+            return self.file_status.can_open
         return (bool(_WEB.match(self.url) or _MAIL.match(self.url))
                 and opens_in_browser(self.url)) or self.is_session_link
 
@@ -84,6 +97,8 @@ class FoundLink:
         """Why it won't open, "" if it will."""
         if self.can_open:
             return ""
+        if self.file_path:
+            return self.file_status.reason
         if is_app_link(self.url):
             return "That link isn't one The Chat Place knows. It can only be copied."
         match = _SCHEME.match(self.url)
@@ -98,6 +113,18 @@ class FoundLink:
     def address(self) -> str:
         """The address as it's read: without "https://", a mail link as its
         address, and a long one shortened to its site and its end."""
+        if self.file_path:
+            path = self.file_path
+            if len(path) <= READ_LIMIT:
+                return path
+            separator = '\\' if WINDOWS_ABSOLUTE.match(path) else '/'
+            root = ntpath.splitdrive(path)[0] if separator == '\\' else ''
+            room = max(READ_LIMIT - len(root) - 3, 20)
+            tail = path[-room:]
+            cut = tail.find(separator)
+            if 0 <= cut < len(tail) - 1:
+                tail = tail[cut + 1:]
+            return f'{root}{separator}…{separator}{tail}'
         return _shorten(_readable(self.url))
 
     def when(self) -> str:
@@ -110,9 +137,13 @@ class FoundLink:
         the list: the words, where it goes, who wrote it and roughly when."""
         said = f"{self.words}, {self.address}" if self.words else self.address
         notes = [f"{self.who}, {self.when()}"]
+        if self.file_path:
+            notes.append("file")
         if self.in_code:
             notes.append("in code")
-        if not self.can_open:
+        if self.file_path and self.why_not():
+            notes.append(self.why_not())
+        elif not self.can_open:
             notes.append("copy only")
         return f"{said}. " + ", ".join(notes)
 
@@ -182,15 +213,15 @@ def _blank(chars: List[str], start: int, end: int) -> None:
     chars[start:end] = " " * (end - start)
 
 
-def links_in_text(text: str) -> List[Tuple[str, str, bool]]:
+def links_in_text(text: str, cwd: str = "") -> List[Tuple[str, str, bool]]:
     """(url, words, in code) for each link in ``text``, in order. A Markdown
-    link without a scheme (``[main.py](src/main.py)``, ``#heading``) is a
-    reference to a file or a place in the page, not a link to follow, and
-    isn't listed."""
+    relative file reference needs a known session working folder."""
     found: List[Tuple[int, str, str, bool]] = []
     offset = 0
     for part in split_code_blocks(text):
         if isinstance(part, CodeBlock):
+            for ref in local_references(part.code, cwd, markdown=False):
+                found.append((offset + ref.start, ref.path, "", True))
             # In code, Markdown isn't Markdown: only bare addresses.
             for match in _BARE.finditer(part.code):
                 url = _trim(match.group(1))
@@ -208,13 +239,16 @@ def links_in_text(text: str) -> List[Tuple[str, str, bool]]:
         def in_code(at: int) -> bool:
             index = bisect.bisect_right(starts, at) - 1
             return index >= 0 and at < ends[index]
+        for ref in local_references(line, cwd):
+            found.append((offset + ref.start, ref.path, _words(ref.words, ref.path),
+                          ref.in_code or in_code(ref.start)))
         taken = list(line)
         for match in _MARKDOWN.finditer(line):
-            url = match.group(2)
+            url = markdown_target(match)
             if in_code(match.start()):
                 continue  # `[x](y)` is shown as code; its address is found below
             _blank(taken, match.start(), match.end())
-            if _SCHEME.match(url):
+            if _SCHEME.match(url) and not local_path(url, cwd):
                 found.append((offset + match.start(), url, _words(match.group(1), url), False))
         rest = "".join(taken)
         for match in _ANGLE.finditer(rest):
@@ -233,13 +267,16 @@ def links_in_text(text: str) -> List[Tuple[str, str, bool]]:
 def _key(url: str) -> str:
     """The same address written two ways is listed once: the scheme and the
     site don't care about case, and a trailing "/" makes no difference."""
+    path = local_path(url)
+    if path:
+        return ntpath.normcase(path) if WINDOWS_ABSOLUTE.match(path) else path
     match = re.match(r"(?i)^(https?://)([^/?#]*)(.*)$", url)
     if not match:
         return url
     return (match.group(1) + match.group(2)).lower() + match.group(3).rstrip("/")
 
 
-def find_links(messages: Iterable) -> List[FoundLink]:
+def find_links(messages: Iterable, cwd: str = "") -> List[FoundLink]:
     """Every link in ``messages`` (oldest first, as the messages list has
     them; each has ``label`` and ``text``): the newest message's first, in
     the order they're written within a message, each address once, at its
@@ -251,7 +288,7 @@ def find_links(messages: Iterable) -> List[FoundLink]:
     order: List[str] = []
     for index in range(newest, -1, -1):
         message = messages[index]
-        for url, words, code in links_in_text(message.text or ""):
+        for url, words, code in links_in_text(message.text or "", cwd):
             key = _key(url)
             link: Optional[FoundLink] = seen.get(key)
             if link is None:

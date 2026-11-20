@@ -25,6 +25,7 @@ from .tasklist import TaskStep
 from .changes import FileEdit, by_file, file_text
 from .codeblocks import find_code_blocks
 from .message_links import FoundLink, find_links
+from .local_files import local_path
 from .subagents import Subagent
 from .transcript import ANSWER, QUESTION, ChatMessage, ToolCommand
 
@@ -100,7 +101,7 @@ def _first_line(text: str, limit: int = 100) -> str:
 
 
 def code_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
-               scope: str) -> List[ListItem]:
+               scope: str, cwd: str = "") -> List[ListItem]:
     newest = len(messages) - 1
     if scope == SCOPE_MESSAGE:
         # The selected message even when it isn't among them (a queued one).
@@ -114,10 +115,15 @@ def code_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
     for index, message in (chosen if scope == SCOPE_MESSAGE else reversed(chosen)):
         for block in find_code_blocks(message.text or ""):
             row = block.row()
+            path = local_path(block.code.strip(), cwd) if block.lines == 1 else ''
+            link = FoundLink(path, '', message.label, newest - index, True) if path else None
+            if link:
+                row += '. file' + (f'. {link.why_not()}' if link.why_not() else '')
             if scope == SCOPE_CHAT:
                 row = f"{row}. {message.label}, {_ago(index, newest)}"
             items.append(ListItem(row=row, detail=block.code, copy_text=block.code,
-                                  copy_what=block.describe(), detail_name=block.describe()))
+                                  copy_what=block.describe(), detail_name=block.describe(),
+                                  link=link))
     return items
 
 
@@ -125,16 +131,16 @@ def code_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
 
 
 def link_items(messages: Sequence[ChatMessage], selected: Optional[ChatMessage],
-               scope: str) -> List[ListItem]:
+               scope: str, cwd: str = "") -> List[ListItem]:
     if scope == SCOPE_MESSAGE:
         if selected is None:
             return []
         index = next((i for i, m in enumerate(messages) if m is selected), len(messages) - 1)
-        found = find_links([selected])
+        found = find_links([selected], cwd)
         for link in found:
             link.ago = len(messages) - 1 - index
     else:
-        found = find_links(messages)
+        found = find_links(messages, cwd)
     return [ListItem(row=link.row(),
                      detail="\n".join(part for part in (link.words, link.url, link.why_not()) if part),
                      copy_text=link.url, copy_what=link.address,
@@ -274,7 +280,7 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
           tasks: Sequence[TaskStep] = (),
           marks: str = DEFAULT_MARKS,
           subagents: Sequence[Subagent] = (),
-          approvals: Sequence[Sequence] = ()) -> List[ListItem]:
+          approvals: Sequence[Sequence] = (), cwd: str = "") -> List[ListItem]:
     """One kind's items. ``messages`` are the messages as the list shows them;
     ``selected`` is the message "This message" means (None: there's none),
     and ``turn`` its turn when that isn't its own (a queued message, not yet
@@ -291,9 +297,9 @@ def build(category: str, scope: str, messages: Sequence[ChatMessage],
     else:
         turn = None
     if category == CODE:
-        return code_items(messages, selected, scope)
+        return code_items(messages, selected, scope, cwd)
     if category == LINKS:
-        return link_items(messages, selected, scope)
+        return link_items(messages, selected, scope, cwd)
     if category == FILES:
         return file_items(edits, turn, describe_file, marks)
     if category == COMMANDS:
