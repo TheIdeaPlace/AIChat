@@ -2712,6 +2712,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _show_page(self, title: str, page: str, parent=None, start_at: str = "") -> bool:
         """Show ``page`` in the formatted view. False when it can't be shown,
         or Kelly chose Read as Plain Text."""
+        from .dialogs import _trace
+        _trace(f"_show_page title={title!r} available={formatted_view_available()}")
         if not formatted_view_available():
             return False
         try:
@@ -2720,8 +2722,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             result, link, failed = show_formatted_page(
                 parent or self, title, page, start_at, factory=FormattedMessageDialog)
         except RuntimeError as exc:
+            _trace(f"_show_page RuntimeError {exc}")
             self._status(str(exc))
             return False
+        except Exception as exc:  # noqa: BLE001 - diagnostic build: log, then as before
+            import traceback
+            _trace("_show_page EXCEPTION " + traceback.format_exc().replace("\n", " | "))
+            raise
         shown = result != ID_PLAIN_TEXT
         if failed:
             # The web view died (#693): said once; plain text from now on.
