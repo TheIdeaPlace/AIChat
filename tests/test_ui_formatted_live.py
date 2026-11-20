@@ -68,13 +68,18 @@ def test_the_shared_page_loads_each_message_in_the_same_web_view(app, tmp_path, 
     if not dialogs.formatted_view_available():
         pytest.skip("no WebView2 runtime on this machine")
     frame = wx.Frame(None)
-    pages, titles = [], []
+    pages, titles, bodies = [], [], []
 
     def close_once_loaded(started):
         page = dialogs._SHARED_PAGE
         if page and page._loaded:
             pages.append(page)
             titles.append(page.GetTitle())
+            try:
+                ok, text = page.view.RunScript("document.body.innerText")
+            except Exception:  # noqa: BLE001 - recorded as unread
+                ok, text = False, ""
+            bodies.append(text if ok else "")
             page.EndModal(wx.ID_CANCEL)
         elif time.monotonic() - started < 60:
             wx.CallLater(200, close_once_loaded, started)
@@ -90,6 +95,10 @@ def test_the_shared_page_loads_each_message_in_the_same_web_view(app, tmp_path, 
             assert result == wx.ID_CANCEL and not failed
         assert len(pages) == 2 and pages[0] is pages[1], "the page wasn't reused"
         assert titles == ["Message: Claude 0", "Message: Claude 1"]
+        # The second message really replaced the first, in the same web view.
+        assert "Reply 0" in bodies[0] and "Reply 1" in bodies[1] and "Reply 0" not in bodies[1]
+        # Hidden, it holds nothing of the last message.
+        assert pages[1]._parked
         assert not dialogs.formatted_view_broken()
     finally:
         page = dialogs._SHARED_PAGE

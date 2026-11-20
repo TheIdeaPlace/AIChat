@@ -70,6 +70,10 @@ class _Page:
         self._clock = lambda: self.now
         self._heard = False
         self._deadline = self.now + dialogs.FORMATTED_START_TIMEOUT_MS / 1000
+        self._parked = False
+
+    def _from_parked_page(self):
+        return self._parked
 
     def __bool__(self):
         return True
@@ -211,6 +215,7 @@ class _SharedFake:
         self.parent, self.titles, self.reusable = parent, [title], reusable
         self.app_link, self.failed, self.destroyed, self.stopped = None, False, False, 0
         self.result = wx.ID_CANCEL
+        self.parked = 0
         _SharedFake.made.append(self)
 
     def __bool__(self):
@@ -231,6 +236,12 @@ class _SharedFake:
     def stop_watching(self):
         self.stopped += 1
 
+    def park(self):
+        self.parked += 1
+
+    def IsModal(self):
+        return False
+
     def Destroy(self):
         self.destroyed = True
 
@@ -246,7 +257,8 @@ def test_windows_keeps_one_page_and_reloads_it(monkeypatch):
     # One page, never destroyed: closing a web view is what crashed (#693).
     assert len(_SharedFake.made) == 1
     page = _SharedFake.made[0]
-    assert page.reusable and not page.destroyed and page.stopped == 3
+    # Each close empties it, so nothing of a message is left behind.
+    assert page.reusable and not page.destroyed and page.parked == 3
     assert page.titles == ["Message 0", "Message 1", "Message 2"]
 
 
@@ -283,3 +295,16 @@ def test_reuse_is_windows_only(monkeypatch):
     for platform in ("darwin", "linux"):
         monkeypatch.setattr(dialogs.sys, "platform", platform)
         assert not dialogs._reuse_pages()
+
+
+def test_the_parked_page_says_nothing_for_the_next_message(monkeypatch):
+    # #693 review: the hidden page's heartbeat, or a late load, mustn't count
+    # as the next message's.
+    _fresh(monkeypatch)
+    page = _Page()
+    page._parked = True
+    F._tick(page)
+    page.tick_after(60)
+    assert not page.failed
+    F._on_error(page, _Error("about:blank"))
+    assert not page.failed and not dialogs.formatted_view_broken()
