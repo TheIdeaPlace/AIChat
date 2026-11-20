@@ -107,6 +107,11 @@ class OwnSession:
     #: releases never read (#663), so none of them runs it on the
     #: subscription.
     billing: str = "subscription"
+    #: A chat on API credits: what each reply cost, as its last line
+    #: ("Cost: 19 cents"), by the reply it belongs to (#692,
+    #: ``reply_costs``). Kept here, never in Claude Code's or Codex's files;
+    #: only the newest ``reply_costs.MAX_REPLY_COSTS``. Older releases ignore it.
+    reply_costs: Dict[str, str] = field(default_factory=dict)
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -263,6 +268,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             names = item[name] if isinstance(item[name], list) else []
             values[name] = list(dict.fromkeys(n for n in names if is_safe_server_name(n)))
             continue
+        if name == "reply_costs":
+            from .reply_costs import clean as clean_reply_costs
+            values[name] = clean_reply_costs(item[name])
+            continue
         if name == "allowed_dirs_at":
             times = item[name] if isinstance(item[name], dict) else {}
             values[name] = {d: t for d, t in times.items()
@@ -332,6 +341,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         values["allowed_dirs_at"] = {}
         values["disabled_mcp"] = []
         values["permission_mode"] = "auto"
+    if values["billing"] != "api":
+        values["reply_costs"] = {}  # only chats on API credits have them (#692)
     return OwnSession(**values)
 
 
@@ -644,6 +655,21 @@ class OwnSessionStore:
         for name, value in allowed.items():
             setattr(session, name, value)
         self.save()
+
+    def add_reply_cost(self, cli_session_id: str, key: str, line: str,
+                       provider: str = "claude") -> bool:
+        """Keep what a reply in a chat on API credits cost (#692), as its
+        last line, and save. False when there's no such chat on API credits
+        or nothing to keep; the oldest go once there are too many."""
+        from .reply_costs import remember
+        session = self.get(cli_session_id, provider)
+        if session is None or session.billing != "api":
+            return False
+        costs = remember(session.reply_costs, key, line)
+        if costs == session.reply_costs:
+            return False
+        self.update(cli_session_id, provider=provider, reply_costs=costs)
+        return True
 
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
         """Remove a session (Session, Delete Session Permanently) (its transcript is left alone)."""
