@@ -1974,11 +1974,20 @@ class FormattedMessageDialog(wx.Dialog):
         row = wx.BoxSizer(wx.HORIZONTAL)
         plain = wx.Button(self, ID_PLAIN_TEXT, "Read as &Plain Text")
         row.Add(plain, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "&Close"), 0)
+        close = wx.Button(self, wx.ID_CANCEL, "&Close")
+        row.Add(close, 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         plain.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(ID_PLAIN_TEXT))
+        #: The kept page's own modal loop (#693), while it runs; see run_kept.
+        self._own_loop = None
+        self._own_result = wx.ID_CANCEL
+        if reusable:
+            # Run by run_kept, not wx's ShowModal: every way out ends it here.
+            close.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
+            self.Bind(wx.EVT_CLOSE, self._on_close_kept)
+            self.Bind(wx.EVT_CHAR_HOOK, self._on_key_kept)
         if wx.Platform == "__WXMAC__":
             # A Mac button has no Alt mnemonic, so Option+P works from the
             # buttons too, and Command+W closes, as in any Mac window (#119).
@@ -2079,6 +2088,59 @@ class FormattedMessageDialog(wx.Dialog):
             return self.view.GetCurrentTitle() == PARKED_TITLE
         except Exception:  # noqa: BLE001
             return False
+
+    # -- the kept page's own modal loop (#693) -------------------------------------
+    #
+    # wx's ShowModal ended at once (2 ms, return code unchanged) every time
+    # the kept page was shown again on Kelly's PCs, so the page runs a loop of
+    # its own: the rest of The Chat Place disabled while it's open, as a modal
+    # dialog's would be, and Escape, Close, Alt+F4 and Read as Plain Text all
+    # ending it through EndModal below.
+
+    def run_kept(self) -> int:
+        """Show the page and wait until it's closed; the result, as ShowModal's."""
+        self._own_result = wx.ID_CANCEL
+        disabler = wx.WindowDisabler(self)
+        try:
+            self.Show()
+            self.Raise()
+            _trace(f"  run_kept shown={self.IsShown()} active={self.IsActive()}")
+            loop = wx.GUIEventLoop()
+            self._own_loop = loop
+            loop.Run()
+        finally:
+            self._own_loop = None
+            del disabler
+            self.Hide()
+        return self._own_result
+
+    def IsModal(self):
+        if getattr(self, "_own_loop", None) is not None:
+            return True
+        return super().IsModal()
+
+    def EndModal(self, retCode):
+        loop = getattr(self, "_own_loop", None)
+        _trace(f"EndModal({retCode}) own_loop={loop is not None} title={_title_of(self)}")
+        if loop is not None:
+            self._own_result = retCode
+            loop.Exit()
+            return
+        if super().IsModal():
+            super().EndModal(retCode)
+
+    def _on_close_kept(self, event):
+        # Alt+F4 or the title bar: hidden like Close, never destroyed (the
+        # main window takes it at exit).
+        if event.CanVeto():
+            event.Veto()
+        self.EndModal(wx.ID_CANCEL)
+
+    def _on_key_kept(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE and self._own_loop is not None:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        event.Skip()
 
     def stop_watching(self):
         """Hidden between messages: nothing to watch until the next one."""
@@ -2344,7 +2406,7 @@ def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
         wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
     import time
     opened = time.monotonic()
-    result = page.ShowModal()
+    result = getattr(page, "run_kept", page.ShowModal)()
     if (time.monotonic() - opened < 0.3 and result == wx.ID_CANCEL
             and not getattr(page, "_loaded", True) and not page.failed):
         # Closed before anything could happen: a stray key, not you. Once more.
@@ -2352,7 +2414,7 @@ def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
         _let_waiting_keys_through()
         if view is not None:
             wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
-        result = page.ShowModal()
+        result = getattr(page, "run_kept", page.ShowModal)()
     link, failed = page.app_link, page.failed
     _trace(f"  ShowModal returned {result} failed={failed} loaded={getattr(page, '_loaded', None)} "
            f"heard={getattr(page, '_heard', None)}")
