@@ -2226,8 +2226,9 @@ class FormattedMessageDialog(wx.Dialog):
 
     def _on_navigating(self, event):
         url = event.GetURL()
-        if not self._loaded and not url.lower().startswith(
-                ("http:", "https:", "mailto:", "thechatplace:")):
+        if not self._loaded and (url == 'about:blank'
+                                 or (self._page_file is not None
+                                     and url == self._page_file.as_uri())):
             return  # the page itself. A long one can be followed from before it's all in.
         # A link: never in here. http, https and mailto go to the browser.
         event.Veto()
@@ -2241,7 +2242,17 @@ class FormattedMessageDialog(wx.Dialog):
         window itself (``app_link``), never handed to the shell, which would
         only start The Chat Place again."""
         from ..links import is_app_link
-        if is_app_link(url):
+        from ..local_files import local_path
+        from .. import platform_paths
+        if local_path(url):
+            try:
+                platform_paths.open_local_file(url)
+            except (OSError, ValueError) as exc:
+                wx.MessageBox(f"Couldn't open the file: {exc}\n\n"
+                              f"Close this view, then use Links ({key_name(your_key('Ctrl+L'))}) "
+                              "for file actions and Copy.", self.GetTitle(),
+                              wx.OK | wx.ICON_INFORMATION, self)
+        elif is_app_link(url):
             self.app_link = url
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif url.lower().startswith(("http:", "https:", "mailto:")):
@@ -4858,10 +4869,12 @@ class ListsPage(wx.Panel):
                                         wx.FONTWEIGHT_NORMAL))
         sizer.Add(self.detail, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.open_btn = self.markdown_btn = None
-        if category == lists.LINKS:
+        self.open_btn = self.markdown_btn = self.folder_btn = None
+        if category in (lists.LINKS, lists.CODE):
             self.open_btn = wx.Button(self, label="&Open")
             self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
+            self.folder_btn = wx.Button(self, label="Open containing folde&r")
+            self.folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected(containing=True))
         if category == lists.SUBAGENTS:
             # A subagent's conversation, to read like a chat (#468). It sits
             # where Links has Open: what Enter does comes first.
@@ -4874,7 +4887,8 @@ class ListsPage(wx.Panel):
             self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
         # The gap goes between buttons, not after the last, so the row ends
         # where the dialog's Close does (#288).
-        for index, button in enumerate(b for b in (self.open_btn, self.copy_btn, self.markdown_btn)
+        for index, button in enumerate(b for b in (self.open_btn, self.folder_btn,
+                                                  self.copy_btn, self.markdown_btn)
                                        if b is not None):
             row.Add(button, 0, wx.LEFT if index else 0, 6)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.TOP | wx.LEFT | wx.RIGHT, 8)
@@ -4922,6 +4936,18 @@ class ListsPage(wx.Panel):
         for button in (self.copy_btn, self.open_btn, self.markdown_btn):
             if button is not None:
                 button.Enable(item is not None)
+        if self.category in (lists.LINKS, lists.CODE):
+            link = item.link if item is not None else None
+            status = link.file_status if link is not None and link.file_path else None
+            self.open_btn.Show(self.category == lists.LINKS or link is not None)
+            self.open_btn.Enable(link is not None and link.can_open)
+            self.open_btn.SetToolTip(link.why_not() if link is not None else '')
+            self.folder_btn.Show(status is not None)
+            self.folder_btn.Enable(status is not None and status.can_reveal)
+            label = 'Open folde&r' if status and status.kind == 'folder' else 'Open containing folde&r'
+            self.folder_btn.SetLabel(label)
+            set_accessible_name(self.folder_btn, label.replace('&', ''))
+            self.Layout()
         if self.category == lists.SUBAGENTS and self.open_btn is not None:
             self.open_btn.Enable(item is not None and item.subagent is not None
                                  and item.subagent.readable)
@@ -4975,16 +5001,19 @@ class ListsPage(wx.Panel):
         # It opens once read, in the background (#468), so this returns first.
         self.owner.open_subagent(item.subagent, self.owner, closed, still_on)
 
-    def open_selected(self):
+    def open_selected(self, containing: bool = False):
         item = self.selected()
         if item is None or item.link is None:
             self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
                                 else lists.empty_text(self.category, self.owner.scope))
             return
-        if not item.link.can_open:
+        allowed = (item.link.file_path and item.link.file_status.can_reveal
+                   if containing else item.link.can_open)
+        if not allowed:
             self.owner.feedback(item.link.why_not())
             return
         self.owner.chosen_link = item.link
+        self.owner.chosen_containing_folder = containing
         _end_modal(self.owner, wx.ID_OK)
 
     def copy_selected(self, markdown: bool = False):
@@ -5064,6 +5093,7 @@ class ListsDialog(wx.Dialog):
         self.feedback = feedback
         self.open_subagent = open_subagent
         self.chosen_link = None
+        self.chosen_containing_folder = False
         self._built = {}  # (kind, scope) -> its items
         #: Which platform's keys switch kinds (tests choose either).
         self.platform = sys.platform

@@ -8380,12 +8380,14 @@ def test_a_session_link_in_the_formatted_view_opens_here(frame, env, monkeypatch
     page.app_link = None
     page.EndModal = lambda code: ended.append(code)
     page._open_url = lambda url: env["opened"].append(url)
+    page.GetTitle = lambda: 'Reply'
     dialogs.FormattedMessageDialog._follow(page, "thechatplace://session/x")
     assert page.app_link == "thechatplace://session/x"
     assert pump(lambda: ended == [wx.ID_CANCEL])
     dialogs.FormattedMessageDialog._follow(page, "https://example.com")
     dialogs.FormattedMessageDialog._follow(page, "file:///C:/x")
     assert env["opened"] == ["https://example.com"]
+    assert "Couldn't open the file" in env['boxes'][-1]
 
 
 # -- the Last message column (#146) ---------------------------------------------------
@@ -9958,7 +9960,7 @@ def test_links_lists_newest_first_and_opens_one(frame, env, monkeypatch):
     assert seen["label"] == "&List: Links (3):"
     assert seen["rows"] == [
         "release notes, example.com/notes. Claude, 1 message ago",
-        "a file, file:///C:/secret.txt. Claude, 1 message ago, copy only",
+        "a file, C:\\secret.txt. Claude, 1 message ago, file, File not found. Copy only.",
         "example.com/old. You, 2 messages ago"]
     assert opened == ["https://example.com/notes"]
     assert env["feedback"][-1] == "Opening example.com/notes."
@@ -9979,10 +9981,53 @@ def test_a_link_that_cant_open_says_why_and_can_be_copied(frame, env, monkeypatc
     _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert opened == []
-    assert env["feedback"][-3].startswith("A file: link isn't opened from here")
-    assert env["feedback"][-2] == "Copied file:///C:/secret.txt."
-    assert env["feedback"][-1] == "Copied file:///C:/secret.txt as Markdown."
-    assert copied == ["file:///C:/secret.txt", "[a file](file:///C:/secret.txt)"]
+    assert env["feedback"][-3] == "File not found. Copy only."
+    assert env["feedback"][-2] == "Copied C:\\secret.txt."
+    assert env["feedback"][-1] == "Copied C:\\secret.txt as Markdown."
+    assert copied == ["C:\\secret.txt", "[a file](C:\\secret.txt)"]
+
+
+@pytest.mark.parametrize('kind', ['file', 'script', 'folder', 'missing'])
+def test_local_link_buttons_and_folder_action(frame, env, monkeypatch, kind):
+    path = env['tmp'] / ('script.ps1' if kind == 'script' else 'notes.txt')
+    if kind == 'folder':
+        path.mkdir()
+    elif kind != 'missing':
+        path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'`{path}`'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsEnabled() == (kind == 'file')
+        assert page.folder_btn.IsShown()
+        assert page.folder_btn.IsEnabled() == (kind != 'missing')
+        assert page.copy_btn.IsEnabled()
+        if kind == 'folder':
+            assert page.folder_btn.GetLabel() == 'Open folde&r'
+        if kind != 'missing':
+            page.open_selected(containing=True)
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_links()
+    expected = [('folder', str(path))] if kind == 'folder' else [('show', path)]
+    assert env['opened'] == ([] if kind == 'missing' else expected)
+
+
+def test_single_path_code_block_offers_file_actions_without_changing_enter(frame, env, monkeypatch):
+    path = env['tmp'] / 'my notes.txt'
+    path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'```text\n{path}\n```'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsShown() and page.open_btn.IsEnabled()
+        assert page.folder_btn.IsShown() and page.folder_btn.IsEnabled()
+        focused = []
+        monkeypatch.setattr(page.detail, 'SetFocus', lambda: focused.append(True))
+        page.activate()
+        assert focused == [True]
+        assert page.owner.chosen_link is None
+        page.open_selected()
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_code_blocks()
+    assert env['opened'] == [str(path)]
 
 
 def test_typing_narrows_the_links(frame, env, monkeypatch):

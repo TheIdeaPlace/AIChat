@@ -426,6 +426,16 @@ STEPS = [
     # Orca says the window and the message you were on, not the list's name.
     Step("Lists closed, back in the messages", ["Escape"],
          expect=["Fix the flaky upload test", "Which branch name should the release use"]),
+    # Local file links (#253): native buttons supply their roles/states;
+    # no extra announcement should repeat them. Never activate a file here.
+    Step('Local file links', [], trigger='local-file-links',
+         expect=['Lists: Local files', 'notes.txt', 'file'],
+         refuse=['unlabeled', 'unlabelled']),
+    Step('Local file details', ['Tab'], expect=['notes.txt']),
+    Step('Local file Open', ['Tab'], expect=['Open', 'push button']),
+    Step('Local file containing folder', ['Tab'], expect=['Open containing folder']),
+    Step('Local file Copy', ['Tab'], expect=['Copy', 'push button']),
+    Step('Local file links closed', ['Escape'], expect=['Fix the flaky upload test']),
     Step('Codex command and skill picker', [], trigger='codex-commands',
          expect=['Insert Command or Skill'], refuse=['unlabeled', 'unlabelled']),
     Step('Codex commands, into the list', ['Tab'], expect=['Codex']),
@@ -829,6 +839,7 @@ def refresh(frame) -> None:
 
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    'local-file-links': lambda frame, env: _codex_dialog('d_local_file_links', frame, env),
     'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),

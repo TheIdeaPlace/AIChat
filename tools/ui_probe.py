@@ -1946,6 +1946,49 @@ def d_links(frame, env):
     return frame.on_links
 
 
+def d_local_file_links(frame, env, category='links'):
+    """Real temporary files exercise every local-file policy state (#253)."""
+    from thechatplace import lists
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    from thechatplace.ui.dialogs import ListsDialog
+    folder = env['tmp'] / 'Local files'
+    folder.mkdir(exist_ok=True)
+    safe = folder / 'notes.txt'
+    script = folder / 'script.ps1'
+    safe.write_text('A local document.', encoding='utf-8')
+    script.touch()
+    message = ChatMessage(ASSISTANT, f'`{safe}`\n\n`{script}`\n\n'
+                          f'`{folder}`\n\n`{folder / "missing.txt"}`\n\n```text\n{safe}\n```')
+
+    def build(tab, scope):
+        return lists.build(tab, scope, [message], message, [], [], str, cwd=str(folder))
+
+    def show():
+        dialog = ListsDialog(frame, 'Local files', build, frame._copy_text, frame._feedback,
+                             category=category)
+        try:
+            return dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+    return show
+
+
+def d_local_file_code(frame, env):
+    return d_local_file_links(frame, env, category='code')
+
+
+def d_local_file_reading(frame, env):
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    _open(frame, 'Fix the flaky upload test')
+    path = env['tmp'] / 'notes.txt'
+    path.write_text('A local document.', encoding='utf-8')
+    message = ChatMessage(ASSISTANT, f'# Local files\n\nRead `{path}` or '
+                          f'[the same file](<{path.as_uri()}>).\n\n'
+                          f'`{env["tmp"] / "missing.txt"}` was not found.')
+    frame.speech.formatted_messages = True
+    return lambda: frame._read_whole_message(message)
+
+
 def d_find_all(frame, env):
     """Find in All Sessions' results, for a word the made-up sessions use."""
     from thechatplace.search import Target, search_sessions
@@ -2675,6 +2718,12 @@ SURFACES = {
     "bug-report": ("dialog", d_bug_report, "Help, Report a Bug"),
     "code-blocks": ("dialog", d_code_blocks, "Tools, Lists: a message's code blocks"),
     "links": ("dialog", d_links, "Tools, Lists: Links"),
+    "local-file-links": ("dialog", d_local_file_links,
+                         "Links: a document, script, folder and missing file"),
+    "local-file-code": ("dialog", d_local_file_code,
+                        "Code Blocks: a single file path with file actions"),
+    "local-file-reading": ("dialog", d_local_file_reading,
+                           "Formatted reading: local document and missing file links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "Tools, Lists: Changed Files"),
     "lists-codex-files": ("dialog", d_lists_codex_files, "Codex Changed Files: updates, additions, deletions and renames"),
@@ -2827,6 +2876,9 @@ DIALOG_CLASSES = {
     "bug-report": "BugReportDialog",
     "code-blocks": "ListsDialog",
     "links": "ListsDialog",
+    "local-file-links": "ListsDialog",
+    "local-file-code": "ListsDialog",
+    "local-file-reading": "FormattedMessageDialog",
     "find-all": "FindResultsDialog",
     "changes": "ListsDialog",
     "lists-codex-files": "ListsDialog",
@@ -2883,7 +2935,8 @@ DIALOG_CLASSES = {
 #: What a formatted-page surface shows instead where there's no web view
 #: (a Mac, or Windows without the WebView2 runtime).
 PLAIN_INSTEAD = {"shortcuts-page": "ShortcutsDialog", "user-guide": "MessageDialog",
-                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog"}
+                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog",
+                 "local-file-reading": "MessageDialog"}
 
 
 def expected_class(name: str) -> str:

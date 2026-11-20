@@ -210,8 +210,8 @@ SHORTCUTS = [
                          "Mac, and Control+Tab on Windows); Enter reads an item in full "
                          "(a link opens, a subagent's conversation opens), Ctrl+C copies, typing narrows the list (also from the "
                          "session list and the reply box)"),
-        ("Ctrl+L", "Lists, on Links for the whole chat: Enter opens a link in your "
-                   "browser, Ctrl+C copies its address (also from the session list and the "
+        ("Ctrl+L", "Lists, on Links for the whole chat: web, email, session and local file links; "
+                   "Enter opens a link, Ctrl+C copies its address (also from the session list and the "
                    "reply box)"),
         ("Ctrl+Shift+J", "Lists, on Tasks for the whole chat: the task list, each step "
                          "with whether it's to do, in progress or done"),

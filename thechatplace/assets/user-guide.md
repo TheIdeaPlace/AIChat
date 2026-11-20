@@ -1092,7 +1092,7 @@ Lists opens on the kind you used last. Some keys open it on their own kind:
 For every kind:
 
 - **Enter** reads the item in full in the Details box below the list. For links, Enter (or
-  Open) opens the link in your browser and closes Lists. For subagents, Enter (or Read
+  Open) opens the link and closes Lists. For subagents, Enter (or Read
   Conversation) opens the subagent's conversation over Lists.
 - **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
   command, your answer, or a subagent's final report. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
@@ -1104,8 +1104,25 @@ For every kind:
 A kind with nothing to list says so, for example "No commands in this chat." Each link is listed
 once, at its newest mention. A long address is shortened to its site and its end, but the whole
 address is always what's opened or copied. A link in a code block or in inline code says "in
-code". Only web, email and session links open; anything else, such as a file path, is marked
-"copy only" and says why if you try to open it. Links in tool calls and results are listed only
+code". Local paths are listed as **file**: Windows drive paths, network paths and file: URLs,
+bare or in inline code, quotes, angle brackets or Markdown link targets. Paths containing spaces
+need one of those delimiters. A line suffix such as `:12` means the file itself. Clear relative
+file references use the session's working folder when it is known.
+
+- **Open** opens an existing safe file in its default app.
+- **Open containing folder** selects the file in File Explorer or Finder. On Linux it uses the
+  file manager, or opens the containing folder.
+- A folder offers **Open folder** and Copy. Executable, script and shortcut types offer folder
+  access and Copy, with the reason in the row. Missing files say **File not found. Copy only.**
+- Existence and safety are checked again when you choose an action.
+- A network path (`\\server\share\…`) isn't checked while the list or page is shown, so an
+  unreachable computer can't hold up The Chat Place; it's checked when you choose Open.
+- In formatted reading, activate a file link with your usual screen-reader link key. It uses
+  the same rules. Use **Ctrl+L** for folder access and Copy.
+- A code block containing just one local path offers Open and folder access too. Enter still
+  reads the code; Copy keeps its original text.
+
+Other unsupported link types are copy-only. Links in tool calls and results are listed only
 with Show Tool Activity on.
 
 ### Subagent conversations

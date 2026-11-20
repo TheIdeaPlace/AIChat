@@ -1073,6 +1073,124 @@ def open_url(url: str) -> None:
         subprocess.Popen(["xdg-open", url])
 
 
+def _finder_alias(path: Path) -> bool:
+    """A Finder alias can launch an app despite having no file extension.
+
+    Apple's TN1150 FileInfo has the big-endian finderFlags at bytes 8–9;
+    kIsAlias is 0x8000. Alias files also use the 'alis' file type.
+    """
+    if sys.platform != 'darwin':
+        return False
+    import errno
+    try:
+        info = _read_xattr(path, 'com.apple.FinderInfo')
+    except OSError as exc:
+        absent = {getattr(errno, 'ENOATTR', None), errno.ENODATA, errno.ENOTSUP}
+        if exc.errno in absent:
+            return False
+        raise  # metadata we couldn't inspect mustn't allow an Open
+    return len(info) >= 10 and (info[:4] == b'alis' or int.from_bytes(info[8:10], 'big') & 0x8000 != 0)
+
+
+def _read_xattr(path: Path, name: str) -> bytes:
+    """An extended attribute's value. ``os.getxattr`` exists only on Linux, so on a Mac this calls
+    the C library's getxattr(path, name, value, size, position, options) directly (#253 review:
+    every file check on a Mac raised AttributeError). Raises OSError, with the C errno, as
+    os.getxattr does: ENOATTR when the file has no such attribute."""
+    if hasattr(os, 'getxattr'):
+        return os.getxattr(path, name)
+    import ctypes
+    import ctypes.util
+    libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    getxattr = libc.getxattr
+    getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
+                         ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+    getxattr.restype = ctypes.c_ssize_t
+    raw_path, raw_name = os.fsencode(str(path)), name.encode()
+    size = getxattr(raw_path, raw_name, None, 0, 0, 0)
+    if size < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(path))
+    buffer = ctypes.create_string_buffer(size)
+    got = getxattr(raw_path, raw_name, buffer, size, 0, 0)
+    if got < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(path))
+    return buffer.raw[:got]
+
+
+def local_file_status(value: str, *, quick: bool = False):
+    """What a reply's local reference may do now (#253), without opening it.
+
+    ``quick`` is for listing and drawing pages: a network path is not touched
+    then, since an unreachable server holds the call for the OS's network
+    timeout on the UI thread. Opening always calls this with ``quick`` off.
+    """
+    from .local_files import FileStatus, blocked_type, local_path, network_path, plain_path
+    if not plain_path(value):
+        return FileStatus('', 'invalid', 'Unsafe file path. Copy only.')
+    path = local_path(value)
+    if not path or not plain_path(path):
+        return FileStatus(path, 'invalid', 'Unsafe file path. Copy only.')
+    if quick and network_path(path):
+        if blocked_type(path):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'network', 'Network file. Checked when you open it.')
+    if not os.path.isabs(path):
+        return FileStatus(path)  # a Windows path on another operating system
+    try:
+        resolved = Path(path).resolve(strict=True)
+        mode = resolved.stat().st_mode
+        if stat.S_ISDIR(mode):
+            return FileStatus(path, 'folder', 'Folder. Use Open folder or Copy.')
+        if not stat.S_ISREG(mode):
+            return FileStatus(path, 'invalid', 'Not a regular file. Copy only.')
+        executable = sys.platform != 'win32' and bool(mode & 0o111)
+        if blocked_type(path) or blocked_type(str(resolved)) or executable or _finder_alias(resolved):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'file', '')
+    except (OSError, ValueError, RuntimeError):
+        return FileStatus(path)
+
+
+def open_local_file(value: str, *, containing: bool = False) -> None:
+    """Act only on the item the user chose; recheck it immediately (#253)."""
+    status = local_file_status(value)
+    if containing:
+        if not status.can_reveal:
+            raise ValueError(status.reason)
+        if status.kind == 'folder':
+            open_local_folder(status.path)
+        else:
+            show_in_folder(Path(status.path))
+    else:
+        if not status.can_open:
+            raise ValueError(status.reason)
+        open_url(status.path)
+
+
+def open_local_folder(path: str) -> None:
+    """Open a directory in the file manager, including a Mac .app bundle.
+
+    The default Open verb on a bundle runs it, so ask Finder for a folder
+    window explicitly. Pass the path as an argument, never AppleScript code.
+    """
+    import subprocess
+    if sys.platform == 'win32':
+        subprocess.Popen([_windows_program('explorer.exe'), path])
+    elif sys.platform == 'darwin':
+        script = ('on run argv\n'
+                  'tell application "Finder"\n'
+                  'activate\n'
+                  'open folder (POSIX file (item 1 of argv) as alias)\n'
+                  'end tell\nend run')
+        subprocess.Popen(['osascript', '-e', script, path])
+    else:
+        subprocess.Popen(['xdg-open', path])
+
+
 def _windows_program(*parts: str) -> str:
     """A Windows program by its full path, never found by searching the
     current folder or the app's own first."""
