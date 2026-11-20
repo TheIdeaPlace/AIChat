@@ -203,6 +203,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "save_secret", lambda name, text: named.__setitem__(name, text))
     patch(platform_paths, "delete_secret", lambda name: named.pop(name, None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
+    patch(platform_paths, "open_local_folder", lambda path: opened.append(("folder", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)
     # No real Windows notifications (#20): they're recorded. The hidden test

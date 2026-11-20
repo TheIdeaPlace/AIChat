@@ -3004,7 +3004,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        return self._show_page(title, message_page(title, text, heading=message.label), parent)
+        cwd = self._open.cwd if self._open is not None else ''
+        return self._show_page(title, message_page(title, text, heading=message.label, cwd=cwd), parent)
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
@@ -3057,7 +3058,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
         def work():
             try:
-                page, problem = export.reading_page(title, messages), None
+                page, problem = export.reading_page(title, messages, folder=info.cwd), None
             except Exception as exc:  # noqa: BLE001 - said in the window
                 page, problem = None, exc
             wx.CallAfter(self._whole_chat_ready, key, mark, title, messages, start, page, problem)
@@ -3276,7 +3277,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
                                marks=self.speech.change_marks, subagents=current,
-                               approvals=approvals)
+                               approvals=approvals, cwd=cwd)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -3285,13 +3286,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         try:
             self._show_lists(dialog)
             chosen = dialog.chosen_link
+            containing = dialog.chosen_containing_folder
             self._lists_category = dialog.category
         finally:
             dialog.Destroy()
         if returning_to:
             returning_to.SetFocus()
         if chosen is not None:
-            self._open_found_link(chosen)
+            self._open_found_link(chosen, containing=containing)
 
     def _approvals_for(self, info):
         """The loaded chat's approval decisions for Lists (#564), oldest
@@ -3329,14 +3331,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         without showing it."""
         return dialog.ShowModal()
 
-    def _open_found_link(self, chosen):
+    def _open_found_link(self, chosen, containing: bool = False):
         """A link chosen in Lists: The Chat Place's own links here, never the
-        shell; others in the browser."""
+        shell; files through the shared safety check, others in the browser."""
         if chosen.is_session_link:
             self.open_link(chosen.url)
             return
         try:
-            platform_paths.open_url(chosen.url)
+            if chosen.file_path:
+                platform_paths.open_local_file(chosen.file_path, containing=containing)
+            elif chosen.can_open:
+                platform_paths.open_url(chosen.url)
+            else:
+                self._feedback(chosen.why_not())
+                return
         except (OSError, ValueError) as exc:
             wx.MessageBox(f"Couldn't open the link: {exc}\n\nIt's {chosen.url}", APP_NAME,
                           wx.OK | wx.ICON_WARNING, self)
