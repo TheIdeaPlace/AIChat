@@ -4,18 +4,17 @@ Use NVDA 2026.3.1 (2026.3.1.58288) and JAWS 2027.2610.428
 (Script Revision: 0), unless the user specifies updated versions. Use synthetic
 conversation content and record manual results separately from automated tests.
 
-## Known limitation
+## Muse version
 
-With Muse Code 1.4.20 on Windows, a command you allow doesn't run: Muse
-reports "sandbox enforcement unavailable: windows_elevated setup_required",
-even after `muse sandbox windows setup` reports ready. This is a Muse problem
-([Muse Code SDK issue 149](https://github.com/meta-models/muse-code-sdk/issues/149)),
-not the app's. Until it is fixed, step 3 can confirm the request and the
-decision, but not the command's effect.
+Test with Muse Code 1.4.24 or later. With 1.4.20 on Windows, a command you
+allow doesn't run: Muse reports "sandbox enforcement unavailable:
+windows_elevated setup_required", even after `muse sandbox windows setup`
+reports ready ([Muse Code SDK issue 149](https://github.com/meta-models/muse-code-sdk/issues/149)).
+1.4.24 runs it in the sandbox, so step 3 can confirm the command's effect.
 
 ## Owned chats
 
-1. With Muse Code 1.4.20 installed and signed in, open File, New Session.
+1. With Muse Code 1.4.24 installed and signed in, open File, New Session.
    Provider offers Muse Code. Choosing it shows Model and effort as Muse
    Code's own (disabled) and a note saying each request is announced even
    while you read another chat, and that Ctrl+Shift+A allows it once, denies

@@ -1626,9 +1626,10 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   command, asks before stopping the one you choose, and the turn carries on.
   Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
   asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
-  whether it finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow
-  doesn't run yet: Muse reports that its sandbox is unavailable. This is a known Muse
-  Code problem, not a setting in The Chat Place. Chat, Chat Settings, Chat Permissions
+  whether it finished or stopped. On Windows, a command you allow runs in Muse's sandbox
+  from Muse Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its
+  sandbox is unavailable. To update, run `muse` in a terminal: it updates itself.
+  Chat, Chat Settings, Chat Permissions
   explains a Muse chat's permissions. Deleting Muse chats here is not available yet.
   Signing in to Muse Code does not create a saved conversation.
   If Muse has no stored conversations, the filter explains that none were found;
@@ -1636,7 +1637,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   or unavailable discovery is reported separately.
   Reading history does not resume a session or start a model
   turn, and background discovery never starts sign-in.
-  History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
+  History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
   Sending is unavailable if the human permission policy cannot be established.
   If a build's
   interface differs, the app reports that Muse Code is unavailable. Session status is shown as

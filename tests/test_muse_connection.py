@@ -208,9 +208,11 @@ def test_history_handshake_and_allowlist_leave_account_and_execution_unavailable
 
 NEW_SCHEMA = ("sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0",
               "sha256:c2f9255c3e027d8c167a64f638429655f2121d5b28d7b5f6b5da437a99dbe57a")
+SCHEMA_1_4_24 = ("sha256:b7fb9137267aa35c92424df37a5ac56287006a0e546b197bf0930d593fecbdb1",
+                 "sha256:a9f08f8960b531bf661b54c4a48f8fc3968f7af508a70e16c821ee553e06a8ed")
 
 
-@pytest.mark.parametrize("pair", [(SCHEMA_FINGERPRINT, EXPERIMENTAL_FINGERPRINT), NEW_SCHEMA])
+@pytest.mark.parametrize("pair", [(SCHEMA_FINGERPRINT, EXPERIMENTAL_FINGERPRINT), NEW_SCHEMA, SCHEMA_1_4_24])
 def test_verified_history_schema_pairs_keep_read_only_boundary(host, monkeypatch, pair):
     monkeypatch.setitem(HANDSHAKE, "schema", {
         "version": 1, "fingerprint": pair[0], "experimentalFingerprint": pair[1]})
@@ -224,6 +226,7 @@ def test_verified_history_schema_pairs_keep_read_only_boundary(host, monkeypatch
 
 @pytest.mark.parametrize("pair", [
     (SCHEMA_FINGERPRINT, NEW_SCHEMA[1]), (NEW_SCHEMA[0], EXPERIMENTAL_FINGERPRINT),
+    (SCHEMA_1_4_24[0], NEW_SCHEMA[1]), (NEW_SCHEMA[0], SCHEMA_1_4_24[1]),
     (["not-a-fingerprint"], EXPERIMENTAL_FINGERPRINT),
     (SCHEMA_FINGERPRINT, {"not": "a fingerprint"})])
 def test_mixed_or_malformed_schema_pairs_are_rejected_safely(host, monkeypatch, pair):

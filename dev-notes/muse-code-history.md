@@ -117,6 +117,20 @@ one of the installed, verified Muse builds (`VERIFIED_SCHEMAS` in
 - 1.4.18 experimental: `sha256:43a76702a69cdfe355db9edac2c7efdc8f75ae40daaae28789ad1d6ec68c3603`.
 - 1.4.20 stable: `sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0`.
 - 1.4.20 experimental: `sha256:c2f9255c3e027d8c167a64f638429655f2121d5b28d7b5f6b5da437a99dbe57a`.
+- 1.4.24 stable: `sha256:b7fb9137267aa35c92424df37a5ac56287006a0e546b197bf0930d593fecbdb1`.
+- 1.4.24 experimental: `sha256:a9f08f8960b531bf661b54c4a48f8fc3968f7af508a70e16c821ee553e06a8ed`.
+
+1.4.24 (2026-11-20) was checked by exporting both builds' schemas
+(`muse schema generate-json-schema`, stable and `--experimental`) and
+comparing every method, notification and server request the app uses, with
+every definition they reach. Every change is an addition: `skillProvider` (a
+client-provided skill source; the app never offers that capability, so it
+gets no `skillProvider/*` requests), `Item.terminalRowBeforeItemId`,
+`SessionResumeParams.worktree`, `SchemaInfo.compatibilityEpoch`, and a
+browser on Computer Use approval facts. `initialize` now reports
+`sandboxAvailability`. Natively, the app's own code listed and read history,
+and ran an owned Ask me chat through create, send, a shell approval allowed
+once, and completion.
 
 A connected host keeps its first catalog, so `MuseProvider.collect()` rotates
 the host (`refresh_catalog()`) before each `session/list`: a conversation saved

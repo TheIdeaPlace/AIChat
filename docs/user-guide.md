@@ -76,12 +76,13 @@ Chat, Stop Background Task lists the chat's running background work by tool and
 command, asks before stopping the one you choose, and the turn carries on. Muse's
 **Ask me** policy prompts for restricted actions; safe actions can run without asking.
 Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
-finished or stopped. With Muse Code 1.4.20 on Windows, a command you allow doesn't run
-yet: Muse reports that its sandbox is unavailable. This is a known Muse Code problem,
-not a setting in The Chat Place. Deleting Muse chats here is not available yet.
+finished or stopped. On Windows, a command you allow runs in Muse's sandbox from Muse
+Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its sandbox is
+unavailable. To update, run `muse` in a terminal: it updates itself. Deleting Muse chats
+here is not available yet.
 Reading does not resume a session or start a turn.
 
-History supports Muse Code 1.4.18 and 1.4.20; execution targets 1.4.20.
+History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
 Sending is unavailable if Muse Code can't confirm the chat's permission profile. Other
 interfaces may be reported as unavailable. In the Status column, a Muse Code chat started
 here says Working, Needs you or Idle. One started in Muse Code says status unavailable:

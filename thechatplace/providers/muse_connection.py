@@ -25,6 +25,11 @@ VERIFIED_SCHEMAS = frozenset({
     (SCHEMA_FINGERPRINT, EXPERIMENTAL_FINGERPRINT),  # 1.4.18
     ("sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0",
      "sha256:c2f9255c3e027d8c167a64f638429655f2121d5b28d7b5f6b5da437a99dbe57a"),  # 1.4.20
+    # 1.4.24 only adds to what the app uses (dev-notes/muse-code-history.md),
+    # and is the first build whose serve sandbox runs allowed commands on
+    # Windows (meta-models/muse-code-sdk#149).
+    ("sha256:b7fb9137267aa35c92424df37a5ac56287006a0e546b197bf0930d593fecbdb1",
+     "sha256:a9f08f8960b531bf661b54c4a48f8fc3968f7af508a70e16c821ee553e06a8ed"),  # 1.4.24
 })
 
 

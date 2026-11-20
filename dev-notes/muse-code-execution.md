@@ -46,8 +46,9 @@ Committed on the `Muse_Code` branch (`52843ed`, `fdc5eb8`, `058382e`).
   are never sent. Questions submit `freeText`/`selectedLabel(s)` checked
   against the question's options. Admissions are out of scope: they are
   `peerMessaging` (another chat asking to message this one), which the app
-  never requests. An allowed command can't run yet because of the `serve`
-  sandbox problem (meta-models/muse-code-sdk#149).
+  never requests. With 1.4.20 an allowed command couldn't run because of the
+  `serve` sandbox problem (meta-models/muse-code-sdk#149); 1.4.24 runs it in
+  the sandbox (see "Native run, installed 1.4.24").
 - **Stage 5, Stop and recovery: partly.** A UUIDv7 `commandId` is saved
   before `turn/start`; a transport failure marks the turn unknown, not
   idle; a failed Stop keeps the turn. Stop waits for `lastTurn.terminal`,
@@ -91,9 +92,27 @@ Run C (same day, workspaces under `C:\dev`, deleted afterwards):
 | Stop | `turn/cancel` accepted; state held `cancelling` until `lastTurn.terminal: cancelled`, then idle. The window said "finished" for this; it now saves the terminal and says "Muse Code stopped." (or "turn failed" for `failed`). |
 | Reopen | After the first host closed, a fresh host's `prepare()` read `notLoaded`, called `session/resume` with `:ask-me`, re-confirmed human review, and a second turn completed in the same chat. |
 
-Still to verify natively: an allowed command that actually runs (blocked by
-the `serve` sandbox problem above), and Stop/recovery across a host that dies
-mid-turn or mid-approval.
+Still to verify natively: Stop/recovery across a host that dies mid-turn or
+mid-approval.
+
+### Native run, installed 1.4.24 (2026-11-20)
+
+Same conditions (throwaway folders under `C:\dev`, synthetic prompts,
+signed-in profile), `serve` started as the app starts it (no `cwd`, no
+`MUSE_RELEASE_INFO`). `muse sandbox windows check` reported ready on both
+1.4.20 and 1.4.24, with and without `MUSE_RELEASE_INFO`.
+
+| Step | Result |
+| --- | --- |
+| `initialize` | New `sandboxAvailability: available`. `clientInfo.name` must match `^[a-z0-9_]+$`. |
+| `session/start` (`:ask-me`) | filesystem sandboxed, network off, approval onRequest, reviewer human, attached |
+| `echo`, allowed once | **Ran**: exit 0, output in the tool item's `visibleOutput` and the reply. The 1.4.20 sandbox error is gone. |
+| PowerShell write to `C:\dev\…` outside the workspace, allowed once | The sandbox refused it: "Access to the path … is denied", exit 1, no file made. |
+| The app's own `MuseOwnedChats` | create, prepare, send, `pending_approvals` (Allow once / Always allow in this workspace / Reject), `answer(allow)`, poll to `idle` with terminal `completed`; the reply read by `transcript_from_muse`. |
+
+Helicon (HarjjotSinghh/helicon) starts the same `muse serve`, with the project
+as `cwd` and `MUSE_RELEASE_INFO` set; neither mattered here. It offers
+`--disable-sandbox` as a setting instead.
 
 ### Blockers found at the 2026-11-14 review, and how each was resolved
 
@@ -113,7 +132,7 @@ mid-turn or mid-approval.
 - `RUNTIME_PROVIDERS` included Muse ahead of an audit. Kept: Muse is a
   runtime provider, and `MuseProvider.capabilities()` still allows send and
   approvals only for chats started here. Guide wording now follows the
-  verified behaviour, except the sandbox limitation, which no guide states.
+  verified behaviour. The guide now says allowed commands need 1.4.24.
 
 ### Stage 1: Verify the installed execution contract
 
