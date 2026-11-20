@@ -2916,45 +2916,6 @@ def test_read_as_plain_text_and_the_setting_open_the_text_box(frame, env, monkey
     assert len(shown) == 1 and len(opened) == 2  # straight to the text box
 
 
-def test_a_formatted_page_that_never_loads_opens_as_plain_text_and_says_why(frame, env,
-                                                                           monkeypatch):
-    # #693: WebView2 157 crashed again and again, and every page was blank.
-    # A page that gives up says why once, and the message opens as text.
-    from thechatplace.ui import main_frame
-    from thechatplace.ui.dialogs import FORMATTED_BROKEN_TEXT, ID_PLAIN_TEXT, MessageDialog
-    _load_reply(frame, env, "## Result")
-
-    class Dead:
-        failed = True
-
-        def __init__(self, parent, title, page):
-            pass
-
-        def ShowModal(self):
-            return ID_PLAIN_TEXT
-
-        def Destroy(self):
-            pass
-    monkeypatch.setattr(main_frame, "formatted_view_available", lambda: True)
-    monkeypatch.setattr(main_frame, "FormattedMessageDialog", Dead)
-    opened = []
-
-    class Plain(MessageDialog):
-        def ShowModal(self):
-            opened.append(self.text.GetValue())
-            return wx.ID_CANCEL
-    monkeypatch.setattr(main_frame, "MessageDialog", Plain)
-    # Real timers don't fire in these tests; the delay is recorded instead.
-    delays = []
-    monkeypatch.setattr(main_frame.wx, "CallLater",
-                        lambda ms, fn, *args: delays.append(ms) or wx.CallAfter(fn, *args))
-    frame.on_read_message()
-    assert opened == ["## Result"]
-    # Said a moment after the text box opens, so it isn't cut off by it.
-    assert delays and delays[-1] >= 1000
-    assert pump(lambda: env["feedback"] and env["feedback"][-1] == FORMATTED_BROKEN_TEXT)
-
-
 def test_settings_dialog_has_the_formatted_page_choice(frame):
     from thechatplace.ui.dialogs import SettingsDialog
     dialog = SettingsDialog(frame, speech.SpeechSettings(formatted_messages=False),

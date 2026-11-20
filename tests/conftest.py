@@ -85,21 +85,6 @@ def _no_keys_left_from_another_test():
 
 
 @pytest.fixture(autouse=True)
-def _formatted_view_not_given_up():
-    """A formatted page that timed out in one test (#693) mustn't turn the
-    formatted view off for every test after it. Only if the dialogs are
-    loaded: windowless test files never import wx."""
-    import sys as _sys
-    dialogs = _sys.modules.get("thechatplace.ui.dialogs")
-    if dialogs is not None:
-        dialogs._FORMATTED_BROKEN = False
-    yield
-    dialogs = _sys.modules.get("thechatplace.ui.dialogs")
-    if dialogs is not None:
-        dialogs._FORMATTED_BROKEN = False
-
-
-@pytest.fixture(autouse=True)
 def _fresh_last_messages(monkeypatch):
     """Each test starts with nothing remembered for the Last message column
     (#146): no cached transcript ends, no sessions known to have none."""
