@@ -157,10 +157,17 @@ class ChatMessage:
     cost: str = ""
 
     @property
+    def whole_without_cost(self) -> str:
+        """The text with its detail: what Copy copies. A reply's cost line
+        is left out (#692), as a copied reply is pasted elsewhere, often
+        into a prompt."""
+        return f"{self.text}\n\n{self.detail}" if self.detail else self.text
+
+    @property
     def whole(self) -> str:
         """The text with its detail, and a reply's cost as its last line:
-        what Enter shows and Copy copies."""
-        text = f"{self.text}\n\n{self.detail}" if self.detail else self.text
+        what Enter shows, Export saves and Find searches."""
+        text = self.whole_without_cost
         return f"{text}\n\n{self.cost}" if self.cost else text
 
     @property
@@ -201,6 +208,11 @@ class ChatMessage:
 
     def full_text(self) -> str:
         return f"{self.label}:\n{self.whole}"
+
+    def copy_text(self) -> str:
+        """What Copy Message puts on the clipboard: ``full_text`` without a
+        reply's cost line (#692)."""
+        return f"{self.label}:\n{self.whole_without_cost}"
 
 
 #: The tools whose calls are listed as commands (#279): Claude Code's shell.

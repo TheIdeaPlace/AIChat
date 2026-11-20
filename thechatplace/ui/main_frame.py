@@ -9318,7 +9318,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         index = self.chat_list.GetSelection()
         if not (0 <= index < len(visible)):
             return
-        if self._copy_text(visible[index].full_text()):
+        if self._copy_text(visible[index].copy_text()):  # without its cost line (#692)
             self._feedback("Message copied.")
         else:
             self._feedback("Couldn't open the clipboard.")

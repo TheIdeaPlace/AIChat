@@ -1304,6 +1304,12 @@ def test_each_reply_ends_with_its_cost_even_when_it_isnt_said(frame, env, monkey
     frame.speech.full_messages_in_list = True
     row = frame._chat_keys.index("m1")
     assert frame._message_item_text(row) == "Claude: Hi. Cost: 19 cents"
+    # Copy Message leaves the cost line out: a copied reply goes elsewhere.
+    copied = []
+    monkeypatch.setattr(frame, "_copy_text", lambda text: copied.append(text) or True)
+    frame.chat_list.SetSelection(row)
+    frame._copy_message()
+    assert copied == ["Claude:\nHi"]
     # Kept in The Chat Place's own store, so a restart still has it; never
     # in Claude Code's transcript.
     again = OwnSessionStore(env["tmp"] / "own.json")

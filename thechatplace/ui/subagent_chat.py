@@ -162,7 +162,7 @@ class SubagentChatDialog(wx.Dialog):
         if message is None:
             self.feedback("No message selected.")
             return
-        self.feedback("Message copied." if self._copy(message.full_text())
+        self.feedback("Message copied." if self._copy(message.copy_text())
                       else "Couldn't open the clipboard.")
 
     def set_activity(self, show: bool):

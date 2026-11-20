@@ -128,6 +128,17 @@ def test_the_cost_is_the_replys_last_line_and_ends_its_row():
     assert ChatMessage(ASSISTANT, "Plain").list_line() == "Claude: Plain"
 
 
+def test_copy_leaves_out_the_cost_line():
+    message = ChatMessage(ASSISTANT, "Reply", detail="Setup", cost="Cost: 19 cents")
+    assert message.copy_text() == "Claude:\nReply\n\nSetup"
+    assert message.whole_without_cost == "Reply\n\nSetup"
+    # Read in full and exported, it keeps it.
+    assert message.full_text() == "Claude:\nReply\n\nSetup\n\nCost: 19 cents"
+    from thechatplace import export
+    assert "Cost: 19 cents" in export.to_markdown("Budget", [message])
+    assert "Cost: 19 cents" in export.to_text("Budget", [message])
+
+
 def test_kept_costs_are_bounded():
     costs = {}
     for number in range(reply_costs.MAX_REPLY_COSTS + 20):

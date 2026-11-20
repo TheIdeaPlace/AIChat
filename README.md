@@ -601,7 +601,8 @@ question, cost setting and API-credit labels also apply to Codex:
   with no known price. It's at the end of the reply's line in the messages list and the last line
   of the full message (Enter) and its formatted page, whether or not Settings has the cost said.
   It's kept with the chat in The Chat Place's own store (the newest 500 replies), never in Claude
-  Code's or Codex's files, so it survives a restart (#692). The window's title, the heading and the
+  Code's or Codex's files, so it survives a restart (#692). Copy leaves out the cost line;
+  Export keeps it. The window's title, the heading and the
   messages list's name say so too, and the reply box is named "Your message, API credits".
   While it's loaded, the status bar shows "API credits: this chat $0.42, The Chat Place $12.30
   of $20" for a Claude chat. In a Codex chat it shows The Chat Place's estimated priced
