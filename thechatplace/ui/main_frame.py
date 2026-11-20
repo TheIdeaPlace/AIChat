@@ -69,7 +69,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
                           normalize_permission_mode)
-from .. import codex_long_messages, sound_events
+from .. import codex_long_messages, reply_costs, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
@@ -420,6 +420,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: An API turn's cost already said (with an answer that left
         #: background work running), so its end says only what's more (#663).
         self._api_cost_said: Dict[str, float] = {}
+        #: The same for the cost kept as a reply's last line (#692),
+        #: whatever Settings says about saying it: (the reply, its cost).
+        self._reply_cost_said: Dict[str, tuple] = {}
+        #: The reply costs the loaded chat's messages last had (#692): a
+        #: change shows even when the transcript itself didn't change.
+        self._chat_costs_shown: Optional[tuple] = None
+        self._chat_costs_pending: Optional[tuple] = None
         #: A send's read-back in an API chat, held until the runner has
         #: really written the message, then said with "on API credits" in
         #: it (#663): "Sent on API credits to Budget: …".
@@ -1256,6 +1263,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     lambda: collect(own, running, waiting=waiting, order=order,
                                     last_messages=last_messages, background=background),
                     order, owned=owned, last_messages=last_messages)
+                # The Cost column (#692): off this thread, and the ledgers
+                # are read again only when they've changed.
+                reply_costs.fill_api_costs(snap.sessions)
                 ended = finished_turns(self._previous_states, snap.sessions,
                                        stale_providers=snap.stale_providers)
                 replies = {}
@@ -2308,6 +2318,33 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # "3 cents more", but "cost not known" alone, never "… more".
         return cost_more(cost_words(more, complete))
 
+    def _keep_reply_cost(self, event, session_id: str, turn_over: bool = True) -> bool:
+        """What a Claude turn on API credits cost, kept with its last reply
+        as the reply's last line (#692), whether or not Settings has it
+        said. An answer with background work left keeps its cost so far;
+        the turn's end then puts what came after on its new reply, or the
+        whole on the same one. True when something was kept."""
+        data = getattr(event, "data", None) or {}
+        earlier = (self._reply_cost_said.pop(session_id, None) if turn_over
+                   else self._reply_cost_said.get(session_id))
+        if data.get("billing") != "api":
+            return False
+        key = reply_costs.claude_reply_key(data)
+        if not key:
+            return False
+        already = earlier[1] if earlier is not None and earlier[0] != key else None
+        words = reply_costs.claude_words(data, already)
+        if not words:
+            return False
+        cost = data.get("cost_usd")
+        if not turn_over and isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            self._reply_cost_said[session_id] = (key, cost)
+        line = reply_costs.cost_line(words)
+        try:
+            return self.store.add_reply_cost(session_id, key, line)
+        except (OSError, ValueError):
+            return False  # the reply reads without it; nothing else is lost
+
     def _say_turn_end(self, text: str, cost: str, title: str, session_id: str,
                       interrupt: bool = True) -> None:
         """How an API turn ended, said as usual (per the level). With
@@ -2561,6 +2598,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         generation = self._open_generation
         reader = self._reader
         self._reader_busy = True
+        # What each reply on API credits cost (#692), from the store as it
+        # is now; a change shows even if the transcript didn't change.
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
+        costs = (dict(getattr(own, "reply_costs", None) or {})
+                 if getattr(own, "billing", "") == "api" else {})
+        shown_costs = (info.key, tuple(costs.items()))
+        costs_changed = shown_costs != self._chat_costs_shown
+        self._chat_costs_pending = shown_costs  # shown once a read is applied
 
         def work():
             active_reader = reader
@@ -2569,13 +2614,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if active_reader is None:
                     wx.CallAfter(self._missing_reader, generation)
                     return
-                changed = active_reader.refresh()
+                changed = active_reader.refresh() or (costs_changed and reader is not None)
                 transcript = active_reader.transcript
                 copies = [dataclasses.replace(m) for m in transcript.messages]
                 if info.provider in ('codex', 'codex-api'):
                     # A saved long message reads as it was written, not as
                     # the short prompt Codex was sent.
                     copies = codex_long_messages.expand_messages(copies)
+                copies = reply_costs.with_costs(copies, costs, ASSISTANT)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
@@ -2756,6 +2802,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         before_keys = {m.key for m in self._chat_messages}
         self._chat_messages = messages
+        # These messages carry the reply costs read with them (#692).
+        self._chat_costs_shown = getattr(self, "_chat_costs_pending", None)
         if any(m.key not in before_keys and m.kind in (ASSISTANT, COMPACTION) for m in messages):
             self._compaction_tokens.pop(self._open.cli_session_id, None)
         self._check_context()
@@ -2955,10 +3003,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Keyed by label too: a steering row's label says where it is, and
         # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != (message.label, message.text):
+        if cached is None or cached[0] != (message.label, message.text, message.cost):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
-            cached = ((message.label, message.text), f"{message.label}: {spoken}")
+            said = f"{message.label}: {spoken}"
+            if message.cost:
+                # A reply's cost is its last words (#692), as in its row.
+                said = said.rstrip()
+                said = (f"{said}{'' if said.endswith(('.', '!', '?', '…', ':')) else '.'}"
+                        f" {message.cost}")
+            cached = ((message.label, message.text, message.cost), said)
             self._spoken[message.key] = cached
         return cached[1]
 
@@ -6381,6 +6435,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._store_write(self.store.update, session_id, state=state, detail=detail,
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            # What it cost, as its reply's last line (#692), before the chat
+            # is read again below.
+            self._keep_reply_cost(event, session_id)
             self._note_worktree_move(session_id, title)
             quiet = self._agent_quiet("claude", session_id)
             self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
@@ -6514,6 +6571,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What the answer cost so far, on API credits (#663); the turn's end
         # says only what came after.
         cost = self._api_cost_words(event, session_id, turn_over=False)
+        if self._keep_reply_cost(event, session_id, turn_over=False) and (
+                self._open is not None and self._open.provider == "claude"
+                and self._open.cli_session_id == session_id):
+            self._refresh_chat()  # the answer's cost line (#692)
         denials = event.denials or self._denials.get(session_id, [])
         self._denials[session_id] = []  # said now, not again at the turn's end
         quiet = self._agent_quiet("claude", session_id)
@@ -9257,7 +9318,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         index = self.chat_list.GetSelection()
         if not (0 <= index < len(visible)):
             return
-        if self._copy_text(visible[index].full_text()):
+        if self._copy_text(visible[index].copy_text()):  # without its cost line (#692)
             self._feedback("Message copied.")
         else:
             self._feedback("Couldn't open the clipboard.")

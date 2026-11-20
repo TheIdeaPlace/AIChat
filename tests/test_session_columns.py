@@ -109,7 +109,7 @@ def test_a_newer_versions_columns_are_ignored_on_load(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"session_fields": ["model", "status", "title"]}),
                     encoding="utf-8")
-    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider", "charged"]
+    assert SpeechSettings.load(path).session_fields == ["status", "title", "provider", "charged", "cost"]
 
 
 def test_default_settings_do_not_share_one_list():
@@ -201,7 +201,7 @@ def test_older_custom_columns_gain_provider_once_without_losing_choices(tmp_path
     path.write_text(json.dumps(original), encoding='utf-8')
     settings = SpeechSettings.load(path)
     assert settings.session_fields == ['last_message', 'status', 'title', 'provider', 'charged',
-                                       'kind']
+                                       'cost', 'kind']
     assert not settings.announce_own
     assert json.loads(path.read_text()) == original  # loading never overwrites the old file
     settings.save(path)
@@ -217,7 +217,7 @@ def test_existing_provider_position_is_preserved_on_upgrade(tmp_path):
     path.write_text(json.dumps({'session_fields': columns}), encoding='utf-8')
     # Charged to (#658) goes in once, just after Provider.
     assert SpeechSettings.load(path).session_fields == [
-        'provider', 'charged', 'title', 'started', 'last_message']
+        'provider', 'charged', 'cost', 'title', 'started', 'last_message']
 
 
 @pytest.mark.parametrize('provider', ['claude', 'codex', 'ollama'])
@@ -233,7 +233,7 @@ def test_kind_describes_source_independently_of_provider(provider, source, kind)
 def test_upgrade_without_title_places_provider_first(tmp_path):
     path = tmp_path / 'settings.json'
     path.write_text(json.dumps({'session_fields': ['status', 'last_message']}))
-    assert SpeechSettings.load(path).session_fields == ['provider', 'charged', 'status',
+    assert SpeechSettings.load(path).session_fields == ['provider', 'charged', 'cost', 'status',
                                                         'last_message']
 
 
@@ -244,7 +244,7 @@ def test_charged_to_is_added_once_and_a_removal_is_kept(tmp_path):
     path.write_text(json.dumps({'session_fields': ['title', 'provider', 'status'],
                                 'provider_column_added': True}))
     settings = SpeechSettings.load(path)
-    assert settings.session_fields == ['title', 'provider', 'charged', 'status']
+    assert settings.session_fields == ['title', 'provider', 'charged', 'cost', 'status']
     settings.session_fields.remove('charged')
     settings.save(path)
     assert json.loads(path.read_text())['charged_column_added'] is True
@@ -257,8 +257,8 @@ def test_charged_to_is_added_once_and_a_removal_is_kept(tmp_path):
 
 
 @pytest.mark.parametrize('saved,expected', [
-    (['status', 'title', 'folder'], ['status', 'title', 'charged', 'folder']),
-    (['status', 'folder'], ['charged', 'status', 'folder']),
+    (['status', 'title', 'folder'], ['status', 'title', 'charged', 'cost', 'folder']),
+    (['status', 'folder'], ['charged', 'cost', 'status', 'folder']),
 ])
 def test_charged_to_goes_after_title_or_first_without_provider(tmp_path, saved, expected):
     path = tmp_path / 'settings.json'

@@ -19,7 +19,7 @@ from ..sessions import IDLE, WORKING, STATUS_UNAVAILABLE, home_app
 from ..agents import provider_name
 from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
-from .. import codex_long_messages
+from .. import codex_long_messages, reply_costs
 from ..codex_diagnostics import record_failure, safe_reason
 from ..ui_text import key_name, with_stop_key, your_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
@@ -1038,6 +1038,22 @@ class CodexChats(SoundHost, CodexExtras):
             self._runtime_usage_checks = {}
         return self._runtime_usage_checks.setdefault(provider, {'pending': False, 'again': None})
 
+    def _keep_codex_reply_cost(self, thread_id, data):
+        """What a Codex turn on API credits cost, kept with the chat as its
+        last reply's last line (#692), in the words it was said in, whether
+        or not Settings has it said. A later, fuller report replaces it."""
+        words = reply_costs.codex_words(data)
+        turn = data.get('turn_id')
+        if not words or not isinstance(turn, str) or not turn:
+            return
+        try:
+            kept = self.store.add_reply_cost(thread_id, reply_costs.TURN_PREFIX + turn,
+                                             reply_costs.cost_line(words), provider='codex-api')
+        except (OSError, ValueError):
+            return  # the reply reads without it; nothing else is lost
+        if kept and self._open is not None and self._open.key == 'codex-api:' + thread_id:
+            self._refresh_chat()
+
     def _on_codex_api_event(self, event):
         if self._gone():
             return
@@ -1051,6 +1067,7 @@ class CodexChats(SoundHost, CodexExtras):
         elif event.kind == 'finished':
             self._api_confirm_pending.discard(key)
             self._api_totals_cache = None
+            self._keep_codex_reply_cost(event.session_id, data)
             own = self._api_own(key)
             if data.get('unpriced'):
                 counts = self._api_token_announcements = getattr(self, '_api_token_announcements', {})

@@ -7156,7 +7156,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:4] == ["title", "provider", "charged", "folder"]
+    assert seen["fields"][:5] == ["title", "provider", "charged", "cost", "folder"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -7265,30 +7265,30 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
     try:
         assert dialog.shown.GetString(0) == "Title"
         # Started (#209) and Last message (#146) aren't shown by default;
-        # Charged to (#658) is, just after Provider.
+        # Charged to (#658) is, just after Provider, and Cost (#692) after it.
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
         assert dialog.preview.GetValue().startswith("Blocked one, Claude, ")
-        dialog.shown.SetSelection(4)  # Status
+        dialog.shown.SetSelection(5)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 12."
+        assert said[-1] == "Status moved to top, 1 of 13."
         assert dialog.fields()[:4] == ["status", "title", "provider", "charged"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 12." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 13." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 12 of 12."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 11
+        assert said[-1] == "Status moved to bottom, 13 of 13."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 12
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 12."
+        assert said[-1] == "Status moved to top, 1 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 12."
+        assert said[-1] == "Status moved down, 2 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -7319,25 +7319,25 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.shown.GetSelection() == 1  # on what it added
         assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 12 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 12
+        assert said[-1] == "Columns reset to the default: 13 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 13
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
         dialog.shown.SetSelection(dialog.fields().index("provider"))
         dialog.remove()
-        assert said[-1] == "Provider removed. 11 columns shown."
+        assert said[-1] == "Provider removed. 12 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Provider added, 12 of 12."
+        assert said[-1] == "Provider added, 13 of 13."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Started added, 13 of 13."
+        assert said[-1] == "Started added, 14 of 14."
         # Adding the last one left moves you to Shown, on it.
         dialog.available.SetSelection(0)
         focused.clear()
         dialog.add()
-        assert said[-1] == "Last message added, 14 of 14."
-        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 13
+        assert said[-1] == "Last message added, 15 of 15."
+        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 14
         assert list(dialog.available.GetStrings()) == ["Every column is shown."]
         dialog.add()
         assert said[-1] == "Every column is shown already."

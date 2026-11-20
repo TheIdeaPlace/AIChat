@@ -683,7 +683,8 @@ def s_main_compacted(frame, env):
 
 def s_main_api_chat(frame, env):
     """A chat on API credits loaded (#658): its row, the heading and title
-    say so, and the status bar shows what it and the app have spent."""
+    say so, and the status bar shows what it and the app have spent. Its
+    row's Cost column and its reply's last line say what they cost (#692)."""
     import fake_env
     from records import assistant_block, text_block, user_text
     from thechatplace import spend_ledger
@@ -693,7 +694,8 @@ def s_main_api_chat(frame, env):
         user_text("Summarize the release notes."),
         assistant_block(text_block("Three fixes and one new feature."), "m1")])
     frame.store.add(OwnSession("probe-api", "Release notes on credits", cwd,
-                               last_activity_ms=fake_env.now_ms(), billing="api"))
+                               last_activity_ms=fake_env.now_ms(), billing="api",
+                               reply_costs={"m1": "Cost: 42 cents"}))
     ledger = spend_ledger.default_ledger()
     held = ledger.reserve("probe-api")
     ledger.settle(held, 0.42, {"claude-opus-5-5": 0.42})
