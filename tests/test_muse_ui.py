@@ -421,3 +421,40 @@ def test_muse_turn_end_says_how_it_ended(frame, monkeypatch, terminal, said):
     frame._apply_muse_owned_update(record, {"state": "idle", "pending": (), "terminal": terminal,
                                             "failure": failure}, token)
     assert spoken == [said]
+
+
+def test_muse_monitor_keeps_watching_background_work_until_the_reply(frame, monkeypatch):
+    """Muse 1.4.24 ends the turn that starts a workflow, its sub-agents ask
+    permission afterwards, and Muse replies in a turn of its own. The monitor
+    keeps going through all of that, and says "finished" only after the reply."""
+    from thechatplace.own_store import OwnSession
+    from thechatplace.ui import codex_chats
+    record = OwnSession("synthetic-muse", "Synthetic Muse", "C:\work", provider="muse")
+    frame.store.add(record)
+    queued, callbacks, waits, spoken = [], [], [], []
+    monkeypatch.setattr(frame._pool, "submit", lambda fn: queued.append(fn))
+    monkeypatch.setattr(wx, "CallAfter", lambda fn, *args: callbacks.append((fn, args)))
+    monkeypatch.setattr(frame, "_say", lambda text, **kwargs: spoken.append(text))
+    class InstantEvent:
+        def is_set(self): return False
+        def wait(self, timeout): waits.append(timeout); return False
+    monkeypatch.setattr(codex_chats.threading, "Event", InstantEvent)
+    updates = iter([
+        {"state": "running", "pending": ()},
+        {"state": "idle", "pending": (), "background": True, "terminal": "completed"},
+        {"state": "waiting", "pending": (), "background": True},
+        {"state": "idle", "pending": (), "background": True, "terminal": "completed"},
+        {"state": "running", "pending": (), "background": False},
+        {"state": "idle", "pending": (), "background": False, "terminal": "completed"},
+    ])
+    monkeypatch.setattr(frame.sessions, "owned_action", lambda action, current: next(updates))
+    frame._poll_muse_owned(record)
+    queued.pop()()
+    assert next(updates, None) is None  # every update was polled, then it stopped
+    assert waits == [2.5, 5, 5, 5, 2.5]  # less often while only background work runs
+    for callback, args in callbacks:
+        callback(*args)
+    assert spoken == [
+        "Synthetic Muse: Muse Code is working in the background. You'll hear its reply when the work is done.",
+        "Synthetic Muse: Muse Code finished."]
+    assert record.cli_session_id not in frame._muse_monitors

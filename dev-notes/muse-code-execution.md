@@ -110,6 +110,33 @@ signed-in profile), `serve` started as the app starts it (no `cwd`, no
 | PowerShell write to `C:\dev\…` outside the workspace, allowed once | The sandbox refused it: "Access to the path … is denied", exit 1, no file made. |
 | The app's own `MuseOwnedChats` | create, prepare, send, `pending_approvals` (Allow once / Always allow in this workspace / Reject), `answer(allow)`, poll to `idle` with terminal `completed`; the reply read by `transcript_from_muse`. |
 
+### Workflows outlive their turn (1.4.24, 2026-11-20)
+
+A request like "review this code base" makes Muse load the
+`workflow-authoring` skill and call its `workflow` tool. The tool's result
+says "This launch ended your turn ... its completion is delivered to this
+conversation": the turn ends as `completed` within seconds, with a
+`workflow` item and one `subagent` item per part, all `inProgress`. Each
+sub-agent then proposes its own commands. On Ask me they wait for approval,
+and `approval/listPending` on the **parent** lists them with
+`subagentOrigin` (`subagentId`, `childSessionId`, `childRunId`) and the
+parent's `sessionId`. Only the host running the workflow lists them; another
+host's read of the same chat shows none. A multi-stage command keeps its
+`approvalId` and moves `currentRequirementId.sourceIndex` on after each
+decision. When the workflow completes, Muse starts a turn of its own with the
+results.
+
+The window's monitor used to stop at the first idle, so a review's
+sub-agents waited for ever, with the chat saying "finished" (seen twice on
+the user's own review requests). `poll()` now reports `background` when an
+idle chat's newest `workflow` item is `inProgress` (it does a full
+`session/read` only then), and the monitor keeps polling every 5 seconds until
+it isn't. `task/list` doesn't list workflows, and `subagent` items stay
+`inProgress` after their workflow completes, so neither is the signal. Both
+item kinds read as events, from `fallbackText`. Natively verified: two
+sub-agents asked, were allowed, the workflow completed, Muse's results turn
+ran, and polling stopped after it.
+
 Helicon (HarjjotSinghh/helicon) starts the same `muse serve`, with the project
 as `cwd` and `MUSE_RELEASE_INFO` set; neither mattered here. It offers
 `--disable-sandbox` as a setting instead.

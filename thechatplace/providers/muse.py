@@ -86,6 +86,30 @@ def _history_items(result):
     return items
 
 
+#: How a workflow item's status is said after its description.
+WORKFLOW_STATUS = {"inProgress": " (running in the background)", "completed": " (finished)",
+                   "failed": " (failed)", "cancelled": " (stopped)"}
+
+
+def background_work(result) -> bool:
+    """Whether a full session/read shows a workflow still running: Muse ends
+    the turn that starts one, then starts another with its results (1.4.24).
+    Its sub-agents' permission requests come in between, on this chat."""
+    try:
+        items = _history_items(result)
+    except MuseHistoryError:
+        return False
+    latest = {}  # the newest revision of each workflow, as the transcript folds them
+    for item in items:
+        if (isinstance(item, dict) and item.get("kind") == "workflow" and _identity(item.get("itemId"))
+                and type(item.get("revision")) is int):
+            old = latest.get(item["itemId"])
+            if old is None or item["revision"] > old["revision"]:
+                latest[item["itemId"]] = item
+    return any(item.get("status") == "inProgress" and item.get("retracted") is not True
+               for item in latest.values())
+
+
 def transcript_from_muse(result, native_id):
     if (not isinstance(result, dict) or not isinstance(result.get("session"), dict)
             or result["session"].get("sessionId") != native_id
@@ -163,6 +187,15 @@ def transcript_from_muse(result, native_id):
                 whole=True)
         elif kind == "compaction":
             add(COMPACTION, _text(item.get("fallbackText")) or "Muse Code compacted the conversation.")
+        elif kind in ("workflow", "subagent") and _text(item.get("fallbackText")).strip():
+            # A workflow runs in the background after its turn ends, and its
+            # sub-agents are its parts (1.4.24). Their result comes as Muse's
+            # next reply. Only the workflow's status is said: installed 1.4.24
+            # leaves a sub-agent item in progress after its workflow completes.
+            text = _text(item["fallbackText"]).strip()
+            if kind == "workflow":
+                text += WORKFLOW_STATUS.get(item["status"], "")
+            add(EVENT, text, whole=True)
         else:
             # The wire's fallbackText is explicitly intended for unknown kinds.
             # Never dump an unrecognized object as JSON into the conversation.
@@ -1307,9 +1340,15 @@ class MuseOwnedChats:
                 state = self._reconcile(record, result)
                 pending = self.pending_approvals(record)
                 self._receipts(record, pending)
+                # An idle chat can still have a workflow running, whose
+                # sub-agents ask permission here after the turn has ended.
+                # Only then is the full history worth reading.
+                background = state == "idle" and background_work(self.execution.request(
+                    "session/read", {"sessionId": record.cli_session_id, "excludeItems": False}))
                 if pending and state not in ("unknown", "cancelling"):
                     state = "waiting"
-                return {"state": state, "pending": pending, "turn_id": result["session"].get("activeTurnId") or "",
+                return {"state": state, "pending": pending, "background": background,
+                        "turn_id": result["session"].get("activeTurnId") or "",
                         "terminal": self._saved(record).get("terminal", "") if state == "idle" else "",
                         "failure": _failure_kind(result) if state == "idle" else "",
                         "notice": "" if state != "unknown" else "Muse Code's turn outcome is unknown. Refresh before sending again."}

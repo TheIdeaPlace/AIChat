@@ -313,3 +313,29 @@ def test_a_shortened_item_says_so_where_it_is_and_raises_no_warning():
     assert not by_kind[TOOL].endswith(shortened)  # the command itself is whole
     assert transcript.unreadable_lines == 0
     assert not any("couldn't be" in m.text for m in transcript.messages)
+
+
+@pytest.mark.parametrize("status,said", [
+    ("inProgress", "Workflow: synthetic-review (running in the background)"),
+    ("completed", "Workflow: synthetic-review (finished)"),
+    ("failed", "Workflow: synthetic-review (failed)"),
+    ("cancelled", "Workflow: synthetic-review (stopped)"),
+    ("someNewStatus", "Workflow: synthetic-review"),
+])
+def test_a_workflow_and_its_sub_agents_are_activity_not_unreadable_history(status, said):
+    """Installed 1.4.24 records a workflow item and one subagent item per part.
+    A sub-agent's own status isn't said: 1.4.24 leaves it in progress after
+    its workflow completes."""
+    transcript = transcript_from_muse(history([
+        item("userMessage", "u", text="Synthetic review request"),
+        item("workflow", "w", status=status, fallbackText="Workflow: synthetic-review"),
+        item("subagent", "s", status="inProgress", fallbackText="Subagent: Synthetic part")]), NATIVE_ID)
+    assert [(m.kind, m.text) for m in transcript.messages][1:] == [
+        (EVENT, said), (EVENT, "Subagent: Synthetic part")]
+    assert transcript.unreadable_lines == 0
+    assert not any("couldn't be" in m.text for m in transcript.messages)
+
+
+def test_a_workflow_without_a_description_is_still_unreadable():
+    transcript = transcript_from_muse(history([item("workflow", "w", status="inProgress")]), NATIVE_ID)
+    assert transcript.unreadable_lines == 1

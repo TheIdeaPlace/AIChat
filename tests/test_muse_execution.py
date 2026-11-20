@@ -52,6 +52,7 @@ class Execution:
         self.messages = []
         self.session = {"sessionId": NATIVE_ID, "status": "idle", "activeTurnId": None,
                         "modelId": "synthetic-model-b", **policy()}
+        self.items = []  # history items, for full (not excludeItems) reads
         # Shaped like installed 1.4.20's catalog (ids synthetic).
         self.catalog = [
             {"modelId": "synthetic-model-a", "displayLabel": "synthetic-model-a", "providerId": "meta",
@@ -104,8 +105,9 @@ class Execution:
             return {"session": copy.deepcopy(self.session), "viewCursor": "v:1"}
         if method == "session/read":
             assert params["sessionId"] == NATIVE_ID
+            items = [] if params.get("excludeItems") else copy.deepcopy(self.items)
             result = {"session": copy.deepcopy(self.session), "viewCursor": "v:1", "pendingRequests": [],
-                      "history": {"mode": "inline", "items": []}}
+                      "history": {"mode": "inline", "items": items}}
             if self.last_turn:
                 result["lastTurn"] = self.last_turn
             return result
@@ -831,3 +833,47 @@ def test_a_change_muse_did_not_make_is_not_saved(owned):
     with pytest.raises(MuseHistoryError, match="didn't confirm"):
         owned.set_mode(own, ":unrestricted")
     assert "muse_profile" not in own.provider_options
+
+
+def workflow_item(status, revision=2, ident="synthetic-workflow"):
+    """Shaped like installed 1.4.24's workflow item (text synthetic)."""
+    return {"itemId": ident, "kind": "workflow", "turnId": "turn-1", "revision": revision,
+            "status": status, "recordedAt": "2026-11-20T15:59:07Z",
+            "fallbackText": "Workflow: synthetic-review", "workflowRunId": "run-1",
+            "children": [{"childId": "child-1", "attempt": 1, "status": "started"}]}
+
+
+def test_an_idle_chat_with_a_running_workflow_has_background_work(owned):
+    """Muse 1.4.24 ends the turn that starts a workflow; its sub-agents then
+    ask permission on this chat, and Muse replies again with the results.
+    The window keeps watching only while poll() says so."""
+    own = record(owned)
+    owned.send(own, "Synthetic review request")
+    owned.execution.items = [workflow_item("inProgress")]
+    owned.execution.complete("completed")
+    polled = owned.poll(own)
+    assert polled["state"] == "idle" and polled["background"] is True
+    owned.execution.items = [workflow_item("inProgress"), workflow_item("completed", revision=5)]
+    assert owned.poll(own)["background"] is False  # the newest revision decides
+
+
+def test_a_running_turn_reads_no_history_for_background_work(owned):
+    own = record(owned)
+    owned.send(own, "Synthetic question")
+    owned.execution.items = [workflow_item("inProgress")]
+    before = len(owned.execution.messages)
+    polled = owned.poll(own)
+    assert polled["state"] == "running" and polled["background"] is False
+    reads = [p for m, p in owned.execution.messages[before:] if m == "session/read"]
+    assert reads and all(p["excludeItems"] for p in reads)
+
+
+def test_a_sub_agents_request_on_the_parent_is_offered_like_the_chats_own(owned):
+    """Installed 1.4.24 lists a workflow sub-agent's request on the parent
+    chat, with subagentOrigin; the parent's sessionId, so the same answer."""
+    own = record(owned)
+    raw = approval()
+    raw["subagentOrigin"] = {"subagentId": "sub-1", "childSessionId": "child-1", "childRunId": "run-1"}
+    owned.execution.approvals = [raw]
+    pending = owned.pending_approvals(own)
+    assert [(p.kind, p.summary) for p in pending] == [("approval", "Synthetic command")]

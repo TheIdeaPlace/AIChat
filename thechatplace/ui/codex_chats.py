@@ -318,6 +318,13 @@ class CodexChats(SoundHost, CodexExtras):
                         "Muse Code's running state could not be confirmed. "
                         "Check the chat before sending again."}
                 wx.CallAfter(self._apply_muse_owned_update, record, update, cancelled)
+                if update.get("background"):
+                    # A workflow outlives its turn (Muse 1.4.24): keep asking,
+                    # less often, so its sub-agents' permission requests and
+                    # Muse's reply with its results still reach you.
+                    if cancelled.wait(5):
+                        return
+                    continue
                 if update.get("state") in ("idle", "completed", "failed", "unknown"):
                     return
                 if cancelled.wait(2.5):
@@ -352,9 +359,17 @@ class CodexChats(SoundHost, CodexExtras):
         if notice and notice != previous.get("notice"):
             self._say(f"{record.title}: {notice}", interrupt=False)
             self._status(f"{record.title}: {notice}")
-        if state in ("idle", "completed", "failed", "unknown"):
+        background = bool(update.get("background"))
+        if state in ("idle", "completed", "failed", "unknown") and not background:
             self._muse_monitors.pop(ident, None)
-        if state in ("idle", "completed") and previous.get("state") in (
+        if background and state == "idle" and update.get("terminal", "") not in ("cancelled", "failed"):
+            # Not "finished": Muse ended the turn to work in the background,
+            # and answers again when that work is done. Said once, not each
+            # time a sub-agent's request is answered.
+            if not previous.get("background"):
+                self._say(f"{record.title}: Muse Code is working in the background. "
+                          "You'll hear its reply when the work is done.", interrupt=False)
+        elif state in ("idle", "completed") and previous.get("state") in (
                 "running", "waiting", "submitting", "cancelling"):
             # Say how Muse says it ended: Stop gives "cancelled" (seen on
             # installed 1.4.20), which mustn't sound like a finished reply.
