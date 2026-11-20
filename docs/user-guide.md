@@ -476,7 +476,8 @@ again once they finish.
 
 In a Claude chat on API credits, Usage and Context (Ctrl+Shift+U) ends with the API credits
 details. In a chat on your subscription, they're one line just before your plan's limits, which
-stay last.
+stay last: what's been spent and what's left of the limit. For the rest (today, the last 7 days,
+and spending by model and by chat), open Usage and Context from a chat that uses API credits.
 
 These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
 show everything charged to your account, including other apps using the same key, so their
