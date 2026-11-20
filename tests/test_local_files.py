@@ -1,6 +1,7 @@
 """Local references (#253), with real temporary files and no wx windows."""
 import html
 import subprocess
+import sys
 import types
 
 import pytest
@@ -193,8 +194,19 @@ def test_finder_alias_metadata_blocks_extensionless_shortcuts(tmp_path, monkeypa
     path = tmp_path / 'Alias or document'
     path.touch()
     monkeypatch.setattr(platform_paths, 'sys', types.SimpleNamespace(platform='darwin'))
-    monkeypatch.setattr(platform_paths.os, 'getxattr', lambda *args: info, raising=False)
+    monkeypatch.setattr(platform_paths, '_read_xattr', lambda *args: info)
     assert platform_paths.local_file_status(str(path)).can_open == (not blocked)
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS reads Finder metadata through libc')
+def test_finder_metadata_is_read_on_a_real_mac(tmp_path):
+    # The stand-in above hid that os.getxattr doesn't exist on a Mac: every file check raised
+    # AttributeError (#253 review). This runs the real read on a plain file, which has no
+    # Finder metadata, so it must open.
+    path = tmp_path / 'notes.txt'
+    path.write_text('hello')
+    status = platform_paths.local_file_status(str(path))
+    assert status.kind == 'file' and status.can_open
 
 
 @windows_paths
