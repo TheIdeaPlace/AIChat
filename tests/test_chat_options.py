@@ -45,7 +45,10 @@ def test_each_option_becomes_its_flag():
 def test_instructions_that_look_like_flags_stay_one_argument():
     command = build_new_command(EXE, "aaaa-1111", "", "auto",
                                 options=ChatOptions(instructions="--model opus --bare"))
-    assert "--append-system-prompt=--model opus --bare" in command
+    # The chat's own instructions first, then what isn't available (#319),
+    # in the one flag.
+    assert ("--append-system-prompt=--model opus --bare\n\n" + cli.UNAVAILABLE_NOTE) in command
+    assert sum(arg.startswith("--append-system-prompt") for arg in command) == 1
     assert "--bare" not in command and command.count("--model") == 0
 
 
@@ -132,7 +135,7 @@ def test_continue_here_carries_options_and_more_folders():
     command = build_fork_command(EXE, "src-1", "new-1", "Copy", "auto",
                                  allowed_dirs=[folder],
                                  options=ChatOptions(instructions="Be brief."))
-    assert "--append-system-prompt=Be brief." in command
+    assert ("--append-system-prompt=Be brief.\n\n" + cli.UNAVAILABLE_NOTE) in command
     assert command[command.index("--add-dir") + 1] == folder
     start = command.index("--resume")
     assert command[start:start + 5] == ["--resume", "src-1", "--fork-session", "--session-id",
