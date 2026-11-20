@@ -458,3 +458,15 @@ def test_muse_monitor_keeps_watching_background_work_until_the_reply(frame, monk
         "Synthetic Muse: Muse Code is working in the background. You'll hear its reply when the work is done.",
         "Synthetic Muse: Muse Code finished."]
     assert record.cli_session_id not in frame._muse_monitors
+
+
+@pytest.mark.parametrize("update,said", [
+    ({"state": "idle", "background": True}, "Muse Code is working in the background."),
+    ({"state": "waiting", "background": True}, "Muse Code is waiting for you."),
+    ({"state": "idle"}, "Ready."),
+])
+def test_muse_turn_status_says_background_work(frame, update, said):
+    from thechatplace.own_store import OwnSession
+    record = OwnSession("synthetic-muse", "Synthetic Muse", "C:\work", provider="muse")
+    frame._muse_runtime[record.cli_session_id] = update
+    assert frame._muse_state_text(record.to_info()).startswith(said)

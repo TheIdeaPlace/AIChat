@@ -298,16 +298,30 @@ class MuseProvider:
 
     def owned_state(self, record):
         """The Status column for a chat started here, from The Chat Place's
-        own Muse host (a read; nothing is loaded or resumed). Muse's status
+        own Muse host (reads; nothing is loaded or resumed). Muse's status
         there is notLoaded, idle, running or needsInput: notLoaded means no
         turn of it is running in this host, where chats started here run.
-        Unknown if Muse can't be asked."""
+        Unknown if Muse can't be asked.
+
+        Idle isn't the whole story (1.4.24): after a turn starts a workflow,
+        Muse calls the chat idle while its sub-agents work, and while they
+        wait for you, with their requests listed on this chat. So an idle
+        chat's pending requests are read (it is loaded here, so they can
+        exist), and one with background work is Working."""
         if self._owned is None or not self._owned.available():
             return STATUS_UNAVAILABLE
         try:
             result = self._owned.execution.request("session/read", {
                 "sessionId": record.cli_session_id, "excludeItems": True})
             status = self._owned._session(result, record.cli_session_id).get("status")
+            if status == "idle":
+                pending = self._owned.execution.request("approval/listPending",
+                                                        {"sessionId": record.cli_session_id})
+                if (isinstance(pending, dict)
+                        and (_request_array(pending, "approvals") or _request_array(pending, "userInputs"))):
+                    return NEEDS_YOU
+                if self._owned.has_background_work(record.cli_session_id):
+                    return WORKING
         except Exception:  # noqa: BLE001 - the row says unknown rather than guess
             return STATUS_UNAVAILABLE
         return {"running": WORKING, "needsInput": NEEDS_YOU, "idle": IDLE,
@@ -632,6 +646,9 @@ class MuseOwnedChats:
         self._records = {}
         self._persistence = None
         self._pending_events = []
+        # Chats whose last poll found a workflow still running: their turn
+        # has ended, so Muse calls them idle (1.4.24), but they're working.
+        self._background = set()
 
     def set_persistence(self, callback) -> None:
         if not callable(callback):
@@ -1257,6 +1274,10 @@ class MuseOwnedChats:
         # Retained for callers from earlier drafts; only a native read settles.
         self.poll(record)
 
+    def has_background_work(self, native_id: str) -> bool:
+        """Whether the last poll of this chat found a workflow still running."""
+        return native_id in self._background
+
     def in_flight(self, native_id: str) -> bool:
         with self._lock:
             return native_id in self._in_flight
@@ -1345,6 +1366,10 @@ class MuseOwnedChats:
                 # Only then is the full history worth reading.
                 background = state == "idle" and background_work(self.execution.request(
                     "session/read", {"sessionId": record.cli_session_id, "excludeItems": False}))
+                if background:
+                    self._background.add(record.cli_session_id)
+                else:
+                    self._background.discard(record.cli_session_id)
                 if pending and state not in ("unknown", "cancelling"):
                     state = "waiting"
                 return {"state": state, "pending": pending, "background": background,
