@@ -23,6 +23,9 @@ BLOCKED_SUFFIXES = frozenset("""
 .desktop .run .bin .scpt .applescript .workflow .gadget .application .appref-ms
 .webloc .inetloc .website .sct .wsc .mjs .cjs .msc .chm .hlp .inf .osax
 .plugin .ksh .csh .settingcontent-ms .diagcab .alias
+.appx .appxbundle .msix .msixbundle .appinstaller .xll .xla .xlam .wsb .rdp
+.ps1xml .psc1 .jnlp .mde .ade .accde .library-ms .search-ms .searchconnector-ms
+.theme .themepack .deskthemepack .ins .isp .mshxml .msh .msh1 .msh2
 """.split())
 
 WINDOWS_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[/\\]|\\\\[^\\/]+[/\\][^\\/]+)")
@@ -106,6 +109,11 @@ def blocked_type(path: str) -> bool:
     return ntpath.splitext(path.rstrip(' .'))[1].lower() in BLOCKED_SUFFIXES
 
 
+def network_path(path: str) -> bool:
+    """A \\\\server\\share path: on another computer, so touching it may wait."""
+    return path.startswith(('\\\\', '//'))
+
+
 @dataclass(frozen=True)
 class FileStatus:
     path: str
@@ -114,11 +122,14 @@ class FileStatus:
 
     @property
     def can_open(self) -> bool:
-        return self.kind == 'file'
+        # 'network' is a path on another computer, not checked while listing or
+        # drawing a page (an unreachable one waits for the OS's network timeout);
+        # open_local_file checks it in full before acting.
+        return self.kind in ('file', 'network')
 
     @property
     def can_reveal(self) -> bool:
-        return self.kind in ('file', 'blocked', 'folder')
+        return self.kind in ('file', 'blocked', 'folder', 'network')
 
     @property
     def folder_label(self) -> str:

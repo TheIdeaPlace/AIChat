@@ -185,7 +185,9 @@ too).
   it in File Explorer or Finder (on Linux, the file manager or its folder). A folder offers
   **Open folder** and Copy. Executable, script and shortcut types offer folder access and Copy;
   the row explains why Open is unavailable. Missing files say **File not found. Copy only.**
-  File safety and existence are checked again when you choose an action. The formatted reading
+  File safety and existence are checked again when you choose an action. A network path
+  (`\\server\share\…`) isn't checked while the list or page is shown, so an unreachable
+  computer can't hold up The Chat Place; it's checked when you choose Open. The formatted reading
   view uses the same rules when you activate a file link; Ctrl+L provides the folder and Copy
   actions. A code block containing just one path also offers Open and folder access, while
   Enter still reads the code and Copy keeps its original text. Other unsupported link types

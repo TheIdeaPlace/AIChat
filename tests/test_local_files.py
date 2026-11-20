@@ -119,6 +119,38 @@ def test_executable_types_can_only_be_revealed(tmp_path, monkeypatch, suffix):
     assert not opened and revealed == [path]
 
 
+@windows_paths
+def test_network_paths_are_not_touched_while_listing_or_drawing(monkeypatch):
+    # An unreachable server holds any filesystem call for the network timeout,
+    # on the UI thread; listing and drawing must not make one (#253 review).
+    def touched(*_a, **_k):
+        raise AssertionError('touched a network path while listing or drawing')
+    monkeypatch.setattr(platform_paths.Path, 'resolve', touched)
+    monkeypatch.setattr(platform_paths.os.path, 'isabs', touched)
+    share = r'\\server\share\notes.txt'
+    link = FoundLink(share, '', 'Claude', 0)
+    assert link.can_open and link.file_status.can_reveal
+    assert link.file_status.kind == 'network' and 'copy only' not in link.row().lower()
+    assert 'Network file' in message_page('t', share, heading='Claude')
+    script = FoundLink(r'\\server\share\setup.exe', '', 'Claude', 0)
+    assert not script.can_open and script.file_status.kind == 'blocked'
+
+
+@windows_paths
+def test_network_path_is_checked_in_full_when_opened(monkeypatch):
+    checked = []
+    real = platform_paths.local_file_status
+
+    def spy(value, *, quick=False):
+        checked.append(quick)
+        return real(value, quick=quick)
+    monkeypatch.setattr(platform_paths, 'local_file_status', spy)
+    monkeypatch.setattr(platform_paths, 'open_url', lambda _: pytest.fail('opened an unchecked file'))
+    with pytest.raises(ValueError):
+        platform_paths.open_local_file(r'\\no-such-server-for-tcp-tests.invalid\share\x.txt')
+    assert checked == [False]
+
+
 def test_folder_has_only_open_folder_and_copy(tmp_path, monkeypatch):
     opened = []
     monkeypatch.setattr(platform_paths, 'open_local_folder', opened.append)

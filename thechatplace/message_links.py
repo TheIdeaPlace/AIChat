@@ -78,7 +78,7 @@ class FoundLink:
     def file_status(self):
         # One listing snapshot, especially for UNC paths that may be slow.
         # platform_paths.open_local_file always checks again on activation.
-        return platform_paths.local_file_status(self.file_path)
+        return platform_paths.local_file_status(self.file_path, quick=True)
 
     @property
     def is_session_link(self) -> bool:

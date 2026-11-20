@@ -1092,14 +1092,24 @@ def _finder_alias(path: Path) -> bool:
     return len(info) >= 10 and (info[:4] == b'alis' or int.from_bytes(info[8:10], 'big') & 0x8000 != 0)
 
 
-def local_file_status(value: str):
-    """What a reply's local reference may do now (#253), without opening it."""
-    from .local_files import FileStatus, blocked_type, local_path, plain_path
+def local_file_status(value: str, *, quick: bool = False):
+    """What a reply's local reference may do now (#253), without opening it.
+
+    ``quick`` is for listing and drawing pages: a network path is not touched
+    then, since an unreachable server holds the call for the OS's network
+    timeout on the UI thread. Opening always calls this with ``quick`` off.
+    """
+    from .local_files import FileStatus, blocked_type, local_path, network_path, plain_path
     if not plain_path(value):
         return FileStatus('', 'invalid', 'Unsafe file path. Copy only.')
     path = local_path(value)
     if not path or not plain_path(path):
         return FileStatus(path, 'invalid', 'Unsafe file path. Copy only.')
+    if quick and network_path(path):
+        if blocked_type(path):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'network', 'Network file. Checked when you open it.')
     if not os.path.isabs(path):
         return FileStatus(path)  # a Windows path on another operating system
     try:

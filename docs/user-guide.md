@@ -1114,6 +1114,8 @@ file references use the session's working folder when it is known.
 - A folder offers **Open folder** and Copy. Executable, script and shortcut types offer folder
   access and Copy, with the reason in the row. Missing files say **File not found. Copy only.**
 - Existence and safety are checked again when you choose an action.
+- A network path (`\\server\share\…`) isn't checked while the list or page is shown, so an
+  unreachable computer can't hold up The Chat Place; it's checked when you choose Open.
 - In formatted reading, activate a file link with your usual screen-reader link key. It uses
   the same rules. Use **Ctrl+L** for folder access and Copy.
 - A code block containing just one local path offers Open and folder access too. Enter still

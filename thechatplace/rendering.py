@@ -143,7 +143,7 @@ def markdown_to_html(text: str, cwd: str = "", *, file_links: bool = False) -> s
 
     def file_link(match):
         ref = replacements[match.group()]
-        status = platform_paths.local_file_status(ref.path)
+        status = platform_paths.local_file_status(ref.path, quick=True)
         label = ref.words or ref.text
         name = f'{label}, file' + (f'. {status.reason}' if status.reason else '')
         return (f'<a href="{html.escape(file_url(ref.path), quote=True)}" '
