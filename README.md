@@ -132,7 +132,7 @@ too).
   Message, with the Applications key, Shift+F10, VO+Shift+M or a right-click) shows the whole
   message as a formatted page. It starts with who wrote it as heading 1, and your screen reader's
   browse mode moves by heading (H), table (T, then its cell commands), list (L) and code block
-  (each is a region: R in JAWS, D in NVDA, named like "Code block, Python, 14 lines"). Links open in your browser. **Read as Plain Text** (Alt+P)
+  (each is a region: R in JAWS, D in NVDA, named like "Code block, Python, 14 lines"). Web links open in your browser; safe local files open in their default app. **Read as Plain Text** (Alt+P)
   switches to a read-only text box, to read by line, word and character (Option+P on a Mac), and
   Settings can make that the default. Escape closes either, back on the same message. On a Mac the
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
@@ -169,7 +169,7 @@ too).
   tool call of a turn that used subagents) on Subagents for that turn, and **Ctrl+Shift+D** on
   Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
-  (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
+  (on Links, Enter or Open opens the link and closes Lists); Ctrl+C (or Copy)
   copies it (the code, the address, the file's path, the command or your answer), and on Links
   Ctrl+Shift+C (or Copy as Markdown) copies a Markdown link. Typing narrows the list (the letters go
   to its Filter box); Down Arrow comes back. A kind with nothing says so ("No commands in this
@@ -177,9 +177,19 @@ too).
   its words and then where it goes, a bare address as itself (a long one shortened to its site and
   its end), then who wrote it and roughly when, and "in code" for one in a code block or inline
   code: "release notes, github.com/…/tag/v0.1.5. Claude, 3 messages ago". Each address is listed
-  once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
-  Only web, email and session links open; anything else, such as a file: path, is marked "copy
-  only" and says why if you try. Links in tool calls and results are listed only with Show Tool
+  once. Local paths are listed as **file**, including Windows drive paths, network paths and
+  file: URLs, bare or inside inline code, quotes, angle brackets or Markdown links. Paths with
+  spaces need one of those delimiters. A `:12` line number means the file itself. Clear relative
+  file references, such as `[main.py](src/main.py)`, use the session's working folder when known.
+  **Open** opens an existing safe file in its default app. **Open containing folder** selects
+  it in File Explorer or Finder (on Linux, the file manager or its folder). A folder offers
+  **Open folder** and Copy. Executable, script and shortcut types offer folder access and Copy;
+  the row explains why Open is unavailable. Missing files say **File not found. Copy only.**
+  File safety and existence are checked again when you choose an action. The formatted reading
+  view uses the same rules when you activate a file link; Ctrl+L provides the folder and Copy
+  actions. A code block containing just one path also offers Open and folder access, while
+  Enter still reads the code and Copy keeps its original text. Other unsupported link types
+  are copy-only. Links in tool calls and results are listed only with Show Tool
   Activity on. Changed files are listed for Claude, Codex and Copilot chats; commands and decisions for
   Claude chats for now. Codex chats
   also list live tasks captured while run here; older chats and chats run elsewhere may have no
@@ -1994,7 +2004,7 @@ kept in `keys.json`. The user guide's "Changing keyboard shortcuts" has the deta
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
-| Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
+| Messages | Ctrl+L | Lists, on Links: web, email, session and local file links, to open or copy (also from the session list and the reply box) |
 | Messages | Ctrl+Shift+J | Lists, on Tasks: the task list, each step to do, in progress or done |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
