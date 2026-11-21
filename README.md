@@ -147,9 +147,10 @@ too).
   Settings can make that the default. Escape closes either, back on the same message. On a Mac the
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
   heading and table commands; Command+W also closes it. On Windows the page needs Microsoft's Edge
-  WebView2 runtime, which comes with Windows 11; without it, the text box opens. On Windows the
-  page stays open in the background between messages and the next message loads into it, so
-  WebView2 isn't closed until you exit. If WebView2
+  WebView2 runtime, which comes with Windows 11; without it, the text box opens. On Windows,
+  closing the page hides and empties its window rather than closing it, and the next message
+  loads into it, so WebView2 is closed only when you exit. While hidden it holds an empty page,
+  and nothing is on screen or reachable until you open another message. If WebView2
   stops working (it doesn't load the page, or the page stops answering while its window is in
   front), the page closes within half a minute, the
   message opens in the text box, you hear
@@ -663,8 +664,13 @@ question, cost setting and API-credit labels also apply to Codex:
   what's held, what's left of the limit, and spending by model and by chat. In a chat on your
   subscription, API credits are one line (what's spent and what's left) just before your plan's
   limits, so the last line is still a plan limit. Properties (Alt+Enter) on a chat says "Charged to: API
-  credits" or "Claude subscription", and for API credits what the chat has spent. These totals
-  count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
+  credits" or "Claude subscription", and for API credits what the chat has spent. Every cost
+  The Chat Place shows is an estimate and this copy's own count: a Claude cost is what Claude Code
+  reports for each message, and a Codex cost is worked out from OpenAI's prices and the usage
+  Codex reports. Price changes, discounts, taxes and usage that couldn't be counted can make the
+  real charge differ; the Claude Console's and the OpenAI dashboard's usage and billing pages are
+  the final word. These totals
+  count only what this copy of The Chat Place spends. The Claude Console and the OpenAI dashboard show
   everything charged to your account, including other apps using the same key, so theirs can
   be higher. To see The Chat Place's spending there too, make a key just for it: both let you
   create several keys and show spending for each.
