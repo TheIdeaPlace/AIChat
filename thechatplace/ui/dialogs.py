@@ -2490,7 +2490,8 @@ def _show_kept_page(page, owner, title, page_html, start_at):
     opened = time.monotonic()
     result = _run_kept(page, came_from)
     if (time.monotonic() - opened < 0.3 and result == wx.ID_CANCEL
-            and not getattr(page, "_loaded", True) and not page.failed):
+            and not getattr(page, "_loaded", True) and not page.failed
+            and page and not page.IsBeingDeleted()):
         # Closed before anything could happen: a stray key, not you. Once more.
         _let_waiting_keys_through()
         if view is not None:
