@@ -20,3 +20,39 @@ def test_a_waiting_question_is_said_without_a_full_stop_after_its_question_mark(
     assert turn_end_text('Fixture', NEEDS_YOU, 'Claude asks: Which file?', '', 'full') == (
         'Fixture needs you: Claude asks: Which file?')
     assert turn_end_text('Fixture', 'idle', '', '', 'full') == 'Fixture finished.'
+
+
+def test_a_send_on_api_credits_says_so_in_its_read_back_and_names_the_chat():
+    # #663: "on API credits" is part of the read-back, said once the message
+    # really went; with no read-back, the notice alone names the chat.
+    from thechatplace.announce import api_sent_text, sent_text
+    assert sent_text('Budget', 'Add the totals.', 'full', True, api=True) == (
+        'Sent on API credits to Budget: Add the totals.')
+    assert sent_text('Budget', 'Add the totals.', 'full', False, api=True) == (
+        'Sent on API credits to Budget.')
+    assert sent_text('Budget', 'Add the totals.', 'silent', True, api=True) == (
+        'Sent on API credits to Budget.')
+    assert sent_text('Budget', 'x', 'full', True, queued=True, api=True) == (
+        'Sent on API credits to Budget.')
+    assert api_sent_text('Budget') == 'Sent on API credits to Budget.'
+    # The subscription's are as they were.
+    assert sent_text('Budget', 'Add the totals.', 'full', True) == 'Sent to Budget: Add the totals.'
+    assert sent_text('Budget', 'x', 'full', False) == 'Sent. Budget is working.'
+
+
+def test_messages_given_back_say_what_they_were_and_whether_thats_certain():
+    # #663: a Send Now comes back on Stop as a steer does; without Claude
+    # Code's echoes, whether it went in can't be told, and that's said.
+    from thechatplace.announce import API_SENDING, untaken_text
+    assert untaken_text('Budget', ['steer']) == (
+        "Your steered message for Budget wasn't taken in. It's back in the message box.")
+    assert untaken_text('Budget', ['now']) == (
+        "Your Send Now message for Budget wasn't taken in. It's back in the message box.")
+    assert untaken_text('Budget', ['steer', 'now']) == (
+        "Your 2 messages for Budget weren't taken in. They're back in the message box.")
+    assert untaken_text('Budget', ['steer'], sure=False) == (
+        "Your steered message for Budget may not have been taken in. "
+        "It's back in the message box.")
+    assert untaken_text('Budget', ['now', 'now'], sure=False) == (
+        "Your 2 messages for Budget may not have been taken in. They're back in the message box.")
+    assert API_SENDING == "Sending on API credits…"

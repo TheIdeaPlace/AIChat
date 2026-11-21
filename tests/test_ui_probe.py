@@ -21,11 +21,11 @@ WX_DIALOGS = {"TextEntryDialog", "SingleChoiceDialog"}
 
 
 def test_every_dialog_is_photographed_or_says_why_not():
-    from thechatplace.ui import (dialogs, keys_dialog, sound_gallery_dialog, sounds_dialog,
-                                 subagent_chat)
+    from thechatplace.ui import (api_keys_dialog, dialogs, keys_dialog, sound_gallery_dialog,
+                                 sounds_dialog, subagent_chat)
     # Dialogs live in dialogs.py, and a few in modules of their own (#468).
-    classes = {name for module in (dialogs, keys_dialog, sound_gallery_dialog, sounds_dialog,
-                                   subagent_chat)
+    classes = {name for module in (api_keys_dialog, dialogs, keys_dialog, sound_gallery_dialog,
+                                   sounds_dialog, subagent_chat)
                for name, cls in inspect.getmembers(module, inspect.isclass)
                if issubclass(cls, wx.Dialog) and cls.__module__ == module.__name__}
     covered = set(ui_probe.DIALOG_CLASSES.values()) | set(ui_probe.NOT_PHOTOGRAPHED)
@@ -48,9 +48,24 @@ def opened(tmp_path, monkeypatch, app):
     def record(self):
         shown.append(type(self).__name__)
         return wx.ID_CANCEL
+    # Native message boxes bypass wx.Dialog's interception and hang the
+    # capture loop. They are OS controls, not app-defined probe surfaces.
+    def native_message_box(_dialog):
+        pytest.fail("Native wx.MessageDialog must not be a probe surface")
+    monkeypatch.setattr(wx.MessageDialog, "ShowModal", native_message_box)
     for cls in (wx.Dialog, wx.TextEntryDialog, wx.SingleChoiceDialog):
         monkeypatch.setattr(cls, "ShowModal", record)
     return shown
+
+
+def test_native_confirmation_fails_instead_of_blocking_the_probe(opened):
+    dialog = wx.MessageDialog(None, "Synthetic confirmation", "Probe guard", wx.OK | wx.CANCEL)
+    try:
+        with pytest.raises(pytest.fail.Exception, match="Native wx.MessageDialog"):
+            dialog.ShowModal()
+        assert opened == []
+    finally:
+        dialog.Destroy()
 
 
 @pytest.mark.parametrize("name", list(ui_probe.SURFACES))

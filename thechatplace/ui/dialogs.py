@@ -15,11 +15,11 @@ from theideaplace_appkit import difftext
 
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
-                          PERMISSION_MODES)
+                          PERMISSION_MODES, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
                         WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
-from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS,
-                      SpeechSettings)
+from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
+                      NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS, SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
                        mark_access_key,
@@ -28,6 +28,43 @@ from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
+
+
+class UnpricedApiDialog(wx.Dialog):
+    """Mandatory consent to an unpriced paid chat; Cancel stays default (#685)."""
+
+    def __init__(self, parent, model, allowance):
+        super().__init__(parent, title='Send with price unknown?',
+                         size=dialog_size(parent, 600, 340),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        warning = ("This spends OpenAI API credits. The Chat Place has no price for "
+                   f"{model}, so it can't estimate the cost, and your dollar limits can't stop a message.")
+        self.warning = wx.TextCtrl(self, value=warning + '\n\n'
+            f'An allowance of up to ${allowance:,.2f} will be held for each message against your overall limit. '
+            'This allowance limits later sends; it cannot limit what this message costs. '
+            'Stop keeps the allowance when the cost is unknown.',
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.warning, 'Price unknown warning')
+        self.cancel = wx.Button(self, wx.ID_CANCEL, 'Cancel')
+        self.send = wx.Button(self, wx.ID_OK, '&Send on API credits')
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(self.cancel, 0, wx.RIGHT, dip_width(self, 8))
+        buttons.Add(self.send)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.warning, 1, wx.EXPAND | wx.ALL, dip_width(self, 12))
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, dip_width(self, 12))
+        self.SetSizer(sizer)
+        self.cancel.SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL)
+        # Start on the warning so every reader can read it, including macOS.
+        # Enter on this read-only field must still choose Cancel, never Send.
+        def key(event):
+            if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                self.EndModal(wx.ID_CANCEL)
+            else:
+                event.Skip()
+        self.warning.Bind(wx.EVT_KEY_DOWN, key)
+        wx.CallAfter(self.warning.SetFocus)
 
 
 class ShortcutsDialog(wx.Dialog):
@@ -61,6 +98,13 @@ def permission_note() -> str:
 
 #: The note with the default keys, as tests have it.
 PERMISSION_NOTE = permission_note()
+
+#: New Session's Charge to choices (#658): (billing route, label).
+CHARGE_CHOICES = [("subscription", "Claude subscription"), ("api", "API credits")]
+#: Said above the permission note when API credits are chosen (#658).
+API_CREDITS_NOTE = ("Every message in this chat is charged to your Claude API key, and "
+                    "Fable is offered. Claude.ai connectors aren't available on API "
+                    "credits. A chat's charging can't be changed once it's made.")
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -220,7 +264,9 @@ class NewSessionDialog(wx.Dialog):
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
-                 copilot_plan: bool = True, load_chat_choices=None):
+                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False,
+                 openai_key: bool = False, load_api_models=None):
+        """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -230,6 +276,9 @@ class NewSessionDialog(wx.Dialog):
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
+        self._load_api_models = load_api_models
+        self._api_models = ()
+        self._api_models_requested = False
         # Takes a folder off the recent list for good (#215): True if it did.
         self._remove_recent = remove_recent
         self._repo = None           # workplaces.RepoInfo of the folder, or None
@@ -357,6 +406,24 @@ class NewSessionDialog(wx.Dialog):
         grid.Add(self.title_text, 1, wx.EXPAND)
         if continue_from:
             self.folder.SetMinSize((-1, self.title_text.GetBestSize().height))
+
+        # How a Claude chat is charged (#658), fixed once it's made: offered
+        # only once a Claude API key has been added. A choice, not radio
+        # buttons, so Tab always stops on it with one chosen (#428). No
+        # access key: every letter of "Charge to" is taken in this dialog.
+        self._api_key = bool(api_key)
+        self._openai_key = bool(openai_key)
+        self.charge_label = wx.StaticText(self, label="Charge to:")
+        grid.Add(self.charge_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.charge = wx.Choice(self, choices=[label for _v, label in CHARGE_CHOICES])
+        self.charge.SetSelection(0)  # the subscription, always the default
+        set_accessible_name(self.charge, "Charge to")
+        grid.Add(self.charge, 1, wx.EXPAND)
+        self.charge.Bind(wx.EVT_CHOICE, lambda e: self._on_charge())
+        if not (self._api_key and self._provider == "claude"):
+            for control in (self.charge_label, self.charge):
+                control.Hide()
+                control.Disable()
 
         self.model_label = wx.StaticText(self, label="Mo&del:")
         grid.Add(self.model_label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -966,11 +1033,13 @@ class NewSessionDialog(wx.Dialog):
         mode = PERMISSION_MODES[index][0] if 0 <= index < len(PERMISSION_MODES) \
             else DEFAULT_PERMISSION_MODE
         index = self.model.GetSelection()
-        model = MODELS[index][0] if 0 <= index < len(MODELS) else ""
-        if self.provider() == "codex":
+        models = models_for(self.billing())  # Fable too on API credits (#658)
+        model = models[index][0] if 0 <= index < len(models) else ""
+        if self.provider() in ('codex', 'codex-api'):
             mode = DEFAULT_PERMISSION_MODE
-            index = self.model.GetSelection() - 1
-            model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
+            index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+            choices = self._codex_route_models()
+            model = choices[index].model if 0 <= index < len(choices) else ""
         elif self.provider() == "muse":
             mode = DEFAULT_PERMISSION_MODE
             model = ""
@@ -1001,12 +1070,93 @@ class NewSessionDialog(wx.Dialog):
         return (self._providers[self.provider_choice.GetSelection()]
                 if self.provider_choice is not None else self._provider)
 
+    def billing(self) -> str:
+        """How the new chat is charged (#658): "api" only for a Claude chat
+        with API credits chosen; otherwise the subscription."""
+        if not self._charge_available():
+            return "subscription"
+        index = self.charge.GetSelection()
+        return CHARGE_CHOICES[index][0] if 0 <= index < len(CHARGE_CHOICES) else "subscription"
+
+    def _sync_charge(self):
+        """Charge to is there only for Claude, once a key exists (#658).
+        Disabled too when hidden, as the other fields are."""
+        shown = self._charge_available()
+        selected = self.charge.GetSelection()
+        labels = ['ChatGPT subscription' if self.provider() in ('codex', 'codex-api') else 'Claude subscription', 'API credits']
+        if list(self.charge.GetStrings()) != labels:
+            self.charge.Set(labels)
+            self.charge.SetSelection(max(0, selected))
+        if self.charge.IsShown() != shown or self.charge_label.IsShown() != shown:
+            for control in (self.charge_label, self.charge):
+                control.Show(shown)
+                control.Enable(shown)
+            self.Layout()
+
+    def _charge_available(self):
+        return (self._api_key if self.provider() == 'claude' else
+                self._openai_key if self.provider() in ('codex', 'codex-api') else False)
+
+    def _codex_route_models(self):
+        if self.billing() == 'api':
+            from ..openai_prices import model_choices
+            if self._load_api_models is not None and not self._api_models_requested:
+                self._api_models_requested = True
+                wx.CallAfter(self._load_api_models, self._set_api_models)
+            return model_choices(self._api_models)
+        return self._codex_models
+
+    def _set_api_models(self, models, error):
+        if not self or self.IsBeingDeleted():
+            return
+        self._api_models = () if error else tuple(models)
+        if self.billing() == 'api':
+            self._on_charge()
+            self._feedback('OpenAI API model choices are available.' if not error else
+                           'OpenAI API model choices could not be loaded; dated choices remain available.')
+
+    def _claude_note(self) -> str:
+        note = (CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing \
+            else permission_note()
+        if self.billing() == "api":
+            note = API_CREDITS_NOTE + "\n\n" + note
+        return note
+
+    def _on_charge(self):
+        """API credits offer Fable; the subscription doesn't (#658). The
+        model chosen stays chosen if it's on both lists."""
+        if self.provider() in ('codex', 'codex-api'):
+            old_models, old_paid = getattr(self, '_display_codex_models', ((), False))
+            old_index = self.model.GetSelection() - (0 if old_paid else 1)
+            old = old_models[old_index].model if 0 <= old_index < len(old_models) else ''
+            old_effort = self.effort_choice.GetStringSelection()
+            self._on_provider()
+            models = self._codex_route_models()
+            selected = next((i for i, choice in enumerate(models) if choice.model == old), 0)
+            self.model.SetSelection(selected if self.billing() == 'api' else
+                                    selected + 1 if models and old else 0)
+            self._on_codex_model()
+            efforts = list(self.effort_choice.GetStrings())
+            self.effort_choice.SetSelection(efforts.index(old_effort) if old_effort in efforts else 0)
+            if models and models[selected].model != old:
+                self._feedback('Model changed to ' + models[selected].label + '.')
+            return
+        models = models_for(self.billing())
+        index = self.model.GetSelection()
+        before = self.model.GetString(index) if 0 <= index < self.model.GetCount() else ""
+        labels = [label for _v, label in models]
+        self.model.Set(labels)
+        self.model.SetSelection(labels.index(before) if before in labels else 0)
+        self.note.SetValue(self._claude_note())
+
     def _on_provider(self, _event=None):
         wx.CallAfter(self._refresh_rules)
         provider = self.provider()
         from ..chat_options import ChatOptions
         saved = self._options_by_provider = getattr(self, '_options_by_provider', {})
         previous = self._control_provider
+        if previous != provider:
+            self.charge.SetSelection(0)
         if previous in ('claude', 'codex'):
             saved[previous] = (self._chat_options, list(self._chat_folders))
         if previous != provider:
@@ -1014,7 +1164,7 @@ class NewSessionDialog(wx.Dialog):
             self._update_chat_options_summary()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
-        elif self._control_provider == "codex":
+        elif self._control_provider in ('codex', 'codex-api'):
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "copilot":
             self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
@@ -1057,16 +1207,25 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Muse Code. " + note
                 self.note.SetValue(note + "\n\n" + muse_note())
-        elif provider == "codex":
+        elif provider in ('codex', 'codex-api'):
             # "Codex's default", as Change Effort and Properties say it (#596).
-            self.model.Set([CODEX_DEFAULT] + [choice.label for choice in self._codex_models])
-            self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
-            self.model.Enable(bool(self._codex_models))
+            models = self._codex_route_models()
+            paid = self.billing() == 'api'
+            self._display_codex_models = (models, paid)
+            self.model.Set(([] if paid else [CODEX_DEFAULT]) + [choice.label for choice in models])
+            self.model.SetSelection(min(self._codex_choices[0], max(0, self.model.GetCount()-1)))
+            self.model.Enable(bool(models))
             self._on_codex_model()
             self.effort_choice.SetSelection(min(self._codex_choices[1], self.effort_choice.GetCount() - 1))
             from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
-            self.mode.Set([label for value, label in CODEX_REVIEW_MODES])
-            self.mode.SetSelection(self._codex_choices[2])
+            modes = CODEX_REVIEW_MODES[:2] if paid else CODEX_REVIEW_MODES
+            self.mode.Set([label for value, label in modes])
+            if paid:
+                previous = CODEX_REVIEW_MODES[min(self._codex_choices[2], len(CODEX_REVIEW_MODES)-1)][0]
+                selected = next((i for i, (value, label) in enumerate(modes) if value[:2] == previous[:2]), 0)
+            else:
+                selected = min(self._codex_choices[2], len(modes)-1)
+            self.mode.SetSelection(selected)
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave them on Codex's default. "
@@ -1079,16 +1238,26 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Codex. " + note
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())
+            if paid:
+                self.note.SetValue('API credits charge your OpenAI key, with estimated costs from a dated price table. '
+                    'Limits are separate from Claude and can be passed by one request. '
+                    'Models without a dated price say price unknown and require confirmation; dollar limits cannot stop those messages. '
+                    'Their per-message allowance stays held. Long-context prices use conservative surcharge rates. '
+                    'Human approval review is available. Hosted search, connected services, '
+                    'subagents, background goals and native compaction are unavailable. Billing is fixed for this chat.')
+                if self.continuing:
+                    self.note.SetValue('The first message sends a text copy of the earlier conversation.\n\n' + self.note.GetValue())
         else:
             for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
-                    ([label for value, label in MODELS], [label for value, label in EFFORTS],
+                    ([label for value, label in models_for(self.billing())],
+                     [label for value, label in EFFORTS],
                      [label for value, label in PERMISSION_MODES]), self._claude_choices or (0, 0, 0)):
                 control.Set(choices)
-                control.SetSelection(selected)
+                control.SetSelection(min(selected, len(choices) - 1))
                 control.Enable()
-            self.note.SetValue((CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing
-                               else permission_note())
+            self.note.SetValue(self._claude_note())
         self._control_provider = provider
+        self._sync_charge()
         self._sync_access_keys()
         if not self.continuing:
             self._sync_start_from()  # Claude's own worktree.baseRef can change its default
@@ -1120,7 +1289,8 @@ class NewSessionDialog(wx.Dialog):
         dialog = ChatOptionsDialog(self, self.title_text.GetValue().strip(), folder,
                                    options=self._chat_options, folders=self._chat_folders,
                                    load_choices=self._load_chat_choices,
-                                   feedback=self._feedback, model=self.values()[4], provider=self.provider())
+                                   feedback=self._feedback, model=self.values()[4], provider=self.provider(),
+                                   billing=self.billing())  # #658
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 self._chat_options = dialog.options()
@@ -1140,7 +1310,7 @@ class NewSessionDialog(wx.Dialog):
         if self.provider() not in ("claude", "codex"):
             return ChatOptions(), []
         options = self._chat_options
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             options = ChatOptions(instructions=options.instructions)
         return options, list(self._chat_folders)
 
@@ -1148,19 +1318,21 @@ class NewSessionDialog(wx.Dialog):
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
         if self.provider() in ("copilot", "muse"):
             return ""
-        if self.provider() == "codex":
-            model = self.model.GetSelection() - 1
+        if self.provider() in ('codex', 'codex-api'):
+            model = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
             effort = self.effort_choice.GetSelection() - 1
-            choices = self._codex_models[model].efforts if 0 <= model < len(self._codex_models) else ()
+            models = self._codex_route_models()
+            choices = models[model].efforts if 0 <= model < len(models) else ()
             return choices[effort] if 0 <= effort < len(choices) else ""
         index = self.effort_choice.GetSelection()
         return EFFORTS[index][0] if 0 <= index < len(EFFORTS) else ""
 
     def _on_codex_model(self, _event=None):
-        if self.provider() != "codex":
+        if self.provider() not in ('codex', 'codex-api'):
             return
-        index = self.model.GetSelection() - 1
-        efforts = self._codex_models[index].efforts if 0 <= index < len(self._codex_models) else ()
+        index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+        models = self._codex_route_models()
+        efforts = models[index].efforts if 0 <= index < len(models) else ()
         self.effort_choice.Set([CODEX_DEFAULT] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
@@ -1173,8 +1345,10 @@ class NewSessionDialog(wx.Dialog):
     def _refresh_rules(self):
         if not self or self.IsBeingDeleted():
             return
-        if self._load_rules is None or self.provider() != 'codex':
+        if self._load_rules is None or self.provider() not in ('codex', 'codex-api'):
             return
+        if self.billing() == 'api':
+            return  # never read the ChatGPT home's rules for an API chat
         folder = self.folder.GetValue().strip()
         if folder == self._rules_for:
             return
@@ -1196,7 +1370,7 @@ class NewSessionDialog(wx.Dialog):
         self._codex_models = () if error else tuple(models)
         self._codex_model_error = error
         self._codex_models_loaded = True
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             self._on_provider()
             if self.IsShown():
                 self._feedback("Codex model choices are available." if self._codex_models else
@@ -1441,6 +1615,36 @@ class SettingsDialog(wx.Dialog):
             self.whole_in_list.SetValue(speech.full_messages_in_list)
             messages.Add(self.whole_in_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         outer.Add(messages, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # Chats on API credits (#658): how each send says so, the question
+        # before a chat's first one, and each reply's cost. Siblings of the
+        # group box, as above.
+        from .. import sound_events
+        with wx.LogNull():
+            credits = wx.StaticBoxSizer(wx.VERTICAL, body, "API credits")
+            self.api_notice = None
+            if sound_events.has_api_sent_sound():
+                # Only once Sounds has the API credits sound: until then
+                # every send on API credits is said.
+                row = wx.BoxSizer(wx.HORIZONTAL)
+                row.Add(wx.StaticText(body, label="On API credits, &say each send by:"), 0,
+                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+                self.api_notice = wx.Choice(body, choices=[API_NOTICE_LABELS[n]
+                                                           for n in API_NOTICES])
+                set_accessible_name(self.api_notice, "On API credits, say each send by")
+                self.api_notice.SetSelection(API_NOTICES.index(speech.api_send_notice)
+                                             if speech.api_send_notice in API_NOTICES else 0)
+                row.Add(self.api_notice, 0)
+                credits.Add(row, 0, wx.ALL, 6)
+            self.api_confirm = wx.CheckBox(
+                body, label="Ask &before the first API-credit message in each chat")
+            self.api_confirm.SetValue(speech.api_confirm_first)
+            credits.Add(self.api_confirm, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM
+                        | (0 if self.api_notice is not None else wx.TOP), 6)
+            self.api_cost = wx.CheckBox(body, label="Gi&ve the cost of each API-credit reply")
+            self.api_cost.SetValue(speech.api_say_cost)
+            credits.Add(self.api_cost, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        outer.Add(credits, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # The choices share one grid, and the rate's note sits beside it, not
         # on a row of its own: that's the room the changed-lines choice (#174)
@@ -1744,7 +1948,14 @@ class SettingsDialog(wx.Dialog):
                                    check_updates_at_start=self.check_updates.GetValue(),
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    change_marks=self._marks_style(),
-                                   recent_folder_limit=self.recent_limit.GetValue())
+                                   recent_folder_limit=self.recent_limit.GetValue(),
+                                   # API credits (#658)
+                                   api_send_notice=(
+                                       API_NOTICES[max(self.api_notice.GetSelection(), 0)]
+                                       if self.api_notice is not None
+                                       else self._original.api_send_notice),
+                                   api_confirm_first=self.api_confirm.GetValue(),
+                                   api_say_cost=self.api_cost.GetValue())
 
 
 class MessageDialog(wx.Dialog):
@@ -2233,8 +2444,9 @@ class FormattedMessageDialog(wx.Dialog):
 
     def _on_navigating(self, event):
         url = event.GetURL()
-        if not self._loaded and not url.lower().startswith(
-                ("http:", "https:", "mailto:", "thechatplace:")):
+        if not self._loaded and (url == 'about:blank'
+                                 or (self._page_file is not None
+                                     and url == self._page_file.as_uri())):
             return  # the page itself. A long one can be followed from before it's all in.
         # A link: never in here. http, https and mailto go to the browser.
         event.Veto()
@@ -2248,7 +2460,17 @@ class FormattedMessageDialog(wx.Dialog):
         window itself (``app_link``), never handed to the shell, which would
         only start The Chat Place again."""
         from ..links import is_app_link
-        if is_app_link(url):
+        from ..local_files import local_path
+        from .. import platform_paths
+        if local_path(url):
+            try:
+                platform_paths.open_local_file(url)
+            except (OSError, ValueError) as exc:
+                wx.MessageBox(f"Couldn't open the file: {exc}\n\n"
+                              f"Close this view, then use Links ({key_name(your_key('Ctrl+L'))}) "
+                              "for file actions and Copy.", self.GetTitle(),
+                              wx.OK | wx.ICON_INFORMATION, self)
+        elif is_app_link(url):
             self.app_link = url
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif url.lower().startswith(("http:", "https:", "mailto:")):
@@ -2424,7 +2646,8 @@ class PermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(), "Request")
+        from ..billing import scrub
+        self.request_text = _read_only_text(self, scrub(request.detail()), "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Reason to give Claude if you deny (optional):"),
                   0, wx.LEFT, 8)
@@ -2502,7 +2725,8 @@ class CodexPermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        detail = request.detail(file_detail)
+        from ..billing import scrub
+        detail = scrub(request.detail(file_detail))
         if chat_rule is not None and provider != "Codex":
             # Copilot's (#426): The Chat Place keeps the command and answers
             # Allow Once each time; Copilot's own "always" is never sent.
@@ -4468,7 +4692,7 @@ class AgentConversationDialog(wx.Dialog):
             used = slot < slots
             new = used and info is None and provider is not None
             any_new = any_new or new
-            new_codex = new_codex or (new and provider == "codex")
+            new_codex = new_codex or (new and provider in ('codex', 'codex-api'))
             permission = self.permissions[slot]
             if new:
                 labels = [label for _value, label in self._modes(provider)]
@@ -4593,7 +4817,7 @@ class AgentConversationDialog(wx.Dialog):
                 value = self._modes(provider)[index][0]
                 if provider == "claude":
                     permission = value
-                elif provider == "codex":
+                elif provider in ('codex', 'codex-api'):
                     permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
@@ -4863,10 +5087,12 @@ class ListsPage(wx.Panel):
                                         wx.FONTWEIGHT_NORMAL))
         sizer.Add(self.detail, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.open_btn = self.markdown_btn = None
-        if category == lists.LINKS:
+        self.open_btn = self.markdown_btn = self.folder_btn = None
+        if category in (lists.LINKS, lists.CODE):
             self.open_btn = wx.Button(self, label="&Open")
             self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
+            self.folder_btn = wx.Button(self, label="Open containing folde&r")
+            self.folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected(containing=True))
         if category == lists.SUBAGENTS:
             # A subagent's conversation, to read like a chat (#468). It sits
             # where Links has Open: what Enter does comes first.
@@ -4879,7 +5105,8 @@ class ListsPage(wx.Panel):
             self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
         # The gap goes between buttons, not after the last, so the row ends
         # where the dialog's Close does (#288).
-        for index, button in enumerate(b for b in (self.open_btn, self.copy_btn, self.markdown_btn)
+        for index, button in enumerate(b for b in (self.open_btn, self.folder_btn,
+                                                  self.copy_btn, self.markdown_btn)
                                        if b is not None):
             row.Add(button, 0, wx.LEFT if index else 0, 6)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.TOP | wx.LEFT | wx.RIGHT, 8)
@@ -4927,6 +5154,18 @@ class ListsPage(wx.Panel):
         for button in (self.copy_btn, self.open_btn, self.markdown_btn):
             if button is not None:
                 button.Enable(item is not None)
+        if self.category in (lists.LINKS, lists.CODE):
+            link = item.link if item is not None else None
+            status = link.file_status if link is not None and link.file_path else None
+            self.open_btn.Show(self.category == lists.LINKS or link is not None)
+            self.open_btn.Enable(link is not None and link.can_open)
+            self.open_btn.SetToolTip(link.why_not() if link is not None else '')
+            self.folder_btn.Show(status is not None)
+            self.folder_btn.Enable(status is not None and status.can_reveal)
+            label = 'Open folde&r' if status and status.kind == 'folder' else 'Open containing folde&r'
+            self.folder_btn.SetLabel(label)
+            set_accessible_name(self.folder_btn, label.replace('&', ''))
+            self.Layout()
         if self.category == lists.SUBAGENTS and self.open_btn is not None:
             self.open_btn.Enable(item is not None and item.subagent is not None
                                  and item.subagent.readable)
@@ -4980,16 +5219,19 @@ class ListsPage(wx.Panel):
         # It opens once read, in the background (#468), so this returns first.
         self.owner.open_subagent(item.subagent, self.owner, closed, still_on)
 
-    def open_selected(self):
+    def open_selected(self, containing: bool = False):
         item = self.selected()
         if item is None or item.link is None:
             self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
                                 else lists.empty_text(self.category, self.owner.scope))
             return
-        if not item.link.can_open:
+        allowed = (item.link.file_path and item.link.file_status.can_reveal
+                   if containing else item.link.can_open)
+        if not allowed:
             self.owner.feedback(item.link.why_not())
             return
         self.owner.chosen_link = item.link
+        self.owner.chosen_containing_folder = containing
         _end_modal(self.owner, wx.ID_OK)
 
     def copy_selected(self, markdown: bool = False):
@@ -5069,6 +5311,7 @@ class ListsDialog(wx.Dialog):
         self.feedback = feedback
         self.open_subagent = open_subagent
         self.chosen_link = None
+        self.chosen_containing_folder = False
         self._built = {}  # (kind, scope) -> its items
         #: Which platform's keys switch kinds (tests choose either).
         self.platform = sys.platform
@@ -6463,7 +6706,8 @@ class ChatOptionsDialog(wx.Dialog):
 
     def __init__(self, parent, chat_title: str, folder: str, options=None, folders=(),
                  choices=None, load_choices=None, existing: bool = False, feedback=None,
-                 model: str = "", provider: str = "claude", busy=None):
+                 model: str = "", provider: str = "claude", busy=None,
+                 billing: str = "subscription"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
                          else "Chat Options", size=dialog_size(parent, 620, 600),
@@ -6471,10 +6715,13 @@ class ChatOptionsDialog(wx.Dialog):
         self._provider = provider
         self._folder = folder
         self._options = options or ChatOptions()
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
+        #: How the chat is charged (#658): on API credits an agent's own
+        #: model is charged to the credits too, so it isn't refused.
+        self._billing = billing
         self._feedback = feedback or (lambda text: None)
         #: What to say instead of closing on OK, "" when it may close.
         self._busy = busy
@@ -6494,7 +6741,7 @@ class ChatOptionsDialog(wx.Dialog):
         set_accessible_name(self.style, "Output style")
         grid.Add(self.style, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             grid.ShowItems(False)
             sizer.Hide(grid)
 
@@ -6531,7 +6778,7 @@ class ChatOptionsDialog(wx.Dialog):
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
         note = (CODEX_CHAT_OPTIONS_NOTE + (" " + CODEX_CHAT_OPTIONS_LATER_NOTE if existing else "")
-                if provider == "codex" else
+                if provider in ('codex', 'codex-api') else
                 CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -6558,7 +6805,7 @@ class ChatOptionsDialog(wx.Dialog):
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and (self.instructions if provider == "codex" else self.agent).SetFocus())
+        wx.CallAfter(lambda: self and (self.instructions if provider in ('codex', 'codex-api') else self.agent).SetFocus())
 
     # -- the agent and style choices
 
@@ -6688,7 +6935,8 @@ class ChatOptionsDialog(wx.Dialog):
         name = self._agent_values[max(0, self.agent.GetSelection())]
         agents = self._choices.agents if self._choices is not None else ()
         agent = next((a for a in agents if a.name == name), None)
-        for problem, control in ((agent_problem(agent, self._chat_model), self.agent),
+        for problem, control in ((agent_problem(agent, self._chat_model, self._billing),
+                                  self.agent),
                                  (instructions_problem(self.instructions.GetValue()),
                                   self.instructions)):
             if problem:
@@ -6731,15 +6979,19 @@ class AskAsideDialog(wx.Dialog):
     speaks an answer (the answer to a key press), ``copy(text)`` copies.
     ``history`` is the chat's list of ``aside.AsideItem``, kept by the window
     while the app is open, so closing and coming back finds them; the dialog
-    adds to it and clears it in place."""
+    adds to it and clears it in place. ``cost_words(event)``: what an aside
+    on API credits cost, as said, or "" (#663); given to ``say`` as
+    ``cost=`` when there is one, and said with "Stopped asking"."""
 
-    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude', history=None):
+    def __init__(self, parent, chat_title: str, ask, say=None, copy=None, feedback=None, provider='Claude', history=None,
+                 cost_words=None):
         super().__init__(parent, title=f"Ask Aside about {chat_title}",
                          size=dialog_size(parent, 680, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._ask = ask
         self.provider = provider
-        self._say = say or (lambda text, failed=False: None)
+        self._cost_words = cost_words or (lambda event: "")
+        self._say = say or (lambda text, failed=False, **_cost: None)
         self._copy = copy or (lambda text: True)
         self._feedback = feedback or (lambda text: None)
         self.items = [] if history is None else history
@@ -6946,6 +7198,8 @@ class AskAsideDialog(wx.Dialog):
         """An ``aside.AsideEvent`` for ``item``, on the UI thread."""
         if not self or self.IsBeingDeleted():
             return
+        if event.kind == "sent":
+            return  # the window says "Sent on API credits" (#663)
         if event.kind == "text":
             if item.asking:
                 item.answer = event.text
@@ -6971,14 +7225,20 @@ class AskAsideDialog(wx.Dialog):
         self._show_selected()
         if self._closed:
             return  # closed while it was being answered: nothing to say
+        cost = self._cost_words(event)
         if item.failed and item.answer == "Stopped.":
-            self._feedback("Stopped asking.")
+            from ..billing import cost_sentence
+            self._feedback(f"Stopped asking. {cost_sentence(cost)}" if cost
+                           else "Stopped asking.")
             return
         # The answer to a key press: said, and in the Answer box to read by
         # line, where focus goes, unless you've started the next question.
         if not self.question.GetValue().strip():
             self._focus_answer()
-        self._say(item.answer, failed=item.failed)
+        if cost:
+            self._say(item.answer, failed=item.failed, cost=cost)
+        else:
+            self._say(item.answer, failed=item.failed)
 
     def stop(self):
         """Stop the question being answered, if one is."""

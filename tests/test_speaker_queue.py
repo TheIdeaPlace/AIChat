@@ -497,3 +497,287 @@ def test_the_first_call_gets_longer_for_its_one_time_setup(tmp_path, monkeypatch
     s.speak("first", SpeechSettings())
     assert wait_until(lambda: s.last_route == "spoke through NVDA")
     assert problems == []
+
+
+# --- kept: "Sent on API credits" survives an interruption (#663) ---------------
+
+
+def test_a_kept_utterance_waiting_its_turn_survives_an_interruption(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("Sent to Budget: a long read-back", settings, interrupt=False)
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("Other chat replied", settings, interrupt=True)       # clears the queue
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: len(FakeEngine.started) >= 3)
+    assert [text_of(e) for e in FakeEngine.started] == [
+        "Sent to Budget: a long read-back", "Other chat replied", "Sent on API credits"]
+    FakeEngine.started[2].done.set()
+    assert wait_until(lambda: not s.busy())
+
+
+def test_a_kept_utterance_cut_off_mid_speech_is_said_again(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("Needs you", settings, interrupt=True)
+    assert FakeEngine.started[0].killed
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: len(FakeEngine.started) >= 3)
+    assert text_of(FakeEngine.started[2]) == "Sent on API credits"
+    FakeEngine.started[2].done.set()
+    assert wait_until(lambda: not s.busy())
+    # Heard in full now: a later interruption doesn't bring it back.
+    s.speak("Later news", settings, interrupt=True)
+    assert wait_until(lambda: len(FakeEngine.started) >= 4)
+    FakeEngine.started[3].done.set()
+    assert wait_until(lambda: not s.busy())
+    assert len(FakeEngine.started) == 4
+
+
+def test_an_ordinary_utterance_is_still_dropped_by_an_interruption(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("first", settings, interrupt=False)
+    s.speak("second", settings, interrupt=False)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.speak("news", settings, interrupt=True)
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: not s.busy())
+    assert [text_of(e) for e in FakeEngine.started] == ["first", "news"]
+
+
+def test_stop_drops_a_kept_utterance_too(tmp_path, monkeypatch):
+    # Closing the app: nothing more is said.
+    s = make(tmp_path, monkeypatch)
+    settings = SpeechSettings()
+    s.speak("first", settings, interrupt=False)
+    s.speak("Sent on API credits", settings, interrupt=False, keep=True)
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    s.stop()
+    assert wait_until(lambda: not s.busy())
+    assert [text_of(e) for e in FakeEngine.started] == ["first"]
+
+
+SENT = "Sent on API credits to Budget."
+
+
+def _reader_speaker(tmp_path, monkeypatch):
+    readers = FakeReaders(Outcome(spoke="nvda", running=["nvda"]))
+    return make(tmp_path, monkeypatch, readers), readers
+
+
+def _said(s, readers, count):
+    assert wait_until(lambda: len(readers.calls) >= count and not s.busy())
+    time.sleep(0.05)                                 # nothing more comes
+    return [c[0] for c in readers.calls]
+
+
+@windows_screen_readers
+def test_the_chats_own_reply_settles_a_kept_notice_without_repeating_it(tmp_path, monkeypatch):
+    # The review's case (#663): Haiku replies within seconds, and the 4-second
+    # guess said "Sent on API credits" again after the reply. The reply
+    # proves the send, so nothing is said again.
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(), interrupt=False,
+            keep=True, about="budget-id", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    s.speak("Budget replied, 1 cent. Done.", SpeechSettings(), about="budget-id")
+    assert _said(s, readers, 2) == ["Sent on API credits to Budget: Add the totals.",
+                                    "Budget replied, 1 cent. Done."]
+    s.speak("Later news", SpeechSettings())
+    assert _said(s, readers, 3)[2:] == ["Later news"]
+
+
+@windows_screen_readers
+def test_a_kept_notice_is_said_once_more_after_an_interruption_then_settled(
+        tmp_path, monkeypatch):
+    # The review's case (#663): during a long turn the notice was said again
+    # after every announcement, for hours. Now once, then it's settled.
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget: a long read-back", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    s.speak("Groceries replied", SpeechSettings(), about="groceries-id")
+    assert _said(s, readers, 3)[1:] == ["Groceries replied", SENT]
+    assert readers.calls[2][2] is False              # queued, not cutting in
+    for count, news in enumerate(("Needs you", "Limit warning", "Another reply"), start=4):
+        s.speak(news, SpeechSettings())
+        assert _said(s, readers, count)[count - 1:] == [news]   # and no notice after it
+
+
+class GatedReaders(FakeReaders):
+    """A screen reader that holds each call while ``gate`` is clear, so a
+    test can line up interruptions behind one being said."""
+
+    def __init__(self):
+        super().__init__(Outcome(spoke="nvda", running=["nvda"]))
+        self.gate = threading.Event()
+        self.gate.set()
+
+    def speak(self, text, engine, interrupt):
+        self.calls.append((text, engine, interrupt))
+        self.gate.wait(10)
+        return self.outcome
+
+
+@windows_screen_readers
+def test_a_chain_of_interruptions_gives_at_most_one_saying_again(tmp_path, monkeypatch):
+    # Each interruption in the chain finds the saying again still waiting:
+    # it keeps its place after the newest one, and is said once, at the end.
+    monkeypatch.setattr(speech, "SCREEN_READER_TIMEOUT", 15.0)
+    readers = GatedReaders()
+    s = make(tmp_path, monkeypatch, readers)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    readers.gate.clear()
+    s.speak("One", SpeechSettings())
+    assert wait_until(lambda: len(readers.calls) == 2)   # held while "One" is said
+    s.speak("Two", SpeechSettings())
+    s.speak("Three", SpeechSettings())
+    readers.gate.set()
+    said = _said(s, readers, 4)
+    assert said == ["Sent on API credits to Budget: Add the totals.", "One", "Three", SENT]
+    s.speak("Four", SpeechSettings())
+    assert _said(s, readers, 5)[4:] == ["Four"]          # settled: not again
+
+
+@windows_screen_readers
+def test_a_notice_never_handed_over_keeps_its_place_whatever_cuts_in(tmp_path, monkeypatch):
+    # Still waiting in the queue, it was never said: it's said in full after
+    # the interruption, even one you set off yourself, and stays owed.
+    monkeypatch.setattr(speech, "SCREEN_READER_TIMEOUT", 15.0)
+    readers = GatedReaders()
+    s = make(tmp_path, monkeypatch, readers)
+    readers.gate.clear()
+    s.speak("Earlier news", SpeechSettings(), interrupt=False)
+    assert wait_until(lambda: len(readers.calls) == 1)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    s.speak("Repeated announcement", SpeechSettings(), resay=False)
+    readers.gate.set()
+    assert _said(s, readers, 3) == ["Earlier news", "Repeated announcement",
+                                    "Sent on API credits to Budget: Add the totals."]
+    s.speak("Groceries replied", SpeechSettings())
+    assert _said(s, readers, 5)[3:] == ["Groceries replied", SENT]
+
+
+@windows_screen_readers
+def test_the_chats_own_news_doesnt_drop_a_notice_never_said(tmp_path, monkeypatch):
+    # Review 5 of #663: "Budget needs you." came while the notice was still
+    # waiting behind earlier speech, and the notice was thrown away, so a paid
+    # send went unannounced. Only a saying *again* is settled by the chat's news.
+    monkeypatch.setattr(speech, "SCREEN_READER_TIMEOUT", 15.0)
+    readers = GatedReaders()
+    s = make(tmp_path, monkeypatch, readers)
+    readers.gate.clear()
+    s.speak("Earlier news", SpeechSettings(), interrupt=False)
+    assert wait_until(lambda: len(readers.calls) == 1)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    s.speak("Budget needs you.", SpeechSettings(), about="budget-id")
+    readers.gate.set()
+    assert _said(s, readers, 3) == ["Earlier news", "Budget needs you.",
+                                    "Sent on API credits to Budget: Add the totals."]
+
+
+@windows_screen_readers
+def test_repeat_last_announcement_doesnt_bring_the_notice_back(tmp_path, monkeypatch):
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    s.speak("The last announcement", SpeechSettings(), resay=False)
+    assert _said(s, readers, 2)[1:] == ["The last announcement"]
+    # Still owed, so the next announcement you didn't ask for brings it back once.
+    s.speak("Groceries replied", SpeechSettings())
+    assert _said(s, readers, 4)[2:] == ["Groceries replied", SENT]
+
+
+@windows_screen_readers
+def test_the_chats_needs_you_settles_its_notice(tmp_path, monkeypatch):
+    # "Budget needs you … Sent on API credits to Budget." sounded as if the
+    # answer were charged (#663): the chat's own news settles the notice.
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="budget-id", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    s.speak("Budget needs you. Run a command. Ctrl+Shift+A answers.", SpeechSettings(),
+            about="budget-id")
+    assert _said(s, readers, 2)[1:] == [
+        "Budget needs you. Run a command. Ctrl+Shift+A answers."]  # no notice after it
+    s.speak("Groceries replied", SpeechSettings())
+    assert _said(s, readers, 3)[2:] == ["Groceries replied"]
+
+
+@windows_screen_readers
+def test_two_chats_notices_are_each_said_once_more_never_merged(tmp_path, monkeypatch):
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    for title in ("Budget", "Groceries"):
+        s.speak(f"Sent on API credits to {title}.", SpeechSettings(), interrupt=False,
+                keep=True, about=title)
+    assert wait_until(lambda: len(readers.calls) == 2 and not s.busy())
+    s.speak("Needs you", SpeechSettings())
+    assert _said(s, readers, 5)[2:] == ["Needs you", "Sent on API credits to Budget.",
+                                        "Sent on API credits to Groceries."]
+    s.speak("More news", SpeechSettings())
+    assert _said(s, readers, 6)[5:] == ["More news"]
+
+
+@windows_screen_readers
+def test_a_newer_notice_replaces_the_older_and_rename_keeps_it(tmp_path, monkeypatch):
+    s, readers = _reader_speaker(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget: one.", SpeechSettings(), interrupt=False,
+            keep=True, about="b", again=SENT)
+    s.speak("Sent on API credits to Budget: two.", SpeechSettings(), interrupt=False,
+            keep=True, about="b", again=SENT)
+    assert wait_until(lambda: len(readers.calls) == 2 and not s.busy())
+    s.rename("b", "b2")                              # the chat got another id
+    s.speak("Budget replied, 1 cent.", SpeechSettings(), about="b2")
+    assert _said(s, readers, 3)[2:] == ["Budget replied, 1 cent."]
+    s.speak("News", SpeechSettings())
+    assert _said(s, readers, 4)[3:] == ["News"]
+
+
+@windows_screen_readers
+def test_forget_settles_a_notice_but_not_a_saying_again_already_due(tmp_path, monkeypatch):
+    # A turn's reply with the cost setting off doesn't settle the notice, so
+    # it's said once more after it, though the turn's end forgets it then.
+    monkeypatch.setattr(speech, "SCREEN_READER_TIMEOUT", 15.0)
+    readers = GatedReaders()
+    s = make(tmp_path, monkeypatch, readers)
+    s.speak("Sent on API credits to Budget: Add the totals.", SpeechSettings(),
+            interrupt=False, keep=True, about="b", again=SENT)
+    assert wait_until(lambda: readers.calls and not s.busy())
+    readers.gate.clear()
+    s.speak("Budget replied. Done.", SpeechSettings())   # no cost: not about it
+    assert wait_until(lambda: len(readers.calls) == 2)
+    s.forget("b")                                        # the turn ended
+    readers.gate.set()
+    assert _said(s, readers, 3)[1:] == ["Budget replied. Done.", SENT]
+    s.speak("Sent on API credits to Budget.", SpeechSettings(), interrupt=False, keep=True,
+            about="b")
+    assert wait_until(lambda: len(readers.calls) == 4 and not s.busy())
+    s.forget("b")
+    s.speak("Last", SpeechSettings())
+    assert _said(s, readers, 5)[4:] == ["Last"]
+
+
+def test_a_kept_utterance_said_in_full_by_a_voice_isnt_said_again(tmp_path, monkeypatch):
+    s = make(tmp_path, monkeypatch)
+    s.speak("Sent on API credits to Budget.", SpeechSettings(), interrupt=False, keep=True,
+            about="b")
+    assert wait_until(lambda: FakeEngine.started and FakeEngine.started[0].waiting.is_set())
+    FakeEngine.started[0].done.set()
+    assert wait_until(lambda: not s.busy())
+    s.speak("News", SpeechSettings())
+    assert wait_until(lambda: len(FakeEngine.started) >= 2)
+    FakeEngine.started[1].done.set()
+    assert wait_until(lambda: not s.busy())
+    assert [text_of(e) for e in FakeEngine.started] == ["Sent on API credits to Budget.", "News"]

@@ -1072,3 +1072,41 @@ def test_an_unknown_steer_error_is_unconfirmed_and_never_queued_again():
         assert any(u.unsent == ('Steer me',) for u in updates)
     finally:
         service.close()
+
+
+def test_change_model_without_reasoning_omits_effort_on_turn_start(tmp_path, monkeypatch):
+    from test_codex_models import model
+    service, connection, record = policy_runtime(tmp_path, model='gpt-default')
+    request = connection.request
+    def catalog(method, params):
+        if method == 'model/list':
+            row = model('no-effort')
+            row.update(supportedReasoningEfforts=[], defaultReasoningEffort=None)
+            return {'data': [row]}
+        result = request(method, params)
+        if method == 'thread/start' and params.get('model') == 'no-effort':
+            result['reasoningEffort'] = None
+        return result
+    monkeypatch.setattr(connection, 'request', catalog)
+    try:
+        change = service.prepare_policy(record, 'read-only', 'on-request', model='no-effort', effort=None)
+        service.finish_policy(change, True)
+        changed = change.record()
+        service.send(changed, 'Synthetic prompt')
+        sent = next(params for method, params in reversed(connection.calls) if method == 'turn/start')
+        assert sent['model'] == 'no-effort' and 'effort' not in sent
+    finally:
+        service.close()
+
+
+def test_latched_runtime_problem_keeps_safe_actionable_reason(tmp_path):
+    from thechatplace.codex_diagnostics import safe_reason
+    service, connection, record = policy_runtime(tmp_path)
+    reason = 'Could not confirm this Codex turn. Use Stop to recheck this chat.'
+    try:
+        service._problems[record.cli_session_id] = reason
+        with pytest.raises(CodexRpcError) as caught:
+            service._context(record)
+        assert safe_reason(caught.value) == reason
+    finally:
+        service.close()

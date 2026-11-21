@@ -1026,7 +1026,7 @@ def test_saved_rule_inventory_ignores_stale_and_closed_dialog_callbacks():
     from thechatplace.ui.dialogs import NewSessionDialog
     calls, updates = [], []
     dialog = SimpleNamespace(
-        IsBeingDeleted=lambda: False, provider=lambda: 'codex', folder=Text('/first'),
+        IsBeingDeleted=lambda: False, provider=lambda: 'codex', billing=lambda: 'subscription', folder=Text('/first'),
         _load_rules=lambda folder, done: calls.append((folder, done)),
         _rules_for=None, _rule_count=8, _rules_error='',
         _on_provider=lambda: updates.append(True))
@@ -1319,3 +1319,188 @@ def test_no_turn_id_back_is_not_taken_for_another_turn():
     w._steer_codex_owned(w.record, 'Also the docs')
     _run_work(w)
     assert not getattr(w, 'turn_over', [])
+
+
+@pytest.mark.parametrize('event_first', [True, False])
+def test_api_sent_and_send_done_produce_one_credit_notice(event_first):
+    from thechatplace.claude_cli import TurnEvent
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._api_send_problem = lambda key, **kwargs: None
+    w._api_notice_spoken = lambda key: True
+    w._say_or_hold_read_back = lambda key, text, *a: w._api_read_back.update({key: text})
+    w._api_message_sent = lambda key, **kwargs: w.said.append(w._api_read_back.pop(key, 'Sent on API credits to My chat.'))
+    w._send_codex_owned(w.record, 'Hello')
+    action, done = w.work.pop()
+    action()
+    event = TurnEvent('api_sent', session_id='owned', data={})
+    if event_first:
+        w._on_codex_api_event(event)
+    done(False, False)
+    if not event_first:
+        w._on_codex_api_event(event)
+    assert len([text for text in w.said if text.startswith('Sent on API credits')]) == 1
+
+
+def test_api_sound_mode_never_says_sent_before_a_refused_write():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._api_send_problem = lambda key, **kwargs: None
+    w._api_notice_spoken = lambda key: False
+    w._say_or_hold_read_back = lambda *a: pytest.fail('No sent speech before a write in sound mode')
+    w._send_codex_owned(w.record, 'Never sent')
+    assert w.said == []
+    action, done = w.work.pop()
+    done('Preflight refused. Nothing was sent.', True)
+    assert not any(text.startswith('Sent') for text in w.said)
+
+
+def test_api_copy_creation_does_not_send_or_restore_transcript():
+    w = Window()
+    source = w.record.to_info()
+    made = OwnSession('copy', 'API copy', '/work', provider='codex-api', billing='api')
+    sent = []
+    saved = []
+    w.sessions.read = lambda info: SimpleNamespace(unreadable_lines=0, messages=[SimpleNamespace(full_text=lambda: 'Earlier conversation')])
+    w.sessions.create_owned = lambda *a, **k: made
+    w.store.add = saved.append
+    w.open_session = lambda info: None
+    w._send_codex_owned = lambda *a, **k: sent.append(a)
+    w._create_codex_owned('/work', 'API copy', '', source=source, provider='codex-api')
+    action, done = w.work.pop()
+    result = action()
+    done(result, False)
+    assert saved == [made] and not sent
+    assert 'Earlier conversation' in made.api_context
+    assert w._codex_drafts[made.to_info().key] == ''
+    assert 'Earlier conversation' not in w.reply_text.value
+
+
+def test_api_copy_cannot_route_back_through_subscription_fork():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.sessions.fork_owned = lambda *a, **k: pytest.fail('Wrong billing route fork')
+    w._create_codex_owned('/work', 'Wrong route', '', source=w.record.to_info(), provider='codex')
+    action, done = w.work.pop()
+    with pytest.raises(ValueError, match='billing route'):
+        action()
+
+
+@pytest.mark.parametrize('loaded', [True, False])
+def test_api_cancel_keeps_only_user_message_and_says_not_sent(loaded):
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.record.api_context = 'Quoted history that must remain hidden.'
+    if loaded:
+        w._open = w.record.to_info()  # match the API chat whose Send was cancelled
+    w._api_send_problem = lambda key: ''
+    w._send_codex_owned(w.record, 'My message')
+    assert w.said[-1] == 'Not sent. Your message is in the reply box.'
+    if loaded:
+        assert w.reply_text.value == 'My message\n\nNew draft'
+        assert w._codex_drafts[w.record.to_info().key] == w.reply_text.value
+    else:
+        assert w.reply_text.value == 'New draft'  # the other chat stays untouched
+        assert w._codex_drafts[w.record.to_info().key] == 'My message'
+    assert w.record.api_context not in w.reply_text.value
+    assert not w.work
+
+
+def test_api_first_send_adds_hidden_prefix_but_readback_uses_only_user_text():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w.record.api_context = 'Quoted history.\n\n'
+    w._api_send_problem = lambda key: None
+    w._api_notice_spoken = lambda key: True
+    w._api_read_back, w._api_confirm_pending = {}, set()
+    w._say_or_hold_read_back = lambda key, text, *a: w.said.append(text)
+    received = []
+    w.sessions.owned_action = lambda *a: received.append(a[-1]) or False
+    w._send_codex_owned(w.record, 'My message')
+    action, done = w.work.pop()
+    action()
+    assert received == ['Quoted history.\n\nMy message']
+    assert not any('Quoted history' in text for text in w.said)
+
+
+def test_api_approval_summary_is_scrubbed_in_speech_and_notification():
+    from thechatplace.providers.codex_requests import CodexRequest, COMMAND
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._open = w.record.to_info()
+    secret = 'sk-proj-' + 'a'*30
+    request = CodexRequest('r', COMMAND, 'owned', 'turn', 'cmd', command='echo ' + secret)
+    waiting = CodexChatState('owned', 'needs you', 'turn', 'inProgress', requests=(request,))
+    w._on_owned_update('codex-api', waiting)
+    assert '(hidden)' in w.said[-1] and secret not in str(w.said)
+    assert '(hidden)' in str(w.notified) and secret not in str(w.notified)
+    assert secret in request.command  # checks and the actual command stay intact
+
+
+def test_api_accepted_long_message_keeps_file_note():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    w._api_send_problem = lambda key: None
+    w._api_notice_spoken = lambda key: True
+    w._say_or_hold_read_back = lambda *a: None
+    w._codex_sendable = lambda *a: ('Read the saved message.', 'synthetic-file')
+    w._send_codex_owned(w.record, 'Long message')
+    action, done = w.work.pop()
+    done(False, False)
+    assert any('too long to send directly' in text for text in w.said)
+
+
+def test_api_returned_first_message_does_not_dump_hidden_context_into_draft():
+    w = Window()
+    w.record.provider, w.record.billing = 'codex-api', 'api'
+    key = w.record.to_info().key
+    w._open = None
+    w._api_context_prefixes = {key: 'Quoted history.\n\n'}
+    w._on_owned_update('codex-api', CodexChatState('owned', 'idle', 'turn', 'interrupted'))
+    state = CodexChatState('owned', 'idle', unsent=('Quoted history.\n\nMy message',))
+    w._on_owned_update('codex-api', state)
+    assert w._codex_drafts[key] == 'My message'
+
+
+def test_saved_rule_inventory_never_loads_subscription_rules_for_api():
+    from thechatplace.ui.dialogs import NewSessionDialog
+    calls = []
+    dialog = SimpleNamespace(
+        IsBeingDeleted=lambda: False, provider=lambda: 'codex', billing=lambda: 'api',
+        _load_rules=lambda *args: calls.append(args))
+    NewSessionDialog._refresh_rules(dialog)
+    assert calls == []
+
+
+@pytest.mark.parametrize('billing', [None, 'api'])
+def test_continue_selection_defaults_legacy_billing_and_honors_explicit_route(monkeypatch, billing):
+    from thechatplace.sessions import SessionInfo
+    from thechatplace.ui import main_frame
+    source = SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+    w = Window()
+    w._selected_session = lambda: source
+    w._require_capability = lambda *a: True
+    w._other_provider_said = lambda info: False
+    w._has_api_key = lambda *a: True
+    calls = []
+    w._create_codex_owned = lambda *a, **k: calls.append((a, k))
+    class Selection:
+        def __init__(self, *a, **k):
+            pass
+        def ShowModal(self):
+            return main_frame.wx.ID_OK
+        def values(self):
+            return '/workspace', 'Copy', '', 'My message', 'gpt-5-nano'
+        def Destroy(self):
+            pass
+    if billing is not None:
+        Selection.billing = lambda self: billing
+    monkeypatch.setattr(main_frame, 'NewSessionDialog', Selection)
+    main_frame.MainFrame.on_continue_here(w)
+    assert calls[0][1]['provider'] == ('codex-api' if billing == 'api' else 'codex')
+    assert calls[0][1]['source'] is source
+    assert calls[0][0][2] == 'My message'

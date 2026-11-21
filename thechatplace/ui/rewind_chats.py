@@ -19,7 +19,7 @@ import wx
 
 from .. import hub, platform_paths, rewind
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, ResumeRefused, build_fork_command,
-                          new_session_id)
+                          model_allowed, new_session_id)
 from ..own_store import OwnSession
 from ..sessions import SessionInfo
 from ..transcript import ASSISTANT, USER, ChatMessage
@@ -107,13 +107,22 @@ class RewindChats:
                 wx.MessageBox(str(exc), "The Chat Place", wx.OK | wx.ICON_WARNING, self)
                 return None
         now = int(time.time() * 1000)
+        source = self.store.get(info.cli_session_id) if info.is_own else None
+        # A branch is charged as the chat it comes from (#658): a branch of
+        # an API chat is an API chat, its sends asked and said like any
+        # other's, and keeps Fable; anything else is on the subscription,
+        # where a model it can't have (Fable) is never carried.
+        billing = source.billing if source is not None and source.provider == "claude" \
+            else "subscription"
+        if not model_allowed(model, billing):
+            model = ""
         own = OwnSession(cli_session_id=new_id, title=title, cwd=info.cwd,
                          permission_mode=mode, started=False, model=model, effort=effort,
                          # With nothing to keep (your first message), it's a
                          # new session in the same folder, not a copy.
                          fork_source=info.cli_session_id if cut else "", fork_at=cut,
-                         forked_from=info.title, created_ms=now, last_activity_ms=now)
-        source = self.store.get(info.cli_session_id) if info.is_own else None
+                         forked_from=info.title, created_ms=now, last_activity_ms=now,
+                         billing=billing)
         if source is not None:
             # Chat Options (#468) carry over too: the copy inherits the
             # system prompt Claude Code recorded for the source, options and
@@ -128,6 +137,10 @@ class RewindChats:
             # From a chat started elsewhere there's no list to keep, so it's
             # a new chat here, as Continue Here's is.
             own.disabled_mcp = list(self.speech.mcp_off_for_new_chats)
+        if own.fork_source:
+            # A copy keeps the source's recorded system prompt, which may not
+            # have #319's note, so it's made afresh. A new chat records its own.
+            own.prompt_fresh = True
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:
@@ -149,7 +162,7 @@ class RewindChats:
     def on_rewind_to_here(self):
         """Chat, Retry from Here (Ctrl+Shift+Z), and the messages list's menu:
         back to just before one of your messages."""
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in ('codex', 'codex-api'):
             if not self._require_capability('branch', self._open):
                 return
             if self._chat_loaded:
@@ -362,7 +375,7 @@ class RewindChats:
             # Before Claude's branch below, which must never see a Muse chat.
             self._branch_muse(self._open, self._selected_message())
             return
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in ('codex', 'codex-api'):
             if not self._require_capability('branch', self._open):
                 return
             if self._chat_loaded:

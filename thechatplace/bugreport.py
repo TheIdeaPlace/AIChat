@@ -82,9 +82,16 @@ def cli_version(provider: str) -> str:
         return "unknown"
     if not path:
         return "not found"
+    # Claude Code gets the environment every other run of it gets, without
+    # API keys or the variables a host Claude session sets (#658): a
+    # version check has no use for them.
+    env = None
+    if provider == "claude":
+        from .claude_cli import child_environment
+        env = child_environment()
     try:
         out = subprocess.run([path, "--version"], capture_output=True, encoding="utf-8",
-                             errors="replace", timeout=8,
+                             errors="replace", timeout=8, env=env,
                              creationflags=platform_paths.hidden_window_flags())
         first = (out.stdout or "").strip().splitlines()[0].strip()
     except (OSError, subprocess.SubprocessError, IndexError):
@@ -103,6 +110,14 @@ def cli_version(provider: str) -> str:
 def claude_code_version() -> str:
     """"2.1.286 (Claude Code)", or why it isn't known."""
     return cli_version("claude")
+
+
+def claude_api_key_set() -> bool:
+    """Whether a Claude API key is kept (#658), without reading it."""
+    try:
+        return platform_paths.has_secret(platform_paths.CLAUDE_API_KEY_SECRET)
+    except Exception:  # noqa: BLE001 - a report must still open
+        return False
 
 
 def claude_sign_in(status) -> str:
@@ -244,14 +259,16 @@ def environment(speech, counts: Dict[str, Dict[str, int]],
                 versions: Optional[Dict[str, str]] = None,
                 sign_ins: Optional[Dict[str, str]] = None,
                 install: str = "", display: str = "",
-                now: Optional[float] = None) -> List[tuple]:
+                now: Optional[float] = None,
+                api_key: Optional[bool] = None) -> List[tuple]:
     """Facts for the report. ``speech`` is the SpeechSettings; ``counts``
     from ``session_counts``; ``speech_route`` what the last screen-reader
     announcement did (#98), which is how a report like "it speaks in the
     wrong voice" can be answered; ``versions`` and ``sign_ins`` by provider
     (``cli_version``, ``gather_sign_ins``); ``install`` from
-    ``install_kind``; ``display`` the scale and High Contrast. No names,
-    titles or paths."""
+    ``install_kind``; ``display`` the scale and High Contrast; ``api_key``
+    whether a Claude API key is kept (looked up if not given). No names,
+    titles or paths, and never a key: only whether there is one (#658)."""
     try:
         import wx
         wx_version = wx.version()
@@ -283,6 +300,9 @@ def environment(speech, counts: Dict[str, Dict[str, int]],
         sign_in = sign_ins.get(provider, "") if version != "not found" else ""
         facts.append((CLI_NAMES[provider],
                       "; ".join(part for part in (version, state, sign_in) if part)))
+    if api_key is None:
+        api_key = claude_api_key_set()
+    facts.append(("Claude API key", "set" if api_key else "not set"))
     facts += [
         ("Announcements", f"{speech.announce}, speech engine {speech.engine}"),
         # A group's name is yours and may name people or work: never in a report.
@@ -300,7 +320,8 @@ def environment(speech, counts: Dict[str, Dict[str, int]],
     # Codex failure no longer hides an earlier Copilot one.
     for provider, failures in recent_failures(now=now).items():
         for seconds, what in failures:
-            facts.append((f"{provider} error", f"{ago(seconds)}: {what}"))
+            from .billing import scrub
+            facts.append((f"{provider} error", f"{ago(seconds)}: {scrub(what)}"))
     if counts:
         facts.append(("Sessions listed", _counts_text(counts)))
     return facts

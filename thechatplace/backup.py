@@ -338,6 +338,11 @@ def is_sqlite(path: Path) -> bool:
 # The session tools' live address and key (session_tools.CONNECTION_FILE),
 # kept readable only by you on purpose: never put in a backup.
 STATE_FILE_RUNTIME = "session-tools.json"
+#: Every secret The Chat Place keeps in its folder (Windows' DPAPI files:
+#: the backup passphrase, the Claude API key, #658, and any added later),
+#: with their half-written ".tmp" copies. Matched by suffix, not by name, so
+#: a new secret can't be backed up by being forgotten here.
+SECRET_FILES = ("*" + platform_paths.SECRET_SUFFIX, "*" + platform_paths.SECRET_SUFFIX + ".*")
 
 
 def tcp_inventory() -> Inventory:
@@ -349,15 +354,16 @@ def tcp_inventory() -> Inventory:
     inv.areas.append(Area("thechatplace/data", str(root),
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
+                     exclude_dirs=('codex-api',),
                      exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
-                                    platform_paths.WHOLE_CHAT_PAGE_FILE,
-                                    platform_paths.BACKUP_SECRET_FILE + "*"),
+                                    platform_paths.WHOLE_CHAT_PAGE_FILE, *SECRET_FILES),
                      inventory=inv)
     inv.skipped += ["*.log (diagnostic logs)",
                     "a whole chat's page while it's open (a copy, gone when it's closed)",
                     "session-tools.json (a running chat's connection key, made anew)",
                     "computer.json (this computer's id; another computer has its own)",
-                    "the scheduled backups' protected passphrase (it only works here)"]
+                    "protected secrets, such as the scheduled backups' passphrase and an API "
+                    "key (they only work here, and a backup must never hold a key)"]
     duplicates = _kept_copies_of_present_originals(root)
     if duplicates:
         prefix = "thechatplace/data/kept-history/claude/"

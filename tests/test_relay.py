@@ -64,9 +64,9 @@ def test_the_chat_that_sent_here_comes_first():
     assert [s.title for s in found] == ["A", "B"]
 
 
-def test_a_target_says_its_title_provider_folder_and_status():
+def test_a_target_says_its_title_provider_charging_folder_and_status():
     assert relay.describe(_chat("codex:x", "Codex review", provider="codex")) == \
-        "Codex review, Codex, Repo, idle"
+        "Codex review, Codex, ChatGPT subscription, Repo, idle"
 
 
 def test_codex_length_limit_matches_what_codex_refuses():
@@ -117,6 +117,10 @@ def test_the_label_comes_off_only_while_it_is_unchanged():
     (_chat("c1", "Builder"), {"working": True},
      "Builder is still working; wait until it has finished"),
     (_chat("c1", "Builder"), {"blocked": "The file can't be read"}, "The file can't be read"),
+    # A chat on API credits stays out of them for now (#658).
+    (_chat("c1", "Builder"), {"api_credits": True},
+     "Builder is on API credits, and agent conversations are only for chats on your Claude "
+     "subscription for now"),
 ])
 def test_why_a_chat_cant_start_an_agent_conversation(source, kwargs, expected):
     options = {"can_edit": True, "in_conversation": False, "working": False, **kwargs}
@@ -137,6 +141,11 @@ def test_why_a_target_cant_join_one():
     assert relay.joint_target_problem(_chat("copilot:x", "Pilot", "copilot"), False) is None
     assert relay.joint_target_problem(_chat("gemini:x", "Gem", "gemini"), False).full == \
         "agent conversations are for Claude, Codex and Copilot chats"
+    # On API credits (#658): refused, with the reason.
+    assert relay.joint_target_problem(_chat("c2", "Paid"), False, api_credits=True) == \
+        relay.Problem("that chat is on API credits",
+                      "Paid is on API credits, and agent conversations are only for chats on "
+                      "your Claude subscription for now")
 
 
 @pytest.mark.parametrize("sent, expected", [

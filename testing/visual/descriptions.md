@@ -33,6 +33,8 @@ The main window in the pictures is 1000 by 720, with a 984 by 630 inside area. A
 
 **Since #596 (2026-11-09, #608):** light-100 and hc-aquatic-100 pictures of every screen whose words changed: Retry from Here (was Rewind to Here) and its new Files only picture, codex-rewind, Chat Options ("Run as agent"), Settings' task-list check box ("from the next turn"), the About permissions notes of New Session (Claude, Codex and Copilot), which now name File, Chat Settings, Copilot's Chat Permissions note, the plain-text shortcuts, and every Lists picture. Contrast was measured from the pixels; nothing new fell below 4.5:1. The formatted shortcuts page's first screen didn't change (its High Contrast picture didn't draw in the VM twice, a WebView2 blank, so its baseline was kept).
 
+**Since #658 (2026-11-17):** chats on API credits. New pictures, each in all six variants: API Keys (with and without a key), New Session with Charge to, and the main window on an API chat. Settings (all four kinds), New Session, Continue Here, Properties ("Charged to: Claude subscription"), Report a Bug ("Claude API key: not set") and Usage were accepted again from the same run, at commit eb7f1a1. Contrast was measured from the pixels; nothing new fell below 4.5:1 except the disabled Release Held button (3.6:1 in light), drawn as Windows draws every disabled button. The rest of that run differed from the baseline because much of the baseline predates #575's menus and later changes (main-empty still shows only File, View and Help); those weren't accepted here (#660).
+
 **Since #575 (2026-11-12, #638):** light-100 and hc-aquatic-100 pictures of the main window (main-start, main-own, main-desktop) and of every screen whose words name a menu. The menu bar reads File, Session, Chat, View, Tools and Help, each with its first letter underlined. The buttons' underlines moved: Attach Files has I, Open in Claude has I, Continue Here has E; their sizes and places didn't change. New Session's About permissions notes (Claude, Codex and Copilot) now name Chat, Chat Settings, and Copilot's still shows all seven lines; Copilot's Chat Permissions note names Chat, Chat Settings; the Sound Tutorial's first line ends "Change sounds in Tools, Sounds.", still two lines; the plain-text shortcuts name the new menus. Only text changed, so contrast is as before.
 
 ## main-start: Main window as it opens: session list, no session loaded
@@ -215,7 +217,16 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Full c
 
 ## settings: Settings
 
-The light-100 picture is 680 by 858: 25 pixels taller than in #438, for "Check for
+**Since #658 (2026-11-17):** the light-100 picture is 680 by 938, 80 pixels taller, for an
+"API credits" group under Reading messages, framed like the groups above it, holding two
+checked boxes: "Ask before the first API-credit message in each chat" (B underlined) and
+"Give the cost of each API-credit reply" (V underlined). Everything below moves down 80
+pixels; nothing else changed. The text measures 21:1 in light and 16.3:1 in High Contrast
+Aquatic, as the rest of Settings. Accepted in all six variants, with the Codex, Copilot and
+speech-problem Settings pictures, from the probe run at commit eb7f1a1. The paragraphs
+below describe the dialog before this group.
+
+The light-100 picture was 680 by 858: 25 pixels taller than in #438, for "Check for
 updates when The Chat Place starts" (#611, #612), checked, with D underlined, between the
 agent-conversation and update-notice check boxes, lined up with them at the left and
 spaced as they are. Its label measures 18.4:1 in light and 16.3:1 in High Contrast
@@ -235,6 +246,84 @@ and focus marks; OK has an aqua fill. All eight pictures were inspected. The pro
 reported no clipping, overlaps or controls outside the window. No new visual defect
 was found at the two captured 100% variants. Higher scaling was not recaptured for
 #438; its earlier descriptions should not be read as validation of the new controls.
+
+## api-keys: Tools, API Keys, with no key (#658)
+
+600 by 680. From the top: "Key status:" over a two-line read-only box saying "Claude: No
+key"; "Claude API key:" (K underlined) over a single-line box the width of the dialog less
+the Add Key button at its right; Test Key and Remove Key below it at the left, both greyed
+(3.6:1, Windows' usual disabled text); "Test result:" over a 100-high read-only box that
+explains what Test Key does. A framed "Spending limits" group holds "Stop API chats once
+The Chat Place has spent $" and "Stop any one message at about $" with their boxes (190.00
+and 5.00) at the right, then "Total:" over a two-line read-only box ("Spent since the total
+was reset: nothing. Held for running messages: nothing. Left: $190.00."), then Save Limits,
+Reset Total... and a greyed Release Held.... Below the group, "About spending:" over a
+100-high read-only note, and at the bottom Billing Page at the left and Close at the right.
+Every label is above or beside its control, nothing is cut off or overlapping, and every
+button has an underlined letter. Text is black on white or grey, 21:1; High Contrast
+Aquatic is white on #202020 with white outlines (16.3:1), the disabled buttons #A6A6A6
+(6.7:1), and Desert is #202020 on cream (15.7:1).
+
+## api-keys-with-key: Tools, API Keys, with a key kept (#658)
+
+The same layout. Key status says "Claude: key ending in 7Q2x, added November 16", the
+button beside the key box reads Replace Key, Test Key (focused, so in High Contrast it's
+filled aqua) and Remove Key are on, the Test result box says "Your key works. That test
+cost less than a cent.", and the Total reads "Spent since the total was reset: $12.34. Held
+for running messages: $5.00. Left: $172.66." Release Held stays greyed: nothing held is
+left over from an earlier run.
+
+## new-session-api-credits: New Session with Charge to (#658)
+
+680 by 637, the New Session dialog with a key kept: a "Charge to:" row between Title and
+Model, its dropdown showing "API credits", lined up with the rows above and below. Model
+shows Fable, which is offered only on API credits. The About permissions box starts with
+"Every message in this chat is charged to your Claude API key, and Fable is offered.
+Claude.ai connectors aren't available on API credits. A chat's charging can't be changed
+once it's made." before the usual permissions text. Without a key (new-session), there's
+no Charge to row and the dialog is as before.
+
+**Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). The dialog stays 600 by 680: everything below moves down to make room, and the read-only boxes (Test result, About spending) are a little shorter. Nothing else in its layout changed, and nothing is cut off. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
+
+**Since 2026-11-18, the limit boxes start at 20.00 and 2.00 for both providers** (they were 190.00 and 5.00 for Claude, 5.00 and 0.50 for OpenAI), so the amounts in the API Keys, OpenAI and Usage pictures below change too; the pictures will be updated in the next probe run.
+
+**Since #680 (2026-11-19), API Keys opens on Provider, and each choice says whether that provider has a key** ("Claude (Anthropic), no key", "Claude (Anthropic), key added", "Codex (OpenAI), no key"). In every API Keys picture the Provider dropdown has the focus (its dotted focus outline; in High Contrast the selected text is highlighted), and Test Key is no longer focused in api-keys-with-key. A VM screenshot at 100% shows the longer text fits the dropdown with room to spare. The probe couldn't be run for this change (the only free VM had no network to install Python), so the pictures will be retaken with the next API Keys change (#668). Usage on a chat on the subscription now has one "API credits: ..." line just before the plan's limits, instead of the full API credits section at the end.
+
+## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
+
+The same dialog with "Codex (OpenAI)" chosen. The key box is labelled "OpenAI API key:", and Key status reads "OpenAI: No key" or "OpenAI: key ending in ...".
+- **The limits start at 5.00 and 0.50.**
+- **The Total box begins "Estimated OpenAI costs."**, then spent, held (with how much is held for messages no longer running) and left. Release Held is on when something is held that nothing is running for.
+- **Testing:** "Testing the key..." while a test runs. **Failed:** the refusal in plain words. **Updating:** saving a new key.
+- **"About spending"** names the OpenAI account.
+
+The keyboard walk in the VM (ClaudeTesting-2 on THESTADIUM) reached every control by Tab, wrapped round to Provider, reversed with Shift+Tab, and left with Escape.
+
+## openai-usage and openai-properties: an OpenAI API chat (#661)
+
+- **Usage** lists "OpenAI API credits: estimated spending ... of $5.00", the chat's cost, the date of the prices, what's held and what's left (written "$0.50" here, but "50 cents" in API Keys), the last stopped message's at-most estimate, and that limits are approximate.
+- **Properties** adds "Charged to: OpenAI API credits", "Spending on API credits by this chat", and the model chosen (gpt-5-nano).
+
+## main-api-chat: A chat on API credits (#658)
+
+The main window, 1000 by 720, with a chat on API credits loaded. The title bar reads
+"Release notes on credits, API credits — The Chat Place"; its session row reads "Release
+notes on credits, Claude, Claude API credits, Scratch, idle, ..." (since #684, Charged to is
+shown at first and the title no longer has ", API credits"; every own chat's row also gains
+"Claude subscription" or similar after Provider, so every main-window picture with one of The
+Chat Place's own chats in the list is wider in that row, and Session List Columns shows twelve
+columns with Charged to third. The probe couldn't run for #684 (no networked VM was free);
+these pictures are retaken with #668's run); the heading above the messages
+ends "on API credits."; the messages list's label ends "API credits)". The status bar gains
+a button between the chat's state and "1 session needs you": "API credits: this chat
+$0.42, The Chat Place $0.42 of $190", black on white (20.6:1; 15.7:1 in Desert). The
+visible "Your message (Ctrl+Enter sends):" label doesn't say API credits; the box's
+accessible name does.
+
+Since #692 the session row gains the Cost column after Charged to ("…, Claude API credits, 42
+cents, Scratch, …"), the reply's row in the messages list ends "Cost: 42 cents", and Session
+List Columns shows thirteen columns with Cost fourth. The probe wasn't run for #692 (no VM
+from that session); these pictures are retaken with the next run.
 
 ## sounds: Tools, Sounds
 
@@ -624,6 +713,8 @@ The same dialog for "Codex policy preview", a Codex chat the app started: "Kind:
 ## session-columns: View, Session List Columns
 
 This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude, Codex or Copilot)" (#355), Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right. At 175% the dialog is 1190 by 956 (the earlier 175% picture was 1120 wide, from before #300): the two lists are 567 wide, all seven buttons fit on one row with Reset to Default at its end, and the preview wraps onto two lines, ending "desktop app session".
+
+**Since #682 (2026-11-19):** "Charged to (subscription, plan or API credits)" is a column; a VM screenshot at 100% showed it fits in either list. **Since #684,** it's shown at first, third in "Shown columns" (twelve rows), and "Available columns" is back to Started and Last message. The probe couldn't be run for this change (the only free VM had no network), so the picture will be retaken with #668's probe run.
 
 **What looks off:** Nothing (#289).
 

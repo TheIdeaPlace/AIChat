@@ -337,10 +337,11 @@ def test_off_linux_nothing_is_touched():
 
 # -- ATK itself (Linux) --------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def app():
-    wx = pytest.importorskip("wx")
-    yield wx.App(False)
+# These use conftest's session-wide ``app``. A module of its own made a second
+# wx.App and dropped it at the module's end, which left wx with no app at all
+# for every later test that had the session's: invisible while nothing had
+# made the session's app before this module, broken once one did (#658's
+# API Keys tests, which run first).
 
 
 @atk

@@ -7,8 +7,8 @@ This file provides guidance to AI coding assistants when working with code in th
 The Chat Place: a wxPython desktop app for Windows, macOS and Linux (Windows came first) that is a keyboard- and screen-reader-friendly
 home for AI sessions in one list, with Claude and Codex now and more providers planned. It shows
 arrowable conversations, announces replies and drives sessions of its own through provider
-adapters. Claude uses `claude -p`; Codex uses app-server with ChatGPT sign-in. Neither uses an
-API key. Shared UI and guide text must be neutral or name the provider. Provider is which AI;
+adapters. Claude uses `claude -p`; Codex uses app-server. Subscription chats keep their
+subscription sign-in; API-credit chats use separate provider keys and app-owned homes. Shared UI and guide text must be neutral or name the provider. Provider is which AI;
 Kind is where the session started. Preserve legacy Claude storage/defaults only at its adapter
 and compatibility boundaries. Accessibility with
 JAWS and NVDA (VoiceOver on a Mac, Orca on Linux) is the point of the app, so every UI change has
@@ -239,6 +239,25 @@ Kelly can't see the screen, so how the app looks is checked by the visual probe,
 - Research and design notes written while working on an issue go in `dev-notes/` (listed in its
   README), not in `docs/`: GitHub Pages publishes everything in `docs/`. Hand-testing guides go in
   `testing/`.
+
+## Prove it on CI, on every platform
+
+The Chat Place runs on Windows, macOS and Linux, and nobody develops on all three. CI
+(`.github/workflows/thechatplace-tests.yml`: pytest on Windows, macOS, Linux x64 and Linux
+arm64, plus Orca; and the build jobs in `release-thechatplace.yml`) is where code is proven. Passing tests on the machine you are working on is not enough: code for one platform
+often doesn't run at all on the machine you're working on.
+
+- Before handing work back, push your branch and open a **draft** pull request. Watch its
+  checks to the end (`gh pr checks <n> --watch`), read any failure (`gh run view <id>
+  --log-failed`), fix it, push again, and repeat until every required check passes. Hand back
+  with CI green, or with what still fails and why. Don't merge.
+- Code that runs on only one platform (`sys.platform == 'darwin'` branches, `os.getxattr`,
+  `ctypes` calls, MSAA, ATK) needs a test that makes the **real** call, skipped elsewhere with a
+  marker from `tests/markers.py` or `skipif`, so that platform's CI job exercises it. A test
+  that stands in for the very API being checked proves nothing about it. On #253, a
+  stand-in for `os.getxattr` hid that the function doesn't exist on a Mac, and every file check
+  there would have raised. CI on macOS caught it.
+- Locally, run only tests that open no window (the Commands section above lists how). Leave the windowed tests to CI.
 
 ## Keep the checkout clean
 

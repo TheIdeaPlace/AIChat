@@ -225,6 +225,11 @@ class AgentChats:
                 continue
             if not self._can_edit(info):
                 continue
+            if getattr(record, "billing", "subscription") == "api":
+                # Agent conversations stay on the subscription for now: an
+                # automatic exchange would spend API credits without you
+                # sending each message (#658).
+                continue
             existing.append(info)
         new_kinds = [kind for kind in agents.MEMBER_PROVIDERS if self._agent_can_start(kind)]
         if len(existing) + 2 * len(new_kinds) < 2 or (not new_kinds and len(existing) < 2):

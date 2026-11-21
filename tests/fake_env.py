@@ -136,10 +136,31 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(main_frame, "fetch_chat_choices", lambda exe, cwd: fake_chat_choices())
     spoken = []
     feedback = []
+    #: What was spoken kept, so an interruption can't lose it (#663).
+    kept = []
+    #: (text, about) for everything said about a chat, and (text, again)
+    #: for each kept one (#663).
+    about = []
+    again = []
 
-    def speak(text, settings, interrupt=True):
+    def speak(text, settings, interrupt=True, keep=False, about_="", again_=""):
         (spoken if interrupt else feedback).append(text)
-    patch(speech.speaker, "speak", speak)
+        if keep:
+            kept.append(text)
+            again.append((text, again_))
+        if about_:
+            about.append((text, about_))
+
+    #: What was said with ``resay=False`` (Repeat Last Announcement, #663).
+    no_resay = []
+
+    def speak_kw(text, settings, interrupt=True, keep=False, about="", again="", resay=True):
+        speak(text, settings, interrupt, keep, about, again)
+        if not resay:
+            no_resay.append(text)
+    patch(speech.speaker, "speak", speak_kw)
+    forgotten = []
+    patch(speech.speaker, "forget", forgotten.append)
     # The frame points the shared speaker at itself (#98); put it back after,
     # so no later test reaches a destroyed frame through it.
     patch(speech.speaker, "on_problem", None)
@@ -175,7 +196,18 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "load_backup_secret", lambda: secret.get("pw"))
     patch(platform_paths, "save_backup_secret", lambda text: secret.__setitem__("pw", text))
     patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
+    # Nor a real API key (#658): named secrets in memory too.
+    named = {}
+    from thechatplace import spend_ledger
+    patch(spend_ledger, '_DEFAULT', None)
+    patch(spend_ledger, '_OPENAI_DEFAULT', None)
+    patch(platform_paths, "secrets_available", lambda: True)
+    patch(platform_paths, "has_secret", lambda name: name in named)
+    patch(platform_paths, "load_secret", lambda name: named.get(name))
+    patch(platform_paths, "save_secret", lambda name, text: named.__setitem__(name, text))
+    patch(platform_paths, "delete_secret", lambda name: named.pop(name, None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
+    patch(platform_paths, "open_local_folder", lambda path: opened.append(("folder", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)
     # No real Windows notifications (#20): they're recorded. The hidden test
@@ -250,6 +282,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     from thechatplace.ui import mac_a11y
     patch(mac_a11y, "activate_app", lambda: activated.append(True) or True)
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
+            "kept": kept, "about": about, "again": again, "forgotten": forgotten,
+            "no_resay": no_resay,
             "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
@@ -288,8 +322,13 @@ class FakeRunner:
     instances = []
 
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
-                 task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False):
+                 task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False,
+                 billing="subscription", api_key_name="", ledger=None, chat_id="",
+                 purpose="turn", cost_baselines=None):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
+        # How the turn is charged (#658), as the window asked.
+        self.billing, self.ledger, self.chat_id, self.purpose = billing, ledger, chat_id, purpose
+        self.cost_baselines = cost_baselines
         self.mcp_config = mcp_config
         self.disabled_mcp = list(disabled_mcp or ())
         self.context_usage = context_usage
@@ -341,6 +380,14 @@ class FakeRunner:
     @property
     def steering(self):
         return list(getattr(self, "steered", []))
+
+    #: As TurnRunner's: Claude Code's echoes say what was taken in (#663).
+    echoes = True
+
+    def untaken(self):
+        """Steers, then Send Now messages a test says weren't taken in."""
+        return ([("steer", text) for text in self.steering]
+                + [("now", text) for text in getattr(self, "now_untaken", [])])
 
     def send_follow_up(self, prompt, images=None):
         if not self.waiting_on_background:

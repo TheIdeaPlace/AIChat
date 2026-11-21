@@ -232,6 +232,8 @@ EXPECTED = {
                                "instructions or output style for its chats, and doesn't accept "
                                "more folders.")),
     "other_machines": owned(said(NOT_YET)),
+    # Muse Code has no API-key billing (#658 covers Claude and Codex only).
+    "continue_on_api_credits": every(said("Muse Code chats can't use API credits")),
 }
 
 #: The same commands with text in the reply box, where it changes the outcome.

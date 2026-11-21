@@ -1,0 +1,729 @@
+{
+ "title": "Settings",
+ "class": "SettingsDialog",
+ "size": [
+  1190,
+  996
+ ],
+ "client": [
+  1166,
+  932
+ ],
+ "dpi": [
+  168,
+  168
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "ScrolledWindow",
+   "name": "panel",
+   "label": "panel",
+   "rect": [
+    0,
+    0,
+    1166,
+    874
+   ],
+   "best": [
+    1153,
+    29
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioBox",
+   "name": "radioBox",
+   "label": "Announcements",
+   "rect": [
+    10,
+    10,
+    1116,
+    179
+   ],
+   "best": [
+    623,
+    179
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Full: read the whole reply",
+   "rect": [
+    28,
+    51,
+    274,
+    30
+   ],
+   "best": [
+    274,
+    30
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Summary: the session's name and the reply's first sentence",
+   "rect": [
+    28,
+    96,
+    587,
+    30
+   ],
+   "best": [
+    587,
+    30
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "RadioButton",
+   "name": "radioButton",
+   "label": "Silent: status bar only",
+   "rect": [
+    28,
+    141,
+    240,
+    30
+   ],
+   "best": [
+    240,
+    30
+   ],
+   "depth": 2,
+   "parent": 1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Announce when &any listed session finishes a turn, not just the open one",
+   "rect": [
+    10,
+    199,
+    708,
+    30
+   ],
+   "best": [
+    708,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Read your own &messages back when they're sent",
+   "rect": [
+    10,
+    239,
+    496,
+    30
+   ],
+   "best": [
+    496,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Reading messages",
+   "rect": [
+    10,
+    279,
+    1116,
+    119
+   ],
+   "best": [
+    205,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Open full messages as a formatted &page (headings, lists and tables), not plain text",
+   "rect": [
+    25,
+    317,
+    801,
+    30
+   ],
+   "best": [
+    801,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Read the &whole message on each item in the messages list (otherwise just its first line)",
+   "rect": [
+    25,
+    353,
+    840,
+    30
+   ],
+   "best": [
+    840,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "API credits",
+   "rect": [
+    10,
+    408,
+    1116,
+    119
+   ],
+   "best": [
+    132,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Ask &before the first API-credit message in each chat",
+   "rect": [
+    25,
+    446,
+    522,
+    30
+   ],
+   "best": [
+    522,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Gi&ve the cost of each API-credit reply",
+   "rect": [
+    25,
+    482,
+    386,
+    30
+   ],
+   "best": [
+    386,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Speech &engine:",
+   "rect": [
+    10,
+    550,
+    142,
+    31
+   ],
+   "best": [
+    142,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Speech engine",
+   "label": "",
+   "rect": [
+    250,
+    547,
+    876,
+    38
+   ],
+   "best": [
+    705,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Automatic (your screen reader, or a system voice when none is running)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Speaking &rate:",
+   "rect": [
+    10,
+    596,
+    132,
+    31
+   ],
+   "best": [
+    132,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Speaking rate",
+   "label": "",
+   "rect": [
+    250,
+    593,
+    110,
+    38
+   ],
+   "best": [
+    110,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": false,
+   "problems": [],
+   "value": "Default"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Voice and rate follow your screen reader's own settings.",
+   "rect": [
+    370,
+    596,
+    517,
+    31
+   ],
+   "best": [
+    517,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Speech problem",
+   "label": "Last announcement not spoken: JAWS is running but refused the text.",
+   "rect": [
+    252,
+    641,
+    876,
+    77
+   ],
+   "best": [
+    192,
+    308
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Last announcement not spoken: JAWS is running but refused the text."
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Windows &notifications:",
+   "rect": [
+    10,
+    727,
+    211,
+    31
+   ],
+   "best": [
+    211,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Windows notifications, while The Chat Place isn't the active window",
+   "label": "",
+   "rect": [
+    250,
+    724,
+    585,
+    38
+   ],
+   "best": [
+    585,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "When your sessions finish a turn, or any session needs you"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Mark c&hanged lines with:",
+   "rect": [
+    10,
+    773,
+    232,
+    31
+   ],
+   "best": [
+    232,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Mark changed lines with",
+   "label": "",
+   "rect": [
+    250,
+    770,
+    467,
+    38
+   ],
+   "best": [
+    467,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Words (Added, Removed, Unchanged)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Recent &folders New Session offers:",
+   "rect": [
+    10,
+    823,
+    321,
+    31
+   ],
+   "best": [
+    321,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Recent folders New Session offers",
+   "label": "",
+   "rect": [
+    339,
+    818,
+    84,
+    38
+   ],
+   "best": [
+    84,
+    38
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lear Recent Folders",
+   "rect": [
+    431,
+    818,
+    225,
+    42
+   ],
+   "best": [
+    225,
+    42
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "T&urn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (Session, Remote Control changes one session.)",
+   "rect": [
+    10,
+    870,
+    1103,
+    60
+   ],
+   "best": [
+    1103,
+    60
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so Tools, Tasks shows\nhow far along it is (from the next turn)",
+   "rect": [
+    10,
+    940,
+    1064,
+    60
+   ],
+   "best": [
+    1064,
+    60
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
+   "rect": [
+    10,
+    1010,
+    1098,
+    60
+   ],
+   "best": [
+    1098,
+    60
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Let a&gent conversations hand replies across automatically",
+   "rect": [
+    10,
+    1080,
+    575,
+    30
+   ],
+   "best": [
+    575,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Check for up&dates when The Chat Place starts",
+   "rect": [
+    10,
+    1116,
+    466,
+    30
+   ],
+   "best": [
+    466,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "&Tell me when an update has been installed, with a link to what's new",
+   "rect": [
+    10,
+    1156,
+    677,
+    30
+   ],
+   "best": [
+    677,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Histor&y retention and kept copies:",
+   "rect": [
+    10,
+    1206,
+    313,
+    31
+   ],
+   "best": [
+    313,
+    31
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "History retention and kept copies",
+   "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
+   "rect": [
+    12,
+    1239,
+    1116,
+    193
+   ],
+   "best": [
+    222,
+    308
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\nCopilot CLI: no documented automatic age limit for saved sessions.\nThe Chat Place keeps copies"
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Open Claude's retention settings",
+   "rect": [
+    10,
+    1440,
+    339,
+    42
+   ],
+   "best": [
+    339,
+    42
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "OK",
+   "rect": [
+    874,
+    882,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    1019,
+    882,
+    133,
+    42
+   ],
+   "best": [
+    133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -135,6 +135,59 @@ def usage_lines(context: Optional[Tuple[str, int, int]], info: Optional[dict],
     return [first] + limit_lines(info, now)
 
 
+#: Said in Usage when the loaded chat is on API credits (#658).
+PLAN_LIMITS_NOT_FOR_API = ("This chat is on API credits, so your plan's usage limits don't "
+                           "apply to it.")
+
+
+def api_credit_summary(totals) -> str:
+    """Usage's one line about API credits for a chat on the subscription:
+    most people never use them, so the whole section (``api_credit_lines``)
+    is kept for chats on API credits, and the plan's limits stay last."""
+    from .billing import money
+    if totals.problem:
+        return f"API credits: {totals.problem}"
+    spent = money(totals.spent) if totals.spent >= 0.00005 else "nothing"
+    return (f"API credits: {spent} spent since the total was reset, {money(totals.left)} left "
+            f"of your {money(totals.limits.overall)} limit. For today, the last 7 days and "
+            "spending by model and by chat, open Usage and Context from a chat that uses API credits.")
+
+
+def api_credit_lines(totals, chat_names: Optional[dict] = None) -> List[str]:
+    """Usage's API credits section (#658), one line each: today, the last 7
+    days, since the total was reset, what's held for running messages, what's
+    left of the limit, then spending by model and by chat (chat names, never
+    ids; a chat no longer in the list is "a chat that's gone"). ``totals`` is
+    a spend_ledger.Totals."""
+    from .billing import money as said
+
+    def money(amount):
+        # Nothing spent is "nothing", not "less than a cent".
+        return "nothing" if not amount or amount < 0.00005 else said(amount)
+    names = chat_names or {}
+    lines = []
+    if totals.problem:
+        lines.append(f"API credits: {totals.problem}")
+    lines += [
+        f"API credits today: {money(totals.today)}",
+        f"API credits in the last 7 days: {money(totals.last_7_days)}",
+        f"API credits since the total was reset: {money(totals.spent)}",
+        f"API credits held for running messages: {money(totals.held)}",
+        f"API credits left of your {money(totals.limits.overall)} limit: {money(totals.left)}",
+    ]
+    for model, cost in sorted(totals.by_model.items(), key=lambda item: -item[1]):
+        lines.append(f"API credits on {model}: {money(cost)}")
+    gone = 0.0
+    for chat, cost in sorted(totals.by_chat.items(), key=lambda item: -item[1]):
+        if chat in names:
+            lines.append(f"API credits in {names[chat]}: {money(cost)}")
+        else:
+            gone += cost
+    if gone:
+        lines.append(f"API credits in chats no longer listed: {money(gone)}")
+    return lines
+
+
 def limit_warning(info: Optional[dict], now: Optional[float] = None) -> Optional[str]:
     """Something worth saying unasked: a limit reached, or nearly."""
     if not isinstance(info, dict):

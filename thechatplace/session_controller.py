@@ -240,7 +240,7 @@ class SessionController:
         if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
                           "recover", "set_model", "set_mode", "set_auto", "restart_warning", "restart",
-                          "prepare_settings", "prepare_mode", "prepare_chat_options", "feature", "delete",
+                          "prepare_settings", "prepare_mode", "prepare_chat_options", "feature", "delete", "api_billing",
                           "prepare_effort", "set_effort", "skills", "aside", "retry", "branch", "tasks", "stop_task",
                           "settle", "pending_approvals", "turn_in_flight", "poll"):
             raise ValueError("Unsupported owned chat action")

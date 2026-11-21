@@ -84,6 +84,11 @@ class Window(CodexChats, RelayChats):
     def _can_edit(self, info):
         return info.is_own and self.can_edit
 
+    def _api_own(self, native):
+        # As MainFrame's (#658): the chat's record if it's on API credits.
+        record = self.records.get(native)
+        return record if record is not None and record.billing == 'api' else None
+
     # what a new chat or an agent conversation (#378) calls
     def on_new_session(self, forward=None):
         self.new_sessions.append(forward)
@@ -195,8 +200,8 @@ def test_a_claude_reply_goes_to_a_codex_chat_and_the_window_follows(dialog):
     w = Window()
     dialog.choose = lambda text: (0, text + '\n\nCheck the tests too.')
     w.on_send_reply_to()
-    assert dialog.seen.choices == ['Reviewer, Codex, work, idle',
-                                   'Second opinion, Claude, work, idle']
+    assert dialog.seen.choices == ['Reviewer, Codex, ChatGPT subscription, work, idle',
+                                   'Second opinion, Claude, Claude subscription, work, idle']
     assert dialog.seen.text.startswith('From Claude, another AI agent, forwarded by the user '
                                        'from their chat "Builder":\n\nBuilt it. Tests pass.')
     assert w.opened == ['Reviewer']

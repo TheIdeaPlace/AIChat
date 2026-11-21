@@ -150,6 +150,7 @@ GOLDEN = [
     ('Chat', '---'),
     ('Chat', 'Retr&y from Here...\tCtrl+Shift+Z', 'Retr&y from Here...'),
     ('Chat', 'Branch &from Here'),
+    ('Chat', 'Continu&e on API Credits...'),  # #658
     ('Chat', '---'),
     ('Chat', 'Chat Setti&ngs'),
     ('Chat > Chat Settings', 'Change &Model...'),
@@ -190,6 +191,7 @@ GOLDEN = [
     ('Tools > Sign In', 'C&odex...'),
     ('Tools > Sign In', 'Co&pilot...'),
     ('Tools > Sign In', '&Muse Code...'),
+    ('Tools', 'A&PI Keys...'),  # #658
     ('Tools', '---'),
     ('Tools', 'S&ounds...'),
     ('Tools', '&Mute All Sounds\tCtrl+Shift+X'),

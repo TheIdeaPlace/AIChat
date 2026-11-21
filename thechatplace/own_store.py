@@ -9,6 +9,13 @@ Providers added later each have a file of their own
 know, and would then save nothing (#352). Each file is replaced atomically;
 mixed-format migration preserves an exact backup and writes foreign records
 before removing them from the old file.
+
+Claude chats on API credits (#658) are kept apart too, in
+``provider-sessions-claude-api.json`` (#663): a release from before API
+credits reads ``sessions.json`` without knowing ``billing``, and would run
+such a chat on the subscription, without its spending limits. Kept where it
+never looks, it doesn't list them at all. One written into ``sessions.json``
+by a build before this is moved out on load, as the mixed format is.
 """
 from __future__ import annotations
 
@@ -24,7 +31,8 @@ from . import platform_paths
 from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
 from .chat_options import (ChatOptions, clean_instructions, is_safe_agent,
                            is_safe_style)
-from .claude_cli import EFFORT_LABELS, MODEL_LABELS, is_safe_dir, is_safe_rule
+from .billing import normalize_route
+from .claude_cli import EFFORT_LABELS, is_safe_dir, is_safe_rule, model_allowed
 from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
 
@@ -66,6 +74,8 @@ class OwnSession:
     #: for the heading.
     fork_source: str = ""
     forked_from: str = ""
+    #: Quoted subscription history, sent only with the first explicit API Send.
+    api_context: str = ""
     #: Rewind to Here and Branch from Here (#468): the uuid of the last
     #: record of ``fork_source`` the copy keeps (``--resume-session-at``).
     #: "" copies the whole history, as Continue Here does.
@@ -92,6 +102,17 @@ class OwnSession:
     #: True once those changed after the chat's first turn: Claude Code would
     #: otherwise keep the system prompt it recorded then (chat_options.py).
     prompt_fresh: bool = False
+    #: How the chat is charged (#658): "subscription", or "api" for API
+    #: credits. Fixed when the chat is made. Anything else reads as the
+    #: subscription. An API chat is kept in a file of its own that older
+    #: releases never read (#663), so none of them runs it on the
+    #: subscription.
+    billing: str = "subscription"
+    #: A chat on API credits: what each reply cost, as its last line
+    #: ("Cost: 19 cents"), by the reply it belongs to (#692,
+    #: ``reply_costs``). Kept here, never in Claude Code's or Codex's files;
+    #: only the newest ``reply_costs.MAX_REPLY_COSTS``. Older releases ignore it.
+    reply_costs: Dict[str, str] = field(default_factory=dict)
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -118,7 +139,9 @@ class OwnSession:
             permission_mode=self.permission_mode,
             unread=self.unread,
             provider=self.provider,
+            provider_label='Codex' if self.provider == 'codex-api' else '',
             continued_from=self.forked_from,
+            api_credits=self.billing == "api" and self.provider in ('claude', 'codex-api'),
         )
 
 
@@ -126,10 +149,17 @@ _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
 #: Every provider a record may name.
-PROVIDERS = ("claude", "codex", "copilot", "muse")
+PROVIDERS = ("claude", "codex", "copilot", "codex-api", "muse")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
-SEPARATE_PROVIDERS = ("copilot", "muse")
+SEPARATE_PROVIDERS = ("copilot", "codex-api", "muse")
+#: The name Claude's API-credit chats' own file goes by (#663), in the
+#: place a separate provider's would.
+API_CHATS = "claude-api"
+
+
+def _is_api_chat(session: "OwnSession") -> bool:
+    return session.provider == "claude" and session.billing == "api"
 #: Codex settings newer than 0.4 (#467). On disk they sit beside
 #: ``provider_options`` as ``provider_extras``, because 0.4 refuses all of
 #: provider-sessions.json over a provider option it doesn't know, and then
@@ -229,7 +259,7 @@ def _unknown_fields(item: dict) -> dict:
                if name not in _FIELDS and name != "provider_extras"}
     extras = item.get("provider_extras")
     if "provider_extras" in item:
-        if item.get("provider", "claude") != "codex" or not isinstance(extras, dict):
+        if item.get("provider", "claude") not in ("codex", "codex-api") or not isinstance(extras, dict):
             unknown["provider_extras"] = extras
         else:
             later = {name: value for name, value in extras.items() if name not in CODEX_EXTRAS}
@@ -292,6 +322,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             names = item[name] if isinstance(item[name], list) else []
             values[name] = list(dict.fromkeys(n for n in names if is_safe_server_name(n)))
             continue
+        if name == "reply_costs":
+            from .reply_costs import clean as clean_reply_costs
+            values[name] = clean_reply_costs(item[name])
+            continue
         if name == "allowed_dirs_at":
             times = item[name] if isinstance(item[name], dict) else {}
             values[name] = {d: t for d, t in times.items()
@@ -309,16 +343,19 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             ok = True
         values[name] = value if ok else _DEFAULTS[name]
     extras = item.get("provider_extras")
-    if provider == "codex" and isinstance(extras, dict):
+    if provider in ("codex", "codex-api") and isinstance(extras, dict):
         # A hand edit that isn't valid is dropped, which only leaves the chat
         # in Default mode with no extra tools, rather than refusing the file.
         kept_extras = {k: extras[k] for k in CODEX_EXTRAS
                        if k in extras and _valid_codex_extra(k, extras[k])}
         if kept_extras:
             values["provider_options"] = {**values.get("provider_options", {}), **kept_extras}
-    # Only a model the picker offers: anything else (a hand edit, or a model
-    # that bills usage credits) would fail or cost extra on every turn.
-    if values.get("model") not in MODEL_LABELS:
+    # Charged one way or the other (#658); an unknown value is the subscription.
+    values["billing"] = normalize_route(values.get("billing"))
+    # Only a model the picker offers for how the chat is charged: anything
+    # else (a hand edit, or a model that bills usage credits on the
+    # subscription, as Fable can) would fail or cost extra on every turn.
+    if not model_allowed(values.get("model", ""), values["billing"]):
         values["model"] = ""
     if values.get("effort") not in EFFORT_LABELS:
         values["effort"] = ""
@@ -350,12 +387,16 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "agent", "instructions", "output_style"):
             values[name] = ""
         values["prompt_fresh"] = False
+        # Each Codex backend has a fixed billing route (#661).
+        values["billing"] = "api" if provider == 'codex-api' else "subscription"
         values["allowed_tools"] = []
         values["allowed_tools_at"] = {}
         values["allowed_dirs"] = []
         values["allowed_dirs_at"] = {}
         values["disabled_mcp"] = []
         values["permission_mode"] = "auto"
+    if values["billing"] != "api":
+        values["reply_costs"] = {}  # only chats on API credits have them (#692)
     return OwnSession(**values)
 
 
@@ -365,7 +406,7 @@ class OwnSessionStore:
         self._files = PartitionedFile(self.path)
         #: provider -> its own companion file (SEPARATE_PROVIDERS).
         self._separate = {name: self.path.with_name(f"provider-{self.path.stem}-{name}{self.path.suffix}")
-                          for name in SEPARATE_PROVIDERS}
+                          for name in (*SEPARATE_PROVIDERS, API_CHATS)}
         self._sessions: Dict[tuple[str, str], OwnSession] = {}
         #: identity -> the record's fields a newer release wrote, which this
         #: one doesn't read but saves back (see _unknown_fields).
@@ -439,7 +480,9 @@ class OwnSessionStore:
                 self._save_blocked = True
                 return
             if session is not None:
-                mixed |= session.provider != "claude"
+                # An API chat written here by a build before its own file
+                # (#663) is moved out too, before an older release reads it.
+                mixed |= session.provider != "claude" or _is_api_chat(session)
                 self._sessions[session.identity] = session
                 self._keep_extras(session, item)
         if foreign is not None:
@@ -496,7 +539,8 @@ class OwnSessionStore:
         seen = set()
         for item in entries:
             session = _session_from_dict(item) if isinstance(item, dict) else None
-            if session is None or session.provider != provider or session.identity in seen:
+            if session is None or not self._belongs(session, provider) \
+                    or session.identity in seen:
                 self.load_error = f"Invalid {provider} session store ({path}). Changes won't be saved."
                 self._save_blocked = True
                 return False
@@ -509,6 +553,14 @@ class OwnSessionStore:
             self._sessions[session.identity] = session
             self._keep_extras(session, item)
         return True
+
+    @staticmethod
+    def _belongs(session: OwnSession, name: str) -> bool:
+        """Whether a session is kept in the companion file ``name``: a
+        separate provider's, or Claude's API chats' (#663)."""
+        if name == API_CHATS:
+            return _is_api_chat(session)
+        return session.provider == name
 
     def _keep_extras(self, session: OwnSession, item: dict) -> None:
         extras = _unknown_fields(item)
@@ -529,7 +581,7 @@ class OwnSessionStore:
         item = _stored_record(session)
         record = {**kept, **item}
         later = kept.get("provider_extras")
-        if session.provider == "codex" and isinstance(later, dict):
+        if session.provider in ("codex", "codex-api") and isinstance(later, dict):
             record["provider_extras"] = {**later, **item.get("provider_extras", {})}
         return record
 
@@ -552,7 +604,8 @@ class OwnSessionStore:
     def _legacy_payload(self) -> dict:
         records = []
         for session in self._sessions.values():
-            if session.provider == "claude":
+            # Never an API chat (#663): an older release reads this file.
+            if session.provider == "claude" and not _is_api_chat(session):
                 item = self._record(session)
                 item.pop("provider")
                 item.pop("provider_options")
@@ -571,7 +624,8 @@ class OwnSessionStore:
         previous = {}
         try:
             for name, path in self._separate.items():
-                records = [self._record(s) for s in self._sessions.values() if s.provider == name]
+                records = [self._record(s) for s in self._sessions.values()
+                           if self._belongs(s, name)]
                 try:
                     previous[path] = path.read_bytes()
                 except FileNotFoundError:
@@ -643,6 +697,11 @@ class OwnSessionStore:
             return
         allowed = {name: value for name, value in changes.items()
                    if name in _FIELDS and name not in ("cli_session_id", "provider")}
+        if "billing" in allowed and normalize_route(allowed["billing"]) != session.billing:
+            # Fixed when the chat is made (#658, Kelly's decision): a chat
+            # is never moved between the subscription and API credits.
+            # Continuing it as a new chat is how it changes.
+            raise ValueError("How a chat is charged can't be changed.")
         updated = replace(session, **allowed)
         validated = _session_from_dict(asdict(updated))
         if validated is None or validated != updated:
@@ -650,6 +709,21 @@ class OwnSessionStore:
         for name, value in allowed.items():
             setattr(session, name, value)
         self.save()
+
+    def add_reply_cost(self, cli_session_id: str, key: str, line: str,
+                       provider: str = "claude") -> bool:
+        """Keep what a reply in a chat on API credits cost (#692), as its
+        last line, and save. False when there's no such chat on API credits
+        or nothing to keep; the oldest go once there are too many."""
+        from .reply_costs import remember
+        session = self.get(cli_session_id, provider)
+        if session is None or session.billing != "api":
+            return False
+        costs = remember(session.reply_costs, key, line)
+        if costs == session.reply_costs:
+            return False
+        self.update(cli_session_id, provider=provider, reply_costs=costs)
+        return True
 
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:
         """Remove a session (Session, Delete Session Permanently) (its transcript is left alone)."""
@@ -663,14 +737,26 @@ class OwnSessionStore:
                 if extras:
                     self._extras[session.identity] = extras
                 raise
-        if provider == 'codex':
+        if provider in ('codex', 'codex-api'):
             # What The Chat Place saved for the chat goes with its entry: its
             # task list, its Allow for This Chat rules and its automatic
             # review history (#634). Delete Session Permanently comes here
             # whether Codex deleted the chat or no longer had it.
             # Repeating removal also retries cleanup after a sharing violation.
-            CodexPlanStore(self.path.parent / 'provider-tasks' / 'codex').remove(cli_session_id)
+            CodexPlanStore(self.path.parent / 'provider-tasks' / provider).remove(cli_session_id)
             from .providers.codex_permissions import CodexPermissionStore, CodexReviewStore
-            permissions = self.path.parent / 'provider-permissions' / 'codex'
+            permissions = self.path.parent / 'provider-permissions' / provider
             CodexPermissionStore(permissions).remove(cli_session_id)
             CodexReviewStore(permissions).remove(cli_session_id)
+            if provider == 'codex-api':
+                from .providers.codex_api import _BASELINES_LOCK
+                from .provider_storage import atomic_write_json
+                with _BASELINES_LOCK:
+                    path = self.path.parent / 'openai-billing' / 'codex-token-baselines.json'
+                    try:
+                        saved = json.loads(path.read_text(encoding='utf-8'))
+                    except (FileNotFoundError, ValueError):
+                        saved = {}
+                    if isinstance(saved, dict) and cli_session_id in saved:
+                        saved.pop(cli_session_id)
+                        atomic_write_json(path, saved)

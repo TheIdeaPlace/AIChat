@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     1020,
-    926
+    1008
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -439,7 +439,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Usage and Context"
+   "about": "Tools, Usage and Context"
   },
   "properties": {
    "kind": "dialog",
@@ -453,7 +453,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, Properties of a session"
+   "about": "Session, Properties of a session"
   },
   "about-you": {
    "kind": "dialog",
@@ -589,7 +589,7 @@
    "class": "SettingsDialog",
    "size": [
     1020,
-    961
+    1008
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -771,7 +771,7 @@
    "class": "SettingsDialog",
    "size": [
     1020,
-    901
+    1008
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1336,6 +1336,174 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "View, Lists: Approvals in a Codex chat"
+  },
+  "main-api-chat": {
+   "kind": "window",
+   "png": "main-api-chat-light-150.png",
+   "json": "main-api-chat-light-150.json",
+   "title": "Release notes on credits, API credits — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1500,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A chat on API credits loaded: its row, heading and title say so, and the status bar shows what's been spent (#658)"
+  },
+  "settings-speech-problem": {
+   "kind": "dialog",
+   "png": "settings-speech-problem-light-150.png",
+   "json": "settings-speech-problem-light-150.json",
+   "title": "Settings",
+   "class": "SettingsDialog",
+   "size": [
+    1020,
+    1008
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Settings after an announcement wasn't spoken: the reason box"
+  },
+  "new-session-api-credits": {
+   "kind": "dialog",
+   "png": "new-session-api-credits-light-150.png",
+   "json": "new-session-api-credits-light-150.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    1020,
+    930
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session once a Claude API key is added, with Charge to on API credits and Fable chosen (#658)"
+  },
+  "api-keys": {
+   "kind": "dialog",
+   "png": "api-keys-light-150.png",
+   "json": "api-keys-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, API Keys with no key and nothing spent"
+  },
+  "api-keys-with-key": {
+   "kind": "dialog",
+   "png": "api-keys-with-key-light-150.png",
+   "json": "api-keys-with-key-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Tools, API Keys with a key, some spending and a test's answer"
+  },
+  "openai-keys-empty": {
+   "kind": "dialog",
+   "png": "openai-keys-empty-light-150.png",
+   "json": "openai-keys-empty-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys without a saved key"
+  },
+  "openai-keys-held": {
+   "kind": "dialog",
+   "png": "openai-keys-held-light-150.png",
+   "json": "openai-keys-held-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys with estimated spending and Release Held"
+  },
+  "openai-keys-testing": {
+   "kind": "dialog",
+   "png": "openai-keys-testing-light-150.png",
+   "json": "openai-keys-testing-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys while testing a made-up key"
+  },
+  "openai-keys-failed": {
+   "kind": "dialog",
+   "png": "openai-keys-failed-light-150.png",
+   "json": "openai-keys-failed-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys after key refusal"
+  },
+  "openai-keys-updating": {
+   "kind": "dialog",
+   "png": "openai-keys-updating-light-150.png",
+   "json": "openai-keys-updating-light-150.json",
+   "title": "API Keys",
+   "class": "ApiKeysDialog",
+   "size": [
+    900,
+    968
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI API Keys while replacing a key"
+  },
+  "openai-properties": {
+   "kind": "dialog",
+   "png": "openai-properties-light-150.png",
+   "json": "openai-properties-light-150.json",
+   "title": "Properties of OpenAI budget",
+   "class": "PropertiesDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex API Properties with unknown spending"
+  },
+  "openai-usage": {
+   "kind": "dialog",
+   "png": "openai-usage-light-150.png",
+   "json": "openai-usage-light-150.json",
+   "title": "Usage and Context",
+   "class": "UsageDialog",
+   "size": [
+    960,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "OpenAI Usage with estimated maximum and unknown spending"
   }
  },
  "seconds": 93.2

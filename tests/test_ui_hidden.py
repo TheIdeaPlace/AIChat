@@ -261,7 +261,7 @@ def fake_runner(monkeypatch):
 def test_list_order_and_lines(frame):
     items = list(frame.session_list.GetStrings())
     assert items[0].startswith("Blocked one, Claude, Repo, needs you: Pick a name")
-    assert items[1].startswith("Hub probe, Claude, Scratch, idle")
+    assert items[1].startswith("Hub probe, Claude, Claude subscription, Scratch, idle")
     assert items[1].endswith("Chat Place session")
     assert items[2].startswith("Quiet one, Claude, Repo, idle, active 1 minute ago")
     assert frame.session_list.GetSelection() == 0
@@ -7156,7 +7156,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:4] == ["title", "provider", "folder", "status"]
+    assert seen["fields"][:5] == ["title", "provider", "charged", "cost", "folder"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -7264,30 +7264,31 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
     dialog, said, focused = _columns_dialog(frame)
     try:
         assert dialog.shown.GetString(0) == "Title"
-        # Started (#209) and Last message (#146) aren't shown by default.
+        # Started (#209) and Last message (#146) aren't shown by default;
+        # Charged to (#658) is, just after Provider, and Cost (#692) after it.
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
-        assert dialog.preview.GetValue().startswith("Blocked one, Claude, Repo, needs you")
-        dialog.shown.SetSelection(3)  # Status
+        assert dialog.preview.GetValue().startswith("Blocked one, Claude, ")
+        dialog.shown.SetSelection(5)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
-        assert dialog.fields()[:4] == ["status", "title", "provider", "folder"]
+        assert said[-1] == "Status moved to top, 1 of 13."
+        assert dialog.fields()[:4] == ["status", "title", "provider", "charged"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 11." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 13." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 11 of 11."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 10
+        assert said[-1] == "Status moved to bottom, 13 of 13."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 12
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
+        assert said[-1] == "Status moved to top, 1 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 11."
+        assert said[-1] == "Status moved down, 2 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -7318,25 +7319,25 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.shown.GetSelection() == 1  # on what it added
         assert dialog.available.GetString(0) == "Provider (Claude, Codex, Copilot or Muse Code)"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 11 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
+        assert said[-1] == "Columns reset to the default: 13 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 13
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
         dialog.shown.SetSelection(dialog.fields().index("provider"))
         dialog.remove()
-        assert said[-1] == "Provider removed. 10 columns shown."
+        assert said[-1] == "Provider removed. 12 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Provider added, 11 of 11."
+        assert said[-1] == "Provider added, 13 of 13."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Started added, 12 of 12."
+        assert said[-1] == "Started added, 14 of 14."
         # Adding the last one left moves you to Shown, on it.
         dialog.available.SetSelection(0)
         focused.clear()
         dialog.add()
-        assert said[-1] == "Last message added, 13 of 13."
-        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 12
+        assert said[-1] == "Last message added, 15 of 15."
+        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 14
         assert list(dialog.available.GetStrings()) == ["Every column is shown."]
         dialog.add()
         assert said[-1] == "Every column is shown already."
@@ -7372,7 +7373,7 @@ def test_columns_preview_has_a_sample_when_nothing_is_selected(frame, env, monke
             pass
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Looks)
     frame.on_session_columns()
-    assert seen["line"].startswith("Example session, Claude, Example, needs you: Choose a version "
+    assert seen["line"].startswith("Example session, Claude, Claude subscription, Example, needs you: Choose a version "
                                    "number, new reply, active 2 minutes ago")
 
 
@@ -8379,12 +8380,14 @@ def test_a_session_link_in_the_formatted_view_opens_here(frame, env, monkeypatch
     page.app_link = None
     page.EndModal = lambda code: ended.append(code)
     page._open_url = lambda url: env["opened"].append(url)
+    page.GetTitle = lambda: 'Reply'
     dialogs.FormattedMessageDialog._follow(page, "thechatplace://session/x")
     assert page.app_link == "thechatplace://session/x"
     assert pump(lambda: ended == [wx.ID_CANCEL])
     dialogs.FormattedMessageDialog._follow(page, "https://example.com")
     dialogs.FormattedMessageDialog._follow(page, "file:///C:/x")
     assert env["opened"] == ["https://example.com"]
+    assert "Couldn't open the file" in env['boxes'][-1]
 
 
 # -- the Last message column (#146) ---------------------------------------------------
@@ -9957,7 +9960,7 @@ def test_links_lists_newest_first_and_opens_one(frame, env, monkeypatch):
     assert seen["label"] == "&List: Links (3):"
     assert seen["rows"] == [
         "release notes, example.com/notes. Claude, 1 message ago",
-        "a file, file:///C:/secret.txt. Claude, 1 message ago, copy only",
+        "a file, C:\\secret.txt. Claude, 1 message ago, file, File not found. Copy only.",
         "example.com/old. You, 2 messages ago"]
     assert opened == ["https://example.com/notes"]
     assert env["feedback"][-1] == "Opening example.com/notes."
@@ -9978,10 +9981,53 @@ def test_a_link_that_cant_open_says_why_and_can_be_copied(frame, env, monkeypatc
     _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert opened == []
-    assert env["feedback"][-3].startswith("A file: link isn't opened from here")
-    assert env["feedback"][-2] == "Copied file:///C:/secret.txt."
-    assert env["feedback"][-1] == "Copied file:///C:/secret.txt as Markdown."
-    assert copied == ["file:///C:/secret.txt", "[a file](file:///C:/secret.txt)"]
+    assert env["feedback"][-3] == "File not found. Copy only."
+    assert env["feedback"][-2] == "Copied C:\\secret.txt."
+    assert env["feedback"][-1] == "Copied C:\\secret.txt as Markdown."
+    assert copied == ["C:\\secret.txt", "[a file](C:\\secret.txt)"]
+
+
+@pytest.mark.parametrize('kind', ['file', 'script', 'folder', 'missing'])
+def test_local_link_buttons_and_folder_action(frame, env, monkeypatch, kind):
+    path = env['tmp'] / ('script.ps1' if kind == 'script' else 'notes.txt')
+    if kind == 'folder':
+        path.mkdir()
+    elif kind != 'missing':
+        path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'`{path}`'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsEnabled() == (kind == 'file')
+        assert page.folder_btn.IsShown()
+        assert page.folder_btn.IsEnabled() == (kind != 'missing')
+        assert page.copy_btn.IsEnabled()
+        if kind == 'folder':
+            assert page.folder_btn.GetLabel() == 'Open folde&r'
+        if kind != 'missing':
+            page.open_selected(containing=True)
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_links()
+    expected = [('folder', str(path))] if kind == 'folder' else [('show', path)]
+    assert env['opened'] == ([] if kind == 'missing' else expected)
+
+
+def test_single_path_code_block_offers_file_actions_without_changing_enter(frame, env, monkeypatch):
+    path = env['tmp'] / 'my notes.txt'
+    path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'```text\n{path}\n```'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsShown() and page.open_btn.IsEnabled()
+        assert page.folder_btn.IsShown() and page.folder_btn.IsEnabled()
+        focused = []
+        monkeypatch.setattr(page.detail, 'SetFocus', lambda: focused.append(True))
+        page.activate()
+        assert focused == [True]
+        assert page.owner.chosen_link is None
+        page.open_selected()
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_code_blocks()
+    assert env['opened'] == [str(path)]
 
 
 def test_typing_narrows_the_links(frame, env, monkeypatch):
@@ -11477,6 +11523,7 @@ def refuse_codex_creation(frame, monkeypatch):
 
 @pytest.mark.parametrize('source', [None, 'continue'])
 def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(frame, env, monkeypatch, source):
+    from thechatplace.sessions import SessionInfo
     # New Session (or Continue Here) is closed by the time Codex refuses, and
     # with no editable chat open the message box is hidden, so the first
     # message goes to the clipboard, said first, before the reason (#257).
@@ -11484,7 +11531,8 @@ def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(f
     stores = refuse_codex_creation(frame, monkeypatch)
     assert not frame.own_reply.IsShown()
     frame._create_codex_owned('/workspace', 'Refused', 'My first message',
-                              source=object() if source else None, sandbox='workspace-write')
+                              source=SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+                              if source else None, sandbox='workspace-write')
     assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
     said = env["feedback"][-1]
     assert said.startswith('No Codex chat was started. Your first message is copied to the clipboard. '
@@ -11810,6 +11858,7 @@ def test_window_new_and_continue_pass_codex_model_effort_selection(frame, monkey
     assert args == ('/', 'Synthetic', 'Synthetic prompt')
     assert options['model'] == 'synthetic-one' and options['effort'] == 'future-effort'
     assert options.get('source') is (source if continuing else None)
+    assert options['provider'] == 'codex'  # legacy selection has no billing(), so stays on subscription
 
 
 def test_codex_catalog_availability_is_announced_without_moving_focus(frame, monkeypatch):
@@ -12962,7 +13011,7 @@ def test_relay_sends_a_claude_reply_to_another_chat_and_goes_there(frame, env, f
     targets, text, title = relay_dialog.seen
     assert title == "Send Reply to Another Chat: Builder"
     # Not Builder itself, nor desktop ones; then a new chat (#378).
-    assert targets == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert targets == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     assert text == ('From Claude, another AI agent, forwarded by the user from their chat '
                     '"Builder":\n\nBuilt it. Tests pass.')
     assert frame._open.title == "Hub probe"
@@ -13031,7 +13080,7 @@ def test_relay_from_a_desktop_session_reads_only(frame, env, fake_runner, relay_
     assert pump(lambda: frame._chat_loaded and frame._chat_messages)
     relay_dialog.pick = lambda text: (0, text)
     frame.on_send_reply_to()
-    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert relay_dialog.seen[0] == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     # A desktop session can't be in an agent conversation (#378).
     assert relay_dialog.problems[0].short == "this chat wasn't started here"
     assert fake_runner.instances[-1].prompt.endswith("Desktop answer")
@@ -15629,8 +15678,9 @@ def test_a_steer_never_taken_in_comes_back_when_the_turn_ends(frame, env, fake_r
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("failed", text="Stopped.", is_error=True))
     assert frame.reply_text.GetValue() == "Also update the README\n\nhalf typed"
-    assert any("steered message for Hub probe wasn't taken in" in text
-               for text in env["feedback"])
+    # Said once the turn's ending has been, so that doesn't cut it off (#663).
+    assert pump(lambda: any("steered message for Hub probe wasn't taken in" in text
+                            for text in env["feedback"]))
 
 
 def test_a_late_steer_says_the_reply_it_follows(frame, env, fake_runner):

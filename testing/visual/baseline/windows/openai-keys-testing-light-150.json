@@ -1,0 +1,503 @@
+{
+ "title": "API Keys",
+ "class": "ApiKeysDialog",
+ "size": [
+  900,
+  968
+ ],
+ "client": [
+  878,
+  912
+ ],
+ "dpi": [
+  144,
+  144
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Provider:",
+   "rect": [
+    8,
+    8,
+    71,
+    26
+   ],
+   "best": [
+    71,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    8,
+    34,
+    862,
+    33
+   ],
+   "best": [
+    184,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Codex (OpenAI)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Key status:",
+   "rect": [
+    8,
+    75,
+    85,
+    26
+   ],
+   "best": [
+    85,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Key status",
+   "label": "Claude: No key",
+   "rect": [
+    10,
+    103,
+    862,
+    45
+   ],
+   "best": [
+    191,
+    58
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "OpenAI: key ending in 0000, added November 17"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "OpenAI API &key:",
+   "rect": [
+    8,
+    154,
+    130,
+    26
+   ],
+   "best": [
+    130,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "OpenAI API key",
+   "label": "",
+   "rect": [
+    10,
+    183,
+    729,
+    33
+   ],
+   "best": [
+    165,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Replace Key",
+   "rect": [
+    743,
+    180,
+    127,
+    36
+   ],
+   "best": [
+    127,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Test Key",
+   "rect": [
+    8,
+    224,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": false,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&move Key...",
+   "rect": [
+    128,
+    224,
+    143,
+    36
+   ],
+   "best": [
+    143,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Test result:",
+   "rect": [
+    8,
+    268,
+    85,
+    26
+   ],
+   "best": [
+    85,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Test result",
+   "label": "Test Key sends one short request on your key to check that it works, and counts what it cost in the total.",
+   "rect": [
+    10,
+    296,
+    862,
+    125
+   ],
+   "best": [
+    191,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Testing your key..."
+  },
+  {
+   "class": "StaticBox",
+   "name": "groupBox",
+   "label": "Spending limits",
+   "rect": [
+    8,
+    427,
+    862,
+    274
+   ],
+   "best": [
+    153,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Stop API chats once The Chat Place has &spent $",
+   "rect": [
+    22,
+    463,
+    375,
+    26
+   ],
+   "best": [
+    375,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Stop API chats once The Chat Place has spent, in dollars",
+   "label": "190.00",
+   "rect": [
+    693,
+    462,
+    165,
+    33
+   ],
+   "best": [
+    170,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "5.00"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Stop any &one message at about $",
+   "rect": [
+    22,
+    502,
+    269,
+    26
+   ],
+   "best": [
+    269,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Stop any one message at about, in dollars",
+   "label": "5.00",
+   "rect": [
+    693,
+    501,
+    165,
+    33
+   ],
+   "best": [
+    170,
+    33
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "0.50"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Total:",
+   "rect": [
+    22,
+    538,
+    44,
+    26
+   ],
+   "best": [
+    44,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Total",
+   "label": "",
+   "rect": [
+    24,
+    566,
+    834,
+    81
+   ],
+   "best": [
+    191,
+    81
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Estimated OpenAI costs. Spent since the total was reset: nothing. Held: 50 cents, 50 cents of it for messages no longer running. Left: $4.50."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Sa&ve Limits",
+   "rect": [
+    22,
+    651,
+    121,
+    36
+   ],
+   "best": [
+    121,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "R&eset Total...",
+   "rect": [
+    149,
+    651,
+    132,
+    36
+   ],
+   "best": [
+    132,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Release &Held...",
+   "rect": [
+    287,
+    651,
+    146,
+    36
+   ],
+   "best": [
+    146,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "About spending:",
+   "rect": [
+    8,
+    709,
+    134,
+    26
+   ],
+   "best": [
+    134,
+    26
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "About spending",
+   "label": "The Chat Place counts only its own spending. Your Anthropic account may have less left if other apps use the same key, and a limit can be passed by one request.",
+   "rect": [
+    10,
+    737,
+    862,
+    125
+   ],
+   "best": [
+    191,
+    233
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "The Chat Place counts only its own spending. Your OpenAI account may have less left if other apps use the same key, and a limit can be passed by one request."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Billing Page",
+   "rect": [
+    8,
+    868,
+    124,
+    36
+   ],
+   "best": [
+    124,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    756,
+    868,
+    114,
+    36
+   ],
+   "best": [
+    114,
+    36
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

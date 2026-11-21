@@ -54,7 +54,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 __all__ = [
     "SpeechOption",
@@ -119,6 +119,15 @@ NOTIFY_LABELS = {
     NOTIFY_ALL: "When your sessions finish a turn, or any session needs you",
     NOTIFY_NEEDS_YOU: "Only when a session needs you",
     NOTIFY_OFF: "Off",
+}
+
+#: How a send on API credits says so (#658).
+API_NOTICE_SPEECH = "speech"
+API_NOTICE_SOUND = "sound"
+API_NOTICES = [API_NOTICE_SPEECH, API_NOTICE_SOUND]
+API_NOTICE_LABELS = {
+    API_NOTICE_SPEECH: "Say \"Sent on API credits\"",
+    API_NOTICE_SOUND: "Play the API credits sound",
 }
 
 _SCREEN_READER_ENGINES = {"auto", "jaws", "nvda", "voiceover", "orca"}
@@ -205,6 +214,10 @@ class SpeechSettings:
     #: One-time Provider-column upgrade (#184). Save this even if the user
     #: removes Provider, so later starts respect that choice.
     provider_column_added: bool = True
+    #: One-time Charged to upgrade (#658), kept the same way.
+    charged_column_added: bool = True
+    #: One-time Cost upgrade (#692), kept the same way.
+    cost_column_added: bool = True
     #: "The Chat Place Update Installed" after an update (#141); Settings
     #: turns it off.
     update_installed_notice: bool = True
@@ -249,6 +262,15 @@ class SpeechSettings:
     #: leaves only Help, Check for Updates. The same name and default as
     #: 0.4.1's, which added it, so a choice made there is kept here.
     check_updates_at_start: bool = True
+    #: Chats on API credits (#658). How each send says it's on API credits:
+    #: API_NOTICE_SPEECH ("Sent on API credits") or API_NOTICE_SOUND (its
+    #: own sound, once Sounds has one; until then it's said).
+    api_send_notice: str = API_NOTICE_SPEECH
+    #: Ask "Send on API credits?" before the first message in each API chat
+    #: each time the app runs.
+    api_confirm_first: bool = True
+    #: Say what each reply on API credits cost ("Reply finished, 6 cents").
+    api_say_cost: bool = True
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -306,12 +328,28 @@ class SpeechSettings:
                                          if raw.get("new_session_provider") in ("codex", "copilot")
                                          else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
-        from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
+        from .sessions import clean_fields, FIELD_CHARGED, FIELD_COST, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:
             index = (settings.session_fields.index(FIELD_TITLE) + 1
                      if FIELD_TITLE in settings.session_fields else 0)
             settings.session_fields.insert(index, FIELD_PROVIDER)
+        # Charged to (#658) once, after Provider (or Title, or first), so a
+        # chat on API credits says so; removing it later is remembered.
+        if raw.get("charged_column_added") is not True and FIELD_CHARGED not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_CHARGED)
+        # Cost (#692) once, just after Charged to (or where Charged to would
+        # go), so what a chat on API credits has spent is in its row;
+        # removing it later is remembered.
+        if raw.get("cost_column_added") is not True and FIELD_COST not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_CHARGED) + 1 if FIELD_CHARGED in fields_now
+                     else fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_COST)
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""
@@ -348,6 +386,11 @@ class SpeechSettings:
                                  else sound_events.OTHERS_ALL)
         settings.sound_silent_notifications = raw.get("sound_silent_notifications") is True
         settings.check_updates_at_start = raw.get("check_updates_at_start") is not False
+        # API credits (#658): anything unreadable keeps the side that says more.
+        notice = raw.get("api_send_notice")
+        settings.api_send_notice = notice if notice in API_NOTICES else API_NOTICE_SPEECH
+        settings.api_confirm_first = raw.get("api_confirm_first") is not False
+        settings.api_say_cost = raw.get("api_say_cost") is not False
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are
@@ -623,6 +666,24 @@ def strip_for_speech(text: str) -> str:
     return text.strip()
 
 
+class _Kept:
+    """A kept utterance (Speaker, #663): what it's about, what's said (in
+    full, and if it's said again), and how. ``resay``: this is the one
+    saying again, after an interruption, which is never owed itself.
+    Compared by identity, so a newer one about the same thing is never
+    taken for it."""
+
+    __slots__ = ("about", "text", "again", "settings", "resay")
+
+    def __init__(self, about: str, text: str, again: str, settings: "SpeechSettings",
+                 resay: bool = False) -> None:
+        self.about, self.text, self.again, self.settings = about, text, again, settings
+        self.resay = resay
+
+    def said_again(self) -> "_Kept":
+        return _Kept(self.about, self.again, self.again, self.settings, resay=True)
+
+
 class Speaker:
     """Runs the bundled engine script, one utterance at a time.
 
@@ -635,6 +696,26 @@ class Speaker:
     For screen-reader routes the interrupt also happens at the API level —
     ``SayString(text, true)`` / ``nvdaController_cancelSpeech()`` — because
     killing our process cannot silence speech the reader already queued.
+
+    A *kept* utterance (``speak(keep=True)``, "Sent on API credits to
+    Budget", #663) waits its turn like any non-interrupting one, but an
+    interruption can't lose it. It's about something (``about``, a chat),
+    and stays owed until something else about that is said (the chat's
+    reply with its cost, its "needs you", its ending), a system voice has
+    said it in full, a newer one about the same thing replaces it,
+    ``forget`` lets it go (the chat's turn or aside is over) or ``stop()``
+    closes the app.
+
+    An interruption never loses one still waiting in the queue: it was
+    never said, so it keeps its place after the announcement that cut in.
+    One already handed to a screen reader may have been cut off, and
+    whether it finished can't be told, so after the first interrupting
+    announcement about anything else it's said once more (``again``, its
+    short form) and is then settled: a long turn with lots of other news
+    hears it at most twice, not after every announcement. An interruption
+    you set off yourself (``resay=False``: Repeat Last Announcement) leaves
+    it owed without saying it again. One about another chat never stands
+    in for it.
     """
 
     def __init__(self, popen=subprocess.Popen, screen_readers=None):
@@ -666,6 +747,8 @@ class Speaker:
         #: Linux: ``(text, interrupt) -> bool``, which the window sets so
         #: Orca can be reached through it while it's active (orca.py).
         self.window_announcer: Optional[Callable[[str, bool], bool]] = None
+        #: Kept utterances still owed, by what they're about (#663).
+        self._kept: Dict[str, _Kept] = {}
 
     def _readers(self):
         if self._screen_readers is None:
@@ -709,25 +792,71 @@ class Speaker:
             ]
         return None
 
-    def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True) -> bool:
+    def speak(self, text: str, settings: SpeechSettings, interrupt: bool = True,
+              keep: bool = False, about: str = "", again: str = "",
+              resay: bool = True) -> bool:
         """Queue ``text``; returns False when speech is unavailable.
 
         Never raises and never blocks. ``interrupt=True`` stops whatever is
         being said or waiting first; ``interrupt=False`` (The Chat Place's short
         confirmations) waits for it, and asks a screen reader to queue rather
-        than cut itself off.
+        than cut itself off. ``keep`` (never with ``interrupt``): owed until
+        heard, so a later interruption doesn't lose it (see the class), and
+        said as ``again`` if it's said again. ``about``: what it's about (a
+        chat), which settles a kept utterance about the same thing.
+        ``resay=False``: an interruption you set off yourself (Repeat Last
+        Announcement), after which a kept utterance already handed over
+        isn't said again.
         """
         spoken = strip_for_speech(text)
         if not spoken:
             return False
+        kept = None
+        if keep and not interrupt:
+            kept = _Kept(about or spoken, spoken, strip_for_speech(again) or spoken, settings)
+        with self._lock:
+            if about:
+                # Something about it is said now, or a newer notice
+                # replaces it: either way the one before isn't owed.
+                self._kept.pop(about, None)
+        survivors = []
         if interrupt:
-            self._stop(cancel_now=False)
-        queued = self._queue_utterance(spoken, settings, interrupt)
+            survivors = self._stop(cancel_now=False, resay=resay, about=about)
+        queued = self._queue_utterance(spoken, settings, interrupt, kept=kept,
+                                       owed=kept is not None)
         if not queued:
             self._cancel_if_owed()
+        for owed in survivors:
+            # After the announcement that cut in.
+            self._queue_utterance(owed.text, owed.settings, False, kept=owed)
         return queued
 
-    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool) -> bool:
+    def forget(self, about: str) -> None:
+        """A kept utterance about ``about`` isn't owed any more (#663): the
+        chat's turn or aside is over, so saying it again later would be
+        stale. One still waiting in the queue, or saying it again already
+        due there, is still said: it's true, and was never heard."""
+        with self._lock:
+            self._kept.pop(about, None)
+
+    def rename(self, old: str, new: str) -> None:
+        """What a kept utterance is about has a new name (a chat given
+        another id, #663), so what's said about it under that settles it."""
+        if not old or not new:
+            return
+        with self._lock:
+            kept = self._kept.pop(old, None)
+            if kept is not None:
+                kept.about = new
+                self._kept[new] = kept
+            for _command, _request, queued in self._queue:
+                if queued is not None and queued.about == old:
+                    queued.about = new
+
+    def _queue_utterance(self, spoken: str, settings: SpeechSettings, interrupt: bool,
+                         kept: Optional["_Kept"] = None, owed: bool = False) -> bool:
+        """``kept``: the kept utterance (or its saying again) this is, to be
+        known in the queue; ``owed``: a new one, owed from now (#663)."""
         try:
             # One file pair per utterance: two utterances close together
             # must not overwrite each other's text before it is read. The
@@ -773,7 +902,9 @@ class Speaker:
             return False
         self._log(spoken, settings, interrupt)
         with self._lock:
-            self._queue.append((command, request))
+            self._queue.append((command, request, kept))
+            if kept is not None and owed:
+                self._kept[kept.about] = kept
             if self._worker is None or not self._worker.is_alive():
                 self._worker = threading.Thread(target=self._drain, name="speech",
                                                 daemon=True)
@@ -789,7 +920,7 @@ class Speaker:
                 if not self._queue:
                     self._worker = None
                     return
-                command, request = self._queue.popleft()
+                command, request, kept = self._queue.popleft()
                 generation = self._generation
                 cancel, self._cancel_owed = self._cancel_owed, False
             if cancel:
@@ -801,6 +932,8 @@ class Speaker:
                 if generation != self._generation:
                     continue  # stop() ran after it left the queue
                 if self._to_screen_reader(request):
+                    # A kept one stays owed: the reader may still be saying
+                    # it, and whether it finished can't be told (#663).
                     continue
             kwargs = {}
             if sys.platform == "win32":
@@ -816,6 +949,7 @@ class Speaker:
                                       stderr=subprocess.DEVNULL,
                                       stdin=subprocess.DEVNULL, **kwargs)
             except Exception:
+                self._settle_kept(kept)  # no voice: nothing to say again
                 continue
             with self._lock:
                 if generation != self._generation:
@@ -835,6 +969,13 @@ class Speaker:
             with self._lock:
                 if process in self._running:
                     self._running.remove(process)
+                    if kept is not None and self._kept.get(kept.about) is kept:
+                        del self._kept[kept.about]  # said in full: heard
+
+    def _settle_kept(self, kept: Optional["_Kept"]) -> None:
+        with self._lock:
+            if kept is not None and self._kept.get(kept.about) is kept:
+                del self._kept[kept.about]
 
     def _to_screen_reader(self, request) -> bool:
         """Hand an announcement to the running screen reader. True when that
@@ -946,16 +1087,42 @@ class Speaker:
         """
         self._stop(cancel_now=True)
 
-    def _stop(self, cancel_now: bool) -> None:
+    def _stop(self, cancel_now: bool, resay: bool = True, about: str = "") -> List["_Kept"]:
         """``stop``. Linux: killing ``spd-say`` leaves the text with
         speech-dispatcher, so it's told to cancel, but only when The Chat
         Place's own voice was speaking, and Orca wasn't running beside it:
         speech-dispatcher's cancel stops every client's speech, Orca's too.
         An interrupting announcement leaves the cancel to the speech thread
         (``cancel_now=False``), which makes it before the next utterance,
-        never after."""
+        never after.
+
+        Returns what ``speak`` says after the interrupting announcement
+        (``about`` it, and so not owed now), oldest first (#663): kept
+        utterances, and sayings again, still waiting in the queue, never
+        said; then, unless ``resay`` is False, each one owed that was
+        already handed over, once more, in its short form, no longer owed
+        after that. ``stop`` drops them all."""
         with self._lock:
             self._generation += 1
+            survivors: List[_Kept] = []
+            if cancel_now:
+                self._kept.clear()
+            else:
+                # A saying again about the interrupting chat is settled by
+                # it; an original never yet said isn't: it keeps its place,
+                # or a paid send would go unannounced (#663 review 5).
+                waiting = [kept for _command, _request, kept in self._queue
+                           if kept is not None
+                           and not (kept.resay and about and kept.about == about)]
+                survivors.extend(waiting)
+                if resay:
+                    for owed in list(self._kept.values()):
+                        if any(owed is kept for kept in waiting):
+                            continue  # never handed over: it keeps its place
+                        del self._kept[owed.about]
+                        if not any(kept.resay and kept.about == owed.about
+                                   for kept in waiting):
+                            survivors.append(owed.said_again())
             self._queue.clear()
             running, self._running = self._running, []
             if running and IS_LINUX and not self._voice_beside_orca:
@@ -964,6 +1131,7 @@ class Speaker:
             _kill_quietly(process)
         if cancel_now:
             self._cancel_if_owed()
+        return survivors
 
     def _cancel_if_owed(self) -> None:
         with self._lock:

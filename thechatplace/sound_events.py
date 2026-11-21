@@ -47,6 +47,16 @@ TROUBLE = "trouble"
 COMPACTED = "compacted"
 LIMIT = "limit"
 PEER = "peer"
+#: "Message sent on API credits" (#658). Not in EVENTS yet: every event must
+#: be in app-kit's catalog for this app, with its own sound in each pack, so
+#: it's added there first. Until then the window says "Sent on API credits"
+#: even when Settings asks for the sound (``has_api_sent_sound``).
+API_SENT = "api_sent"
+
+
+def has_api_sent_sound() -> bool:
+    """Whether this build has the API credits send sound (#658)."""
+    return API_SENT in BY_ID
 
 
 @dataclass(frozen=True)

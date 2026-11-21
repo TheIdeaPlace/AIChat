@@ -75,7 +75,9 @@ class LiveTurns:
             said = text if is_open_now else f"{title}: {text}"
             if self._retry_throttle_for().should_speak(session_id, live_turn.retry_reason(data)):
                 self._sound(sound_events.TROUBLE, self._own_key(session_id))
-                self._say(said, interrupt=False)  # news, not over what's being read
+                # News, not over what's being read. Like all of a turn's own
+                # news, it settles a "Sent on API credits" for it (#663).
+                self._say(said, interrupt=False, about=session_id)
             else:
                 self._status(said)
             if is_open_now:
@@ -84,13 +86,14 @@ class LiveTurns:
         if kind == "fallback":
             text = live_turn.fallback_text(data)
             self._sound(sound_events.TROUBLE, self._own_key(session_id))
-            self._say(text if is_open_now else f"{title}: {text}", interrupt=False)
+            self._say(text if is_open_now else f"{title}: {text}", interrupt=False,
+                      about=session_id)
             return True
         if kind == "memory":
             text = live_turn.memory_text(data)
             text = text if is_open_now else f"{title}: {text}"
             if self.speech.announce == ANNOUNCE_FULL:
-                self._say(text, interrupt=False)
+                self._say(text, interrupt=False, about=session_id)
             else:
                 self._status(text)
             return True
@@ -151,7 +154,8 @@ class LiveTurns:
         if keep and not self._store_write(self.store.update, session_id, permission_mode=keep):
             return
         self._update_heading()
-        self._say(text if is_open_now else f"{title}: {text}", interrupt=False)
+        self._say(text if is_open_now else f"{title}: {text}", interrupt=False,
+                  about=session_id)
 
     def _forget_mode_before_plan(self, session_id: str) -> None:
         """The chat left plan mode, or you chose its mode yourself."""
@@ -184,14 +188,14 @@ class LiveTurns:
         # Muse, like Codex, is asked when you choose it (task/list), and says
         # if nothing is running; only its chats started here can stop work.
         return bool(self._background_entries(info)) or (
-            info is not None and info.provider == 'codex' and info.is_own) or (
+            info is not None and info.provider in ('codex', 'codex-api') and info.is_own) or (
             info is not None and info.provider == "muse" and info.is_own and self._can_edit(info))
 
     def on_stop_background_task(self):
         """Chat, Stop Background Task: end one shell command or agent Claude
         left running in the background, keeping the turn and the rest."""
         info = self._open
-        if info is not None and info.provider == 'codex' and info.is_own:
+        if info is not None and info.provider in ('codex', 'codex-api') and info.is_own:
             self._codex_control(info, '/background')
             return
         if info is not None and info.provider == "muse":

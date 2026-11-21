@@ -2,7 +2,8 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M), rather than Windows Alt menu sequences.
+VO+M), rather than Windows Alt menu sequences. On a Mac, dialogs follow the Mac's own keys:
+Return presses the default button, Escape cancels, and Tab or VoiceOver reach the rest.
 
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
@@ -30,8 +31,8 @@ provider supports them.
 Muse Code conversations can also be listed and read. Reply to those chats in
 Muse Code; running Muse chats here is planned for a later milestone.
 
-For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never uses an API
-key. Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
+For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never use an API
+key, unless you make a chat on API credits (see [Chats on API credits](#chats-on-api-credits)). Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 says those count against a monthly credit; past it, turns stop unless you've turned on extra
 usage, which is billed. Tools, Usage and Context (Ctrl+Shift+U) shows where you
@@ -75,10 +76,20 @@ too).
   they are empty until enabled. Muse chats are listed automatically when Muse Code
   is installed at app startup.
   **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex, Copilot or Muse Code), Folder,
-  Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
-  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**, which aren't shown
-  until you add them. Provider says which AI; Kind says where the session started. Other
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex, Copilot or Muse Code),
+  Charged to, Cost, Folder, Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
+  Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**,
+  which aren't shown until you add them. Provider says which AI; Kind says where the session started.
+  **Charged to** says how each of The Chat Place's own chats is paid for: "Claude subscription",
+  "Claude API credits", "ChatGPT subscription", "OpenAI API credits" or "Copilot plan". It's the
+  one place a row says a chat is on API credits. It's left out of the line for sessions started
+  outside The Chat Place, whose charging can't be known for sure, and for agent conversations.
+  Saved column choices from before it existed gain it once, just after Provider. **Cost**
+  (#692) says what a chat on API credits has spent in all, in the words Properties uses: "$1.42",
+  or "an estimated 3 cents" for Codex ("cost unknown for 12,400 tokens" for a model with no known
+  price, never $0). It's left out for subscription chats, sessions started elsewhere and chats
+  that haven't spent anything; saved choices gain it once, just after Charged to, and removing
+  it is remembered. Other
   clients may be identified as an editor, command-line or external session. Saved custom choices
   gain Provider immediately after Title (or first if Title is hidden), without changing their other columns; removing it afterward is remembered. A column with nothing to say for a session is left out of its line. Last
   activity is the last time the session did anything. While a session is working or waiting on
@@ -131,7 +142,7 @@ too).
   Message, with the Applications key, Shift+F10, VO+Shift+M or a right-click) shows the whole
   message as a formatted page. It starts with who wrote it as heading 1, and your screen reader's
   browse mode moves by heading (H), table (T, then its cell commands), list (L) and code block
-  (each is a region: R in JAWS, D in NVDA, named like "Code block, Python, 14 lines"). Links open in your browser. **Read as Plain Text** (Alt+P)
+  (each is a region: R in JAWS, D in NVDA, named like "Code block, Python, 14 lines"). Web links open in your browser; safe local files open in their default app. **Read as Plain Text** (Alt+P)
   switches to a read-only text box, to read by line, word and character (Option+P on a Mac), and
   Settings can make that the default. Escape closes either, back on the same message. On a Mac the
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
@@ -168,7 +179,7 @@ too).
   tool call of a turn that used subagents) on Subagents for that turn, and **Ctrl+Shift+D** on
   Changed Files, for the selected message's turn (or your
   latest) if it changed any files, else for the whole chat. Enter reads an item in full in the Details box
-  (on Links, Enter or Open opens the link in your browser and closes Lists); Ctrl+C (or Copy)
+  (on Links, Enter or Open opens the link and closes Lists); Ctrl+C (or Copy)
   copies it (the code, the address, the file's path, the command or your answer), and on Links
   Ctrl+Shift+C (or Copy as Markdown) copies a Markdown link. Typing narrows the list (the letters go
   to its Filter box); Down Arrow comes back. A kind with nothing says so ("No commands in this
@@ -176,9 +187,21 @@ too).
   its words and then where it goes, a bare address as itself (a long one shortened to its site and
   its end), then who wrote it and roughly when, and "in code" for one in a code block or inline
   code: "release notes, github.com/…/tag/v0.1.5. Claude, 3 messages ago". Each address is listed
-  once. References to files in the repository, such as `[main.py](src/main.py)`, aren't listed.
-  Only web, email and session links open; anything else, such as a file: path, is marked "copy
-  only" and says why if you try. Links in tool calls and results are listed only with Show Tool
+  once. Local paths are listed as **file**, including Windows drive paths, network paths and
+  file: URLs, bare or inside inline code, quotes, angle brackets or Markdown links. Paths with
+  spaces need one of those delimiters. A `:12` line number means the file itself. Clear relative
+  file references, such as `[main.py](src/main.py)`, use the session's working folder when known.
+  **Open** opens an existing safe file in its default app. **Open containing folder** selects
+  it in File Explorer or Finder (on Linux, the file manager or its folder). A folder offers
+  **Open folder** and Copy. Executable, script and shortcut types offer folder access and Copy;
+  the row explains why Open is unavailable. Missing files say **File not found. Copy only.**
+  File safety and existence are checked again when you choose an action. A network path
+  (`\\server\share\…`) isn't checked while the list or page is shown, so an unreachable
+  computer can't hold up The Chat Place; it's checked when you choose Open. The formatted reading
+  view uses the same rules when you activate a file link; Ctrl+L provides the folder and Copy
+  actions. A code block containing just one path also offers Open and folder access, while
+  Enter still reads the code and Copy keeps its original text. Other unsupported link types
+  are copy-only. Links in tool calls and results are listed only with Show Tool
   Activity on. Changed files are listed for Claude, Codex and Copilot chats; commands and decisions for
   Claude chats for now. Codex chats
   also list live tasks captured while run here; older chats and chats run elsewhere may have no
@@ -465,6 +488,179 @@ too).
   just attachments. Each session keeps its own until they're sent. Pasted pictures are saved
   in `%APPDATA%\TheChatPlace\pasted images` (on a Mac,
   `~/Library/Application Support/TheChatPlace/pasted images`).
+
+### Chats on API credits
+
+Claude chats can use an Anthropic API key and Codex chats can use an OpenAI API key
+instead of the corresponding subscription. Nothing changes until you add a key and choose
+API credits for a new chat. The subscription is still the default. Copilot chats cannot use
+API credits.
+
+- **Codex on OpenAI credits.** In **Tools, API Keys**, choose **Codex (OpenAI)** under
+  **Provider** (Alt+P). Add your OpenAI key, starting with `sk-`, in the masked key box.
+  **Test Key** sends a tiny request and counts its estimated cost. Each provider has its own
+  key, limits, total, **Reset Total** and **Release Held**. Both start at $20 overall and
+  about $2 per message until you change them. Save limits before switching
+  providers, or answer the unsaved-changes question. Release Held warns that spending may
+  be left uncounted and never releases money reserved by running messages.
+- **Choose Codex, then API credits** under **Charge to** in New Session. Priced models are
+  gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5, gpt-5.6-sol,
+  gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and gpt-6.1-sol.
+  Other models advertised by Codex's API-key home say **price unknown** in the model list.
+  Model availability still depends on your OpenAI account. Ultra effort is not offered on API credits.
+- **Codex costs assume OpenAI's standard pricing.** If your OpenAI project is set to use Priority processing, Codex chats cost more than The Chat Place estimates.
+- **Prices are estimates**, from token counts and the table checked November 19, 2026.
+  Cache writes are counted where reported; reasoning is included
+  in output. Long-context models use conservative surcharge rates (twice input and cache,
+  one and a half times output), because cumulative counters cannot prove the request's band.
+  Each model uses its own maximum input and output limits. GPT-5.6 Sol's promotional price
+  expires conservatively at 10:00 UTC on November 29, 2026; after that it says price unknown
+  unless the table is updated. OpenAI's billing page is authoritative. Priced limits are approximate and can be exceeded
+  by one request.
+- **Before sending with price unknown**, a required question explains that your OpenAI key
+  will be charged and dollar limits cannot stop a message. Cancel is the default; Enter or
+  Escape on the warning keeps your message. Tab reaches Cancel, then Send on API credits.
+  The question returns after changing the model or restarting the app. It is required even if
+  the optional first-message question is turned off. Every paid send is still announced.
+- **After an unpriced reply**, you hear the chat's name, then **used 12,400 tokens, cost
+  unknown**, for example. Tokens count input plus output, including reasoning; cached input
+  is part of input. These notices remain spoken with the cost setting off.
+- **Unpriced messages keep an allowance** against your overall limit: normally $2 per
+  message, or what remains of that overall allowance. This can block later sends; it cannot
+  cap what a message costs. Send Now (Ctrl+Enter) holds another allowance for a steer.
+  Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the
+  status bar and API Keys identify unpriced usage. Unknown-only spending says **cost unknown**;
+  mixed spending says **priced spending $X, plus unpriced usage**. The status bar gives a short
+  total; Usage and Context gives input, cached-input, cache-write and output tokens. Token records survive
+  restarting, Reset Total and Release Held; Reset starts a new overall usage total while Properties keeps chat history.
+- **Stop in an OpenAI chat** counts reported usage and, when possible, an estimated maximum
+  for one interrupted request: **estimated, at most**. For gpt-5-nano that request ceiling is
+  about six and a half cents. With price unknown, Stop says cost unknown and keeps the
+  allowance; it cannot give a cost ceiling. Missing or inconsistent usage and stream failures can leave credit held;
+  Release Held is available after the message is no longer running. It gives the allowance
+  back; the actual cost is unknown and may be more than the allowance. You can send again after
+  Stop or replace a refused key and continue. A refused request releases its unused hold.
+- **When a price expires during a turn**, it continues with cost unknown and its allowance
+  held. Only later tokens enter unpriced usage. Queued messages come back unsent with a
+  confirmation reason. A reply notice says the price expired and counts only its unpriced
+  tokens. Incomplete reply counts say **at least** or **tokens not reported**.
+- **OpenAI chat isolation.** Codex runs in an app-owned home, separate from your ChatGPT
+  sign-in. Each process receives the protected key through stdin with ephemeral sign-in;
+  the app-owned home is excluded from backups. No key is put in tools' environments or on
+  command lines. Process and thread checks pin OpenAI's address; a conflicting provider is
+  refused. Hosted search, connected services, automatic approval review, subagents,
+  compaction, goals, Ask Aside and copies cut at an earlier turn are unavailable on OpenAI
+  credits. Human approvals and full-history copies within the API backend remain available.
+  Continue Here or Continue on API Credits from a subscription chat makes a new API chat
+  that waits for your first Send. The text copy is a hidden prefix to your message; cancelling
+  Send keeps only your message in the reply box. Billing never changes on the
+  original chat. Agent conversations remain on subscriptions.
+
+The following details describe Claude API chats; the shared send notice, first-message
+question, cost setting and API-credit labels also apply to Codex:
+
+- **Add a Claude key** with Tools, API Keys (Alt+T, P). It opens on **Provider**, whose choices
+  say whether each has a key ("Claude (Anthropic), key added", "Codex (OpenAI), no key"); the
+  rest of the dialog is about the one chosen. With Provider on Claude (Anthropic), its Key status box
+  says "Claude: No key", or "Claude: key ending in 7Q2x, added November 16"; it never shows the
+  key. Paste the key (it starts with
+  `sk-ant-`) into Claude API key (Alt+K) and choose Add Key; the box is cleared once it's saved.
+  The key is kept by the system: protected with your Windows sign-in on Windows, in the
+  Keychain on a Mac, and with `secret-tool` on Linux. It's never in a backup, a bug report, a
+  log or a command line. Like any saved password, a program running as you can read it from
+  there. **Test Key** (Alt+T) sends one tiny request on Haiku and says "Your key
+  works. That test cost less than a cent.", or why it didn't. **Replace Key** puts in another,
+  and **Remove Key** (Alt+M) forgets it after asking. On a Mac, the first message on API
+  credits may bring up a keychain question for "security" (the command that hands Claude Code
+  the key): choose **Always Allow**, or it asks again each time.
+- **Claude spending limits**, in the same dialog: "Stop API chats once The Chat Place has spent $"
+  (Alt+S, $20 at first) and "Stop any one message at about $" (Alt+O, $2 at first). The Total
+  box right after them says what's been spent since the last reset, what's held for messages
+  still running, and what's left. **Save Limits** (Alt+V) keeps them; closing with changes not
+  saved asks first. **Reset Total** (Alt+E) starts counting again from nothing, after asking.
+  **Release Held** (Alt+H) is on only when something is held for messages that are no longer
+  running (left by an earlier run, a crash, or a message you stopped before Claude Code said
+  what it cost): after asking, it lets that go, since those messages may have spent up to that
+  much, and leaves what was spent counted. The Chat
+  Place counts only its own spending: your Anthropic account may have less left if other apps
+  use the same key, and a limit can be passed by one request. **Billing Page** (Alt+B) opens
+  your account's billing page at console.anthropic.com.
+- **Choose it for a chat.** Once a key is added, New Session and Continue Here have **Charge
+  to**: Claude subscription (chosen at first) or API credits. How a chat is charged is fixed
+  when it's made. To carry on a chat of your own on API credits, use **Chat, Continue on API
+  Credits** (Alt+C, E): after asking (Cancel is the default), it makes a new chat that carries
+  on from it, named as Continue Here names a copy ("Notes (continued)"), and leaves the first as
+  it was. That new chat's first message sends the whole conversation again, so it costs more
+  than later ones. Retry from Here and Branch from Here in a chat on API credits make chats on
+  API credits too. Agent conversations stay on the subscription for now: a chat on API credits
+  can't join one, from New Agent Conversation or Send Reply to Another Chat.
+- **What's different.** Fable is offered in New Session and Change Model for chats on API
+  credits, charged at its own price. Claude.ai connectors aren't available on API credits
+  (Claude Code's rule); your own MCP servers still work. Remote Control isn't available in
+  chats on API credits either, so neither is Chat, Other Machines; Session, Remote Control says
+  so. Your plan's usage limits don't apply.
+- **Always knowing.** The chat's row in the session list says "Claude API credits" (or "OpenAI
+  API credits" for Codex) in its Charged to column, and its Cost column says what it has spent.
+  Each reply in it ends with what that reply cost, in the words that were said: "Cost: 19
+  cents", "Cost: an estimated 3 cents" for Codex, or "Cost: unknown, 12,400 tokens" for a model
+  with no known price. It's at the end of the reply's line in the messages list and the last line
+  of the full message (Enter) and its formatted page, whether or not Settings has the cost said.
+  It's kept with the chat in The Chat Place's own store (the newest 500 replies), never in Claude
+  Code's or Codex's files, so it survives a restart (#692). Copy leaves out the cost line;
+  Export keeps it. The window's title, the heading and the
+  messages list's name say so too, and the reply box is named "Your message, API credits".
+  While it's loaded, the status bar shows "API credits: this chat $0.42, The Chat Place $12.30
+  of $20" for a Claude chat. In a Codex chat it shows The Chat Place's estimated priced
+  total and any unpriced token count. Usage and Context (Ctrl+Shift+U) has the chat's
+  figure and what's held. The status bar part is a button: reach it with F6 (or Ctrl+9) and the arrows, and Enter opens
+  Tools, API Keys. Every message
+  you send in it, Ask Aside, queued messages, steering and Send Now included, is said to have
+  gone on API credits once Claude Code has it, always, even when announcements are off. When
+  you send, the status bar says "Sending on API credits…" at once, and what's read back a
+  moment later says it: "Sent on API credits to Paid chat: Add the totals." Otherwise it's
+  "Sent on API credits to Paid chat." If another announcement cuts in over it, it's said once
+  more after that, in the short form, unless Paid chat has said something of its own first
+  (its reply with what it cost, that it needs you, or how its turn ended). Repeat Last
+  Announcement doesn't bring it back. The first message in each
+  such chat each time The Chat Place starts asks "Send on API credits?" first: Enter sends,
+  Escape keeps the message in the reply box. If that message isn't sent after all, the next one
+  asks again. When Claude replies you hear what the reply cost: "Paid chat replied, 6 cents."
+  (or "less than a cent", or "at no cost"). A message you stop, one that fails after it was
+  sent, an answer that leaves work running in the background, a slash command that cost
+  something, and an Ask Aside answer say what they cost too; "at least 6 cents" means Claude
+  Code didn't say what the last part cost, and "cost not known" that it isn't known at all
+  (the cost is still counted toward your limits).
+  Settings (Ctrl+Comma) has the question and the cost under **API credits**: "Ask before the
+  first API-credit message in each chat" (Alt+B) and "Give the cost of each API-credit reply"
+  (Alt+V), both on at first. The cost is said even when announcements are off, unless you turn
+  that setting off.
+- **Before anything is sent** The Chat Place checks with Claude Code that the message will be
+  charged to your key at Anthropic, and to nothing else; if not, or if there's no key, the
+  spending limit is reached or the total is damaged, the message isn't sent, stays in the reply
+  box, and you hear why, before any "Send on API credits?". The key only ever goes to
+  Anthropic's API (`https://api.anthropic.com`), even if a settings file of yours or a
+  project's points Claude Code somewhere else. A chat on the subscription is checked the same
+  way the other round: it never uses a key, or any sign-in but your Claude subscription's. A
+  message that reaches its per-message limit stops, says so and what it cost. One that runs out
+  of what's left of the overall limit stops at that instead, and says it was the overall limit,
+  and, if other chats' messages were holding some of it, that you can send again once they
+  finish. Once the overall limit is reached, nothing more is sent on API credits until you raise
+  it or reset the total. One refused for no
+  credit says that plainly, and a key Anthropic refuses is said within seconds, with the message
+  back in the reply box, rather than after minutes of Claude Code trying again.
+- **Older releases.** Chats on API credits are kept in a file of their own, which releases of
+  The Chat Place from before API credits don't read: they don't list those chats at all, rather
+  than run them on your subscription.
+- **Usage and Properties.** In a chat on API credits, Tools, Usage and Context (Ctrl+Shift+U)
+  has an API credits section at the end: today, the last 7 days, since the total was reset,
+  what's held, what's left of the limit, and spending by model and by chat. In a chat on your
+  subscription, API credits are one line (what's spent and what's left) just before your plan's
+  limits, so the last line is still a plan limit. Properties (Alt+Enter) on a chat says "Charged to: API
+  credits" or "Claude subscription", and for API credits what the chat has spent. These totals
+  count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
+  everything charged to your account, including other apps using the same key, so theirs can
+  be higher. To see The Chat Place's spending there too, make a key just for it: both let you
+  create several keys and show spending for each.
 
 ### Going back: Retry from Here and Branch from Here
 
@@ -1511,7 +1707,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   closes.
 - **Remote Control.** Settings can turn on Remote Control for The Chat Place's sessions, and
   **Session, Remote Control** turns it on or off for one session (or back to the Settings
-  default). A session on Remote Control can be reached from claude.ai and your other devices
+  default). It's never on in a chat on API credits, whatever Settings says; there Session,
+  Remote Control says it isn't available. A session on Remote Control can be reached from
+  claude.ai and your other devices
   while one of its turns is running: each turn is its own Claude Code process, so between turns
   it shows as offline. The same Remote Control session is joined every turn, and Session, Remote
   Control copies its claude.ai address. Turning it on copies the conversation to claude.ai,
@@ -1711,7 +1909,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 ## Install
 
 You need Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview; see
-**Linux** below). For Codex chats, you need a native Codex CLI signed in to ChatGPT. Claude Code is not required for Codex chats.
+**Linux** below). For Codex chats, you need a native Codex CLI and either a ChatGPT sign-in or an OpenAI API key for chats on API credits. Claude Code is not required for Codex chats.
 
 For GitHub Copilot CLI chats (a preview), you need the native GitHub Copilot CLI
 (`winget install GitHub.Copilot` on Windows, `brew install copilot-cli` or GitHub's install
@@ -1909,7 +2107,7 @@ kept in `keys.json`. The user guide's "Changing keyboard shortcuts" has the deta
 | Messages | Enter, or Applications key / Shift+F10 then Read Full Message | Read the whole message; Escape comes back to it |
 | Messages | Ctrl+C | Copy the whole message |
 | Messages | Ctrl+Shift+B | Lists, on Code Blocks for this message: read and copy each one |
-| Messages | Ctrl+L | Lists, on Links: every link in the chat, to open in your browser or copy (also from the session list and the reply box) |
+| Messages | Ctrl+L | Lists, on Links: web, email, session and local file links, to open or copy (also from the session list and the reply box) |
 | Messages | Ctrl+Shift+J | Lists, on Tasks: the task list, each step to do, in progress or done |
 | Messages | Ctrl+Shift+C | Copy the message's last code block |
 | Messages | Ctrl+T | Show or hide tool activity in the loaded session |
@@ -1990,7 +2188,22 @@ first message and `--resume <id>` for each reply, plus `--allowedTools` with any
 "for this chat". The message goes in on standard input as a stream-json message, and standard
 input stays open for the turn so The Chat Place can answer what Claude asks; it's closed when the
 turn's result arrives. That runs under the same login as the desktop app, never an API key; it
-uses the plan's Agent SDK credit, as any `claude -p` does.
+uses the plan's Agent SDK credit, as any `claude -p` does. The exception is a chat you made on
+API credits: its turns get your key only through Claude Code's `apiKeyHelper` setting, a
+command that reads the kept key and prints it for Claude Code, and a `--max-budget-usd`
+reserved from the spending limits. The key is never in an environment variable, so the
+commands Claude runs (Bash), hooks and MCP servers don't get it in their environment; like any
+saved password, though, a program running as you can read it from the system's key store. The
+same `--settings` sets `ANTHROPIC_BASE_URL` to `https://api.anthropic.com`, which overrides any
+settings file that points elsewhere, and keeps TLS certificates checked. Claude Code is started
+without `NODE_EXTRA_CA_CERTS` (and `NODE_TLS_REJECT_UNAUTHORIZED`) in its environment, so a
+certificate authority added there, such as a company proxy's that decrypts traffic, isn't
+trusted with the key. A proxy set with `HTTPS_PROXY` is still used: the connection through it
+is encrypted to Anthropic and checked against the usual certificate authorities, so a proxy that
+only passes traffic on works and one that decrypts it is refused. Claude Code passes these
+settings on to what it runs, so in an API chat the commands Claude runs, hooks and MCP servers
+get no extra certificate authority either. Its message goes only once Claude Code's answer to
+`initialize` says the turn will use that key at Anthropic's own API.
 
 - It never uses `--bare`, which needs an API key.
 - It needs the native `claude.exe`. The npm install's `claude.cmd` is never run, because Windows
@@ -2009,8 +2222,14 @@ uses the plan's Agent SDK credit, as any `claude -p` does.
   that never comes. The second is anything that would move billing off the subscription:
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and the Bedrock, Vertex and
   Foundry switches. Both lists are in `claude_cli.py`.
-- As a second check, `claude` reports where its credentials came from before it sends anything.
-  If that's an API key rather than the subscription login, The Chat Place stops the run and says so.
+- Before the message is written, Claude Code's answer to `initialize` says how the turn would
+  be charged; a subscription chat that would use any API key, any sign-in token other than your
+  subscription's (your claude.ai login, or a token from `claude setup-token` given as
+  `CLAUDE_CODE_OAUTH_TOKEN` in a settings file), such as an `ANTHROPIC_AUTH_TOKEN` in a settings
+  file or a kind Claude Code reports that The Chat Place doesn't know, or another provider, is
+  stopped there, with nothing sent. As a second check, `claude` reports where its credentials came from
+  before it sends anything. If that's an API key rather than the subscription login, The Chat
+  Place stops the run and says so. (A chat on API credits is checked the other way round.)
 
 Desktop app sessions are read-only because two programs resuming one session run their turns into
 the same transcript at once and tangle it. Only the desktop app writes to its sessions, and only
@@ -2090,9 +2309,11 @@ instead of waiting. With no turn running, Ctrl+Alt+Enter simply sends, as Ctrl+E
 - **Claude chats:** The Chat Place says "Steering" and the chat's name (reading your message back
   as it does for Send), then "has your message" once Claude takes it in. If Claude had already
   finished its reply, that reply is read, then that Claude is answering your message, straight
-  after, in the same turn. A steered message that the turn ends (or Stop stops) before Claude
-  takes it in comes back to the reply box, never lost or sent twice. Attached files go as their
-  paths, as for a queued message.
+  after, in the same turn. A steered message, or one sent with Send Now, that the turn ends (or
+  Stop stops) before Claude takes it in comes back to the reply box, never lost, and you hear
+  that it wasn't taken in. With a Claude Code too old to say what it has taken in, you hear that
+  it "may not have been taken in" instead, so check the chat before you send it again. Attached
+  files go as their paths, as for a queued message.
 - **Codex chats:** Codex is asked to take the message into the turn, and The Chat Place says
   "Steered" once Codex accepts it. If the turn has just ended, or Codex is still taking an
   earlier steered message, the message comes back to the reply box (a queued one stays queued)
