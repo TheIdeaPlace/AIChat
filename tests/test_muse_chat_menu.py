@@ -54,6 +54,11 @@ def world(tmp_path, monkeypatch, app):
     from thechatplace.ui.main_frame import MainFrame
 
     fake_env.install(tmp_path, monkeypatch.setattr)
+    # Claude installed, whatever this computer has: Send Reply to Another Chat
+    # offers a new Claude chat only then, and CI's machines have no Claude.
+    from thechatplace import platform_paths
+    monkeypatch.setattr(platform_paths, "find_claude",
+                        lambda *a, **k: platform_paths.ClaudeLookup(str(tmp_path / "claude.exe")))
     frame = MainFrame(store=OwnSessionStore(tmp_path / "own.json"), check_updates_at_start=False)
     frame._list_timer.Stop()
     execution = Execution()
