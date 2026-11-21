@@ -1977,6 +1977,10 @@ class FormattedMessageDialog(wx.Dialog):
         except Exception as exc:  # noqa: BLE001
             self.Destroy()
             raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
+        if sys.platform == "win32":
+            # wx titles the web view's own window "wxWebView", and screen
+            # readers said it on the way into the page every time (#693).
+            self.view.SetLabel("")
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.view, 1, wx.EXPAND | wx.ALL, 4)
         row = wx.BoxSizer(wx.HORIZONTAL)

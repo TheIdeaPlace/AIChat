@@ -6,7 +6,7 @@ left out (CI's machines can't draw WebView2 pages).
 """
 import wx
 
-from tests.markers import windows_layout
+from tests.markers import msaa, windows_layout
 from thechatplace.ui import dialogs
 
 
@@ -176,6 +176,7 @@ class _View(wx.Panel):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self.SetLabel("wxWebView")  # as wx titles the real one
         self.scripts, self.focused = [], 0
 
     def EnableAccessToDevTools(self, _on):
@@ -237,6 +238,18 @@ def test_mac_and_linux_pages_still_answer_escape_and_take_focus(app, monkeypatch
         page._on_navigated(_Event())
         wx.Yield()
         assert ended == [wx.ID_CANCEL]
+    finally:
+        page.Destroy()
+        frame.Destroy()
+
+
+@msaa
+def test_the_web_views_window_has_no_title_to_read(app, monkeypatch):
+    # #693: JAWS said "wxWebView", wx's title for it, on the way into the page.
+    frame = _frame()
+    page = _real_page(monkeypatch, frame, watch=True)
+    try:
+        assert page.view.GetLabel() == ""
     finally:
         page.Destroy()
         frame.Destroy()
