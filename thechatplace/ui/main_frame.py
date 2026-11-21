@@ -5218,7 +5218,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "unknown": "Muse Code's running state is unknown. Check the chat before sending again.",
         }
         if update.get("background") and update.get("state", "idle") == "idle":
-            # The turn has ended, but a workflow it started is still running.
+            # The turn has ended, but a workflow or command it started is
+            # still running.
             labels["idle"] = "Muse Code is working in the background."
         return update.get("notice") or labels.get(update.get("state", "idle"), "Ready.")
 

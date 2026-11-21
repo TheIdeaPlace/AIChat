@@ -89,3 +89,49 @@ def test_stop_task_is_for_chats_started_here(host):
     from thechatplace.own_store import OwnSession
     with pytest.raises(MuseHistoryError):
         host.stop_task(OwnSession("other", "Other", "", provider="codex"), TASK)
+
+
+def test_an_idle_chat_with_a_background_command_is_working_until_it_ends(host):
+    """A turn can end with a command still running, a test suite say: Muse
+    calls the chat idle, and lists the command with task/list. The chat is
+    Working, and the window keeps watching, until the command ends."""
+    from test_muse_provider import Connection
+    from thechatplace.providers.muse import MuseProvider
+    from thechatplace.sessions import IDLE, WORKING
+    own = record(host)
+    host.send(own, "Synthetic request")
+    host.execution.complete("completed")
+    host.execution.tasks = host.execution.tasks[:1]
+    provider = MuseProvider(connection=Connection(), execution=host.execution)
+    provider._owned = host
+    polled = host.poll(own)
+    assert polled["state"] == "idle" and polled["background"] is True
+    assert provider.owned_state(own) == WORKING
+    host.execution.tasks = []
+    assert host.poll(own)["background"] is False
+    assert provider.owned_state(own) == IDLE
+
+
+def test_a_task_in_a_state_muse_may_add_later_is_not_background_work(host):
+    own = record(host)
+    host.send(own, "Synthetic request")
+    host.execution.complete("completed")
+    host.execution.tasks = host.execution.tasks[1:]  # only the unknown status
+    assert host.poll(own)["background"] is False
+
+
+def test_a_refused_task_list_leaves_the_chat_idle_not_unknown(owned):  # noqa: F811
+    own = record(owned)
+    owned.send(own, "Synthetic request")
+    owned.execution.complete("completed")
+    owned.execution.error = ("task/list", MuseRequestError(-32010))
+    polled = owned.poll(own)
+    assert polled["state"] == "idle" and polled["background"] is False
+
+
+def test_a_running_turn_does_not_ask_for_background_tasks(host):
+    own = record(host)
+    host.send(own, "Synthetic request")
+    host.execution.messages.clear()
+    assert host.poll(own)["state"] == "running"
+    assert not any(m == "task/list" for m, _ in host.execution.messages)

@@ -1274,8 +1274,18 @@ class MuseOwnedChats:
         # Retained for callers from earlier drafts; only a native read settles.
         self.poll(record)
 
+    def _has_tasks(self, record: OwnSession) -> bool:
+        """Whether Muse lists background work still running for this chat.
+        A refused or unreadable list isn't proof of either, so the workflow
+        check still decides; the chat's own state isn't made unknown by it."""
+        try:
+            return bool(self._task_rows(record))
+        except MuseHistoryError:
+            return False
+
     def has_background_work(self, native_id: str) -> bool:
-        """Whether the last poll of this chat found a workflow still running."""
+        """Whether the last poll of this chat found background work running:
+        a command Muse lists with task/list, or a workflow."""
         return native_id in self._background
 
     def in_flight(self, native_id: str) -> bool:
@@ -1361,11 +1371,14 @@ class MuseOwnedChats:
                 state = self._reconcile(record, result)
                 pending = self.pending_approvals(record)
                 self._receipts(record, pending)
-                # An idle chat can still have a workflow running, whose
-                # sub-agents ask permission here after the turn has ended.
-                # Only then is the full history worth reading.
-                background = state == "idle" and background_work(self.execution.request(
-                    "session/read", {"sessionId": record.cli_session_id, "excludeItems": False}))
+                # An idle chat can still be working: a command it left
+                # running in the background (a test suite, say), which
+                # task/list shows, or a workflow, whose sub-agents ask
+                # permission here after the turn has ended and which
+                # task/list doesn't show. Only an idle chat is asked.
+                background = state == "idle" and (self._has_tasks(record) or background_work(
+                    self.execution.request("session/read", {"sessionId": record.cli_session_id,
+                                                            "excludeItems": False})))
                 if background:
                     self._background.add(record.cli_session_id)
                 else:

@@ -80,7 +80,9 @@ is working in the background; each sub-agent's permission request is announced l
 other (Ctrl+Shift+A), and when the work is done Muse Code replies with the results and
 you hear that it finished. The conversation shows the workflow, whether it's still
 running, and each sub-agent's task. Meanwhile the chat's Status is Working, and Needs
-you while a sub-agent waits for your answer.
+you while a sub-agent waits for your answer. A command Muse Code leaves running after its
+reply, such as a test suite, keeps the chat Working in the same way, and you hear that it's
+working in the background, until the command ends.
 Chat, Stop Background Task lists the chat's running background work by tool and
 command, asks before stopping the one you choose, and the turn carries on. Muse's
 **Ask me** policy prompts for restricted actions; safe actions can run without asking.

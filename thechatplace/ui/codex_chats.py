@@ -339,9 +339,10 @@ class CodexChats(SoundHost, CodexExtras):
                         "Check the chat before sending again."}
                 wx.CallAfter(self._apply_muse_owned_update, record, update, cancelled)
                 if update.get("background"):
-                    # A workflow outlives its turn (Muse 1.4.24): keep asking,
-                    # less often, so its sub-agents' permission requests and
-                    # Muse's reply with its results still reach you.
+                    # A workflow or a background command outlives its turn
+                    # (Muse 1.4.24): keep asking, less often, so the chat
+                    # stays Working, sub-agents' permission requests and
+                    # Muse's reply with the results still reach you.
                     if cancelled.wait(5):
                         return
                     continue
