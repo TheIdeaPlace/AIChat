@@ -41,6 +41,7 @@ class _Key:
 def _frame():
     frame = wx.Frame(None, title="Main")
     wx.TextCtrl(frame)
+    frame.Show()  # wx.WindowDisabler leaves hidden windows alone
     return frame
 
 
