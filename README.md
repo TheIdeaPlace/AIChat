@@ -659,8 +659,13 @@ question, cost setting and API-credit labels also apply to Codex:
   what's held, what's left of the limit, and spending by model and by chat. In a chat on your
   subscription, API credits are one line (what's spent and what's left) just before your plan's
   limits, so the last line is still a plan limit. Properties (Alt+Enter) on a chat says "Charged to: API
-  credits" or "Claude subscription", and for API credits what the chat has spent. These totals
-  count only what The Chat Place spends. The Claude Console and the OpenAI dashboard show
+  credits" or "Claude subscription", and for API credits what the chat has spent. Every cost
+  The Chat Place shows is an estimate and this copy's own count: a Claude cost is what Claude Code
+  reports for each message, and a Codex cost is worked out from OpenAI's prices and the usage
+  Codex reports. Price changes, discounts, taxes and usage that couldn't be counted can make the
+  real charge differ; the Claude Console's and the OpenAI dashboard's usage and billing pages are
+  the final word. These totals
+  count only what this copy of The Chat Place spends. The Claude Console and the OpenAI dashboard show
   everything charged to your account, including other apps using the same key, so theirs can
   be higher. To see The Chat Place's spending there too, make a key just for it: both let you
   create several keys and show spending for each.
