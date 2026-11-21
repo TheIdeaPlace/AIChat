@@ -2303,6 +2303,12 @@ class FormattedMessageDialog(wx.Dialog):
         if watchdog is not None:
             watchdog.Stop()
         self._drop_page_file()
+        # A window is destroyed later, at idle time, which a running loop of
+        # its own may never reach: end the loop now (#693). Destroyed with its
+        # parent instead, EVT_WINDOW_DESTROY ends it (_on_destroy_kept).
+        loop = getattr(self, "_own_loop", None)
+        if loop is not None:
+            loop.Exit()
         return super().Destroy()
 
     def _on_loaded(self, _event):
