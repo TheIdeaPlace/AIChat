@@ -36,7 +36,7 @@ STATUS_UNAVAILABLE = "status unavailable"
 #: Backends whose chats come from the other app's own list (#184, #352): only
 #: an explicit idle finishes a turn there, and their history is read in that
 #: app's terms ("Reply in Copilot CLI"), never as a Claude transcript.
-LISTED_PROVIDERS = ("codex", "codex-api", "copilot")
+LISTED_PROVIDERS = ("codex", "codex-api", "copilot", "muse")
 #: Backends whose owned chats run through a provider runtime that the window
 #: drives with SessionController.owned_action (send, stop, answer, prepare,
 #: live state updates). Adding one means at least (#352, #370):
@@ -51,9 +51,16 @@ LISTED_PROVIDERS = ("codex", "codex-api", "copilot")
 #:   file of their own if older releases would refuse them).
 #: Codex-only features (permission modes, saved rules, plans, Continue Here,
 #: agent conversations) stay Codex's until each is built for another.
-RUNTIME_PROVIDERS = ("codex", "codex-api", "copilot")
+RUNTIME_PROVIDERS = ("codex", "codex-api", "copilot", "muse")
 #: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
-HOME_APPS = {"codex": "Codex", "codex-api": "The Chat Place", "copilot": "Copilot CLI"}
+HOME_APPS = {"codex": "Codex", "codex-api": "The Chat Place", "copilot": "Copilot CLI",
+             "muse": "Muse Code"}
+PROVIDER_LABELS = {"claude": "Claude", "codex": "Codex", "codex-api": "Codex",
+                   "copilot": "Copilot", "muse": "Muse Code"}
+
+
+def provider_label(provider: str) -> str:
+    return PROVIDER_LABELS.get(provider, provider.capitalize())
 
 
 def home_app(provider: str) -> str:
@@ -282,7 +289,7 @@ class SessionInfo:
                       + ", ".join(self.groups))
         return {
             FIELD_TITLE: self.title or "Untitled session",
-            FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
+            FIELD_PROVIDER: self.provider_label or provider_label(self.provider),
             FIELD_CHARGED: self.charged_to,
             FIELD_COST: self.api_cost if self.api_credits else "",
             FIELD_FOLDER: self.repo,
@@ -321,7 +328,7 @@ FIELD_GROUPS = "groups"
 FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
-    (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
+    (FIELD_PROVIDER, "Provider (Claude, Codex, Copilot or Muse Code)"),
     (FIELD_CHARGED, "Charged to (subscription, plan or API credits)"),
     (FIELD_COST, "Cost (what a chat on API credits has spent)"),
     (FIELD_FOLDER, "Folder"),
@@ -444,6 +451,7 @@ VIEW_HIDDEN = "hidden"
 VIEW_CLAUDE = "provider:claude"
 VIEW_CODEX = "provider:codex"
 VIEW_COPILOT = "provider:copilot"
+VIEW_MUSE = "provider:muse"
 GROUP_VIEW_PREFIX = "group:"
 VIEWS = [
     (VIEW_ALL, "&All Sessions"),
@@ -461,12 +469,14 @@ VIEWS = [
     (VIEW_CLAUDE, "C&laude Chats"),
     (VIEW_CODEX, "Code&x Chats"),
     (VIEW_COPILOT, "&GitHub Copilot Chats"),
+    (VIEW_MUSE, "&Muse Code Chats"),
     (VIEW_ARCHIVED, "Archi&ved"),
     (VIEW_HIDDEN, "&Hidden"),
 ]
 #: Said and shown in the list's name: "showing needs you or working".
 VIEW_SPOKEN = {VIEW_CLAUDE: "Claude chats", VIEW_CODEX: "Codex chats",
                VIEW_COPILOT: "GitHub Copilot chats",
+               VIEW_MUSE: "Muse Code chats",
                VIEW_ALL: "all sessions", VIEW_ACTIVE: "needs you or working",
                VIEW_NEEDS_YOU: "needs you", VIEW_WORKING: "working sessions",
                VIEW_NEW_REPLY: "sessions with a new reply", VIEW_IDLE: "idle sessions",
@@ -502,7 +512,7 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return info.archived
     if info.archived:
         return False
-    if view in (VIEW_CLAUDE, VIEW_CODEX, VIEW_COPILOT):
+    if view in (VIEW_CLAUDE, VIEW_CODEX, VIEW_COPILOT, VIEW_MUSE):
         wanted = view.removeprefix("provider:")
         return (info.provider == wanted or wanted in info.member_providers
                 or wanted == 'codex' and info.provider == 'codex-api')

@@ -7341,7 +7341,7 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
 def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
     dialog, said, focused = _columns_dialog(frame, ["title", "status"])
     try:
-        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex, Copilot or Muse Code)"
         dialog.shown.SetSelection(0)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DELETE)
         assert said[-1] == "Title removed. 1 column shown."
@@ -7356,7 +7356,7 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.fields() == ["status", "title"]
         assert focused[-1] == "available"  # stays, to add more
         assert dialog.shown.GetSelection() == 1  # on what it added
-        assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
+        assert dialog.available.GetString(0) == "Provider (Claude, Codex, Copilot or Muse Code)"
         dialog.reset()
         assert said[-1] == "Columns reset to the default: 13 shown, title first."
         assert dialog.fields()[0] == "title" and len(dialog.fields()) == 13
@@ -17449,3 +17449,26 @@ def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
     frame._note_worktree_move("sub-1", "In a subfolder")
     pump(lambda: False, timeout=1)
     assert frame.store.get("sub-1").cwd == str(folder)
+
+
+@pytest.mark.parametrize("snapshot,said", [
+    # Still refreshing after discovery's brief wait: shown from the last list, not unavailable.
+    (hub.Snapshot(stale_providers={"codex", "muse"}, pending_providers={"codex", "muse"}), None),
+    # A refresh of an earlier outage that hasn't finished yet is still an outage.
+    (hub.Snapshot(stale_providers={"codex", "muse"}, provider_errors={"muse": "Session discovery unavailable"}),
+     "Muse Code discovery unavailable; listed chats may be out of date."),
+])
+def test_f5_names_only_providers_whose_discovery_failed(frame, monkeypatch, snapshot, said):
+    """Every F5 found Codex and Muse still refreshing (they take a second or
+    two; discovery waits 0.05) and called them unavailable."""
+    settle(frame)
+    frame._first_snapshot = False
+    told = []
+    monkeypatch.setattr(frame, "_feedback", told.append)
+    monkeypatch.setattr(frame.sessions, "collect", lambda *args, **kwargs: snapshot)
+    frame.refresh_sessions(force=True)
+    assert pump(lambda: not frame._snapshot_busy) and told
+    if said is None:
+        assert "discovery unavailable" not in told[-1]
+    else:
+        assert told[-1].endswith(said)

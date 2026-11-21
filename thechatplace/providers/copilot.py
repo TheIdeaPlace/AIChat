@@ -1359,7 +1359,7 @@ def _read_entry(native_id: str, events: Path, workspace_path: Path, stat,
     written_ms = stat.st_mtime_ns // 1_000_000
     created = _ms(workspace.get("created_at"))
     updated = max(_ms(workspace.get("updated_at")), written_ms) or created
-    # Kind is where the session started (CLAUDE.md): Copilot CLI in a
+    # Kind is where the session started (AGENTS.md): Copilot CLI in a
     # terminal, as the Codex adapter files its "cli" chats.
     source = TERMINAL if workspace.get("client_name") == "github/cli" else "external"
     return _Entry(stamp=stamp, source=source, title=title,

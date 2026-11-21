@@ -10,6 +10,7 @@ from __future__ import annotations
 from .. import chat_permissions, claude_settings, codex_saved_rules
 from ..claude_cli import PERMISSION_MODES, normalize_permission_mode
 from ..sessions import NEEDS_YOU, WORKING
+from ..ui_text import key_name, your_key
 
 #: Codex's sandbox choices, also used by agent-conversation templates.
 CODEX_MODES = [(('read-only', 'on-request'), 'Read-only; asks before allowing changes'),
@@ -58,6 +59,48 @@ def review_history_text(reviews) -> str:
     Lists' Approvals has (lists.approval_items), so the same history doesn't
     read in two orders (#596)."""
     return REVIEW_HISTORY_HEADING + '\n\n' + '\n\n'.join(row[2] for row in reversed(list(reviews)))
+
+
+class MusePermissions:
+    """Chat Permissions for an owned Muse Code chat: nothing is kept here.
+
+    Muse enforces the native prompt-unmatched policy, including its native
+    rules. Requests are announced even while another conversation is open.
+    """
+    can_remove = False
+    empty_text = "This Muse Code chat keeps no always-allow rules here."
+
+    def __init__(self, frame, info, record):
+        self.frame = frame
+        self.info = info
+        self.record = record
+
+    def _profile(self) -> str:
+        from ..providers.muse import PROFILES
+        chosen = self.record.provider_options.get("muse_profile") if self.record else None
+        return chosen if chosen in PROFILES else ":ask-me"
+
+    def mode_text(self) -> str:
+        from ..providers.muse import PROFILE_LABELS
+        return f"Muse Code: {PROFILE_LABELS[self._profile()]}"
+
+    def can_change_mode(self):
+        return True, ""
+
+    def change_mode(self, done):
+        self.frame._change_muse_mode(self.info, after=done)
+
+    def note(self) -> str:
+        who = {":read-only": "It only reads files, and asks you about anything restricted.",
+               ":ask-me": "It asks you before restricted actions.",
+               ":auto-review": "An AI reviewer may approve restricted actions without asking you.",
+               ":unrestricted": "Nothing asks you: it has no file sandbox and no approval prompts."}
+        return (f"{who[self._profile()]} Requests are announced even while you read another chat: "
+                f"press {key_name(your_key('Ctrl+Shift+A'))} to review a permission or answer a "
+                "question, or Stop to cancel the turn. The Chat Place keeps no always-allow rules here.")
+
+    def load(self, done):
+        done([], None)
 
 
 class ClaudePermissions:

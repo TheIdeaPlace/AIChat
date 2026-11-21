@@ -196,6 +196,7 @@ MENU_BAR: Tuple[Menu, ...] = (
             Command("claude_sign_in", "&Claude Code..."),
             Command("codex_sign_in", "C&odex..."),
             Command("copilot_sign_in", "Co&pilot..."),
+            Command("muse_sign_in", "&Muse Code..."),
         )),
         # A Claude API key and the limits on what it may spend (#658).
         Command("api_keys", "A&PI Keys..."),

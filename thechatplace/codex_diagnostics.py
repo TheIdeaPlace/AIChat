@@ -1,5 +1,5 @@
-"""Bounded owned-chat worker failures (Codex, Copilot) without commands, chat
-text or exception bodies."""
+"""Bounded failures of owned-chat workers (Codex, Copilot, Muse Code) and of
+other providers' discovery, without commands, chat text or exception bodies."""
 import calendar
 import re
 import threading
@@ -10,7 +10,12 @@ from .providers.codex_rpc import CodexMessageTooLong, CodexTurnRejected, CodexSt
 
 _LOCK = threading.Lock()
 _LIMIT = 65536
-_RECORD = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (Codex|Copilot) worker failed: ([A-Za-z_][A-Za-z0-9_]{0,63}); details redacted\.')
+_RECORD = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (Codex|Copilot|Muse) worker failed: ([A-Za-z_][A-Za-z0-9_]{0,63}); details redacted\.')
+#: A provider's session discovery failing: the list then says "discovery
+#: unavailable", and this says why, in the app's own words when it has some.
+_DISCOVERY = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (codex|copilot|muse) discovery failed: '
+                        r'([A-Za-z_][A-Za-z0-9_]{0,63})(?:; details redacted\.|\. It said: ([^\x00-\x1f\x7f]{1,1000}))')
+_DISCOVERY_NAMES = {"codex": "Codex", "copilot": "Copilot", "muse": "Muse Code"}
 _REASON = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex worker refused turn: ([a-z_]+)\.(?: Codex said: ([A-Za-z, ]{1,120})\.)?')
 _CONNECTION = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ Codex connection failure: ([a-z_]+)\.')
 #: A Copilot failure with the reason the app wrote for it (#464).
@@ -46,6 +51,13 @@ def safe_reason(error):
         # count and the limit, nothing from the message itself.
         text = str(error)
         return text if len(text) <= 1000 and not any(ord(c) < 32 for c in text) else ''
+    from .providers.muse_connection import MuseHistoryError
+    if isinstance(error, MuseHistoryError):
+        # Every Muse error is the app's own words: MuseRequestError keeps only
+        # the code, and the connection's _error is a fixed sentence. Without
+        # this, each Muse refusal reached the window as a generic message.
+        text = str(error)
+        return text if len(text) <= 1000 and not any(ord(c) < 32 for c in text) else ''
     if _copilot_error(error):
         # Copilot's runtime words every reason it gives to be shown (#370).
         text = str(error)
@@ -64,7 +76,9 @@ def record_failure(error):
     name = type(error).__name__
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name):
         name = 'Exception'
-    worker = 'Copilot' if _copilot_error(error) else 'Codex'
+    from .providers.muse_connection import MuseHistoryError
+    worker = ('Copilot' if _copilot_error(error)
+              else 'Muse' if isinstance(error, MuseHistoryError) else 'Codex')
     line = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + f' {worker} worker failed: {name}; details redacted.'
     if type(error) is CodexTurnRejected and error.code in CodexTurnRejected.REASONS:
         line = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + f' Codex worker refused turn: {error.code}.'
@@ -83,6 +97,32 @@ def record_failure(error):
         if (reason and not _PRIVATE.search(reason) and _WORDED.fullmatch(worded)
                 and len(worded.splitlines()) == 1):
             line = worded
+    _write(line)
+
+
+def record_discovery_failure(provider_id, error):
+    """One line for a provider whose session discovery failed: which one, the
+    error's type, and the app's own words for it if they're fit for a bug
+    report. Never the exception's own text, which can hold paths."""
+    if provider_id not in _DISCOVERY_NAMES:
+        return
+    name = type(error).__name__
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name):
+        name = 'Exception'
+    stamp = time.strftime(_STAMP, time.gmtime())
+    line = f'{stamp} {provider_id} discovery failed: {name}; details redacted.'
+    try:
+        reason = safe_reason(error)
+    except Exception:
+        reason = ''
+    worded = f'{stamp} {provider_id} discovery failed: {name}. It said: {reason}'
+    if (reason and not _PRIVATE.search(reason) and _DISCOVERY.fullmatch(worded)
+            and len(worded.splitlines()) == 1):
+        line = worded
+    _write(line)
+
+
+def _write(line):
     try:
         with _LOCK:
             path = platform_paths.codex_diagnostic_path()
@@ -93,7 +133,7 @@ def record_failure(error):
             with path.open('a', encoding='utf-8') as output:
                 output.write(line + '\n')
     except Exception:
-        pass  # diagnostics must not affect turn execution or UI delivery
+        pass  # diagnostics must not affect turns, discovery or UI delivery
 
 
 def _read_lines():
@@ -121,6 +161,11 @@ def _parse(line):
         code = reason.group(1)
         said = f' Codex said: {reason.group(2)}.' if reason.group(2) else ''
         return 'Codex', when, f'refused turn ({code}): {CodexTurnRejected.REASONS[code]}{said}'
+    discovery = _DISCOVERY.fullmatch(line)
+    if discovery and not (discovery.group(3) and _PRIVATE.search(discovery.group(3))):
+        what = (f'{discovery.group(2)}: {discovery.group(3)}' if discovery.group(3)
+                else f'{discovery.group(2)}; details redacted.')
+        return f'{_DISCOVERY_NAMES[discovery.group(1)]} discovery', when, what
     worded = _WORDED.fullmatch(line)
     if worded and not _PRIVATE.search(worded.group(2)):
         return 'Copilot', when, f'{worded.group(1)}: {worded.group(2)}'

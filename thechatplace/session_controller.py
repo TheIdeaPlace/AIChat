@@ -116,6 +116,11 @@ class SessionController:
                 info.state, info.detail = STATUS_UNAVAILABLE, ""
                 snapshot.sessions.append(info)
                 indexed[record.identity] = info
+            # A provider that runs its own chats here can say what one is
+            # doing (Muse: from the app's own host); others stay as listed.
+            owned_state = getattr(self._providers[record.provider], "owned_state", None)
+            if callable(owned_state):
+                info.state, info.detail = owned_state(record), ""
             info.source = OWN
             info.title = record.title
             info.unread = record.unread
@@ -160,6 +165,10 @@ class SessionController:
         backend = self._provider(session)
         open_reader = getattr(backend, "open_reader_with_facts", None)
         return open_reader(session) if callable(open_reader) else (self.open_reader(session), "", 0)
+
+    def has_provider(self, provider):
+        """Whether this app session has the provider registered, without I/O."""
+        return not self._closed and provider in self._providers
 
     def can_create(self, provider):
         backend = self._providers.get(provider)
@@ -227,11 +236,13 @@ class SessionController:
         provider = self._providers.get('codex')
         return provider.session_tool_owner(caller) if provider is not None else None
 
-    def owned_action(self, action, record, *args):
+    def owned_action(self, action, record, *args, **kwargs):
         if action not in ("prepare", "reopen", "send", "steer", "steer_queued", "stop", "answer", "ready", "prepare_policy", "finish_policy",
                           "chat_rule_candidate", "allow_for_chat", "chat_rules", "remove_chat_rule", "review_history",
                           "recover", "set_model", "set_mode", "set_auto", "restart_warning", "restart",
-                          "prepare_settings", "prepare_mode", "prepare_chat_options", "feature", "delete", "api_billing"):
+                          "prepare_settings", "prepare_mode", "prepare_chat_options", "feature", "delete", "api_billing",
+                          "prepare_effort", "set_effort", "skills", "aside", "retry", "branch", "tasks", "stop_task",
+                          "settle", "pending_approvals", "turn_in_flight", "poll"):
             raise ValueError("Unsupported owned chat action")
         if not isinstance(record, OwnSession) or record.provider == "claude":
             raise ValueError("Foreign owned chat required")
@@ -239,7 +250,7 @@ class SessionController:
         method = getattr(backend, "owned_ready" if action == "ready" else action + "_owned", None)
         if not callable(method):
             raise ValueError("This provider cannot perform that action")
-        return method(record, *args)
+        return method(record, *args, **kwargs)
 
     def close(self):
         """Close every registered backend even if one cleanup fails."""

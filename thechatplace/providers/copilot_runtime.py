@@ -1774,7 +1774,7 @@ class CopilotChatRuntime:
 
         Only a chat The Chat Place started: Copilot records which client
         made a session, and one made in a terminal or another app stays
-        read-only here, as other apps' chats do (CLAUDE.md). The window
+        read-only here, as other apps' chats do (AGENTS.md). The window
         also checks its own record of the chats it owns before calling this.
 
         Waits for Copilot to start and replay the chat (up to five minutes),

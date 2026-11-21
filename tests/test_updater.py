@@ -240,7 +240,7 @@ def test_release_notes_exist_for_this_version():
     assert notes.is_file(), f"write {notes.name} before tagging"
     text = notes.read_text(encoding="utf-8")
     # What changed, under "What's new" (0.1.0, 0.1.1) or the Added, Changed and
-    # Fixed sections the release-notes process in CLAUDE.md uses since 0.1.2.
+    # Fixed sections the release-notes process in AGENTS.md uses since 0.1.2.
     assert any(h in text for h in ("## What's new", "## Added", "## Changed", "## Fixed"))
     for heading in ("## Downloads", "## Requirements"):
         assert heading in text
@@ -352,6 +352,8 @@ def test_smoke_test_reports_whether_velopack_finds_the_updater(tmp_path, monkeyp
     out = tmp_path / "smoke.json"
     app.smoke_test(str(out))
     assert json.loads(out.read_text())["updater"] == "0.1.0"
+    assert json.loads(out.read_text())["muse_setup"] is True
+    assert json.loads(out.read_text())["muse_reader"] is True
 
     def missing(url):
         raise RuntimeError("UpdateMac does not exist")

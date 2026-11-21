@@ -18,7 +18,8 @@ from .claude_cli import EFFORT_LABELS, mode_label, model_label, model_spoken
 from .codeblocks import find_code_blocks
 from .export import message_moment
 from .message_links import find_links
-from .sessions import STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago, state_with_detail
+from .sessions import (STATUS_UNAVAILABLE, WORKING, NEEDS_YOU, SessionInfo, how_long_ago,
+                       state_with_detail, provider_label)
 from .transcript import (ASSISTANT, PERMISSION_NOTICE, QUEUED, STEERING, TAIL_KINDS, THINKING,
                          TOOL, USER, ChatMessage, Transcript)
 from . import tasklist, usage
@@ -103,7 +104,7 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     what a chat on API credits has spent in all (#658)."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
-    name = info.provider_label or info.provider.capitalize()
+    name = info.provider_label or provider_label(info.provider)
     lines = [f"Title: {info.title or 'Untitled session'}",
              f"Provider: {name}",
              f"Kind: {session_kind(info)}"]

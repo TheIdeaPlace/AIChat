@@ -55,7 +55,7 @@ import wx
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
 from .. import (__version__, about_you, announce, attachments, backup, bugreport,
-               codex_signin, copilot_signin, signin, export, hub, links,
+               codex_signin, copilot_signin, muse_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..commands import (MENU_BAR, Menu, command as find_command, menu_label,
                         menu_path as find_command_path, with_key)
@@ -90,8 +90,8 @@ from ..links import claude_link
 from ..titles import MAX_TITLE, TitleStore, clean_title
 from ..sessions import (FIELD_ACTIVITY, FIELD_LAST_MESSAGE, FIELD_STARTED, GROUP_VIEW_PREFIX, IDLE,
                         NEEDS_YOU, OWN, SORT_ORDERS,
-                        SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEWS,
-                        WORKING, STATUS_UNAVAILABLE,
+                        SORT_SPOKEN, VIEW_ALL, VIEW_ARCHIVED, VIEW_HIDDEN, VIEW_NEEDS_YOU, VIEW_MUSE, VIEWS,
+                        WORKING, STATUS_UNAVAILABLE, provider_label,
                         SessionInfo, field_short_name, group_view, in_view, end_sentence, LISTED_PROVIDERS, RUNTIME_PROVIDERS, home_app,
                         state_with_detail, view_spoken)
 from ..speech import API_NOTICE_SOUND, ANNOUNCE_FULL, NOTIFY_ALL, NOTIFY_OFF, SpeechSettings, default_options, list_speech_options, speaker, strip_for_speech
@@ -121,9 +121,9 @@ from .keys_dialog import KeyboardShortcutsDialog
 from .live_turns import LiveTurns
 from .claude_extras import ClaudeExtras
 from ..aside import AsideRunner  # noqa: F401 - tests stand in for it here
-from ..agents import AGENTS, AgentConversationStore, provider_name
+from ..agents import AGENTS, AgentConversationStore, provider_name as _agent_provider_name
 from ..providers.agents import AgentConversations
-from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions
+from .permission_hosts import ClaudePermissions, CodexPermissions, CopilotPermissions, MusePermissions
 from .mcp_host import ClaudeConnectedTools
 from ..claude_mcp import (ElicitationRequest, elicitation_response, init_servers,
                           is_web_url, problems_short, problems_text)
@@ -137,7 +137,8 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       ChatPermissionsDialog,
                       FindResultsDialog,
                       FormattedMessageDialog, ListsDialog, WrappingText,
-                      BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
+                      BugReportDialog, CommandPickerDialog, MessageDialog, MuseLoginDialog,
+                      NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, FORMATTED_BROKEN_TEXT, show_formatted_page, press_focused_button_on_a_mac,
@@ -145,6 +146,16 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
+_MUSE_HISTORY_STATUS = "Muse Code history is unavailable. Try refreshing."
+_MUSE_HISTORY_FEEDBACK = (
+    "Muse Code history is unavailable. Existing messages remain available; try refreshing.")
+
+
+def provider_name(provider: str) -> str:
+    """Return the UI name for a provider, including listed Muse history."""
+    return provider_label(provider) if provider == "muse" else _agent_provider_name(provider)
+
+
 #: An API chat with no key kept (#658): the message stays in the reply box.
 NO_API_KEY = ("This chat is charged to API credits, but there's no Claude API key. Add one "
               "with Tools, API Keys.")
@@ -160,6 +171,7 @@ def _dollars(amount: float) -> str:
     a whole amount, as limits usually are, without cents: "$190"."""
     cents = int(round(max(0.0, amount or 0.0) * 100))
     return f"${cents // 100:,}" if cents % 100 == 0 else f"${cents // 100:,}.{cents % 100:02d}"
+
 
 # Scheduled backups (#437): how often to look whether one is due, and how
 # long after starting to look first (after the first list and sign-in checks).
@@ -337,6 +349,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # opened; only chats this app owns can be sent to (#352).
                 providers.append(CopilotProvider(execution=True,
                     on_update=lambda state: wx.CallAfter(self._on_owned_update, "copilot", state)))
+            muse_exe = platform_paths.find_muse().path
+            if muse_exe:
+                from ..providers.muse import MuseProvider
+                from ..providers.muse_connection import ManagedMuseExecution
+                # History and execution stay on separate lazy hosts: neither
+                # starts Muse or requests authentication until first use.
+                muse = MuseProvider(execution=ManagedMuseExecution(muse_exe))
+                muse.set_owned_persistence(lambda record: self.store.update(
+                    record.cli_session_id, provider="muse",
+                    provider_options=dict(record.provider_options)))
+                providers.append(muse)
             sessions = SessionController(providers)
         self.sessions = sessions
         if not hasattr(self, "_imported"):
@@ -483,6 +506,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: Chat history reads so far: a steer whose turn ended is settled by
         #: the first read after that, not one already under way (#410).
         self._history_reads = 0
+        # A foreign Muse host can disappear between reads. Keep its last good
+        # transcript visible, and announce one bounded outage per session
+        # until a later read succeeds.
+        self._muse_history_error_keys: set[str] = set()
         self._attachments: Dict[str, List[str]] = {}  # per session, for its next message
         self._aside_histories: Dict[tuple, list] = {}  # Ask Aside's, while the app is open
         self._whole_chat_building = False
@@ -531,6 +558,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What Claude is waiting for you to answer, per session, oldest first
         # (#187, #188). The turn is paused until each is answered.
         self._pending: Dict[str, List[PermissionRequest]] = {}
+        # Muse Code approvals announced by the owned-chat poller, per
+        # (native id, request id): answered here, in Muse Code, or by Stop.
+        self._muse_approvals: Dict[tuple, object] = {}
+        self._muse_monitors: Dict[str, threading.Event] = {}
+        self._muse_runtime: Dict[str, dict] = {}
+        # Muse Code requests answered in The Chat Place, per native id, oldest
+        # first, for Lists Approvals: (request id, decision text).
+        self._muse_decisions: Dict[str, list] = {}
         self._chat_keys: List[str] = []
         self._announce_load = False  # say "Loaded X" once its chat arrives
         # Activity in the open session waiting to be said (#12).
@@ -840,6 +875,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "claude_sign_in": lambda e: self.on_sign_in(),
             "codex_sign_in": lambda e: self.on_codex_sign_in(),
             "copilot_sign_in": lambda e: self.on_copilot_sign_in(),
+            "muse_sign_in": lambda e: self.on_muse_sign_in(),
             "report_bug": lambda e: self.on_report_bug(),
             "about": self.on_about,
         }
@@ -1222,8 +1258,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback(f"{info.title} is a kept copy (Claude Code removed the "
                                "original): it's read-only.")
                 return supported
+            if info.provider == "muse" and not info.is_own:
+                # True for every action, where "not available yet" would
+                # suggest it might be one day: this chat is Muse Code's.
+                self._feedback(f"{info.title} was started in Muse Code, so it's read-only "
+                               "here. Do that in Muse Code.")
+                return supported
             kind = ("agent conversations" if info.provider == AGENTS
-                    else f"{info.provider.capitalize()} chats")
+                    else f"{provider_label(info.provider)} chats")
             self._feedback(f"This action isn't available for {kind} yet.")
         return supported
 
@@ -1295,8 +1337,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _runtime_announces(self, info):
         # A conversation's members announce through it (#248).
+        # A Muse chat started here: its monitor says "Muse Code finished." and
+        # announces each request, so the list mustn't say so again.
         return info.provider == AGENTS or (
-            info.is_own and (info.provider == 'claude' or info.key in self._codex_states))
+            info.is_own and (info.provider in ('claude', 'muse') or info.key in self._codex_states))
 
     def _apply_snapshot(self, snap: Snapshot, ended, replies, force, resort=False):
         self._snapshot_busy = False
@@ -1345,10 +1389,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     continue  # its own turn says so, with more to say
                 if info.state == NEEDS_YOU:
                     self._notify(info.key, f"{info.title} needs you",
-                                 info.detail or f"{info.provider.capitalize()} is waiting for you.", needs_you=True)
+                                 info.detail or f"{provider_label(info.provider)} is waiting for you.", needs_you=True)
                 elif self._open is not None and info.key == self._open.key:
                     self._notify(info.key, f"{info.title} finished",
-                                 replies.get(info.key, "") or f"{info.provider.capitalize()} finished its turn.")
+                                 replies.get(info.key, "") or f"{provider_label(info.provider)} finished its turn.")
         self._first_snapshot = False
         keep_order = (not resort and not first
                       and wx.Window.FindFocus() is self.session_list)
@@ -1415,8 +1459,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 text += f" Showing {what}: {len(shown)}."
             if snap.unreadable_files:
                 text += f" Couldn't read {snap.unreadable_files} session files."
-            if snap.stale_providers:
-                names = ", ".join(p.capitalize() for p in sorted(snap.stale_providers))
+            # Only a provider whose discovery failed. One still refreshing is
+            # stale too (its last list is shown while it finishes), and is
+            # after every F5, since discovery waits only briefly for it.
+            if snap.provider_errors:
+                names = ", ".join(provider_label(p) for p in sorted(snap.provider_errors))
                 text += f" {names} discovery unavailable; listed chats may be out of date."
             if force and not first:
                 self._feedback(text)  # F5: Kelly asked
@@ -1427,7 +1474,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         for provider in sorted(snap.newly_failed_providers):
             # The registry keeps useful cached rows; explain their freshness
             # once per outage without exposing private backend diagnostics.
-            self._feedback(f"{provider.capitalize()} session discovery is unavailable. "
+            self._feedback(f"{provider_label(provider)} session discovery is unavailable. "
                            "Its listed chats may be out of date.")
         self._run_pending_refresh()
 
@@ -1607,7 +1654,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             prompt = f"New name for {info.title}:"
         else:
             keeper = ("the backup" if info.provider == IMPORTED else
-                      info.provider.capitalize() if info.provider != "claude" else
+                      provider_label(info.provider) if info.provider != "claude" else
                       "Claude Code" if info.is_terminal else "the Claude desktop app")
             prompt = (f"New name for {info.title}. It shows only in The Chat Place; "
                       f"{keeper} keeps its own name for it. Leave it empty to go "
@@ -1645,7 +1692,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
         else:
             keeper = ("the backup's" if info.provider == IMPORTED else
-                      f"{info.provider.capitalize()}'s" if info.provider != "claude" else
+                      f"{provider_label(info.provider)}'s" if info.provider != "claude" else
                       "Claude Code's" if info.is_terminal else "the desktop app's")
             if not title and info.key not in self.titles:
                 self._feedback(f"{old} already has {keeper} name.")
@@ -1884,7 +1931,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = (self._current_info(self._list_keys[index])
                 if index != wx.NOT_FOUND and index < len(self._list_keys) else None)
         if info is None:
-            self._feedback("No session selected.")
+            self._feedback(self._muse_empty_view_message()
+                           if self.speech.session_view == VIEW_MUSE and not self._list_keys
+                           else "No session selected.")
             return
         if self._open is not None and info.key == self._open.key:
             if info.provider in RUNTIME_PROVIDERS and info.is_own:
@@ -2024,12 +2073,30 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.SetTitle(APP_NAME)
         self._show_no_session()
 
+    def _muse_empty_view_message(self) -> str:
+        """Explain an empty filter without mistaking failed discovery for no chats."""
+        if not self.sessions.has_provider("muse"):
+            return ("Muse Code wasn't found when this app started. Choose Tools, Sign In, "
+                    "Muse Code to check installation, then restart The Chat Place.")
+        if self._first_snapshot or "muse" in self._snapshot.pending_providers:
+            return "Checking Muse Code conversations. Wait for the list to refresh."
+        if "muse" in self._snapshot.stale_providers or "muse" in self._snapshot.provider_errors:
+            return (f"Muse Code conversations couldn't be checked. Press {key_name(your_key('F5'))} to retry. "
+                    "Tools, Sign In, Muse Code checks installation and sign-in.")
+        if any(info.provider == "muse" for info in self._snapshot.sessions):
+            return ("No Muse Code conversations match this view. Check the search and "
+                    "View, Show Sessions, Hidden.")
+        return ("No Muse Code conversations were found. Start one in Muse Code, "
+                f"then press {key_name(your_key('F5'))} here to refresh this list.")
+
     def _no_session_line(self) -> str:
         """What the messages list says with no session loaded. With no
         sessions at all (a first run), it says how to start one, rather than
         to choose from an empty list (#182)."""
         # Every session, not just those the view shows: a group with none in
         # it isn't a first run.
+        if self.speech.session_view == VIEW_MUSE and not self._list_keys:
+            return self._muse_empty_view_message()
         if not self._first_snapshot and not self._snapshot.sessions:
             return no_sessions_yet()
         return key_name("No session loaded. Choose one in the session list and press Enter.")
@@ -2673,7 +2740,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             line = ("This restored chat's history is gone. Restoring the backup again "
                     "brings it back.")
         elif info.provider != "claude":
-            line = f"Chat history is unavailable from {info.provider.capitalize()}. Try refreshing."
+            line = f"Chat history is unavailable from {provider_label(info.provider)}. Try refreshing."
         elif info.is_own and (info.cli_session_id in self._runners
                             or (own is not None and not own.started)):
             line = ("No messages yet. Claude is starting this session."
@@ -2746,6 +2813,32 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         else:
             self._status(f"{title}: Claude Code command {'failed' if failed else 'finished'}.")
 
+    def _report_muse_history_error(self):
+        """Keep the last good Muse transcript readable during an outage.
+
+        The transport's exception text is intentionally not surfaced here:
+        it may include implementation details. The status bar remains a
+        persistent, keyboard-readable indication; speech is emitted once per
+        session until a successful read clears it.
+        """
+        info = self._open
+        if info is None or info.provider != "muse":
+            return
+        if info.key not in self._muse_history_error_keys:
+            self._muse_history_error_keys.add(info.key)
+            self._feedback(_MUSE_HISTORY_FEEDBACK)
+        # Keep the persistent status canonical even after the one-time
+        # feedback announcement updates the same status bar part.
+        self._status(_MUSE_HISTORY_STATUS)
+
+    def _clear_muse_history_error(self):
+        info = self._open
+        if info is None or info.provider != "muse":
+            return
+        self._muse_history_error_keys.discard(info.key)
+        if self._status_latest == _MUSE_HISTORY_STATUS:
+            self._status("")
+
     def _apply_chat(self, generation, changed, messages, unreadable, error,
                     edits=None, turns=0, commands=None, tasks=None):
         self._reader_busy = False
@@ -2762,6 +2855,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # the first worker still holds the old file snapshot (#249).
             wx.CallAfter(self._refresh_chat)
         if error is not None:
+            if self._open.provider == "muse":
+                self._report_muse_history_error()
             self._select_on_load = None
             if not self._chat_loaded:
                 name = provider_name(self._open.provider)
@@ -2775,7 +2870,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self.chat_list.SetSelection(0)
                 self._chat_loaded = True
             return
-        first_load = not self._chat_loaded
+        if self._open.provider == "muse":
+            self._clear_muse_history_error()
+        # A displayed load-error row is not previously read Muse history.
+        # Recovery must not announce its old replies as newly arrived.
+        first_load = (not self._chat_loaded
+                      or (self._open.provider == "muse" and not self._history_known))
         self._history_known = True
         if edits is not None:
             self._chat_edits, self._chat_turns = edits, turns
@@ -3223,6 +3323,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                and message.kind in rewind_chats.BRANCHABLE
                                and anchored)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
+        elif (self._open is not None and self._open.provider == "muse" and self._open.is_own
+              and self._can_edit(self._open)):
+            rewind_item = menu.Append(wx.ID_ANY, self._keyed("Retr&y from Here...", "retry_from_here"))
+            rewind_item.Enable(message is not None and message.kind == USER and bool(message.key))
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
+            branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
+            branch_item.Enable(message is not None and message.kind in rewind_chats.BRANCHABLE
+                               and bool(message.key))
+            menu.Bind(wx.EVT_MENU, lambda e: self.on_branch_from_here(), branch_item)
         # Properties stays last, as on the session list's menu.
         props = menu.Append(wx.ID_ANY, self._keyed("&Properties...", "properties"))
         read.Enable(message is not None)
@@ -3310,7 +3419,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # For unsupported categories, say so rather than show
         # an empty list that reads as "none" (#279).
         unavailable = {}
-        provider = info.provider.capitalize()
+        provider = provider_label(info.provider)
         if not files_supported:
             unavailable[lists.FILES] = f"Changed files aren't listed for {provider} chats yet."
         if info.provider != "claude":
@@ -3359,10 +3468,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         first, and what to say instead when there are none to list: Codex's
         automatic review and your saved rules, in Codex chats run here. The
         history is a small local file, so it's read here, not on a thread."""
+        if info.provider == "muse":
+            if not info.is_own:
+                return [], ("Auto approvals are listed only for Muse Code chats run in "
+                            "The Chat Place.")
+            from .. import approvals as approval_reader
+            rows = [("", approval_reader.MUSE_PREFIX + request_id, text)
+                    for request_id, text in self._muse_decisions.get(info.cli_session_id, ())]
+            return rows, ""
         if info.provider not in ('codex', 'codex-api') or not info.is_own:
             if info.provider in ('codex', 'codex-api'):
                 return [], "Auto approvals are listed only for Codex chats run in The Chat Place."
-            return [], f"Auto approvals aren't listed for {info.provider.capitalize()} chats yet."
+            return [], f"Auto approvals aren't listed for {provider_label(info.provider)} chats yet."
         from .. import approvals
         state = self._codex_states.get(info.key)
         live = getattr(state, "permission_notices", ()) if state is not None else ()
@@ -3919,7 +4036,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             wx.MessageBox("There are no chats in the session list to export.", "Export Chats",
                           wx.OK | wx.ICON_INFORMATION, self)
             return
-        rows = [export.chat_row(info.title, info.provider_label or info.provider.capitalize(),
+        rows = [export.chat_row(info.title, info.provider_label or provider_label(info.provider),
                                 info.cwd, info.last_activity_ms) for info in infos]
         heading = (f"{len(infos)} chat{'s' if len(infos) != 1 else ''} in the session list's "
                    "current view, newest first. Choose the ones to export and the format; the "
@@ -4021,7 +4138,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"{info.title} was restored from a backup: it's read-only.")
             return
         if info.provider != "claude":
-            self._feedback(f"Open in Claude isn't available for {info.provider.capitalize()} chats.")
+            self._feedback(f"Open in Claude isn't available for {provider_label(info.provider)} chats.")
             return
         if not info.can_open_in_claude:
             if info.is_terminal:
@@ -4061,6 +4178,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self.send_btn.Enable(True)
             self.stop_btn.Enable(True)
+            if info.provider == "muse":
+                label = self._muse_state_text(info)
+                if self.turn_status.GetLabelText() != label:
+                    self.turn_status.SetLabelText(label)
+                self._update_status_session()
+                return
             state = self._codex_states.get(info.key)
             name = provider_name(info.provider)
             label = (f"Getting {name} ready." if self._still_preparing(info) else
@@ -4830,6 +4953,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
+        if selected is not None and selected.provider == "muse":
+            self._change_muse_model(selected)
+            return
         found = self._own_for_setting("model")
         if found is None:
             return
@@ -4865,6 +4991,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider == 'copilot':
             self._change_copilot_mode(selected)
             return
+        if (selected is not None and selected.provider == 'muse' and not selected.is_own
+                and not self._require_capability("options", selected)):
+            return  # Muse Code's own chat: read-only here
+        if selected is not None and selected.provider == 'muse':
+            self._change_muse_mode(selected)
+            return
         found = self._own_for_setting("permission mode", selected)
         if found is None:
             return
@@ -4898,19 +5030,26 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is None:
             self._feedback("No session selected.")
             return
-        if not info.is_own or info.provider not in ("claude", "codex", "codex-api", "copilot"):
+        if info.provider == "muse" and not info.is_own:
+            self._feedback(f"{info.title} was started in Muse Code, so it's read-only here. "
+                           "Muse Code decides what it may do.")
+            return
+        if not info.is_own or info.provider not in ("claude", "codex", "codex-api", "copilot", "muse"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
                            f"no permissions in The Chat Place. Its {where} decides what it may do.")
             return
-        if info.provider in ("codex", "codex-api", "copilot"):
+        if info.provider in ("codex", "codex-api", "copilot", "muse"):
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
                 self._feedback(f"This {provider_name(info.provider)} chat is no longer in The "
                                "Chat Place.")
                 return
-            host = (CodexPermissions if info.provider in ('codex', 'codex-api') else CopilotPermissions)(
-                self, info, record)
+            if info.provider == "muse":
+                host = MusePermissions(self, info, record)
+            else:
+                host = (CodexPermissions if info.provider in ('codex', 'codex-api') else CopilotPermissions)(
+                    self, info, record)
         else:
             if self.store.get(info.cli_session_id) is None:
                 self._feedback("This chat is no longer in The Chat Place.")
@@ -4999,6 +5138,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if selected is not None and selected.provider in ('codex', 'codex-api'):
             self._change_codex_settings(selected, 'effort')
             return
+        if selected is not None and selected.provider == "muse":
+            self._change_muse_effort(selected)
+            return
         found = self._own_for_setting("effort")
         if found is None:
             return
@@ -5064,11 +5206,31 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                   "compact the conversation when it's full; /compact does it now.",
                   about=info.cli_session_id)  # the chat's own news (#663)
 
+    def _muse_state_text(self, info) -> str:
+        """What a Muse chat started here is doing, from Muse's own state as
+        last read: the turn-status line and Turn Status both say this."""
+        update = self._muse_runtime.get(info.cli_session_id, {})
+        labels = {
+            "waiting": f"Muse Code is waiting for you. {key_name(your_key('Ctrl+Shift+A'))} answers.",
+            "cancelling": "Muse Code is cancelling the turn.",
+            "running": "Muse Code is working.",
+            "submitting": "Sending to Muse Code.",
+            "unknown": "Muse Code's running state is unknown. Check the chat before sending again.",
+        }
+        if update.get("background") and update.get("state", "idle") == "idle":
+            # The turn has ended, but a workflow it started is still running.
+            labels["idle"] = "Muse Code is working in the background."
+        return update.get("notice") or labels.get(update.get("state", "idle"), "Ready.")
+
     def on_turn_status(self, _event=None):
         """How long the running turn has taken, and what it is doing."""
         info = self._open
         if info is not None and info.provider == AGENTS:
             self._feedback(self._agent_status_text(info))
+            return
+        if info is not None and info.provider == "muse" and self._can_edit(info):
+            # Muse's state is its own (_muse_runtime), not Codex's.
+            self._feedback(f"{info.title}: {self._muse_state_text(info)}")
             return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
@@ -5154,6 +5316,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             state = self._codex_states.get(self._open.key)
             if state is not None and state.requests:
                 self._answer_codex_owned(self._open, state)
+                return
+        if self._open is not None and self._open.provider == "muse":
+            waiting = [approval for (native_id, _), approval in self._muse_approvals.items()
+                       if native_id == self._open.cli_session_id]
+            if waiting:
+                self._answer_muse_owned(self._open, waiting[0])
+                return
+            # A different Muse chat may be waiting; do not strand its request
+            # just because the person is reading this conversation.
+        for (native_id, _), approval in tuple(self._muse_approvals.items()):
+            record = self.store.get(native_id, provider="muse")
+            if record is not None:
+                self._answer_muse_owned(record.to_info(), approval)
                 return
         session_id = self._next_waiting_session()
         if session_id is None:
@@ -5332,13 +5507,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         lookup = platform_paths.find_claude()
         codex_available = self.sessions.can_create("codex")
         copilot_available = self.sessions.can_create("copilot")
+        muse_available = self.sessions.can_create("muse")
         if forward is not None and not (lookup.path if forward.provider == "claude"
                                         else codex_available if forward.provider in ('codex', 'codex-api')
-                                        else copilot_available):
-            self._relay_kept(forward.message, f"{forward.provider.capitalize()} isn't "
+                                        else copilot_available if forward.provider == "copilot"
+                                        else muse_available):
+            self._relay_kept(forward.message, f"{provider_label(forward.provider)} isn't "
                                               "available, so no chat was started.")
             return
-        if not lookup.path and not codex_available and not copilot_available:
+        if not lookup.path and not codex_available and not copilot_available and not muse_available:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
             return
         exe = lookup.path
@@ -5378,8 +5555,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 prefill["copilot_plan"] = False
             codex_available = codex_available and forward.provider in ('codex', 'codex-api')
             copilot_available = copilot_available and forward.provider == "copilot"
+            muse_available = muse_available and forward.provider == "muse"
         offered = tuple(p for p, ok in (("claude", bool(lookup.path)), ("codex", codex_available),
-                                        ("copilot", copilot_available)) if ok)
+                                        ("copilot", copilot_available), ("muse", muse_available)) if ok)
         provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models if codex_available else None,
@@ -5440,6 +5618,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if provider == "copilot":
             self._create_codex_owned(folder, title, message, made=made, joint=joint,
                                      provider="copilot", model=model, copilot_mode=copilot_mode)
+            return
+        if provider == "muse":
+            self._create_muse_owned(folder, title, message, made=made, joint=joint)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)
@@ -5773,6 +5954,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Like the app's other items it stays on the menu and says why."""
         if info is None:
             return "No session selected."
+        if info.provider == "muse":
+            # Muse Code has no API-key billing; its chats run on the Muse
+            # account, so say that rather than suggest Claude's Continue Here.
+            return (f"{info.title} is a Muse Code chat. Muse Code chats can't use API credits; "
+                    "they run on your Muse Code account.")
         if not info.is_own or info.provider != "claude":
             return (f"{info.title} isn't a Claude chat started in The Chat Place, so it can't "
                     "be continued on API credits. Continue Here makes a copy of a desktop or "
@@ -5899,7 +6085,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if self.reply_text.GetValue().strip() == message:
                     self.reply_text.SetValue('')
                 return
-            if not message and not (info.provider in ('codex', 'codex-api') and self._attachments.get(self._attachment_key(info))):
+            if not message and not (info.provider in ('codex', 'codex-api', 'muse')
+                                    and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -5916,10 +6103,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     except (ValueError, OSError) as error:
                         self._feedback(str(error))  # too long, too many, or a file gone
                         return
+                attached = self._attachments.get(self._attachment_key(info), [])
+                if info.provider == 'muse' and attached:
+                    from ..providers.muse_input import build_input as build_muse_input
+                    try:
+                        message = build_muse_input(message, attached)
+                    except (ValueError, OSError) as error:
+                        self._feedback(str(error) if isinstance(error, ValueError)
+                                       else "An attached file is no longer there. Attach it again.")
+                        return
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
                 self._send_codex_owned(record, message)
-                if info.provider in ('codex', 'codex-api'):
+                if info.provider in ('codex', 'codex-api', 'muse'):
                     self._clear_attachments(self._attachment_key(info))
                     getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
@@ -6962,6 +7158,48 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("This chat is still loading. Steer again in a moment.")
         return True
 
+    def _steer_muse_owned(self, info):
+        """Steer for a Muse chat started here, from Muse's own state
+        (_muse_runtime). Muse refuses a steer for a turn that has ended
+        (expectedTurnId), so it never lands in the next one; refused or
+        unconfirmed, the text comes back to the reply box, never resent."""
+        state = self._muse_runtime.get(info.cli_session_id, {}).get("state", "idle")
+        if state not in ("running", "waiting", "cancelling", "submitting"):
+            self.on_send()  # nothing running to steer (unknown: Send explains)
+            return
+        if state == "waiting":
+            self._feedback("Muse Code is waiting for you: answer it first with "
+                           f"{key_name(your_key('Ctrl+Shift+A'))}.")
+            return
+        if state != "running":
+            self._feedback("Muse Code can't take a message while its turn is starting or "
+                           "stopping. Send it once the turn has ended.")
+            return
+        message = self.reply_text.GetValue().strip()
+        if not message:
+            self._feedback("Type a message first.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback("That chat is no longer in The Chat Place's list.")
+            return
+        self.reply_text.SetValue("")
+        self._codex_drafts.pop(info.key, None)
+
+        def done(result, error):
+            if error:
+                self._restore_codex_text(info.key, (message,))
+                self._sound(sound_events.NOT_SENT, info.key)
+                reason = result or "Muse Code could not confirm your message."
+                self._feedback(f"{reason} Your message is back in the reply box.")
+            else:
+                self._sound(sound_events.STEERED, info.key)
+                self._feedback(announce.steered_text(record.title, message, self.speech.announce,
+                                                     self.speech.announce_own, accepted=True))
+                self._poll_muse_owned(record)
+            self._update_send_state()
+        self._codex_work(lambda: self.sessions.owned_action("steer", record, message), done)
+
     def _can_steer(self, info: Optional[SessionInfo]) -> bool:
         """Whether this chat's provider can take a message into a running turn
         (#238, #239)."""
@@ -6979,6 +7217,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         info = self._open
         if info is None or info.provider == AGENTS or not info.is_own:
             self.on_send()
+            return
+        if info.provider == "muse" and self._can_edit(info):
+            self._steer_muse_owned(info)
             return
         if info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             state = self._codex_states.get(info.key)
@@ -7304,6 +7545,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """View, Show Sessions: list only these, and remember it."""
         shown = self._apply_view(view)
         self._find_all_waiting = None  # they were for the sessions listed before
+        if view == VIEW_MUSE and not shown:
+            self._feedback(self._muse_empty_view_message())
+            return
         count = "no sessions" if not shown else (
             "1 session" if len(shown) == 1 else f"{len(shown)} sessions")
         self._feedback(f"Showing {view_spoken(view)}: {count}.")
@@ -8600,6 +8844,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self._require_capability('send', info):
                 self._codex_commands(info)
             return
+        if (info is not None and info.provider == "muse" and not info.is_own
+                and not self._require_capability("send", info)):
+            return  # Muse Code's own chat: read-only here
+        if info is not None and info.provider == "muse" and info.is_own and self._can_edit(info):
+            self._muse_skills(info)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS:
             self._feedback("The command and skill picker isn't available for "
                            f"{provider_name(info.provider)} chats yet.")
@@ -8658,7 +8908,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ("Load one of The Chat Place's own sessions first: a prompt goes into "
                     "its reply box.")
         if self._open.provider != "claude" and not self._can_edit(self._open):
-            return f"This chat is read-only here. Reply in {self._open.provider.capitalize()}."
+            return f"This chat is read-only here. Reply in {provider_label(self._open.provider)}."
         if not self._open.is_own:
             return (f"This is {kind_name(self._open)}, which The Chat Place only reads. "
                     "Load one of The Chat Place's own sessions to use a prompt in its reply "
@@ -8946,6 +9196,198 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         before turning it on."""
         self._feedback("Checking Copilot CLI's sign-in.")
         self._check_copilot_sign_in()
+
+    def _muse_setup_busy(self):
+        return (getattr(self, "_muse_signin_busy", False)
+                or getattr(self, "_muse_login_operation", None) is not None)
+
+    def on_muse_sign_in(self):
+        """Check setup without starting a session or taking over another login."""
+        if self._gone() or self._closing or self._muse_setup_busy():
+            return
+        self._muse_signin_focus = wx.Window.FindFocus()
+        self._feedback("Checking Muse Code's sign-in.")
+        self._check_muse_sign_in()
+
+    def _check_muse_sign_in(self, report_only=False):
+        if self._gone() or self._closing or self._muse_setup_busy():
+            return
+        self._muse_signin_busy = True
+
+        def work():
+            try:
+                status = muse_signin.check()
+            except Exception:  # always return a safe, reviewable result
+                status = muse_signin.SignIn(False, problem="Muse Code's sign-in status could not be checked")
+            wx.CallAfter(self._on_muse_sign_in_result, status, report_only)
+        try:
+            self._pool.submit(work)
+        except RuntimeError:
+            self._muse_signin_busy = False
+
+    def _muse_modal(self, dialog):
+        """Return keyboard focus after the interactive device-code dialog."""
+        returning_to = (getattr(self, "_muse_signin_focus", None)
+                        or wx.Window.FindFocus())
+        try:
+            return self._modal(dialog)
+        finally:
+            self._restore_muse_focus(returning_to)
+
+    def _restore_muse_focus(self, returning_to=None):
+        returning_to = returning_to or getattr(self, "_muse_signin_focus", None)
+        try:
+            if returning_to and returning_to.IsShown() and returning_to.IsEnabled():
+                returning_to.SetFocus()
+        except RuntimeError:
+            pass
+        if getattr(self, "_muse_signin_focus", None) is returning_to:
+            self._muse_signin_focus = None
+
+    def _muse_notice(self, text, icon=wx.ICON_INFORMATION):
+        """Match the other providers' native OK notices and restore focus."""
+        try:
+            return wx.MessageBox(text, "Muse Code Sign-in", wx.OK | icon, self)
+        finally:
+            self._restore_muse_focus()
+
+    def _on_muse_sign_in_result(self, status, report_only=False):
+        if self._gone() or self._closing:
+            return
+        self._muse_signin_busy = False
+        text = muse_signin.describe(status)
+        if status.missing or status.unusable:
+            guidance = status.install_help or platform_paths.muse_install_help()
+            if guidance and guidance not in text:
+                text += "\n\n" + guidance
+            self._muse_notice(text, wx.ICON_WARNING)
+            return
+        if report_only or not status.known or not status.needs_login:
+            information = status.known and (status.signed_in is True or (
+                status.account_state == "loggedOut" and not status.credential_required))
+            self._muse_notice(text, wx.ICON_INFORMATION if information else wx.ICON_WARNING)
+            return
+        answer = wx.MessageBox(
+            f"{text}\n\nSign in now? The next dialog shows a browser address and device "
+            "code. Open Browser starts your browser; Cancel stops waiting. "
+            "The Chat Place checks the account again afterward.",
+            "Muse Code Sign-in", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
+        if answer != wx.YES:
+            self._restore_muse_focus()
+            return
+        self._start_muse_device_login(status)
+
+    def _start_muse_device_login(self, status):
+        if self._gone() or self._closing or self._muse_setup_busy():
+            return
+        if not status.executable:
+            self._muse_notice("Muse Code is no longer available. Choose Tools, Sign In, "
+                              "Muse Code again to check it.", wx.ICON_WARNING)
+            return
+        # Retain the host before posting any callback: app shutdown can happen
+        # after the worker finishes but before the UI receives its prompt.
+        operation = {"cancel": threading.Event(), "flow": None, "dialog": None}
+        self._muse_login_operation = operation
+
+        def start():
+            flow = None
+            delivered = False
+            failed = False
+            try:
+                if operation["cancel"].is_set():
+                    return
+                flow = muse_signin.LoginFlow(status.executable)
+                operation["flow"] = flow
+                if operation["cancel"].is_set():
+                    return
+                prompt = flow.start()
+                if operation["cancel"].is_set():
+                    return
+                wx.CallAfter(self._on_muse_login_prompt, operation, prompt)
+                delivered = True
+            except Exception:
+                failed = True
+            finally:
+                if flow is not None and not delivered:
+                    flow.close()
+            if failed:
+                wx.CallAfter(self._on_muse_login_done, "failed", operation)
+        try:
+            self._pool.submit(start)
+        except RuntimeError:
+            operation["cancel"].set()
+            self._muse_login_operation = None
+
+    def _on_muse_login_prompt(self, operation, prompt):
+        if (self._gone() or self._closing
+                or getattr(self, "_muse_login_operation", None) is not operation
+                or operation["cancel"].is_set()):
+            threading.Thread(target=operation["flow"].close,
+                             name="muse-sign-in-close", daemon=True).start()
+            return
+        dialog = MuseLoginDialog(self, prompt.verification_url, prompt.user_code,
+                                lambda: self._open_muse_browser(prompt.verification_url, dialog))
+        operation["dialog"] = dialog
+
+        def wait_for_login():
+            outcome = "failed"
+            try:
+                outcome = operation["flow"].wait(cancel_event=operation["cancel"], timeout=600.)
+            except Exception:
+                pass
+            finally:
+                operation["flow"].close()
+            wx.CallAfter(self._on_muse_login_done, outcome, operation)
+
+        threading.Thread(target=wait_for_login, name="muse-sign-in-wait", daemon=True).start()
+        try:
+            self._muse_modal(dialog)
+        finally:
+            operation["dialog"] = None
+            operation["cancel"].set()
+            # The operation remains active until its worker has cancelled and
+            # closed the host. A second login must not race that cleanup.
+
+    def _cancel_muse_login(self):
+        operation = getattr(self, "_muse_login_operation", None)
+        if operation is not None:
+            operation["cancel"].set()
+            flow = operation["flow"]
+            if flow is not None:
+                threading.Thread(target=flow.close, name="muse-sign-in-close", daemon=True).start()
+
+    def _open_muse_browser(self, url, parent=None):
+        try:
+            platform_paths.open_url(url)
+        except OSError:
+            wx.MessageBox("Couldn't open your browser. Use the address shown in the Muse Code "
+                          "sign-in dialog.", "Muse Code Sign-in", wx.OK | wx.ICON_WARNING,
+                          parent if parent is not None else self)
+            return False
+        self._feedback("Muse Code's sign-in page opened in your browser.")
+        return True
+
+    def _on_muse_login_done(self, outcome, operation):
+        if (self._gone() or self._closing
+                or getattr(self, "_muse_login_operation", None) is not operation):
+            return
+        dialog = operation["dialog"]
+        try:
+            if dialog is not None and dialog.IsModal():
+                dialog.EndModal(wx.ID_OK)
+        except RuntimeError:
+            pass  # the user closed it before the worker delivered its result
+        self._muse_login_operation = None
+        messages = {
+            "granted": "Muse Code sign-in finished. Checking the account again.",
+            "denied": "Muse Code sign-in was declined.",
+            "cancelled": "Muse Code sign-in cancelled.",
+            "expired": "Muse Code's sign-in code expired. Choose Tools, Sign In, Muse Code to try again.",
+            "timeout": "Muse Code sign-in timed out. Choose Tools, Sign In, Muse Code to try again.",
+        }
+        self._feedback(messages.get(outcome, "Muse Code sign-in did not finish. Choose Tools, "
+                                            "Sign In, Muse Code to try again."))
+        wx.CallAfter(self._check_muse_sign_in, True)
 
     def _check_copilot_sign_in(self):
         if self._gone():
@@ -9389,6 +9831,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if job.get("thread") is not None:
                 job["thread"].join(timeout=10)
         self._closing = True
+        self._cancel_muse_login()
+        for cancelled in self._muse_monitors.values():
+            cancelled.set()
+        self._muse_monitors.clear()
         runners = list(self._runners.values())
         for runner in runners:
             runner.cancel()

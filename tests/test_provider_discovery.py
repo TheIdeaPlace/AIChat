@@ -220,3 +220,21 @@ def test_normal_pending_refresh_keeps_completion_comparison_but_outage_drops_it(
     assert finished_turns(previous, [codex]) == [codex]
     outage = Snapshot(sessions=[codex], stale_providers={"codex"})
     assert not outage.fresh_states(previous)
+
+
+def test_a_failed_discovery_is_logged_with_its_provider(tmp_path, monkeypatch):
+    """Discovery hides the error from the window, but logs its type (#184)."""
+    import time
+    from thechatplace import platform_paths
+    path = tmp_path / "codex-errors.log"
+    monkeypatch.setattr(platform_paths, "codex_diagnostic_path", lambda: path)
+    claude = Provider("claude", Snapshot())
+    muse = Provider("muse", Snapshot())
+    muse.error = TimeoutError(r"C:\private\path")
+    registry = DiscoveryRegistry([claude, muse])
+    for _ in range(100):  # the worker thread reports on a later refresh
+        if registry.collect().provider_errors:
+            break
+        time.sleep(0.01)
+    text = path.read_text(encoding="utf-8")
+    assert "muse discovery failed: TimeoutError; details redacted." in text and "private" not in text

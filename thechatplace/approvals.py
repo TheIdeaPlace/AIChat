@@ -23,11 +23,15 @@ STOPPED = "stopped"
 
 BY_REVIEW = "automatic review"
 BY_RULE = "saved rule"
+#: A Muse Code request you answered yourself, in The Chat Place.
+BY_YOU = "you"
 
 #: How a saved-rule notice is named in the review history: Codex names it by
 #: its request id, a number, which the history (all strings) can't hold.
 RULE_PREFIX = "saved-rule:"
 REVIEW_PREFIX = "auto-review:"
+#: How a Muse Code request answered here is named: "muse:<request id>".
+MUSE_PREFIX = "muse:"
 
 _REVIEW_OUTCOMES = (("allowed the request", ALLOWED), ("denied the request", DENIED),
                     ("timed out", TIMED_OUT), ("stopped", STOPPED))
@@ -51,7 +55,10 @@ class Approval:
         what = " ".join(self.command.split())  # one line, even for a heredoc
         what = what if len(what) <= 120 else what[:119] + "…"
         # Said as what you did, in the button's words (#596).
-        who = "Automatic review" if self.by == BY_REVIEW else "You allowed it for this chat"
+        if self.by == BY_YOU:
+            who = "You decided"
+        else:
+            who = "Automatic review" if self.by == BY_REVIEW else "You allowed it for this chat"
         head = self.outcome.capitalize()
         return f"{head}: {what}. {who}." if what else f"{head}, a request. {who}."
 
@@ -67,6 +74,17 @@ def parse(identity, text: str) -> Approval:
     automatic review's, and counted as not routine, so it's never hidden."""
     identity = str(identity)
     first, _, rest = text.partition("\n")
+    if identity.startswith(MUSE_PREFIX):
+        # A Muse Code request answered in The Chat Place: the window writes
+        # the outcome first, then "Summary: " and "Details: " lines.
+        lowered = first.lower()
+        outcome = next((o for phrase, o in _REVIEW_OUTCOMES if phrase in lowered), "")
+        summary = ""
+        for line in rest.splitlines():
+            if line.startswith("Summary: "):
+                summary = line[len("Summary: "):]
+                break
+        return Approval(outcome or "noted", BY_YOU, summary, "", text)
     if first.startswith(_RULE_START) and first.endswith(_RULE_END):
         command = first[len(_RULE_START):-len(_RULE_END)]
         return Approval(ALLOWED, BY_RULE, command, "", text)

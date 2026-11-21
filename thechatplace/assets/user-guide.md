@@ -26,6 +26,88 @@ OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
 ## Before you start
 
+Tools, **Sign In**, **Muse Code** provides setup assistance for Muse Code. It checks
+installation and sign-in, shows status, errors and installation instructions in
+standard OK dialogs, and helps you sign in and check again. You run the installer yourself.
+If sign-in is needed, confirm the offer, read or copy the browser address and
+device code, then choose **Open Browser** to sign in. **Cancel** stops waiting;
+the app checks your status again afterward. An older Muse build may need an
+update before the app can check its account. If Muse reports a stored API key,
+manage it in Muse Code first: it takes precedence over browser sign-in.
+With Muse Code installed, its stored conversations appear automatically in the
+session list. **View, Show Sessions, Muse Code Chats** shows only those chats.
+Press Enter to open one, then read, copy, find or export its messages using the
+existing conversation controls. The read-only reply area explains that replies
+to those chats must be made in Muse Code.
+File, New Session offers Muse Code as the Provider to start a chat here.
+Model and effort are Muse Code's own. The chat streams replies, and each
+pending request is announced with its chat title, even while you read another
+conversation. Press Ctrl+Shift+A in that chat to choose Muse Code's one-time Allow once
+or Reject for a request (Reject also ends the turn), or to answer its questions.
+While a turn runs, Chat, Steer (Ctrl+Alt+Enter) sends what you've typed into it; if
+the turn ends just then, Muse Code refuses it and your message comes back to the
+reply box. Chat, Chat Settings, Change Model lists the models Muse Code offers the chat,
+with its own marked "(now)", and switches it from Muse's next model call, even during a
+turn. Muse lists some models an account can't use: if a turn then fails, you hear that
+the chat's model may not be available to you. Change Effort lists the efforts the
+chat's model offers, with the one it uses marked "(now)". Switching to a model that
+doesn't offer the chat's effort sets that model's default, and you hear which.
+Chat, Insert Command or Skill (Ctrl+/) lists the chat's Muse Code skills, with a
+search box, and puts the one you choose before your message as "/name ". A message
+starting with a skill's name runs that skill, with the rest as what you ask it; a
+name Muse doesn't list goes as ordinary text.
+Chat, Ask Aside (Ctrl+Shift+Y) asks Muse Code a quick question about the chat in a
+read-only side chat that never asks you anything; the question and answer don't join
+the chat. Muse Code keeps each side chat in its own list, so The Chat Place hides it
+from yours: View, Show Sessions, Hidden shows them.
+Chat, Attach Files (Ctrl+Shift+F) attaches files to your next message: Muse Code sees
+an image, and reads any other file wherever it is.
+A chat starts on Muse Code's Ask me permissions. Chat, Chat Settings, Change Permission
+Mode (Ctrl+Shift+O) switches it between Read only, Ask me, Auto-review and Unrestricted,
+and asks you first, with No as the default, before the two that don't ask you: with
+Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file
+sandbox and no approval prompts.
+Chat, Retry from Here (Ctrl+Shift+Z), also on the messages list's menu, makes a new
+chat of the history before one of your messages and opens it with that message in the
+reply box to change and send; the original chat is kept. Files aren't put back, and
+the copy keeps the chat's permission profile.
+Branch from Here, on the Chat menu and the messages list's menu, asks first, then
+makes a new chat through the whole turn of your message or Muse Code's reply, ready for
+your next message; the original is kept.
+For bigger jobs, such as reviewing a whole code base, Muse Code can start a workflow:
+several sub-agents that work in the background after its reply. You hear that Muse Code
+is working in the background; each sub-agent's permission request is announced like any
+other (Ctrl+Shift+A), and when the work is done Muse Code replies with the results and
+you hear that it finished. The conversation shows the workflow, whether it's still
+running, and each sub-agent's task. Meanwhile the chat's Status is Working, and Needs
+you while a sub-agent waits for your answer.
+Chat, Stop Background Task lists the chat's running background work by tool and
+command, asks before stopping the one you choose, and the turn carries on. Muse's
+**Ask me** policy prompts for restricted actions; safe actions can run without asking.
+Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
+finished or stopped. On Windows, a command you allow runs in Muse's sandbox from Muse
+Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its sandbox is
+unavailable. To update, run `muse` in a terminal: it updates itself. Deleting Muse chats
+here is not available yet.
+Reading does not resume a session or start a turn.
+
+History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
+Sending is unavailable if Muse Code can't confirm the chat's permission profile. Other
+interfaces may be reported as unavailable. In the Status column, a Muse Code chat started
+here says Working, Needs you or Idle. One started in Muse Code says status unavailable:
+The Chat Place can't see what another Muse Code program is doing. If a refresh fails, the
+last good session list and loaded messages stay available; press F5 to retry. An item Muse
+Code shortened says so where it is, history the app can't read is identified, and a history
+format the app cannot read safely must be opened in Muse Code. Background discovery does not start sign-in.
+The Last message column uses a cached preview after you read a conversation;
+it does not fetch every chat in the background.
+
+Signing in to Muse Code does not create a saved conversation.
+If Muse has no stored conversations, Muse Code Chats explains that none were
+found. Start a conversation in Muse Code, then press F5 to refresh the list.
+Pending or unavailable discovery is reported separately. With no rows listed,
+Enter repeats this guidance.
+
 You need:
 
 - Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -2790,9 +2872,11 @@ With many chats, these keep the list manageable.
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app chats (Code and Cowork); just Cowork chats;
 chats started here; terminal chats; Remote Control chats; ungrouped chats; Claude chats; Codex
-chats; GitHub Copilot chats; archived ones; hidden ones; or one of your groups.
-**Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
-available when Codex or Copilot is off; each is empty until its provider is enabled.
+chats; GitHub Copilot chats; Muse Code chats; archived ones; hidden ones; or one of your groups.
+**Claude Chats**, **Codex Chats**, **GitHub Copilot Chats** and **Muse Code Chats** filter by provider.
+Codex and Copilot filters remain available when their providers are off; they are
+empty until enabled. Muse chats are listed automatically when Muse Code is
+installed at app startup.
 **View, Sort Sessions** (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same chat when it's
 still listed.
@@ -2803,7 +2887,7 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Cost, Folder,
+The parts are called columns: Title, Provider (Claude, Codex, Copilot or Muse Code), Charged to, Cost, Folder,
 Status, New reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the
 others in "The kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at
 first. Started and Last message are read only once you add them. Charged to says how each of
