@@ -97,6 +97,12 @@ def ask(chats, question="Synthetic side question?"):
     chats.execution.messages.clear()
     runner = MuseAsideRunner(chats, own, question, on_event, on_side=sides.append, poll=0).start()
     assert finished.wait(5)
+    # The runner says how it ended first, then leaves the side chat in its
+    # finally: wait for that too, or a slower machine checks too early.
+    for thread in threading.enumerate():
+        if thread.name == "muse-aside":
+            thread.join(5)
+            assert not thread.is_alive()
     return runner, events, sides, chats.execution.messages
 
 
