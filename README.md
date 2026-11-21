@@ -131,9 +131,12 @@ too).
   Settings can make that the default. Escape closes either, back on the same message. On a Mac the
   page is shown by the system's WebKit, and VoiceOver moves through it with the rotor (VO+U) and its
   heading and table commands; Command+W also closes it. On Windows the page needs Microsoft's Edge
-  WebView2 runtime, which comes with Windows 11; without it, the text box opens. If WebView2
+  WebView2 runtime, which comes with Windows 11; without it, the text box opens. On Windows the
+  page stays open in the background between messages and the next message loads into it, so
+  WebView2 isn't closed until you exit. If WebView2
   stops working (it doesn't load the page, or the page stops answering while its window is in
-  front), the page closes within about 10 seconds, the message opens in the text box, you hear
+  front), the page closes after a few seconds (up to half a minute for a long full chat), the
+  message opens in the text box, you hear
   "The formatted view stopped working. Showing plain text until you restart The Chat Place.",
   and messages open as plain text until you restart. Nothing in the
   page is fetched from the internet, and HTML in a message is shown as text, never run. **Lists**

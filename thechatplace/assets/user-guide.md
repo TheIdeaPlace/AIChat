@@ -688,7 +688,8 @@ JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) sho
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
 runtime, which comes with Windows 11; without it, Enter opens the plain text box. If WebView2
-stops working, the formatted page closes within about 10 seconds, the message opens in the plain
+stops working, the formatted page closes after a few seconds (up to half a minute for a long full
+chat), the message opens in the plain
 text box, and you hear that the formatted view stopped working. Messages then open as plain text
 until you restart The Chat Place. On Linux,
 Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
