@@ -1841,6 +1841,11 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   whether it finished or stopped. On Windows, a command you allow runs in Muse's sandbox
   from Muse Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its
   sandbox is unavailable. To update, run `muse` in a terminal: it updates itself.
+  The sandbox runs commands as a separate Windows account, so an app shortcut installed
+  only for you, such as the Python install manager's `python`, fails there with "Access is
+  denied": make a virtual environment in the chat's folder and ask Muse to use
+  `.venv\Scripts\python`. Git refuses the folder as "dubious ownership" until an
+  administrator runs `git config --system --add safe.directory C:/path/to/folder`.
   Chat, Chat Settings, Chat Permissions
   explains a Muse chat's permissions. Deleting Muse chats here is not available yet.
   Signing in to Muse Code does not create a saved conversation.

@@ -98,8 +98,9 @@ command, asks before stopping the one you choose, and the turn carries on. Muse'
 Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
 finished or stopped. On Windows, a command you allow runs in Muse's sandbox from Muse
 Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its sandbox is
-unavailable. To update, run <code>muse</code> in a terminal: it updates itself. Deleting Muse chats
-here is not available yet.
+unavailable. To update, run <code>muse</code> in a terminal: it updates itself. If a command there
+says "Access is denied", or Git says a folder has "dubious ownership", see Troubleshooting,
+Muse Code. Deleting Muse chats here is not available yet.
 Reading does not resume a session or start a turn.</p>
 <p>History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
 Sending is unavailable if Muse Code can't confirm the chat's permission profile. Other
@@ -3564,6 +3565,21 @@ report it (see Reporting a problem).</p>
 answer was billed to GitHub Copilot, open the chat again, or restart The Chat Place if it has
 stopped sending to Copilot altogether. The other reasons (a folder's Copilot hooks, a chat used
 in Copilot CLI since you opened it, a message starting with <code>/</code>) are in Starting a Copilot chat.</p>
+<h3>Muse Code</h3>
+<p><strong>A Muse Code command fails with "Access is denied", such as when it runs Python.</strong> On Windows,
+Muse's sandbox runs the commands you allow as a separate Windows account of its own, not as you.
+A command that is an app shortcut installed for your account only can't start for that account.
+The Python install manager's <code>python</code> is one: it's in <code>C:\Program Files\WindowsApps</code>, so Muse
+reports that the sandbox denied launching Python. Python itself is reachable: make a virtual
+environment in the chat's folder, in a terminal of your own (<code>py -m venv .venv</code>, then install
+the project's packages with <code>.venv\Scripts\python -m pip install</code>), and ask Muse to run
+<code>.venv\Scripts\python</code> instead of <code>python</code>. Putting that in the project's instructions for
+agents saves asking again.</p>
+<p><strong>Git in a Muse Code chat says the folder has "dubious ownership".</strong> It's the same separate
+account: the folder belongs to you, and Git trusts another account's folder only if told to.
+In a terminal run as administrator, run
+<code>git config --system --add safe.directory C:/path/to/folder</code>, with the chat's folder written
+with forward slashes.</p>
 <h3>Reporting a problem</h3>
 <p><strong>Something else.</strong> Help, Report a Bug asks what happened and shows exactly what the report
 includes before it goes anywhere: version numbers and settings, whether Claude, Codex and Copilot

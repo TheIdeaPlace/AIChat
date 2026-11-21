@@ -87,8 +87,9 @@ command, asks before stopping the one you choose, and the turn carries on. Muse'
 Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
 finished or stopped. On Windows, a command you allow runs in Muse's sandbox from Muse
 Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its sandbox is
-unavailable. To update, run `muse` in a terminal: it updates itself. Deleting Muse chats
-here is not available yet.
+unavailable. To update, run `muse` in a terminal: it updates itself. If a command there
+says "Access is denied", or Git says a folder has "dubious ownership", see Troubleshooting,
+Muse Code. Deleting Muse chats here is not available yet.
 Reading does not resume a session or start a turn.
 
 History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
@@ -3664,6 +3665,24 @@ report it (see Reporting a problem).
 answer was billed to GitHub Copilot, open the chat again, or restart The Chat Place if it has
 stopped sending to Copilot altogether. The other reasons (a folder's Copilot hooks, a chat used
 in Copilot CLI since you opened it, a message starting with `/`) are in Starting a Copilot chat.
+
+### Muse Code
+
+**A Muse Code command fails with "Access is denied", such as when it runs Python.** On Windows,
+Muse's sandbox runs the commands you allow as a separate Windows account of its own, not as you.
+A command that is an app shortcut installed for your account only can't start for that account.
+The Python install manager's `python` is one: it's in `C:\Program Files\WindowsApps`, so Muse
+reports that the sandbox denied launching Python. Python itself is reachable: make a virtual
+environment in the chat's folder, in a terminal of your own (`py -m venv .venv`, then install
+the project's packages with `.venv\Scripts\python -m pip install`), and ask Muse to run
+`.venv\Scripts\python` instead of `python`. Putting that in the project's instructions for
+agents saves asking again.
+
+**Git in a Muse Code chat says the folder has "dubious ownership".** It's the same separate
+account: the folder belongs to you, and Git trusts another account's folder only if told to.
+In a terminal run as administrator, run
+`git config --system --add safe.directory C:/path/to/folder`, with the chat's folder written
+with forward slashes.
 
 ### Reporting a problem
 
