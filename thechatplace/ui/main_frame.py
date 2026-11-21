@@ -1387,8 +1387,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 text += f" Showing {what}: {len(shown)}."
             if snap.unreadable_files:
                 text += f" Couldn't read {snap.unreadable_files} session files."
-            if snap.stale_providers:
-                names = ", ".join(provider_label(p) for p in sorted(snap.stale_providers))
+            # Only a provider whose discovery failed. One still refreshing is
+            # stale too (its last list is shown while it finishes), and is
+            # after every F5, since discovery waits only briefly for it.
+            if snap.provider_errors:
+                names = ", ".join(provider_label(p) for p in sorted(snap.provider_errors))
                 text += f" {names} discovery unavailable; listed chats may be out of date."
             if force and not first:
                 self._feedback(text)  # F5: Kelly asked
