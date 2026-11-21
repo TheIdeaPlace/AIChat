@@ -2086,9 +2086,13 @@ FORMATTED_START_TIMEOUT_MS = 10000
 FORMATTED_NAVIGATED_TIMEOUT_MS = 30000
 #: The page says it's alive this often (_HEARTBEAT), and is taken as dead
 #: after this long without a word while its window is active. A crashed
-#: browser carries no messages, so the heartbeat stops with it.
+#: browser carries no messages, so the heartbeat stops with it. Generous:
+#: the heartbeat runs on the page's main thread, which also builds what a
+#: screen reader reads, and a long chat on a slow PC can keep it busy for a
+#: while. One false alarm turns formatted pages off until restart (#693
+#: second-opinion review).
 FORMATTED_HEARTBEAT_MS = 2000
-FORMATTED_SILENCE_MS = 8000
+FORMATTED_SILENCE_MS = 30000
 #: Said once, when that happens, after the plain text has opened.
 FORMATTED_BROKEN_TEXT = ("The formatted view stopped working. Showing plain text until you "
                          "restart The Chat Place.")
