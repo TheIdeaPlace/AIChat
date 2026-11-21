@@ -354,6 +354,32 @@ def test_muse_unanswered_question_stays_pending(app, monkeypatch):
         dialog.Destroy()
 
 
+def test_muse_question_opens_and_says_a_typed_answer_is_too_long(app, monkeypatch):
+    """The typed answer box is multi-line, which has no length limit on GTK:
+    setting one asserted, so the question never opened on Linux (Orca, #701).
+    Muse refuses an answer over 500 characters, so Send Answers says so."""
+    from thechatplace.ui.dialogs import MUSE_ANSWER_MAX, MuseApprovalDialog
+    monkeypatch.setattr(wx, "CallAfter", lambda *args: None)
+    notices = []
+    monkeypatch.setattr(wx, "MessageBox", lambda *args: notices.append(args) or wx.OK)
+    dialog = MuseApprovalDialog(None, "Synthetic", "Name this fixture", "", "question",
+        questions=({"id": "name", "question": "Which name?", "selection": {"mode": "single"},
+                    "options": []},))
+    try:
+        ended = []
+        monkeypatch.setattr(dialog, "EndModal", lambda result: ended.append(result))
+        text = dialog.answer_controls[0][1]
+        text.SetValue("x" * (MUSE_ANSWER_MAX + 1))
+        dialog._send_answers(None)
+        assert f"at most {MUSE_ANSWER_MAX} characters" in notices[-1][0]
+        assert dialog.answers is None and ended == []
+        text.SetValue("x" * MUSE_ANSWER_MAX)
+        dialog._send_answers(None)
+        assert dialog.answers == [{"questionId": "name", "freeText": "x" * MUSE_ANSWER_MAX}]
+    finally:
+        dialog.Destroy()
+
+
 def test_muse_monitor_survives_selection_changes_and_quiet_polls(frame, monkeypatch):
     import threading
     from thechatplace.own_store import OwnSession

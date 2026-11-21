@@ -2052,6 +2052,10 @@ class MuseLoginDialog(wx.Dialog):
         wx.CallAfter(self.url.SetFocus)
 
 
+#: The longest typed answer Muse Code accepts (the provider refuses more).
+MUSE_ANSWER_MAX = 500
+
+
 class MuseApprovalDialog(wx.Dialog):
     """Review native permissions or answer Muse questions without guessing consent."""
 
@@ -2104,8 +2108,10 @@ class MuseApprovalDialog(wx.Dialog):
                 content.Add(pick, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
             content.Add(wx.StaticText(body, label="Type an answer" if not shown else
                                       "Or type a different answer"), 0, wx.LEFT | wx.RIGHT, 10)
+            # No SetMaxLength: GTK's multi-line box has none (it asserts, so
+            # the dialog never opened on Linux), and on Windows it silently
+            # drops the end of a paste. Send Answers says it's too long.
             text = wx.TextCtrl(body, style=ANSWER_BOX_STYLE)
-            text.SetMaxLength(500)
             set_accessible_name(text, label + "; typed answer")
             content.Add(text, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
             self.answer_controls.append((pick, text))
@@ -2150,6 +2156,12 @@ class MuseApprovalDialog(wx.Dialog):
         for prompt, (pick, text) in zip(self._questions, self.answer_controls):
             answer = {"questionId": prompt["id"]}
             typed = text.GetValue().strip()
+            if len(typed) > MUSE_ANSWER_MAX:
+                wx.MessageBox(f"A typed answer can be at most {MUSE_ANSWER_MAX} characters; "
+                              f"this one has {len(typed)}. Shorten it, or choose an option.",
+                              self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
+                text.SetFocus()
+                return
             if typed:
                 answer["freeText"] = typed
             elif prompt.get("selection", {}).get("mode") == "multiple" and pick is not None:

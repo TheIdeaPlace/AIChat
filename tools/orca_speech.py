@@ -229,8 +229,8 @@ STEPS = [
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Missing Muse uses the same native OK warning as missing Copilot.
-    Step("Muse Code sign-in", ["alt+t", "n", "m"],
-         expect=["Muse Code", "wasn't found", "muse --version"]),
+    Step("Muse Code sign-in", ["alt+t", "n", "m"], trigger="muse-real-notice",
+         after_trigger=True, expect=["Muse Code", "wasn't found", "muse --version"]),
     Step("Muse guidance acknowledged, back in the messages", ["Return"],
          expect=["Messages in Visual probe"]),
     Step("Muse device sign-in", [], trigger="muse-device",
@@ -976,8 +976,39 @@ def muse_mode_warning(profile):
     app shows it (CodexChats._confirm_muse_mode), for a Muse probe chat."""
     def open_warning(frame, env) -> None:
         import wx
-        wx.CallAfter(frame._confirm_muse_mode, "Muse probe chat", profile, "Ask me")
+        import wx._core
+
+        def show():
+            # The real message box while it's open: the probe's stand-in
+            # answers Yes at once, so the warning would never be shown or
+            # read, and Return couldn't take its default, No.
+            stand_in = wx.MessageBox
+            wx.MessageBox = wx._core.MessageBox
+            try:
+                frame._confirm_muse_mode("Muse probe chat", profile, "Ask me")
+            finally:
+                wx.MessageBox = stand_in
+        wx.CallAfter(show)
     return open_warning
+
+
+def muse_real_notice(frame, env) -> None:
+    """Muse Code's sign-in notices in the real message box. The check answers
+    from the background, so the box opens after the keys, not inside a
+    trigger: the probe's stand-in would only record it, and Orca would hear
+    nothing but "Checking Muse Code's sign-in"."""
+    import wx
+    import wx._core
+    notice = frame._muse_notice
+
+    def real(text, icon=wx.ICON_INFORMATION):
+        stand_in = wx.MessageBox
+        wx.MessageBox = wx._core.MessageBox
+        try:
+            return notice(text, icon)
+        finally:
+            wx.MessageBox = stand_in
+    frame._muse_notice = real
 
 
 def muse_question(frame, env) -> None:
@@ -994,6 +1025,7 @@ def muse_question(frame, env) -> None:
 
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    "muse-real-notice": muse_real_notice,
     "muse-device": muse_device,
     "muse-history": muse_history,
     "muse-outage": muse_outage,
