@@ -141,7 +141,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac,
+                      formatted_view_available, FORMATTED_BROKEN_TEXT, show_formatted_page, press_focused_button_on_a_mac,
                       remove_whole_chat_page,
                       single_choice_dialog)
 
@@ -3252,16 +3252,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not formatted_view_available():
             return False
         try:
-            options = {"start_at": start_at} if start_at else {}
-            dialog = FormattedMessageDialog(parent or self, title, page, **options)
+            # One page kept and reused on Windows (#693): destroying a web
+            # view crashed WebView2 157 while JAWS ran.
+            result, link, failed = show_formatted_page(
+                parent or self, title, page, start_at, factory=FormattedMessageDialog)
         except RuntimeError as exc:
             self._status(str(exc))
             return False
-        try:
-            shown = dialog.ShowModal() != ID_PLAIN_TEXT
-            link = getattr(dialog, "app_link", None)
-        finally:
-            dialog.Destroy()
+        shown = result != ID_PLAIN_TEXT
+        if failed:
+            # The web view died (#693): said once; plain text from now on.
+            # The caller opens the text box next, and the screen reader reads
+            # that first, so this comes a moment after, rather than cut off.
+            # Not if the window has gone meanwhile (a timer on a destroyed
+            # frame can crash on a Mac).
+            wx.CallLater(1500, lambda: self._gone() or self._feedback(FORMATTED_BROKEN_TEXT))
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown

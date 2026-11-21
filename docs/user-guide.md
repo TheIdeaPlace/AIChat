@@ -904,10 +904,14 @@ key again to see later messages. Escape puts you back where you pressed the key.
 
 Press **Enter** on a message to read it as a formatted page. There, your screen reader's browse
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in
-JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in
+JAWS, D in NVDA). Web links open in your browser; safe local files open in their default app. **Read as Plain Text** (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
-runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Linux,
+runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Windows the
+page stays open in the background between messages, and the next message loads into it. If WebView2
+stops working, the formatted page closes within half a minute, the message opens in the plain
+text box, and you hear that the formatted view stopped working. Messages then open as plain text
+until you restart The Chat Place. On Linux,
 Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
 messages; it needs WebKitGTK, and Orca 48 moved through its headings but didn't read it line by
 line.
