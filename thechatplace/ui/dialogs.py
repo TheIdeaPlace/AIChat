@@ -17,7 +17,7 @@ from .. import chat_permissions, claude_settings, lists, workplaces, platform_pa
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
-                        WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
+                        provider_label, WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
                       NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS, SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
@@ -320,7 +320,9 @@ class NewSessionDialog(wx.Dialog):
         self._codex_models_loaded = False
         if len(self._providers) > 1:
             grid.Add(wx.StaticText(self, label="Pro&vider:"), 0, wx.ALIGN_CENTER_VERTICAL)
-            self.provider_choice = wx.Choice(self, choices=[p.capitalize() for p in self._providers])
+            # Each provider's own name ("Muse Code", not "Muse"), as the
+            # session list's Provider column says it.
+            self.provider_choice = wx.Choice(self, choices=[provider_label(p) for p in self._providers])
             self.provider_choice.SetSelection(self._providers.index(self._provider))
             set_accessible_name(self.provider_choice, "Provider")
             grid.Add(self.provider_choice, 1, wx.EXPAND)
@@ -2078,7 +2080,9 @@ class MuseApprovalDialog(wx.Dialog):
         self.summary = wx.TextCtrl(body, value=summary,
                                    style=wx.TE_READONLY | wx.TE_RICH2 | wx.TE_MULTILINE)
         self.summary.SetMinSize(dip(self, -1, 65))
-        set_accessible_name(self.summary, "Request")
+        # Named by the heading it sits under: on Linux, Orca reads that label,
+        # not a name of its own (#701), so every screen reader says the same.
+        set_accessible_name(self.summary, heading)
         content.Add(self.summary, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         if details:
             content.Add(wx.StaticText(body, label="&Details"), 0, wx.LEFT | wx.RIGHT, 10)

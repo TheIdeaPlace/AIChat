@@ -144,6 +144,7 @@ def test_muse_mode_warning_steps_follow_the_apps_own_warning_text():
                              ("muse-mode-unrestricted", ":unrestricted")):
         step = steps[trigger]
         warning = CodexChats.MUSE_MODE_WARNINGS[profile].format(title="Muse probe chat")
-        assert "Change Permission Mode" in step.expect
-        assert all(word in warning or word in ("Change Permission Mode", "No") for word in step.expect)
+        # Orca reads a GTK message box as "alert Warning", without its title
+        # (CI on #701), so the step checks the warning's own words.
+        assert all(word in warning or word == "No" for word in step.expect)
         assert trigger in orca_speech.TRIGGERS

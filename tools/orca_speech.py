@@ -240,14 +240,20 @@ STEPS = [
     Step("Muse Cancel", ["Tab"], expect=["Cancel", "push button"]),
     Step("Muse back to Open Browser", ["shift+Tab"], expect=["Open Browser"]),
     Step("Muse device sign-in closed", ["Escape"], expect=["Messages in Visual probe"]),
+    # The focus stays in the messages while they change to Muse's, so Orca
+    # says the window's new title and the row, not the list's name again.
     Step("Muse Code history", [], trigger="muse-history",
-         expect=["Messages in Muse Code history preview", "The upload waits for the server"]),
+         expect=["Muse Code history preview", "The upload waits for the server"]),
+    # Said as an announcement, which Orca 49 and later take through D-Bus;
+    # Orca 46 has nothing new to read, since the focus doesn't move.
     Step("Muse Code history outage", [], trigger="muse-outage",
-         expect=["Muse Code", "history is unavailable"]),
+         expect_dbus=["Muse Code", "history is unavailable"]),
+    # The list's name says the view and that it's empty; why is announced.
     Step("Empty Muse Code filter", [], trigger="muse-empty",
-         expect=["No Muse Code conversations were found", "Start one in Muse Code"]),
+         expect=["Muse Code chats", "0 of"],
+         expect_dbus=["No Muse Code conversations were found", "Start one in Muse Code"]),
     Step("Enter in empty Muse Code filter", ["Return"],
-         expect=["No Muse Code conversations were found"], refuse=["No session selected"]),
+         expect_dbus=["No Muse Code conversations were found"], refuse=["No session selected"]),
     Step("Muse Code history restored", [], trigger="muse-restore",
          expect=["Messages in Visual probe", "What changed"]),
     # New Session with Muse Code selected: model and effort are its own, so
@@ -259,7 +265,7 @@ STEPS = [
          expect=["Messages in Visual probe"]),
     # Review the request before its decisions; Escape leaves it unanswered.
     Step("Muse asks permission", [], trigger="muse-approval",
-         expect=["Permission: Muse probe chat", "Request"],
+         expect=["Permission: Muse probe chat", "Muse Code wants to run"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Muse permission details", ["Tab"], expect=["Details"]),
     Step("Muse Allow Once", ["Tab"], expect=["Allow Once"]),
@@ -268,31 +274,35 @@ STEPS = [
     Step("Muse permission dialog closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("Muse asks a question", [], trigger="muse-question",
-         expect=["Question: Muse probe chat", "Request"],
+         expect=["Question: Muse probe chat", "Muse Code asks"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Muse question text", ["Tab"], expect=["Question"]),
     Step("Muse question choices", ["Tab"], expect=["choose one"]),
-    Step("Muse typed answer", ["Tab"], expect=["typed answer"]),
+    # Orca reads the label shown just before the box (GTK ties it to the box).
+    Step("Muse typed answer", ["Tab"], expect=["type a different answer"]),
     Step("Muse Send Answers", ["Tab"], expect=["Send Answers"]),
     Step("Muse Cancel Question", ["Tab"], expect=["Cancel Question"]),
     Step("Muse question Not Yet", ["Tab"], expect=["Not Yet"]),
     Step("Muse question closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     Step("Muse Chat Permissions", [], trigger="muse-permissions",
-         expect=["Chat Permissions", "Muse Code: Ask me"],
+         expect=["Chat Permissions", "Allowed for this chat"],
          refuse=["unlabeled", "unlabelled"]),
+    # The mode is first in Tab order, before Change and the list.
+    Step("Muse Chat Permissions mode", ["shift+Tab", "shift+Tab"],
+         expect=["Permission mode", "Muse Code: Ask me"]),
     Step("Muse Chat Permissions closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
     # Change Permission Mode warns before a Muse profile you don't review
     # yourself: the warning is read with No focused, and Enter (No) keeps
     # the chat's profile, said, then focus is back in the messages.
     Step("Muse warns before Auto-review", [], trigger="muse-mode-auto-review",
-         expect=["Change Permission Mode", "AI reviewer", "without asking you", "No"],
+         expect=["AI reviewer", "without asking you", "Use Auto-review?", "No"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Muse Auto-review declined, back in the messages", ["Return"],
          expect=["Messages in Visual probe"], expect_dbus=["keeps Ask me"]),
     Step("Muse warns before Unrestricted", [], trigger="muse-mode-unrestricted",
-         expect=["Change Permission Mode", "nothing asks you", "no approval prompts", "No"],
+         expect=["nothing asks you", "no approval prompts", "Use Unrestricted?", "No"],
          refuse=["unlabeled", "unlabelled"]),
     Step("Muse Unrestricted declined, back in the messages", ["Return"],
          expect=["Messages in Visual probe"], expect_dbus=["keeps Ask me"]),

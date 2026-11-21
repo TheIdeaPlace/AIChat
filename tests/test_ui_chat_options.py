@@ -66,6 +66,20 @@ def select(frame, title):
 # -- New Session and the Chat Options dialog ------------------------------------------------
 
 
+def test_new_session_names_each_provider_as_the_session_list_does(frame, folder):
+    """Muse Code, not "Muse" (Orca, #701): the Provider box was each id capitalized."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot", "muse"),
+                              provider="muse")
+    try:
+        choice = dialog.provider_choice
+        assert [choice.GetString(i) for i in range(choice.GetCount())] == [
+            "Claude", "Codex", "Copilot", "Muse Code"]
+        assert choice.GetStringSelection() == "Muse Code"
+    finally:
+        dialog.Destroy()
+
+
 def test_new_session_keeps_chat_options_separate_by_provider(frame, folder):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, folder, providers=("claude", "codex"), provider="claude")

@@ -297,7 +297,7 @@ def test_muse_permission_starts_review_on_request_and_uses_native_choice(app, mo
     try:
         monkeypatch.setattr(dialog, "EndModal", lambda result: ended.append(result))
         assert queued[0][0] == dialog.summary.SetFocus
-        assert dialog.summary.GetName() == "Request"
+        assert dialog.summary.GetName() == "Muse Code wants to run"
         assert dialog.decision is None
         dialog.choice_buttons[0].ProcessEvent(wx.CommandEvent(
             wx.wxEVT_BUTTON, dialog.choice_buttons[0].GetId()))
