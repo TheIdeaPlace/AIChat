@@ -2564,9 +2564,7 @@ class FormattedMessageDialog(wx.Dialog):
 
     def _on_navigating(self, event):
         url = event.GetURL()
-        if not self._loaded and (url == 'about:blank'
-                                 or (self._page_file is not None
-                                     and url == self._page_file.as_uri())):
+        if not self._loaded and _is_the_page_itself(url, self._page_file):
             return  # the page itself. A long one can be followed from before it's all in.
         # A link: never in here. http, https and mailto go to the browser.
         event.Veto()
@@ -2605,6 +2603,17 @@ _SHARED_PAGE = None
 #: title that marks its events as not the next message's.
 PARKED_TITLE = "The Chat Place, nothing open"
 PARKED_PAGE = f"<html><head><title>{PARKED_TITLE}</title></head><body></body></html>"
+
+
+def _is_the_page_itself(url: str, page_file) -> bool:
+    """Whether a navigation before the page has loaded is the page loading,
+    not a link. WebView2 loads a page passed in (SetPage) as a
+    ``data:text/html`` address, not about:blank (seen on WebView2 157), and
+    turning that away left every short message blank (#697 review). A long
+    chat loads from its page file; any other file: address is a link (#253)."""
+    if url == "about:blank" or url.startswith("data:text/html"):
+        return True
+    return page_file is not None and url == page_file.as_uri()
 
 
 def _reuse_pages() -> bool:

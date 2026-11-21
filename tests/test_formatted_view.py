@@ -417,3 +417,53 @@ def test_a_failed_reload_leaves_nothing_busy(monkeypatch):
     except RuntimeError:
         pass
     assert not dialogs._PAGE_BUSY
+
+
+class _Navigating:
+    def __init__(self, url):
+        self.url, self.vetoed = url, False
+
+    def GetURL(self):
+        return self.url
+
+    def Veto(self):
+        self.vetoed = True
+
+
+class _Nav:
+    """What _on_navigating touches."""
+
+    def __init__(self, loaded=False, page_file=None):
+        self._loaded, self._page_file, self.followed = loaded, page_file, []
+
+    def _follow(self, url):
+        self.followed.append(url)
+
+
+# What WebView2 157 reports for SetPage, seen on Windows (#697 review).
+_SET_PAGE_URL = "data:text/html;charset=utf-8;base64,PGh0bWw+PGhlYWQ+"
+
+
+def test_each_message_and_the_parked_page_load_through_set_page(tmp_path):
+    # Turned away, every short message (and the parked page) was blank on
+    # Windows, and the kept page loads them all this way (#693).
+    for url in ("about:blank", _SET_PAGE_URL):
+        page, event = _Nav(), _Navigating(url)
+        F._on_navigating(page, event)
+        assert not event.vetoed and page.followed == []
+    # A long chat loads from its own page file.
+    page_file = tmp_path / "whole-chat.html"
+    page, event = _Nav(page_file=page_file), _Navigating(page_file.as_uri())
+    F._on_navigating(page, event)
+    assert not event.vetoed
+
+
+def test_links_are_followed_never_loaded_into_the_page(tmp_path):
+    # Before loading, a file link is still a link (#253); after, so is all else.
+    other = (tmp_path / "notes.txt").as_uri()
+    for page, url in ((_Nav(), other), (_Nav(loaded=True), _SET_PAGE_URL),
+                      (_Nav(loaded=True), "about:blank"),
+                      (_Nav(), "https://example.com/")):
+        event = _Navigating(url)
+        F._on_navigating(page, event)
+        assert event.vetoed and page.followed == [url]
