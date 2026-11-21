@@ -502,6 +502,27 @@ show everything charged to your account, including other apps using the same key
 totals can be higher. To see The Chat Place's spending there too, make a key just for it: both
 let you create several keys and show spending for each.
 
+### Understanding model costs
+
+The costs The Chat Place shows in the Cost column, at the end of each reply, in the status bar,
+in Usage and Context, in Properties and in Tools, API Keys are a guide to what you're spending,
+not a bill.
+
+- **They're this copy's own count.** The Chat Place counts only what this copy of it sends, on
+  this computer. It doesn't see other computers, other apps, or anything else using the same key.
+  **Reset Total** in Tools, API Keys starts its count again.
+- **They're estimates.**
+  - A Claude cost is what Claude Code reports for each message, from Anthropic's prices.
+  - A Codex cost is worked out by The Chat Place from OpenAI's prices, checked November 19, 2026,
+    and the usage Codex reports. That's why Codex costs are always said as "estimated".
+  - A Codex model with no known price shows the tokens it used instead of a cost.
+- **Your actual charge can differ.** Price changes, discounts, taxes, credits, OpenAI's Priority
+  processing, and usage that couldn't be counted (a message stopped partway, say) all make the bill
+  differ from The Chat Place's figures.
+- **The final word is your provider's.** For Claude chats, that's the Claude Console's usage and
+  billing pages (Anthropic). For Codex chats, it's the OpenAI dashboard's usage and billing pages.
+  To find The Chat Place's own spending there, give it a key of its own.
+
 ### You want several chats or agents working at once
 
 - **Several jobs:** start another chat with **Ctrl+N** and leave the first working. You hear when each
