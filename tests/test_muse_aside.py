@@ -14,7 +14,7 @@ import pytest
 from test_muse_execution import NATIVE_ID, Execution, approval, owned, record  # noqa: F401 - fixture
 
 from thechatplace.aside import NOTHING_FINISHED
-from thechatplace.providers.muse import MuseAsideRunner, MuseProvider
+from thechatplace.providers.muse import MuseAsideRunner, MuseProvider, _command_id
 from thechatplace.providers.muse_connection import MuseRequestError
 
 SIDE_ID = "019a84c2-a1f0-7e3b-9c1e-0000000000aa"
@@ -25,7 +25,7 @@ class SideHost(Execution):
 
     def __init__(self):
         super().__init__()
-        self.last_turn = {"turnId": str(uuid.uuid7()), "terminal": "completed"}  # a finished turn
+        self.last_turn = {"turnId": _command_id(), "terminal": "completed"}  # a finished turn
         self.side = None
         self.side_approvals = []
         self.read_only = True  # whether setPermissionProfile takes

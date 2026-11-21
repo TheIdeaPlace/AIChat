@@ -325,10 +325,11 @@ def test_removing_the_last_muse_chat_leaves_an_empty_muse_file(tmp_path):
 
 def test_muse_command_identity_and_uncertain_state_survive_restart(tmp_path):
     import uuid
+    from thechatplace.providers.muse import _command_id
     path = tmp_path / "sessions.json"
     store = OwnSessionStore(path)
     store.add(muse_chat())
-    command = {"command_id": str(uuid.uuid7()), "turn_id": "", "state": "submitting"}
+    command = {"command_id": _command_id(), "turn_id": "", "state": "submitting"}
     store.update("muse-id", provider="muse", provider_options={"muse_command": command})
     reopened = OwnSessionStore(path)
     assert reopened.get("muse-id", "muse").provider_options == {"muse_command": command}
@@ -341,10 +342,11 @@ def test_muse_finished_command_keeps_how_it_ended(tmp_path, terminal):
     """How native Muse ended the turn is saved with it, so a stopped turn
     isn't announced as finished; refusing it broke every completed turn."""
     import uuid
+    from thechatplace.providers.muse import _command_id
     path = tmp_path / "sessions.json"
     store = OwnSessionStore(path)
     store.add(muse_chat())
-    ident = str(uuid.uuid7())
+    ident = _command_id()
     command = {"command_id": ident, "turn_id": ident, "state": "completed", "terminal": terminal}
     store.update("muse-id", provider="muse", provider_options={"muse_command": command})
     assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
@@ -543,11 +545,12 @@ def test_a_codex_setting_cleared_here_stays_cleared_and_a_later_one_stays(tmp_pa
 
 def test_muse_command_keeps_the_steers_sent_into_its_turn(tmp_path):
     import uuid
+    from thechatplace.providers.muse import _command_id
     path = tmp_path / "sessions.json"
     store = OwnSessionStore(path)
     store.add(muse_chat())
-    ident = str(uuid.uuid7())
-    command = {"command_id": ident, "turn_id": ident, "state": "running", "steers": [str(uuid.uuid7())]}
+    ident = _command_id()
+    command = {"command_id": ident, "turn_id": ident, "state": "running", "steers": [_command_id()]}
     store.update("muse-id", provider="muse", provider_options={"muse_command": command})
     assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
 

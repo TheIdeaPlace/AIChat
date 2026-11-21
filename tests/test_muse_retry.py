@@ -14,9 +14,10 @@ import pytest
 from test_muse_execution import NATIVE_ID, REVIEWERS, Execution, owned, policy, record  # noqa: F401
 
 from thechatplace.providers.muse_connection import MuseHistoryError, MuseRequestError
+from thechatplace.providers.muse import _command_id
 
 FORK_ID = "019a84c2-a1f0-7e3b-9c1e-0000000000f0"
-TURN_A, TURN_B = str(uuid.uuid7()), str(uuid.uuid7())
+TURN_A, TURN_B = _command_id(), _command_id()
 
 
 class ForkHost(Execution):

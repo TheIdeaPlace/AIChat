@@ -410,7 +410,7 @@ def test_muse_unknown_state_is_persistent_and_late_callbacks_are_ignored(frame, 
 def test_muse_turn_end_says_how_it_ended(frame, monkeypatch, terminal, said):
     import threading
     from thechatplace.own_store import OwnSession
-    record = OwnSession("synthetic-muse", "Synthetic Muse", "C:\work", provider="muse")
+    record = OwnSession("synthetic-muse", "Synthetic Muse", r"C:\work", provider="muse")
     frame.store.add(record)
     token = threading.Event()
     frame._muse_monitors[record.cli_session_id] = token
@@ -429,7 +429,7 @@ def test_muse_monitor_keeps_watching_background_work_until_the_reply(frame, monk
     keeps going through all of that, and says "finished" only after the reply."""
     from thechatplace.own_store import OwnSession
     from thechatplace.ui import codex_chats
-    record = OwnSession("synthetic-muse", "Synthetic Muse", "C:\work", provider="muse")
+    record = OwnSession("synthetic-muse", "Synthetic Muse", r"C:\work", provider="muse")
     frame.store.add(record)
     queued, callbacks, waits, spoken = [], [], [], []
     monkeypatch.setattr(frame._pool, "submit", lambda fn: queued.append(fn))
@@ -467,6 +467,6 @@ def test_muse_monitor_keeps_watching_background_work_until_the_reply(frame, monk
 ])
 def test_muse_turn_status_says_background_work(frame, update, said):
     from thechatplace.own_store import OwnSession
-    record = OwnSession("synthetic-muse", "Synthetic Muse", "C:\work", provider="muse")
+    record = OwnSession("synthetic-muse", "Synthetic Muse", r"C:\work", provider="muse")
     frame._muse_runtime[record.cli_session_id] = update
     assert frame._muse_state_text(record.to_info()).startswith(said)
