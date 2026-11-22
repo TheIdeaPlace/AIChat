@@ -33,6 +33,10 @@ VERIFIED_SCHEMAS = frozenset({
 })
 
 
+#: Notifications the execution connection asks Muse not to send at all.
+OPTED_OUT_NOTIFICATIONS = ("item/delta",)
+
+
 class MuseHistoryError(RuntimeError):
     """Public diagnostics never contain raw host errors or private history."""
 
@@ -94,10 +98,16 @@ class HistoryConnection:
             return self._closed or bool(self._error)
 
     def initialize(self):
+        capabilities = {"experimentalApi": True, "userInputDialogs": self.EVENTS}
+        if self.EVENTS:
+            # A running command's output streams as item/delta, chunk by
+            # chunk: a test suite can send hundreds a second. The app reads
+            # whole items instead, so it declines them (Muse allows that).
+            capabilities["optOutNotificationMethods"] = list(OPTED_OUT_NOTIFICATIONS)
         try:
             handshake = self._request("initialize", {
                 "clientInfo": {"name": "thechatplace", "version": __version__},
-                "capabilities": {"experimentalApi": True, "userInputDialogs": self.EVENTS}})
+                "capabilities": capabilities})
             schema = handshake.get("schema")
             if (not isinstance(schema, dict) or type(schema.get("version")) is not int
                     or schema["version"] != 1
@@ -303,6 +313,14 @@ class ExecutionConnection(HistoryConnection):
                 or ("id" in message and type(message["id"]) not in (int, str))
                 or (isinstance(message.get("id"), str) and len(message["id"]) > 8192)):
             raise ValueError("event envelope")
+        if "id" not in message:
+            # A notification. The app never acts on one: every poll reads
+            # Muse's whole state instead, which already folds them in. So
+            # none is kept. Keeping them let a command's streamed output
+            # overflow the queue between polls, and overflow fails the
+            # connection, which ends the host and the turn running in it,
+            # with its permission request unanswerable (#701).
+            return
         with self._lock:
             if self._closed:
                 return
@@ -314,8 +332,8 @@ class ExecutionConnection(HistoryConnection):
                     raise ValueError("server request")
             if (len(self._events) >= self._event_limit
                     or self._event_bytes + size > self._event_bytes_limit):
-                # Losing a completion or approval would leave unsafe local
-                # state. Fail the connection so the caller must reconcile.
+                # Losing an approval or question would leave one nobody can
+                # answer. Fail the connection so the caller must reconcile.
                 raise ValueError("event overflow")
             if "id" in message:
                 self._server_requests.add(message["id"])

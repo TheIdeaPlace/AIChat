@@ -68,14 +68,21 @@ def test_request_rejection_is_redacted_and_keeps_host_usable(host, connection_cl
 
 
 @pytest.mark.parametrize("managed", [False, True])
-def test_execution_drains_notifications_once_in_wire_order_without_reconnecting(host, managed):
+def test_execution_keeps_requests_once_in_wire_order_and_no_notifications(host, managed):
+    """Polls read Muse's whole state, so a notification is never acted on and
+    none is kept; Muse's requests to the app are, in the order they came."""
+    first = {"jsonrpc": "2.0", "id": "server-1", "method": "approval/request", "params": {"n": 1}}
+    second = {"jsonrpc": "2.0", "id": "server-2", "method": "userInput/request", "params": {"n": 2}}
     events = [
         {"jsonrpc": "2.0", "method": "turn/started", "params": {"sessionId": "synthetic"}},
+        first,
         {"jsonrpc": "2.0", "method": "view/changed", "params": {"revision": 2}},
+        second,
     ]
     def answer(message):
-        for event in events:
-            host.stdout.lines.put(json.dumps(event).encode() + b"\n")
+        if message["method"] == "turn/start":
+            for event in events:
+                host.stdout.lines.put(json.dumps(event).encode() + b"\n")
         return {}
     host.answer = answer
     factory = lambda exe: ExecutionConnection(exe, start=lambda ignored: host, initialize=False)
@@ -84,7 +91,8 @@ def test_execution_drains_notifications_once_in_wire_order_without_reconnecting(
         connection.initialize()
     try:
         connection.request("turn/start", {})
-        assert connection.drain_events() == events
+        connection.request("usage/read", {})  # answered after all four arrive
+        assert connection.drain_events() == [first, second]
         assert connection.drain_events() == []
         assert not connection.closed
     finally:
@@ -92,10 +100,29 @@ def test_execution_drains_notifications_once_in_wire_order_without_reconnecting(
 
 
 @pytest.mark.parametrize("bounds", [{"event_limit": 1}, {"event_bytes_limit": 128}])
-def test_execution_notification_overflow_fails_instead_of_dropping_turn_state(host, bounds):
+def test_a_flood_of_streamed_output_never_fails_the_connection(host, bounds):
+    """A test suite's output once streamed as hundreds of item/delta between
+    polls; the queue overflowed and the host, the turn running in it and its
+    permission request were lost (#701). Notifications aren't kept now."""
     def answer(message):
-        for _ in range(2):
-            event = {"jsonrpc": "2.0", "method": "view/changed", "params": {"text": "x" * 128}}
+        for _ in range(500):
+            event = {"jsonrpc": "2.0", "method": "item/delta",
+                     "params": {"field": "output", "delta": "x" * 128}}
+            host.stdout.lines.put(json.dumps(event).encode() + b"\n")
+        return {}
+    host.answer = answer
+    with ExecutionConnection("fake", start=lambda exe: host, **bounds) as connection:
+        connection.request("turn/start", {})
+        connection.request("usage/read", {})
+        assert connection.drain_events() == [] and not connection.closed
+
+
+@pytest.mark.parametrize("bounds", [{"event_limit": 1}, {"event_bytes_limit": 300}])
+def test_request_overflow_fails_instead_of_losing_a_question(host, bounds):
+    def answer(message):
+        for n in range(2):
+            event = {"jsonrpc": "2.0", "id": f"server-{n}", "method": "approval/request",
+                     "params": {"text": "x" * 128}}
             host.stdout.lines.put(json.dumps(event).encode() + b"\n")
         return {}
     host.answer = answer
@@ -105,6 +132,13 @@ def test_execution_notification_overflow_fails_instead_of_dropping_turn_state(ho
         assert connection.closed
         with pytest.raises(MuseHistoryError):
             connection.drain_events()
+
+
+def test_execution_declines_streamed_deltas_and_history_asks_nothing_new(host):
+    with ExecutionConnection("fake", start=lambda exe: host) as connection:
+        assert connection.request("usage/read", {}) is not None
+    sent = host.messages[0]["params"]["capabilities"]
+    assert sent["optOutNotificationMethods"] == ["item/delta"]
 
 
 def test_history_ignores_notifications_without_enabling_execution(host):
