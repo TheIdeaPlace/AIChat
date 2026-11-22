@@ -653,6 +653,23 @@ def test_claude_in_chrome_reaches_a_chat_recorded_without_it(frame):
     assert own.prompt_note == CHROME_ON and own.prompt_fresh
 
 
+def test_an_older_chat_without_chrome_keeps_its_recorded_prompt(frame):
+    # Its recorded note (no Chrome) is near enough the off note: a prompt made
+    # afresh would be for the rest of the chat, so it isn't.
+    frame.speech.claude_in_chrome = False
+    assert frame._send_now("own-1", "Hello") is None
+    command = FakeRunner.instances[-1].command
+    assert "--no-chrome" in command and "--system-prompt-snapshot" not in command
+    own = frame.store.get("own-1")
+    assert own.prompt_note == "no-chrome" and not own.prompt_fresh
+    # Turned on later, it's made afresh then.
+    frame._runners.clear()
+    frame.speech.claude_in_chrome = True
+    assert frame._send_now("own-1", "Now with Chrome") is None
+    assert "--chrome" in FakeRunner.instances[-1].command
+    assert frame.store.get("own-1").prompt_fresh
+
+
 def test_claude_in_chrome_off_keeps_a_new_chats_recorded_prompt(frame):
     # A chat whose first turn hasn't run has nothing recorded: it's only noted.
     frame.store.add(OwnSession("own-3", "Fresh", frame.store.get("own-1").cwd))

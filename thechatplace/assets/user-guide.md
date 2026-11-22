@@ -255,7 +255,7 @@ installed and signed in to the same claude.ai account as Claude Code. Then:
 - Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
   example.com". **Allow for This Chat** lets it use that site for the rest of the chat.
 - Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
-  next message.
+  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
 - It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
   told so, so it says so rather than sending you to a setting.
 

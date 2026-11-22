@@ -6116,12 +6116,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         as it is after noting it. When it isn't what the chat's recorded
         system prompt was made with (Settings changed, or a chat from before
         #319, recorded without --chrome), the prompt is made afresh from now
-        on: Claude Code would otherwise keep telling it Chrome isn't there."""
+        on: Claude Code would otherwise keep telling it Chrome isn't there.
+
+        Only when Chrome itself comes or goes: a prompt made afresh stays so
+        for the rest of the chat, and the notes for off and for API credits
+        say near enough what a chat recorded before #319 was told (no
+        Chrome), so those chats keep their recorded prompt."""
         state = self._chrome_state(own.billing)
         if own.prompt_note == state:
             return state, own
         changes = {"prompt_note": state}
-        if not own.prompt_fresh and self._session_exists(own):
+        if (CHROME_ON in (state, own.prompt_note) and not own.prompt_fresh
+                and self._session_exists(own)):
             changes["prompt_fresh"] = True
         if self._store_write(self.store.update, own.cli_session_id, **changes):
             own = self.store.get(own.cli_session_id) or own

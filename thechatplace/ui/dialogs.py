@@ -31,9 +31,8 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 
 #: Settings' Claude in Chrome check box (#319). The note Claude is given
 #: when it's off points here by these words ("Let Claude use Chrome").
-CHROME_SETTING_LABEL = ("Let Claude use &Chrome (Claude in Chrome) in The Chat Place's Claude "
-                        "chats on your subscription. Needs the Claude in Chrome extension, "
-                        "signed in (from the next turn)")
+CHROME_SETTING_LABEL = ("Let Claude use &Chrome in Claude chats on your subscription (needs "
+                        "the Claude in Chrome extension; from the next turn)")
 
 
 class UnpricedApiDialog(wx.Dialog):

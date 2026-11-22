@@ -357,15 +357,15 @@ def unavailable_note(chrome: str = CHROME_OFF) -> str:
 
     Claude Code records the system prompt on a chat's first request and
     reuses the record (--system-prompt-snapshot). So when the note a chat
-    gets changes (Settings, or a chat recorded before #319 passed --chrome),
-    its prompt is made afresh (``OwnSession.prompt_note``), or it would be
-    told Chrome isn't there when it is. Copies (Continue Here, Rewind or
-    Branch from Here, Continue on API Credits) are always made afresh."""
+    gets changes to or from Chrome being available, its prompt is made
+    afresh (``MainFrame._chrome_for_turn``), or it would be told Chrome isn't
+    there when it is. Copies (Continue Here, Rewind or Branch from Here,
+    Continue on API Credits) are always made afresh."""
     return _NOTES.get(chrome, _NOTES[CHROME_OFF])
 
 
-#: The note as it was before #319 passed --chrome, kept for anything that
-#: reads it by this name.
+#: The note when Claude in Chrome is off: what every turn said before #319
+#: passed --chrome, and what the tests check for by this name.
 UNAVAILABLE_NOTE = unavailable_note(CHROME_OFF)
 
 
@@ -799,10 +799,16 @@ class PermissionRequest:
         ("mcp__claude-in-chrome__navigate") doesn't."""
         if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
             return ""
-        match = _CHROME_ASK.fullmatch(" ".join(self.description.split()))
+        match = self._chrome_ask()
         if match:
             return f"Claude in Chrome wants to {match.group(1)}"
         return f"Claude in Chrome wants to use {self.tool_name[len(CHROME_TOOL_PREFIX):]}"
+
+    def _chrome_ask(self):
+        """Claude in Chrome's description in its usual words, or None."""
+        if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
+            return None
+        return _CHROME_ASK.fullmatch(" ".join(self.description.split()))
 
     def detail(self) -> str:
         """Everything about the request, to read by line."""
@@ -810,7 +816,9 @@ class PermissionRequest:
 
     def _detail(self) -> str:
         lines = [self.summary() + "."]
-        if self.description and self.description not in lines[0] and not self._chrome_summary():
+        # A Claude in Chrome description already is the summary; any other
+        # (in words this doesn't know) is kept as the reason.
+        if self.description and self.description not in lines[0] and not self._chrome_ask():
             lines.append(f"Why: {self.description}")
         if self.tool_name in SHELL_TOOLS:
             lines += ["", f"{self.tool_name} command:", str(self.input.get("command", ""))]

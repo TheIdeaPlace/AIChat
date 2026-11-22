@@ -227,13 +227,28 @@ def test_store_drops_an_unknown_chrome_note(tmp_path):
 def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
     config = tmp_path / ".claude.json"
     monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
-    assert platform_paths.claude_chrome_extension_installed() is False  # no file
-    config.write_text("{not json", encoding="utf-8")
-    assert platform_paths.claude_chrome_extension_installed() is False
-    config.write_text(json.dumps({"cachedChromeExtensionInstalled": "yes"}), encoding="utf-8")
-    assert platform_paths.claude_chrome_extension_installed() is False
-    config.write_text(json.dumps({"cachedChromeExtensionInstalled": True}), encoding="utf-8")
-    assert platform_paths.claude_chrome_extension_installed() is True
+    installed = platform_paths.claude_chrome_extension_installed
+    stamp = [1_700_000_000]
+
+    def write(text):
+        # Each write a second later, as Claude Code's own are.
+        config.write_text(text, encoding="utf-8")
+        stamp[0] += 1
+        os.utime(config, (stamp[0], stamp[0]))
+    assert installed() is False  # no file
+    write(json.dumps({"projects": {}}))
+    assert installed() is False  # not looked for yet
+    write(json.dumps({"cachedChromeExtensionInstalled": "yes"}))
+    assert installed() is False
+    write(json.dumps({"projects": {}, "cachedChromeExtensionInstalled": True}, indent=2))
+    assert installed() is True
+    # Caught mid-rewrite: the last answer stands, not a turn without Chrome.
+    write('{"projects": {"C:/a": {"allowedTools": []')
+    assert installed() is True
+    write(json.dumps({"cachedChromeExtensionInstalled": False}))
+    assert installed() is False
+    config.unlink()
+    assert installed() is False
 
 
 def test_store_rejects_unsafe_id(tmp_path):

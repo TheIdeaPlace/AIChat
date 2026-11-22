@@ -172,6 +172,10 @@ def test_chrome_permission_without_a_description_still_reads():
     assert request.allow_for_session_label() == (
         "Allow, and don't ask again in this chat for Claude in Chrome's tabs_create_mcp tool")
     assert request.session_rules() == ["mcp__claude-in-chrome__tabs_create_mcp"]
+    # Worded some other way, the description is kept as the reason.
+    odd = _chrome_request(dict(body, description="Claude in Chrome needs a new window."))
+    assert odd.summary() == "Claude in Chrome wants to use tabs_create_mcp"
+    assert "Why: Claude in Chrome needs a new window." in odd.detail()
     # Another server's tool keeps the usual words.
     other = _chrome_request(dict(body, tool_name="mcp__github__create_issue",
                                  description="Allow Claude in Chrome to do it?"))
