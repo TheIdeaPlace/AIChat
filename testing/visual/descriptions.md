@@ -217,6 +217,17 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Full c
 
 ## settings: Settings
 
+**Since #319 (2026-11-22):** the light-100 picture is 680 by 978, 40 pixels taller, for an
+unchecked "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in
+Chrome extension; from the next turn)" check box, wrapped onto two lines, between the task-list
+and Codex check boxes and lined up with them at the left. It has no underlined letter (every
+letter in it is taken in Settings). Everything below moves down 40 pixels; nothing else changed.
+Its label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic
+(#FFFFFF on #202020), the same as the check boxes around it. The Codex, Copilot and
+speech-problem Settings pictures were accepted again from the same runs, each 40 pixels taller
+(42 for speech-problem, which now scrolls, with its check boxes wrapped short of the scroll
+bar). Only light-100 and hc-aquatic-100 were run.
+
 **Since #658 (2026-11-17):** the light-100 picture is 680 by 938, 80 pixels taller, for an
 "API credits" group under Reading messages, framed like the groups above it, holding two
 checked boxes: "Ask before the first API-credit message in each chat" (B underlined) and
