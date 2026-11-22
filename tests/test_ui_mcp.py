@@ -172,6 +172,22 @@ def test_a_chat_started_here_lists_its_session_tools_and_a_desktop_chat_doesnt(f
     assert env["mcp"]["opened_with"] == {"disabled": [], "mcp_config": None}
 
 
+def test_connected_tools_lists_claude_in_chrome_only_where_the_chat_has_it(frame, env,
+                                                                           monkeypatch):
+    # #319: the idle process gets --chrome only for a chat whose turns do.
+    frame.speech.claude_in_chrome = True
+    select(frame, "Tools probe")
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert env["mcp"]["chrome"] is True
+    select(frame, "Desktop one")  # its turns aren't run here
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert env["mcp"]["chrome"] is False
+    frame.speech.claude_in_chrome = False
+    select(frame, "Tools probe")
+    _connected_tools(frame, monkeypatch, lambda dialog: None)
+    assert env["mcp"]["chrome"] is False
+
+
 def test_a_server_only_named_like_the_session_tools_cant_be_turned_off(frame, env, monkeypatch):
     """Denying goes by name, which would take the real ones too (#468)."""
     env["mcp"]["servers"] = [{"name": "ccd_session_mgmt", "status": "connected", "scope": "project",

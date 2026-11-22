@@ -109,6 +109,47 @@ def claude_folder_trusted(folder: str) -> Optional[bool]:
     return False
 
 
+_CHROME_INSTALLED = re.compile(rb'"cachedChromeExtensionInstalled"\s*:\s*(true|false)')
+#: (path, modified time, size) -> the answer last read from it.
+_chrome_installed_cache: dict = {}
+
+
+def claude_chrome_extension_installed() -> bool:
+    """Whether Claude Code last found the Claude in Chrome extension
+    (``cachedChromeExtensionInstalled`` in ~/.claude.json, #319): what decides
+    whether chats get ``--chrome`` until Settings says otherwise.
+
+    Asked on every send, on the UI thread. The file runs to megabytes and
+    Claude Code rewrites it all the time, so it's read again only when it has
+    changed, and searched for the one key rather than parsed. A read that
+    fails (the file mid-replace) keeps the last answer, so one turn isn't
+    told Chrome is off while it's on. False when it has never been read."""
+    path = claude_config_file()
+    last = _chrome_installed_cache.get(str(path), (None, False))
+    try:
+        info = path.stat()
+        stamp = (info.st_mtime_ns, info.st_size)
+        if stamp == last[0]:
+            return last[1]
+        data = path.read_bytes()
+    except FileNotFoundError:
+        _chrome_installed_cache.pop(str(path), None)
+        return False
+    except OSError:
+        return last[1]
+    match = _CHROME_INSTALLED.search(data)
+    if match is None:
+        # Half written, or Claude Code hasn't looked for the extension yet:
+        # only a whole file without the key is remembered as no.
+        if not data.rstrip().endswith(b"}"):
+            return last[1]
+        value = False
+    else:
+        value = match.group(1) == b"true"
+    _chrome_installed_cache[str(path)] = (stamp, value)
+    return value
+
+
 def projects_dir() -> Path:
     return claude_home() / "projects"
 

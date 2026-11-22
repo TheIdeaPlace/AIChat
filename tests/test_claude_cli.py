@@ -22,6 +22,8 @@ FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json"
 PROMPTS = ["--permission-prompts", "host", "--permission-prompt-tool", "stdio"]
 #: Told to Claude on every turn (#319).
 NOTE = cli.APPEND_PROMPT + cli.UNAVAILABLE_NOTE
+#: Claude in Chrome off, said on every turn unless it's on (#319).
+NO_CHROME = "--no-chrome"
 
 
 # -- command construction --------------------------------------------------------
@@ -29,7 +31,7 @@ NOTE = cli.APPEND_PROMPT + cli.UNAVAILABLE_NOTE
 
 def test_new_command():
     command = build_new_command(EXE, "aaaa-1111", "  My   title ", "auto")
-    assert command == [EXE, *FLAGS, "--permission-mode", "auto", *PROMPTS, NOTE,
+    assert command == [EXE, *FLAGS, "--permission-mode", "auto", *PROMPTS, NO_CHROME, NOTE,
                        "--session-id", "aaaa-1111", "--name", "My title"]
 
 
@@ -68,7 +70,7 @@ def test_new_command_rejects_bad_id():
 
 def test_resume_command_for_own_session():
     assert build_resume_command(EXE, "aaaa-1111", "plan", OWN, DESKTOP) == [
-        EXE, *FLAGS, "--permission-mode", "plan", *PROMPTS, NOTE,
+        EXE, *FLAGS, "--permission-mode", "plan", *PROMPTS, NO_CHROME, NOTE,
         "--resume", "aaaa-1111"]
 
 
@@ -82,9 +84,102 @@ def test_every_turn_says_what_isnt_available_here():
     for command in commands:
         appended = [arg for arg in command if arg.startswith("--append-system-prompt")]
         assert appended == [NOTE]
-    for words in ("Claude in Chrome", "computer use", "browser pane", "Don't tell the user to enable"):
+    for words in ("Claude in Chrome", "omputer use", "browser pane", "Don't tell the user to enable"):
         assert words in cli.UNAVAILABLE_NOTE
     assert "--chrome" not in commands[0]
+
+
+def test_claude_in_chrome_goes_on_every_turn_when_on():
+    # #319: each turn is a new process, so --chrome is on new, resumed and
+    # copied turns alike, and the note no longer says Chrome is missing.
+    on = cli.CHROME_ON
+    commands = [build_new_command(EXE, "aaaa-1111", "t", "auto", chrome=on),
+                build_resume_command(EXE, "aaaa-1111", "auto", OWN, DESKTOP, chrome=on),
+                cli.build_fork_command(EXE, "src-1", "new-1", "Copy", "auto", chrome=on)]
+    for command in commands:
+        assert "--chrome" in command and NO_CHROME not in command
+        appended = [arg for arg in command if arg.startswith(cli.APPEND_PROMPT)]
+        assert appended == [cli.APPEND_PROMPT + cli.unavailable_note(on)]
+    note = cli.unavailable_note(on)
+    assert "Claude in Chrome (mcp__claude-in-chrome__ tools) is available" in note
+    assert "aren't available in this chat" in note  # computer use, the browser pane
+    assert "isn't available" not in note
+
+
+def test_claude_in_chrome_off_says_why():
+    off, api = cli.unavailable_note(cli.CHROME_OFF), cli.unavailable_note(cli.CHROME_API)
+    # Off: it names The Chat Place's own setting, by its check box's words.
+    assert "Let Claude use Chrome" in off and "Settings" in off
+    # API credits: Claude Code keeps it off with an API key, so no setting helps.
+    assert "API credits" in api and "Let Claude use Chrome" not in api
+    for note in (off, api):
+        assert "Don't tell the user to enable them" in note
+    command = build_new_command(EXE, "aaaa-1111", "t", "auto", chrome=cli.CHROME_API)
+    assert NO_CHROME in command and "--chrome" not in command
+    assert cli.APPEND_PROMPT + api in command
+
+
+def test_chrome_note_follows_the_chats_own_instructions():
+    from thechatplace.chat_options import ChatOptions
+    command = build_new_command(EXE, "aaaa-1111", "t", "auto", chrome=cli.CHROME_ON,
+                                options=ChatOptions(instructions="Be brief."))
+    assert (cli.APPEND_PROMPT + "Be brief.\n\n" + cli.unavailable_note(cli.CHROME_ON)) in command
+
+
+def test_unknown_chrome_state_refused():
+    with pytest.raises(ValueError):
+        build_new_command(EXE, "aaaa-1111", "t", "auto", chrome="yes")
+
+
+# Shaped like Claude Code 2.1.326's can_use_tool requests for Claude in Chrome.
+_CHROME_NAVIGATE = {
+    "subtype": "can_use_tool", "tool_name": "mcp__claude-in-chrome__navigate",
+    "mcp_server": {"name": "claude-in-chrome", "source": "dynamic"},
+    "display_name": "Navigate", "input": {"url": "https://example.com", "tabId": 7},
+    "description": "Allow Claude in Chrome to navigate on example.com?", "tool_kind": "browser",
+    "permission_suggestions": [{"type": "addRules", "rules": [
+        {"toolName": "ClaudeInChromeDomain", "ruleContent": "example.com"}],
+        "behavior": "allow", "destination": "session"}],
+    "tool_use_id": "toolu_1"}
+
+
+def _chrome_request(body):
+    parser = StreamParser()
+    events = parser.feed(json.dumps({"type": "control_request", "request_id": "r1",
+                                     "request": body}))
+    return events[0].request
+
+
+def test_chrome_permission_names_the_website():
+    request = _chrome_request(_CHROME_NAVIGATE)
+    assert request.summary() == "Claude in Chrome wants to navigate on example.com"
+    detail = request.detail()
+    assert detail.splitlines()[0] == "Claude in Chrome wants to navigate on example.com."
+    assert "Why:" not in detail  # the description is the summary
+    assert "url: https://example.com" in detail
+    assert request.session_rules() == ["ClaudeInChromeDomain(example.com)"]
+    assert request.allow_for_session_label() == (
+        "Allow, and don't ask again in this chat for Claude in Chrome on example.com")
+
+
+def test_chrome_permission_without_a_description_still_reads():
+    body = dict(_CHROME_NAVIGATE, tool_name="mcp__claude-in-chrome__tabs_create_mcp",
+                description="", permission_suggestions=[{
+                    "type": "addRules", "behavior": "allow", "destination": "session",
+                    "rules": [{"toolName": "mcp__claude-in-chrome__tabs_create_mcp"}]}])
+    request = _chrome_request(body)
+    assert request.summary() == "Claude in Chrome wants to use tabs_create_mcp"
+    assert request.allow_for_session_label() == (
+        "Allow, and don't ask again in this chat for Claude in Chrome's tabs_create_mcp tool")
+    assert request.session_rules() == ["mcp__claude-in-chrome__tabs_create_mcp"]
+    # Worded some other way, the description is kept as the reason.
+    odd = _chrome_request(dict(body, description="Claude in Chrome needs a new window."))
+    assert odd.summary() == "Claude in Chrome wants to use tabs_create_mcp"
+    assert "Why: Claude in Chrome needs a new window." in odd.detail()
+    # Another server's tool keeps the usual words.
+    other = _chrome_request(dict(body, tool_name="mcp__github__create_issue",
+                                 description="Allow Claude in Chrome to do it?"))
+    assert other.summary().startswith("Claude wants to use mcp__github__create_issue")
 
 
 def test_model_goes_on_every_turn():

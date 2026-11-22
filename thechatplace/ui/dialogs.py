@@ -29,6 +29,13 @@ from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
+#: Settings' Claude in Chrome check box (#319). The note Claude is given
+#: when it's off points here by these words ("Let Claude use Chrome").
+#: No access key: every letter in it is taken in Settings (C by Cancel, whose
+#: stock label is "&Cancel" on a Mac and Linux), so it's reached with Tab.
+CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscription (needs "
+                        "the Claude in Chrome extension; from the next turn)")
+
 
 class UnpricedApiDialog(wx.Dialog):
     """Mandatory consent to an unpriced paid chat; Cancel stays default (#685)."""
@@ -1716,6 +1723,16 @@ class SettingsDialog(wx.Dialog):
         self.task_list.SetValue(speech.task_list)
         outer.Add(self.task_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Claude in Chrome (#319). Until it's changed here it follows whether
+        # Claude Code has found the extension, so only a change is kept.
+        self.chrome = wx.CheckBox(body, label=_wrapped(
+            self, CHROME_SETTING_LABEL,
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self._chrome_choice = speech.claude_in_chrome
+        self._initial_chrome = speech.chrome_on()
+        self.chrome.SetValue(self._initial_chrome)
+        outer.Add(self.chrome, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         codex_label = "Include Code&x chats (restart required)"
         if not platform_paths.find_codex():
             codex_label += (". Codex isn't installed on this computer; "
@@ -1871,7 +1888,7 @@ class SettingsDialog(wx.Dialog):
         if height + chrome > screen_area(self).height:
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
-            for box in (self.remote_control, self.task_list, self.codex_enabled,
+            for box in (self.remote_control, self.task_list, self.chrome, self.codex_enabled,
                         self.copilot_enabled, self.agent_auto):
                 if box is None:
                     continue
@@ -1904,6 +1921,10 @@ class SettingsDialog(wx.Dialog):
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
                                    task_list=self.task_list.GetValue(),
+                                   claude_in_chrome=(
+                                       self.chrome.GetValue()
+                                       if self.chrome.GetValue() != self._initial_chrome
+                                       else self._chrome_choice),
                                    codex_enabled=(self.codex_enabled.GetValue() if self._codex_changed
                                        or self.codex_enabled.GetValue() != self._initial_codex_effective
                                        else self._codex_choice),

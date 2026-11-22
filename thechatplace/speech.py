@@ -208,6 +208,10 @@ class SpeechSettings:
     #: Give The Chat Place's own Claude sessions Claude's task list (#231), as
     #: the desktop app's sessions have it. On unless turned off.
     task_list: bool = True
+    #: Claude in Chrome in The Chat Place's Claude chats (#319): True or
+    #: False as Settings chose, None to follow whether Claude Code has found
+    #: the extension (``chrome_on``).
+    claude_in_chrome: Optional[bool] = None
     #: The session list's columns, in the order each row reads them (View,
     #: Session List Columns, #134): ids from ``sessions.FIELD_IDS``.
     session_fields: List[str] = field(default_factory=_default_fields)
@@ -279,6 +283,16 @@ class SpeechSettings:
         from . import platform_paths
         return bool(platform_paths.find_codex())
 
+    def chrome_on(self) -> bool:
+        """Whether Claude chats on the subscription get Claude in Chrome
+        (#319): Settings' choice, or until one is made, whether Claude Code
+        has found the extension, so nobody without it gets tools that can't
+        connect."""
+        if self.claude_in_chrome is not None:
+            return self.claude_in_chrome
+        from . import platform_paths
+        return platform_paths.claude_chrome_extension_installed()
+
     @property
     def enabled(self) -> bool:
         return self.announce != ANNOUNCE_SILENT
@@ -321,6 +335,8 @@ class SpeechSettings:
         settings.notifications = notify if notify in NOTIFY_LEVELS else NOTIFY_ALL
         settings.remote_control = raw.get("remote_control") is True
         settings.task_list = raw.get("task_list") is not False
+        chrome = raw.get("claude_in_chrome")
+        settings.claude_in_chrome = chrome if type(chrome) is bool else None
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.copilot_enabled = raw.get("copilot_enabled") is True

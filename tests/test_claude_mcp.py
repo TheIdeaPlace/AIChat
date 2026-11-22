@@ -323,6 +323,20 @@ def test_session_runs_claude_idle_with_no_prompts(idle):
     assert "ANTHROPIC_API_KEY" not in env and "CLAUDECODE" not in env
 
 
+def test_session_lists_claude_in_chrome_when_asked(tmp_path):
+    # #319: mcp_status leaves claude-in-chrome out without --chrome.
+    seen = {}
+
+    def popen(command, **kwargs):
+        seen["command"] = command
+        return subprocess.Popen([sys.executable, "-c", "import sys; sys.stdin.read()"], **kwargs)
+    session = McpSession("claude.exe", str(tmp_path), popen=popen, chrome=True)
+    try:
+        assert seen["command"][-1] == "--chrome"
+    finally:
+        session.close()
+
+
 def test_status_asks_again_while_servers_are_connecting(idle):
     servers = idle.status(poll=0.01)
     assert [(s.name, s.status) for s in servers] == [("claude.ai Docs", "connected")]

@@ -21,6 +21,9 @@ ALLOWED_MS = 1_792_400_000_000
     ("WebSearch", "Search the web."),
     ("mcp__github__create_issue", "Use the create_issue tool from github."),
     ("mcp__github", "Use any tool from github."),
+    # Claude in Chrome (#319): a site, and one of its tools.
+    ("ClaudeInChromeDomain(example.com)", "Let Claude in Chrome act on example.com."),
+    ("mcp__claude-in-chrome__tabs_create_mcp", "Use Claude in Chrome's tabs_create_mcp tool."),
 ])
 def test_claude_rules_read_in_plain_words(rule, words):
     assert cp.describe_claude_rule(rule) == words
