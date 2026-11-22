@@ -247,9 +247,9 @@ between Claude and a website, so you can say "post this as a draft" instead.
 forms and click. Claude chats here can use it once you have the Claude in Chrome extension
 installed and signed in to the same claude.ai account as Claude Code. Then:
 
-- It's on in Claude chats on your subscription, new and old, from their next message. **Settings,
-  "Let Claude use Chrome"** (Alt+C) turns it off or on. Until you change it, it's on if Claude
-  Code has found the extension on your computer.
+- It's on in Claude chats on your subscription, new and old, from their next message.
+  **Settings, "Let Claude use Chrome"** turns it off or on. Until you change it, it's on if
+  Claude Code has found the extension on your computer.
 - Ask for it by name the first time, for example "Using Chrome, what tabs do I have open?" Keep
   Chrome open while Claude works in it.
 - Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
@@ -3019,7 +3019,7 @@ setting moves straight to it.
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
   message. On at first.
-- **Let Claude use Chrome** (Alt+C): Claude in Chrome in Claude chats started here on your
+- **Let Claude use Chrome** (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
   subscription, from each chat's next message. On at first if Claude Code has found the Claude in
   Chrome extension (see "You want Claude to use your browser").
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat

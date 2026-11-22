@@ -31,7 +31,9 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 
 #: Settings' Claude in Chrome check box (#319). The note Claude is given
 #: when it's off points here by these words ("Let Claude use Chrome").
-CHROME_SETTING_LABEL = ("Let Claude use &Chrome in Claude chats on your subscription (needs "
+#: No access key: every letter in it is taken in Settings (C by Cancel, whose
+#: stock label is "&Cancel" on a Mac and Linux), so it's reached with Tab.
+CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscription (needs "
                         "the Claude in Chrome extension; from the next turn)")
 
 

@@ -12789,7 +12789,7 @@ def test_settings_claude_in_chrome_box_keeps_only_a_change(frame, monkeypatch):
     dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
     try:
         box = dialog.chrome
-        assert " ".join(box.GetLabel().split()).startswith("Let Claude use &Chrome")
+        assert " ".join(box.GetLabel().split()).startswith("Let Claude use Chrome in Claude chats")
         assert box.GetValue() and dialog.get_settings().claude_in_chrome is None
         box.SetValue(False)
         assert dialog.get_settings().claude_in_chrome is False
