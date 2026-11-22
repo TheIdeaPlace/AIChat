@@ -1858,7 +1858,7 @@ def test_settings_dialog_lines_up_its_check_boxes(frame):
                             speech.default_options())
     try:
         dialog._body.Layout()  # the check boxes live in the scrolled body, not the dialog
-        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list,
+        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list, dialog.chrome,
                  dialog.codex_enabled, dialog.copilot_enabled, dialog.agent_auto,
                  dialog.update_notice]
         assert {box.GetPosition().x for box in boxes} == {10}
@@ -12777,6 +12777,31 @@ def test_settings_has_the_task_list_box(frame):
         assert box.GetValue() and dialog.get_settings().task_list
         box.SetValue(False)
         assert dialog.get_settings().task_list is False
+    finally:
+        dialog.Destroy()
+
+
+def test_settings_claude_in_chrome_box_keeps_only_a_change(frame, monkeypatch):
+    # #319: unchanged, the setting keeps following whether Claude Code has
+    # found the extension; a change is kept as a choice.
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "claude_chrome_extension_installed", lambda: True)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.chrome
+        assert " ".join(box.GetLabel().split()).startswith("Let Claude use &Chrome")
+        assert box.GetValue() and dialog.get_settings().claude_in_chrome is None
+        box.SetValue(False)
+        assert dialog.get_settings().claude_in_chrome is False
+    finally:
+        dialog.Destroy()
+    dialog = SettingsDialog(frame, speech.SpeechSettings(claude_in_chrome=False),
+                            speech.default_options())
+    try:
+        assert not dialog.chrome.GetValue()
+        assert dialog.get_settings().claude_in_chrome is False
+        dialog.chrome.SetValue(True)
+        assert dialog.get_settings().claude_in_chrome is True
     finally:
         dialog.Destroy()
 

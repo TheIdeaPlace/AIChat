@@ -182,6 +182,9 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
     patch(platform_paths, "claude_home", lambda: root / "claude")
+    # ~/.claude.json too: whether the Chrome extension is installed (#319)
+    # mustn't depend on the machine the tests run on.
+    patch(platform_paths, "claude_config_file", lambda: root / "claude.json")
     patch(platform_paths, "codex_home", lambda: root / "codex")
     patch(platform_paths, "agents_skills_dir", lambda: root / "agents-skills")
     patch(platform_paths, "edit_file", lambda path: opened.append(("edit", path)))

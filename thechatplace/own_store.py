@@ -31,7 +31,7 @@ from .provider_storage import PartitionedFile, CodexPlanStore, atomic_write_json
 from .chat_options import (ChatOptions, clean_instructions, is_safe_agent,
                            is_safe_style)
 from .billing import normalize_route
-from .claude_cli import EFFORT_LABELS, is_safe_dir, is_safe_rule, model_allowed
+from .claude_cli import CHROME_STATES, EFFORT_LABELS, is_safe_dir, is_safe_rule, model_allowed
 from .claude_mcp import is_safe_server_name
 from .sessions import IDLE, OWN, SessionInfo
 
@@ -101,6 +101,12 @@ class OwnSession:
     #: True once those changed after the chat's first turn: Claude Code would
     #: otherwise keep the system prompt it recorded then (chat_options.py).
     prompt_fresh: bool = False
+    #: Whether the chat's last turn had Claude in Chrome, as
+    #: ``claude_cli.CHROME_STATES`` (#319); "" before #319 or before its first
+    #: turn. When the next turn's differs, the note Claude is given about
+    #: Chrome changes too, so the chat's prompt is made afresh from then on
+    #: (prompt_fresh). Older releases ignore it.
+    prompt_note: str = ""
     #: How the chat is charged (#658): "subscription", or "api" for API
     #: credits. Fixed when the chat is made. Anything else reads as the
     #: subscription. An API chat is kept in a file of its own that older
@@ -325,6 +331,8 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         values["output_style"] = ""
     if "instructions" in values:
         values["instructions"] = clean_instructions(values["instructions"])
+    if values.get("prompt_note", "") not in CHROME_STATES:
+        values["prompt_note"] = ""
     if provider != "claude":
         # These values drive only Claude runners. A foreign record must never
         # carry permissions or Remote Control into that legacy path.
@@ -333,6 +341,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
                      "agent", "instructions", "output_style"):
             values[name] = ""
         values["prompt_fresh"] = False
+        values["prompt_note"] = ""
         # Each Codex backend has a fixed billing route (#661).
         values["billing"] = "api" if provider == 'codex-api' else "subscription"
         values["allowed_tools"] = []

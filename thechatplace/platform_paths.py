@@ -109,6 +109,18 @@ def claude_folder_trusted(folder: str) -> Optional[bool]:
     return False
 
 
+def claude_chrome_extension_installed() -> bool:
+    """Whether Claude Code last found the Claude in Chrome extension
+    (``cachedChromeExtensionInstalled`` in ~/.claude.json, #319): what decides
+    whether chats get ``--chrome`` until Settings says otherwise. False when
+    the file can't be read."""
+    try:
+        data = json.loads(claude_config_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("cachedChromeExtensionInstalled") is True
+
+
 def projects_dir() -> Path:
     return claude_home() / "projects"
 

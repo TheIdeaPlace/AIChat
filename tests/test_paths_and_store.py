@@ -205,6 +205,37 @@ def test_store_rename_and_remove(tmp_path):
     assert OwnSessionStore(tmp_path / "s.json").all() == []
 
 
+def test_store_keeps_the_chrome_note_a_chat_last_had(tmp_path):
+    # #319: which Claude in Chrome note the chat's prompt was made with.
+    store = OwnSessionStore(tmp_path / "s.json")
+    store.add(OwnSession("id-1", "T", "C:\\a", prompt_note="chrome"))
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "chrome"
+    store.update("id-1", prompt_note="no-chrome-api")
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "no-chrome-api"
+
+
+def test_store_drops_an_unknown_chrome_note(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"sessions": [
+        {"cli_session_id": "a", "title": "T", "cwd": "C:\\", "prompt_note": "--chrome yes"},
+        {"cli_session_id": "b", "title": "T", "cwd": "C:\\", "prompt_note": 3},
+        {"cli_session_id": "c", "title": "T", "cwd": "C:\\"}]}), encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert [store.get(i).prompt_note for i in "abc"] == ["", "", ""]
+
+
+def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    assert platform_paths.claude_chrome_extension_installed() is False  # no file
+    config.write_text("{not json", encoding="utf-8")
+    assert platform_paths.claude_chrome_extension_installed() is False
+    config.write_text(json.dumps({"cachedChromeExtensionInstalled": "yes"}), encoding="utf-8")
+    assert platform_paths.claude_chrome_extension_installed() is False
+    config.write_text(json.dumps({"cachedChromeExtensionInstalled": True}), encoding="utf-8")
+    assert platform_paths.claude_chrome_extension_installed() is True
+
+
 def test_store_rejects_unsafe_id(tmp_path):
     store = OwnSessionStore(tmp_path / "s.json")
     with pytest.raises(ValueError):
