@@ -20,7 +20,7 @@ This guide starts with the everyday things and goes deeper as it goes on. Each p
 heading, so your screen reader's heading keys move between them. For every key in one list, use
 Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guide uses.
 
-The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
+The Chat Place is an independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by
 Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
