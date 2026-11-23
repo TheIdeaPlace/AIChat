@@ -125,12 +125,19 @@ Observed:
 ## Implementation and verification
 
 `codex_execution.instruction_context` adds a distinct application context entry,
-`tcp_capabilities`, on **every normal `turn/start`**. It explains the desktop
+`tcp_capabilities`, on **every normal `turn/start`**. Codex's
+`AdditionalContextStore` inserts only changed entries into model context, so the
+unchanged note reaches the model once per app-server session per thread,
+including reopened chats and copies. It explains the desktop
 browser/extension, native computer use and Cloud limits, says no local Codex
 setting enables them, and distinguishes Claude's Chrome setting and explicitly
 enabled MCP tools. Editable chat instructions keep their separate entry. The
 wire guard requires the exact context before dispatch, so callers cannot omit
-or alter the host note. This works without migrating old saved chat records;
+or alter the host note. The note scopes these limits to The Chat Place running
+the chat and says they may not apply to later messages from another app, since
+the developer message stays in thread history. The ephemeral OpenAI key test
+omits the context, and its wire guard requires that omission; Ask Aside retains
+the note. This works without migrating old saved chat records;
 new chats, copies, resumed chats, Plan and API-credit turns use the same path.
 Steering continues the already instructed active turn and doesn't start another.
 This is model guidance, not a guarantee against an incorrect model reply.
@@ -169,6 +176,14 @@ C:/Users/kelly/GitHub/AIChat/.venv/Scripts/python -m pytest -q tests/test_codex_
 
 A separate reviewer agent checked the implementation, tests and documentation
 and reported no actionable findings. No wx window tests ran on this PC.
+
+The PR #708 review fixes add real `CodexApiConnection` wire coverage for the
+normal API turn's `tcp_capabilities` and the key test's absent
+`additionalContext`, including rejection if context is added to a key test.
+An ephemeral aside regression keeps its capability note. The focused windowless
+run after these fixes passed **133 tests** (`test_codex_browser.py`,
+`test_codex_api.py`, `test_codex_execution.py` and `test_docs.py`). Only
+`docs/user-guide.html` and `docs/user-guide.md` changed among generated docs.
 
 ### Remaining listening check
 

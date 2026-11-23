@@ -269,8 +269,8 @@ turn it on, and not on every plan.
 Codex chats run here cannot use the Codex or ChatGPT desktop app's built-in browser,
 browser extension, native computer use or Codex Cloud. This applies to subscription and
 API-credit chats. No setting here turns these features on for Codex; **Let Claude use Chrome**
-applies only to Claude. Codex is told these limits with every message, including when you
-reopen a chat or make a copy, so it can explain them instead of sending you to a setting.
+applies only to Claude. Codex is told these limits in each chat, including reopened chats
+and copies, so it can explain them instead of sending you to a setting.
 
 An MCP browser server you have configured and explicitly enabled through
 **View, Connected Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to

@@ -13,7 +13,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.providers.codex_api import CodexApiConnection, COUNTERS
 from thechatplace.providers.codex_billing import account_matches, config_matches, route_config
 from thechatplace.providers.codex_owned import CodexOwnedThreads
-from thechatplace.providers.codex_execution import CodexTurnExecutor, instruction_context
+from thechatplace.providers.codex_execution import CodexTurnExecutor, UNAVAILABLE_NOTE, instruction_context
 from thechatplace.providers.codex_rpc import ApiCreditsRefused, CodexRpcError
 
 FAKE = 'sk-proj-synthetic-key-for-tests-000000000000'
@@ -57,6 +57,36 @@ def connect(tmp_path):
         conn.close()
     for child in children:
         child.close()
+
+
+@pytest.mark.parametrize('key_test', [False, True])
+def test_api_turn_wire_context_excludes_only_key_tests(connect, tmp_path, monkeypatch, key_test):
+    conn, events = connect()
+    if key_test:
+        conn._purpose = 'test'
+    writes = []
+    encode = conn._encode
+    def capture(message):
+        if message.get('method') == 'turn/start':
+            writes.append(json.loads(encode(message)))
+        return encode(message)
+    monkeypatch.setattr(conn, '_encode', capture)
+    proof = CodexOwnedThreads(conn).start(str(tmp_path), 'Context', model='gpt-5-nano',
+        ephemeral=key_test, approval_policy='never')
+    if key_test:
+        conn.accept_key_test(proof)
+    CodexTurnExecutor(conn).start(proof, 'Reply with OK.')
+    wait(lambda: any(e.kind == 'finished' for e in events))
+    assert len(writes) == 1
+    params = writes[0]['params']
+    if key_test:
+        assert 'additionalContext' not in params
+        params['additionalContext'] = {'tcp_capabilities': {'kind': 'application', 'value': UNAVAILABLE_NOTE}}
+        with pytest.raises(CodexRpcError, match='do not match'):
+            conn._verify_turn_route(params)
+    else:
+        assert params['additionalContext']['tcp_capabilities'] == {
+            'kind': 'application', 'value': UNAVAILABLE_NOTE}
 
 
 def test_price_cache_reasoning_unknown_tier_and_model():

@@ -4,8 +4,9 @@ from dataclasses import replace
 
 import pytest
 
+from thechatplace.providers.codex_events import CodexEvent
 from thechatplace.providers.codex_execution import (
-    CodexTurnExecutor, UNAVAILABLE_NOTE,
+    CodexTurnExecutor, UNAVAILABLE_NOTE, instruction_context,
 )
 from thechatplace.providers.codex_rpc import CodexRpcError
 from test_codex_execution import Connection, runtime_connection
@@ -30,7 +31,6 @@ def test_every_turn_has_host_capabilities_separate_from_chat_instructions(billin
             assert 'tcp_chat_instructions' not in context
         else:
             assert context['tcp_chat_instructions'] == {'kind': 'application', 'value': instructions}
-        from thechatplace.providers.codex_events import CodexEvent
         connection.events.append(CodexEvent('turn_completed', 'one', turn.turn_id, status='completed'))
         executor.drain()
 
@@ -74,5 +74,12 @@ def test_resumed_chat_and_copy_get_note_without_saved_chat_instructions():
 def test_note_explains_limits_without_denying_enabled_mcp_tools():
     for phrase in ('app-server', 'built-in browser', 'browser extension', 'native computer use',
                    'Codex Cloud', 'No setting', "don't tell the user", 'only to Claude',
-                   'API-credit', 'explicitly enabled MCP'):
+                   'API-credit', 'explicitly enabled MCP', 'While The Chat Place',
+                   'another app, these limits may not apply'):
         assert phrase in UNAVAILABLE_NOTE
+
+
+def test_ephemeral_aside_keeps_host_capabilities():
+    connection = Connection()
+    proof = replace(connection.proof('aside'), ephemeral=True)
+    assert instruction_context(proof)['tcp_capabilities']['value'] == UNAVAILABLE_NOTE
