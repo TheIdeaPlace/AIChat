@@ -264,6 +264,18 @@ Claude is told so, so it says so plainly and uses what it has, such as Chrome or
 rather than asking you to turn it on. Computer use is a preview in the desktop app, off until you
 turn it on, and not on every plan.
 
+### You want Codex to use your browser
+
+Codex chats run here cannot use the Codex or ChatGPT desktop app's built-in browser,
+browser extension, native computer use or Codex Cloud. This applies to subscription and
+API-credit chats. No setting here turns these features on for Codex; **Let Claude use Chrome**
+applies only to Claude. Codex is told these limits with every message, including when you
+reopen a chat or make a copy, so it can explain them instead of sending you to a setting.
+
+An MCP browser server you have configured and explicitly enabled through **View, Connected
+Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
+check a page in your own browser.
+
 ### You're asked too often, or you want more control
 
 - **Asked too often:** **Auto**, the default for a new chat, has a separate check review each action.

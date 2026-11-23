@@ -13,7 +13,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore
 from thechatplace.providers.codex_api import CodexApiConnection, COUNTERS
 from thechatplace.providers.codex_billing import account_matches, config_matches, route_config
 from thechatplace.providers.codex_owned import CodexOwnedThreads
-from thechatplace.providers.codex_execution import CodexTurnExecutor
+from thechatplace.providers.codex_execution import CodexTurnExecutor, instruction_context
 from thechatplace.providers.codex_rpc import ApiCreditsRefused, CodexRpcError
 
 FAKE = 'sk-proj-synthetic-key-for-tests-000000000000'
@@ -309,6 +309,7 @@ def test_queued_rpc_failure_keeps_hold_and_preserves_baseline(connect, tmp_path)
               'cwd': proof.cwd, 'approvalPolicy': proof.policy.approval,
               'approvalsReviewer': proof.policy.reviewer,
               'sandboxPolicy': proof.policy.turn_policy(), 'config': route_config(conn),
+              'additionalContext': instruction_context(proof),
               'input': [{'type': 'text', 'text': 'Hello'}]}
     with pytest.raises(CodexRpcError):
         conn.request('turn/start', params)

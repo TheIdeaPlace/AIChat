@@ -167,7 +167,8 @@ def test_options_apply_after_save_and_each_turn_pins_the_instruction_context():
         service.finish_policy(change, True)
         service.send(saved, 'Hello')
         params = next(p for method, p in reversed(connection.calls) if method == 'turn/start')
-        assert params['additionalContext'] == {'tcp_chat_instructions': {'kind': 'application', 'value': 'New'}}
+        assert params['additionalContext']['tcp_chat_instructions'] == {'kind': 'application', 'value': 'New'}
+        assert 'tcp_capabilities' in params['additionalContext']
     finally:
         service.close()
 
