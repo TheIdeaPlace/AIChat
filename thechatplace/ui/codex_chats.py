@@ -22,7 +22,7 @@ from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from .. import codex_long_messages, reply_costs
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name, with_stop_key, your_key
+from ..ui_text import MUSE_MODE_WARNINGS, key_name, with_stop_key, your_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
@@ -196,6 +196,10 @@ class CodexChats(SoundHost, CodexExtras):
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
+    def _load_muse_choices(self, callback):
+        """New Session's Muse Code models and profiles (model_choices)."""
+        self._codex_work(lambda: self.sessions.model_choices('muse'), callback)
+
     def _load_codex_api_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex-api'), callback)
 
@@ -281,14 +285,37 @@ class CodexChats(SoundHost, CodexExtras):
             self._say_early_notice(provider, record, message)
         self._codex_work(create, done)
 
-    def _create_muse_owned(self, folder, title, message, made=None, joint=False):
-        """A new Muse Code chat: created natively, stored here, then sent to
-        like any owned runtime chat. Model and effort are Muse Code's own, so
-        unlike Codex there are no options to pass."""
+    def _create_muse_owned(self, folder, title, message, made=None, joint=False,
+                           model="", effort="", profile=""):
+        """A new Muse Code chat: created natively on ``profile``, stored here,
+        then sent to like any owned runtime chat. ``model`` and ``effort``
+        ("" for Muse Code's own) are set once it exists, before its first
+        message, through Change Model's and Change Effort's checked calls:
+        Muse takes neither in session/start. If one isn't taken, the chat is
+        kept on Muse's own and you hear which, before anything is sent."""
         name = provider_name("muse")
+        notes = []
         def create():
-            return self.sessions.create_owned("muse", folder, title)
+            options = {"profile": profile} if profile else {}
+            record = self.sessions.create_owned("muse", folder, title, **options)
+            if model:
+                try:
+                    _label, note = self.sessions.owned_action("set_model", record, model)
+                    if note:
+                        notes.append(note)
+                except Exception as exc:  # noqa: BLE001 - the chat exists; say what didn't take
+                    notes.append(f"{title} started on Muse Code's default model, not the one you "
+                                 f"chose. {safe_reason(exc)}".rstrip())
+            if effort:
+                try:
+                    self.sessions.owned_action("set_effort", record, effort)
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f"{title} started on its model's default effort, not the one you "
+                                 f"chose. {safe_reason(exc)}".rstrip())
+            return record
         def done(record, error):
+            for note in ([] if error else notes):
+                self._feedback(note)
             if error:
                 text = record or (f'Could not create this {name} chat. Check that '
                                   f'{name} is installed and signed in.')
@@ -767,13 +794,7 @@ class CodexChats(SoundHost, CodexExtras):
         self._codex_work(lambda: self.sessions.owned_action("skills", record), loaded)
 
     #: What a Muse profile without your review means, said before it's set.
-    MUSE_MODE_WARNINGS = {
-        ":auto-review": ("With Auto-review, an AI reviewer, and any trusted permission hooks, may "
-                         "approve restricted actions in {title} without asking you. Use Auto-review?"),
-        ":unrestricted": ("With Unrestricted, nothing asks you: {title} runs with no file sandbox and "
-                          "no approval prompts, and its commands get direct network access. "
-                          "Use Unrestricted?"),
-    }
+    MUSE_MODE_WARNINGS = MUSE_MODE_WARNINGS
 
     def _confirm_muse_mode(self, title, profile, now_label) -> bool:
         """Whether to go on to ``profile``: True straight away for one you

@@ -496,3 +496,59 @@ def test_muse_turn_status_says_background_work(frame, update, said):
     record = OwnSession("synthetic-muse", "Synthetic Muse", r"C:\work", provider="muse")
     frame._muse_runtime[record.cli_session_id] = update
     assert frame._muse_state_text(record.to_info()).startswith(said)
+
+
+@pytest.mark.parametrize("model_fails", [False, True])
+def test_new_muse_chat_starts_on_your_profile_model_and_effort_before_sending(
+        frame, monkeypatch, model_fails):
+    """New Session's Muse choices: the profile at session/start, then the
+    model and effort through Change Model's and Change Effort's checked calls,
+    all before the first message. One not taken is said, and the chat kept."""
+    from thechatplace.own_store import OwnSession
+    from thechatplace.providers.muse_connection import MuseHistoryError
+    record = OwnSession("synthetic-new-muse", "Synthetic new", "C:\work", provider="muse",
+                        started=True)
+    calls, said = [], []
+    monkeypatch.setattr(frame, "_codex_work", lambda action, done: done(action(), False))
+    def create(provider, folder, title, **options):
+        calls.append(("create", provider, options))
+        return record
+    def owned(action, current, *args):
+        assert current is record
+        calls.append((action, *args))
+        if action == "set_model" and model_fails:
+            raise MuseHistoryError("Muse Code doesn't offer that model for this chat now. "
+                                   "Choose Change Model again.")
+        return ("Synthetic B", "") if action == "set_model" else "high"
+    monkeypatch.setattr(frame.sessions, "create_owned", create)
+    monkeypatch.setattr(frame.sessions, "owned_action", owned)
+    monkeypatch.setattr(frame, "open_session", lambda info: None)
+    monkeypatch.setattr(frame, "_send_codex_owned",
+                        lambda current, text: calls.append(("send", text)))
+    monkeypatch.setattr(frame, "_feedback", said.append)
+    frame._create_muse_owned("C:\work", "Synthetic new", "First message",
+                             model="synthetic-b", effort="high", profile=":read-only")
+    assert calls == [("create", "muse", {"profile": ":read-only"}),
+                     ("set_model", "synthetic-b"), ("set_effort", "high"),
+                     ("send", "First message")]
+    if model_fails:
+        assert said[0] == ("Synthetic new started on Muse Code's default model, not the one "
+                           "you chose. Muse Code doesn't offer that model for this chat now. "
+                           "Choose Change Model again.")
+    else:
+        assert not any("started on" in text for text in said)
+    assert frame.store.get(record.cli_session_id, provider="muse") is not None
+
+
+def test_new_muse_chat_with_muse_defaults_sets_nothing_after_start(frame, monkeypatch):
+    from thechatplace.own_store import OwnSession
+    record = OwnSession("synthetic-plain-muse", "Plain", "C:\work", provider="muse", started=True)
+    calls = []
+    monkeypatch.setattr(frame, "_codex_work", lambda action, done: done(action(), False))
+    monkeypatch.setattr(frame.sessions, "create_owned",
+                        lambda provider, folder, title, **options: calls.append(options) or record)
+    monkeypatch.setattr(frame.sessions, "owned_action",
+                        lambda *args: pytest.fail("Muse's own model and effort need no call"))
+    monkeypatch.setattr(frame, "open_session", lambda info: None)
+    frame._create_muse_owned("C:\work", "Plain", "")
+    assert calls == [{}]

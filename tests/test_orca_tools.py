@@ -138,12 +138,12 @@ def test_a_surface_the_probe_couldnt_show_fails(tmp_path):
 def test_muse_mode_warning_steps_follow_the_apps_own_warning_text():
     """The Orca steps for Change Permission Mode's warnings expect words the
     app's warning actually says, so the step can't drift from the dialog."""
-    from thechatplace.ui.codex_chats import CodexChats
+    from thechatplace.ui_text import MUSE_MODE_WARNINGS
     steps = {step.trigger: step for step in orca_speech.STEPS}
     for trigger, profile in (("muse-mode-auto-review", ":auto-review"),
                              ("muse-mode-unrestricted", ":unrestricted")):
         step = steps[trigger]
-        warning = CodexChats.MUSE_MODE_WARNINGS[profile].format(title="Muse probe chat")
+        warning = MUSE_MODE_WARNINGS[profile].format(title="Muse probe chat")
         # Orca reads a GTK message box as "alert Warning", without its title
         # (CI on #701), so the step checks the warning's own words.
         assert all(word in warning or word == "No" for word in step.expect)

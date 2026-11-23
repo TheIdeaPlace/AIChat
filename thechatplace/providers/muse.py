@@ -362,10 +362,14 @@ class MuseProvider:
             raise MuseHistoryError("Muse Code execution is unavailable. Check its installation and refresh.")
         return self._owned
 
-    def create_owned(self, cwd, title):
+    def create_owned(self, cwd, title, profile=""):
         if self._closed.is_set():
             raise MuseHistoryError("Muse Code history is closed.")
-        return self._owned_chats().create(cwd, title)
+        return self._owned_chats().create(cwd, title, profile)
+
+    def model_choices(self):
+        """New Session's models and permission profiles (new_chat_choices)."""
+        return self._owned_chats().new_chat_choices()
 
     def send_owned(self, record, text, *, idempotency_key=None):
         return self._owned_chats().send(record, text, idempotency_key=idempotency_key)
@@ -706,14 +710,41 @@ class MuseOwnedChats:
             raise MuseHistoryError(f"Muse Code couldn't confirm this chat's permission profile, "
                                    f"{PROFILE_LABELS[wanted]}. Sending is disabled.")
 
-    def create(self, cwd: str, title: str) -> OwnSession:
+    def new_chat_choices(self) -> dict:
+        """New Session's choices, read before any chat exists: ``models``,
+        ((model id, label, its effort tiers, its default tier), ...), and
+        ``profiles``, ((profile, label), ...) Muse offers now. Installed
+        1.4.24 answers model/list without a sessionId with the same catalog."""
+        with self._lock:
+            self._require_available()
+            result = self.execution.request("model/list", {})
+            models = _request_array(result, "models")
+            if len(models) > 64:
+                raise MuseHistoryError("Muse Code listed more models than this app can show.")
+            listed = []
+            for entry in models:
+                if (not isinstance(entry, dict) or not _identity(entry.get("modelId"))
+                        or not isinstance(entry.get("displayLabel"), str)):
+                    raise MuseHistoryError("Muse Code listed a model this app can't read.")
+                default = entry.get("defaultReasoningEffort")
+                listed.append((entry["modelId"], entry["displayLabel"].strip() or entry["modelId"],
+                               _tiers(entry), default if default in EFFORT_LABELS else ""))
+            profiles = tuple((p["profileId"], PROFILE_LABELS[p["profileId"]])
+                             for p in self._listed_profiles())
+            return {"models": tuple(listed), "profiles": profiles}
+
+    def create(self, cwd: str, title: str, profile: str = "") -> OwnSession:
+        """A new chat on ``profile`` (Ask me if none), started on it rather
+        than changed after, so it never runs a moment on another."""
         with self._lock:
             self._require_available()
             if not isinstance(cwd, str) or not cwd.strip():
                 raise MuseHistoryError("A Muse Code chat needs a working folder.")
             if not isinstance(title, str) or not title.strip():
                 raise MuseHistoryError("A Muse Code chat needs a title.")
-            profile = self._profile()
+            if profile and profile not in PROFILES:
+                raise MuseHistoryError("Muse Code doesn't have that permission profile.")
+            profile = self._profile(profile or None)
             result = self.execution.request("session/start", {
                 "commandId": _command_id(), "workspaceRoot": cwd,
                 "approvalMode": "promptUnmatched", "permissionProfile": profile})
@@ -724,6 +755,10 @@ class MuseOwnedChats:
             now_ms = int(time.time() * 1000)
             record = OwnSession(native_id, title, cwd, provider="muse",
                 created_ms=now_ms, last_activity_ms=now_ms, started=True)
+            if profile != self.PROFILE:
+                # Kept with the chat, as Change Permission Mode keeps it, so
+                # every send and reopen checks and asks for this profile.
+                record.provider_options["muse_profile"] = profile
             self._records[native_id] = record
             # Preserve the created identity even if the host cannot establish
             # policy: prepare/send will explain the refusal without losing it.

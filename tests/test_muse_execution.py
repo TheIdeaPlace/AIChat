@@ -101,7 +101,8 @@ class Execution:
         if method == "session/start":
             assert set(params) == {"commandId", "workspaceRoot", "approvalMode", "permissionProfile"}
             assert uuid.UUID(params["commandId"]).version == 7
-            assert params["approvalMode"] == "promptUnmatched" and params["permissionProfile"] == ":ask-me"
+            assert params["approvalMode"] == "promptUnmatched" and params["permissionProfile"] in REVIEWERS
+            self.session.update(policy(params["permissionProfile"]))
             return {"session": copy.deepcopy(self.session), "viewCursor": "v:1"}
         if method == "session/read":
             assert params["sessionId"] == NATIVE_ID
@@ -237,6 +238,35 @@ def test_create_uses_native_contract_and_checks_human_catalog(owned):
     with pytest.raises(MuseHistoryError, match="profile is unavailable"):
         record(owned)
     assert len([m for m, _ in owned.execution.messages if m == "session/start"]) == 1
+
+
+def test_new_chat_choices_list_models_and_profiles_before_any_chat(owned):
+    """New Session's choices: installed 1.4.24 answers model/list with no
+    sessionId, and lists each model's tiers and default."""
+    choices = owned.new_chat_choices()
+    assert ("model/list", {}) in owned.execution.messages
+    assert choices["models"] == (
+        ("synthetic-model-a", "synthetic-model-a", ("low", "medium", "high"), "medium"),
+        ("synthetic-model-b", "synthetic-model-b", ("low", "medium", "high", "max"), "max"))
+    assert choices["profiles"] == ((":read-only", "Read only"), (":ask-me", "Ask me"),
+                                   (":auto-review", "Auto-review"), (":unrestricted", "Unrestricted"))
+    assert not any(m == "session/start" for m, _ in owned.execution.messages)
+
+
+def test_create_starts_on_the_chosen_profile_and_keeps_it(owned):
+    own = owned.create("C:\\synthetic", "Synthetic chat", ":read-only")
+    start = next(p for m, p in owned.execution.messages if m == "session/start")
+    assert start["permissionProfile"] == ":read-only"
+    assert own.provider_options["muse_profile"] == ":read-only"
+    assert owned.prepare(own)  # its sends check Read only, not Ask me
+    plain = owned.create("C:\\synthetic", "Synthetic chat")
+    assert "muse_profile" not in plain.provider_options
+
+
+def test_create_refuses_an_unknown_profile(owned):
+    with pytest.raises(MuseHistoryError):
+        owned.create("C:\\synthetic", "Synthetic chat", ":everything")
+    assert not any(m == "session/start" for m, _ in owned.execution.messages)
 
 
 @pytest.mark.parametrize("cwd,title", [(" ", "Title"), ("C:\\synthetic", " ")])

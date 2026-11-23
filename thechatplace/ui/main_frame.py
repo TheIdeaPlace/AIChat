@@ -5564,8 +5564,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                              "load_models": self._load_codex_models if codex_available else None,
                              "load_api_models": self._load_codex_api_models if codex_available else None,
                              "load_rules": self._load_codex_rules if codex_available else None,
-                             "copilot_models": self._copilot_models() if copilot_available else ()}
-                            if codex_available or copilot_available else {})
+                             "copilot_models": self._copilot_models() if copilot_available else (),
+                             "load_muse_choices": self._load_muse_choices if muse_available else None}
+                            if codex_available or copilot_available or muse_available else {})
         dialog = NewSessionDialog(self, root, recent=recent, projects_root=root,
                                   feedback=self._feedback,
                                   clone_root=str(platform_paths.clone_root()),
@@ -5590,6 +5591,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             provider = getattr(dialog, "provider", lambda: "claude")()
             policy = getattr(dialog, 'codex_policy', lambda: {})() if provider in ('codex', 'codex-api') else {}
             copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
+            muse_profile = getattr(dialog, "muse_profile", lambda: "")()
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
             # What New Session made, said once the chat has started (#561).
             worktree_said = getattr(dialog, "worktree_said", "")
@@ -5621,7 +5623,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                      provider="copilot", model=model, copilot_mode=copilot_mode)
             return
         if provider == "muse":
-            self._create_muse_owned(folder, title, message, made=made, joint=joint)
+            self._create_muse_owned(folder, title, message, made=made, joint=joint,
+                                    model=model, effort=effort, profile=muse_profile)
             return
         if not lookup.path:
             wx.MessageBox(lookup.problem, APP_NAME, wx.OK | wx.ICON_ERROR, self)

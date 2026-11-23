@@ -1799,7 +1799,13 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   messages using the existing conversation controls. Conversations Muse Code
   started are read-only; reply in Muse Code.
   File, New Session offers Muse Code as the Provider to start a chat here.
-  Model and effort are Muse Code's own. The chat streams replies, and each
+  After Title, Model lists the models Muse Code offers, after Muse Code's default;
+  Effort lists the efforts the chosen model offers, after the model's default (with
+  Muse Code's default model, only the efforts every model offers); and Permission mode
+  lists Muse Code's Read only, Ask me (the default), Auto-review and Unrestricted. Start
+  asks you first, with No as the default, before Auto-review or Unrestricted. If Muse
+  Code doesn't take the model or effort you chose, you hear that the chat started on its
+  default instead, before your first message is sent. The chat streams replies, and each
   pending request is announced with its chat title, even while you read another
   conversation. Press Ctrl+Shift+A in that chat to choose Muse Code's one-time Allow
   once or Reject for a request (Reject also ends the turn), or to answer its questions.
@@ -1821,7 +1827,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   from yours: View, Show Sessions, Hidden shows them.
   Chat, Attach Files (Ctrl+Shift+F) attaches files to your next message: Muse Code sees
   an image, and reads any other file wherever it is.
-  A chat starts on Muse Code's Ask me permissions. Chat, Chat Settings, Change Permission
+  A chat starts on the permissions chosen in New Session. Chat, Chat Settings, Change Permission
   Mode (Ctrl+Shift+O) switches it between Read only, Ask me, Auto-review and Unrestricted,
   and asks you first, with No as the default, before the two that don't ask you: with
   Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file

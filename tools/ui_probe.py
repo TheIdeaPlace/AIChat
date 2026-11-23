@@ -1527,9 +1527,16 @@ def d_copilot_new(frame, env):
 
 def d_muse_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
+    # Synthetic choices shaped like installed Muse 1.4.24's, so Model,
+    # Effort and Permission mode show their lists, not only Muse's defaults.
+    choices = {"models": (("muse-probe-a", "muse-probe-a", ("low", "medium", "high"), "high"),
+                          ("muse-probe-b", "muse-probe-b", ("minimal", "low", "high", "max"), "max")),
+               "profiles": ((":read-only", "Read only"), (":ask-me", "Ask me"),
+                            (":auto-review", "Auto-review"), (":unrestricted", "Unrestricted"))}
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
                                                 providers=("claude", "muse"),
-                                                provider="muse"))
+                                                provider="muse",
+                                                load_muse_choices=lambda done: done(choices, False)))
 
 
 def d_muse_approval(frame, env):

@@ -238,13 +238,23 @@ def muse_note() -> str:
     """What New Session says about a Muse Code chat. A function, not a
     constant, so it names your key for Review Permission if you changed it
     after the app started (#635)."""
-    return ("Muse Code chats start here and run on your Meta account. Model and effort "
-            "are Muse Code's own. It starts on Muse's Ask me permissions: Muse Code asks "
-            "before it runs a command or changes a file, and each request is announced even "
-            f"while you read another chat. Press {key_name(your_key('Ctrl+Shift+A'))} to allow "
-            "it once, deny it or answer its question, or Stop cancels the turn. Change "
-            "Permission Mode can change that later. The Chat Place never sends "
-            "to a Muse Code chat it didn't start.")
+    return ("Muse Code chats start here and run on your Meta account. Model lists the models "
+            "Muse Code offers, after its own default. Effort lists the efforts the chosen model "
+            "offers, after the model's default. Permission mode is Muse Code's permission "
+            "profile, Ask me unless you choose another. In Read only and Ask me, Muse Code "
+            "asks before it runs a command or changes a file, and each request is announced "
+            f"even while you read another chat. Press {key_name(your_key('Ctrl+Shift+A'))} to "
+            "allow it once, deny it or answer its question, or Stop cancels the turn. In "
+            "Auto-review an AI reviewer may approve instead, and in Unrestricted nothing asks "
+            "you: either is confirmed when you press Start. Change Model, Change Effort and "
+            "Change Permission Mode, in Chat, Chat Settings, change them later. The Chat Place "
+            "never sends to a Muse Code chat it didn't start.")
+
+
+#: New Session's first Model choice for Muse Code: no model is set, so the
+#: chat starts on the one Muse Code would choose itself (its own settings,
+#: not the catalog's isDefault: checked on installed 1.4.24).
+MUSE_DEFAULT_MODEL = "Muse Code's default"
 
 
 class NewSessionDialog(wx.Dialog):
@@ -265,8 +275,10 @@ class NewSessionDialog(wx.Dialog):
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
                  copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False,
-                 openai_key: bool = False, load_api_models=None):
-        """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
+                 openai_key: bool = False, load_api_models=None, load_muse_choices=None):
+        """``api_key``: a Claude API key is kept, so Charge to is offered (#658).
+        ``load_muse_choices(callback)`` reads Muse Code's models and profiles
+        in the background, then calls ``callback(choices, error)``."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
         super().__init__(parent, title=title, size=dialog_size(parent, 680, 620),
@@ -318,6 +330,16 @@ class NewSessionDialog(wx.Dialog):
         self._codex_choices = (0, 0, 0 if continue_from else 1)
         self._codex_model_error = False
         self._codex_models_loaded = False
+        # Muse Code's choices, read in the background when it's chosen: until
+        # then Model and Effort offer only Muse's own, and Permission mode its
+        # four profiles. Kept by value, so a list read again keeps your place.
+        from ..providers.muse import PROFILE_LABELS
+        self._load_muse_choices = load_muse_choices
+        self._muse_requested = False
+        self._muse_models = ()  # (id, label, tiers, default tier) each
+        self._muse_profiles = tuple(PROFILE_LABELS.items())
+        self._muse_tier_values = ("",)
+        self._muse_choice = ("", "", ":ask-me")  # model, effort, profile
         if len(self._providers) > 1:
             grid.Add(wx.StaticText(self, label="Pro&vider:"), 0, wx.ALIGN_CENTER_VERTICAL)
             # Each provider's own name ("Muse Code", not "Muse"), as the
@@ -943,6 +965,9 @@ class NewSessionDialog(wx.Dialog):
         if not self.message.GetValue().strip():
             self._warn("Type the first message for this session.", self.message)
             return
+        if not self._muse_profile_confirmed():
+            self.mode.SetFocus()
+            return
         if not self.continuing and self.work_in.GetSelection() == WORK_IN_WORKTREE:
             self.make_worktree()  # Start finishes when it's made
             return
@@ -1043,8 +1068,8 @@ class NewSessionDialog(wx.Dialog):
             choices = self._codex_route_models()
             model = choices[index].model if 0 <= index < len(choices) else ""
         elif self.provider() == "muse":
-            mode = DEFAULT_PERMISSION_MODE
-            model = ""
+            mode = DEFAULT_PERMISSION_MODE  # Muse's profile is muse_profile()
+            model = self._muse_selected()[0]
         elif self.provider() == "copilot":
             mode = DEFAULT_PERMISSION_MODE  # it always asks
             index = self.model.GetSelection() - 1
@@ -1059,6 +1084,91 @@ class NewSessionDialog(wx.Dialog):
             return ""
         index = max(self.mode.GetSelection(), 0)
         return self._copilot_modes[min(index, len(self._copilot_modes) - 1)][0]
+
+    def muse_profile(self) -> str:
+        """The Muse Code permission profile to start on, such as ":ask-me";
+        "" for another provider."""
+        return self._muse_selected()[2] if self.provider() == "muse" else ""
+
+    def _muse_selected(self):
+        """(model id, effort tier, profile) the Muse controls show: "" for
+        Muse's own model or the model's own effort."""
+        models = self._muse_models
+        index = self.model.GetSelection() - 1
+        model = models[index][0] if 0 <= index < len(models) else ""
+        index = self.effort_choice.GetSelection()
+        tiers = self._muse_tier_values
+        tier = tiers[index] if 0 <= index < len(tiers) else ""
+        index = self.mode.GetSelection()
+        profiles = self._muse_profiles
+        profile = profiles[index][0] if 0 <= index < len(profiles) else ":ask-me"
+        return model, tier, profile
+
+    def _muse_profile_confirmed(self) -> bool:
+        """Start on a profile you don't review yourself only after Yes in
+        the same warning Change Permission Mode gives, No the default."""
+        from ..ui_text import MUSE_MODE_WARNINGS
+        warning = MUSE_MODE_WARNINGS.get(self.muse_profile())
+        if not warning:
+            return True
+        return wx.MessageBox(warning.format(title="the new chat"), self.GetTitle(),
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) == wx.YES
+
+    def _muse_tiers(self):
+        """(tiers, default tier) Effort offers for the chosen Muse model. For
+        Muse's own model, which isn't known until the chat starts, only the
+        tiers every listed model has, so whichever it is takes the one chosen."""
+        models = self._muse_models
+        index = self.model.GetSelection() - 1
+        if 0 <= index < len(models):
+            return models[index][2], models[index][3]
+        from ..providers.muse import EFFORT_LABELS
+        if not models:
+            return (), ""
+        return tuple(t for t in EFFORT_LABELS if all(t in m[2] for m in models)), ""
+
+    def _show_muse_efforts(self, tier: str):
+        from ..providers.muse import EFFORT_LABELS
+        tiers, default = self._muse_tiers()
+        self._muse_tier_values = ("",) + tuple(tiers)
+        first = f"The model's default ({EFFORT_LABELS[default]})" if default else "The model's default"
+        self.effort_choice.Set([first] + [EFFORT_LABELS[t] for t in tiers])
+        self.effort_choice.SetSelection(self._muse_tier_values.index(tier)
+                                        if tier in self._muse_tier_values else 0)
+        self.effort_choice.Enable()
+
+    def _show_muse_choices(self):
+        """Model, Effort and Permission mode for Muse Code, all on, so Tab
+        stops on each (a turned-off one is skipped), with the last choices
+        kept by value."""
+        model, tier, profile = self._muse_choice
+        ids = [""] + [m[0] for m in self._muse_models]
+        self.model.Set([MUSE_DEFAULT_MODEL] + [m[1] for m in self._muse_models])
+        self.model.SetSelection(ids.index(model) if model in ids else 0)
+        self.model.Enable()
+        self._show_muse_efforts(tier)
+        values = [p for p, _label in self._muse_profiles]
+        self.mode.Set([label for _p, label in self._muse_profiles])
+        self.mode.SetSelection(values.index(profile) if profile in values
+                               else values.index(":ask-me") if ":ask-me" in values else 0)
+        self.mode.Enable()
+
+    def _set_muse_choices(self, choices, error):
+        """Muse Code's models and profiles, read in the background. May come
+        after Cancel, so it touches nothing then."""
+        if not self or self.IsBeingDeleted():
+            return
+        if self.provider() == "muse":
+            self._muse_choice = self._muse_selected()
+        if not error and isinstance(choices, dict):
+            self._muse_models = tuple(choices.get("models") or ())
+            self._muse_profiles = tuple(choices.get("profiles") or ()) or self._muse_profiles
+        if self.provider() == "muse":
+            self._show_muse_choices()
+            self._sync_access_keys()
+            if self.IsShown():
+                self._feedback("Muse Code model choices are available." if self._muse_models else
+                               "Muse Code's models couldn't be listed. Its default model is used.")
 
     def codex_policy(self):
         from .permission_hosts import CODEX_REVIEW_MODES
@@ -1171,6 +1281,8 @@ class NewSessionDialog(wx.Dialog):
         elif self._control_provider == "copilot":
             self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
             self._copilot_choice = max(self.model.GetSelection(), 0)
+        elif self._control_provider == "muse":
+            self._muse_choice = self._muse_selected()
         if provider == "copilot":
             # The models Copilot last offered; effort is Copilot's own. Shown,
             # not hidden, so the dialog keeps its shape and says so.
@@ -1192,17 +1304,12 @@ class NewSessionDialog(wx.Dialog):
                     note = "This chat may still be working in Copilot CLI. " + note
                 self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
         elif provider == "muse":
-            # Model and effort are Muse Code's own: shown, not hidden, so the
-            # dialog keeps its shape and says so.
-            self.model.Set(["Muse Code's default"])
-            self.model.SetSelection(0)
-            self.model.Disable()
-            self.effort_choice.Set(["Muse Code's own setting"])
-            self.effort_choice.SetSelection(0)
-            self.effort_choice.Disable()
-            self.mode.Set([label for value, label in PERMISSION_MODES])
-            self.mode.SetSelection(0)
-            self.mode.Disable()
+            # Muse's own models, efforts and profiles, read once when Muse
+            # is first chosen; its own model and Ask me until they arrive.
+            self._show_muse_choices()
+            if not self._muse_requested and self._load_muse_choices is not None:
+                self._muse_requested = True
+                wx.CallAfter(self._load_muse_choices, self._set_muse_choices)
             self.note.SetValue(muse_note())
             if self.continuing:
                 note = "Continuing a Muse Code chat starts a new Chat Place copy of it."
@@ -1318,10 +1425,12 @@ class NewSessionDialog(wx.Dialog):
 
     def effort(self) -> str:
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
-        if self.provider() in ("copilot", "muse"):
+        if self.provider() == "copilot":
             return ""
+        if self.provider() == "muse":
+            return self._muse_selected()[1]
         if self.provider() in ('codex', 'codex-api'):
-            model = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+            model =self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
             effort = self.effort_choice.GetSelection() - 1
             models = self._codex_route_models()
             choices = models[model].efforts if 0 <= model < len(models) else ()
@@ -1330,6 +1439,10 @@ class NewSessionDialog(wx.Dialog):
         return EFFORTS[index][0] if 0 <= index < len(EFFORTS) else ""
 
     def _on_codex_model(self, _event=None):
+        if self.provider() == "muse":
+            # The chosen model's efforts, keeping yours if it has it.
+            self._show_muse_efforts(self._muse_selected()[1])
+            return
         if self.provider() not in ('codex', 'codex-api'):
             return
         index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)

@@ -96,6 +96,17 @@ def codex_saved_rules_text(count):
     return "Saved command rules have not been checked. " + CODEX_SAVED_RULES_NOTE
 
 
+#: What a Muse Code profile without your review means, asked before a chat
+#: is started on it (New Session) or changed to it (Change Permission Mode).
+MUSE_MODE_WARNINGS = {
+    ":auto-review": ("With Auto-review, an AI reviewer, and any trusted permission hooks, may "
+                     "approve restricted actions in {title} without asking you. Use Auto-review?"),
+    ":unrestricted": ("With Unrestricted, nothing asks you: {title} runs with no file sandbox and "
+                      "no approval prompts, and its commands get direct network access. "
+                      "Use Unrestricted?"),
+}
+
+
 #: The window, in Tab order. The Help dialog and the README both describe it.
 LAYOUT = (
     "One window, three parts, in Tab order: the session list; the messages of the "
