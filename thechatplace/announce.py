@@ -289,6 +289,10 @@ def steer_taken_text(title: str, late: bool) -> str:
 #: The longest suggestion said whole; past it, its start and "…" (the list
 #: has it all).
 SUGGESTION_SAID = 150
+#: Said once a run when suggestions are on but Claude Code isn't offering
+#: them to this account (#709).
+SUGGESTIONS_NOT_OFFERED = ("No suggestion: Claude Code isn't offering suggestions to your "
+                           "account yet.")
 
 
 def suggestion_text(text: str) -> str:

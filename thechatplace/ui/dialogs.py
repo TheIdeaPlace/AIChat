@@ -39,6 +39,10 @@ CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscript
 #: same reason as the Chrome one: every letter in it is taken.
 SUGGESTIONS_SETTING_LABEL = ("Suggest what to send next after each reply in Claude chats on "
                              "your subscription (from the next turn)")
+#: Added to it when Claude Code's own flag says it isn't offering them to
+#: this account (platform_paths.claude_offers_prompt_suggestions, #709).
+SUGGESTIONS_NOT_OFFERED = (". Claude Code isn't offering suggestions to your account yet, so "
+                           "none will appear until Anthropic turns them on for it")
 
 
 class UnpricedApiDialog(wx.Dialog):
@@ -1737,9 +1741,11 @@ class SettingsDialog(wx.Dialog):
         self.chrome.SetValue(self._initial_chrome)
         outer.Add(self.chrome, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        # Prompt suggestions (#474), off until turned on.
+        # Prompt suggestions (#474), off until turned on. Its label says
+        # when Claude Code isn't offering them to this account (#709).
+        offered = platform_paths.claude_offers_prompt_suggestions()
         self.suggestions = wx.CheckBox(body, label=_wrapped(
-            self, SUGGESTIONS_SETTING_LABEL,
+            self, SUGGESTIONS_SETTING_LABEL + (SUGGESTIONS_NOT_OFFERED if offered is False else ""),
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.suggestions.SetValue(speech.prompt_suggestions)
         outer.Add(self.suggestions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

@@ -977,6 +977,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._suggestions: Dict[str, List[str]] = {}
         #: A turn's suggestion, held until its reply has been said.
         self._suggestion_due: Dict[str, str] = {}
+        #: Said this run that Claude Code isn't offering them (#709).
+        self._told_suggestions_not_offered = False
         self.reply_text.Bind(wx.EVT_TEXT_PASTE, self._on_reply_paste)
 
         self.desktop_reply = wx.Panel(root)
@@ -5585,10 +5587,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         chat's list, and said for the open chat after the reply (#474)."""
         text = self._suggestion_due.pop(session_id, None)
         if not text:
-            return
+            return False
         self._suggestions[session_id] = [text]
         if session_id != self._open_claude_id():
-            return
+            return True
         self._show_suggestions()
         said = announce.suggestion_text(text)
         # In the status bar too, so it's there with announcements Silent.
@@ -5596,6 +5598,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self.speech.enabled:
             # Queued behind the reply, never cutting it off.
             self._speak_announcement(said, interrupt=False)
+        return True
+
+    def _say_suggestions_not_offered(self, session_id: str):
+        """A turn asked for a suggestion and none came, and Claude Code's own
+        flag says it isn't offering them to this account (#709): said once a
+        run, for the open chat, so the setting isn't taken to be broken. Not
+        when the flag is on or unknown: then a reply without one is just a
+        reply with nothing likely to suggest."""
+        if (self._told_suggestions_not_offered or session_id != self._open_claude_id()
+                or platform_paths.claude_offers_prompt_suggestions() is not False):
+            return
+        self._told_suggestions_not_offered = True
+        self._feedback(announce.SUGGESTIONS_NOT_OFFERED)
 
     def drop_all_suggestions(self):
         """Settings turned suggestions off: none shown, none waiting."""
@@ -6663,7 +6678,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if (event.kind == "finished" and not event.is_error and not command_result
                     and not quiet and not queued and session_id not in self._runners
                     and not (event.data or {}).get("after_background")):
-                self._offer_suggestion(session_id, title)
+                if not self._offer_suggestion(session_id, title) and \
+                        getattr(runner, "suggestions", False) is True:
+                    self._say_suggestions_not_offered(session_id)
             else:
                 self._suggestion_due.pop(session_id, None)
             # The turn is over: a "Sent on API credits" still owed for it

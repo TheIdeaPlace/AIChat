@@ -17642,6 +17642,46 @@ def test_the_next_turn_clears_the_suggestions(frame, fake_runner):
     assert not frame.suggestion_list.IsShown() and "own-1" not in frame._suggestions
 
 
+def test_said_once_when_claude_code_isnt_offering_them(frame, env, fake_runner, monkeypatch):
+    # #709: with the account's flag off, none ever come; say so once a run.
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    frame.speech.prompt_suggestions = True
+    for text in ("first", "second"):
+        _start(frame, fake_runner, text=text)
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert env["feedback"].count(announce.SUGGESTIONS_NOT_OFFERED) == 1
+
+
+def test_not_said_when_the_flag_is_on_or_unknown(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    frame.speech.prompt_suggestions = True
+    for flag in (True, None):
+        monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda f=flag: f)
+        _start(frame, fake_runner, text=f"try {flag}")
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_not_said_when_the_setting_is_off(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_settings_says_when_claude_code_isnt_offering_them(frame, monkeypatch):
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        label = " ".join(dialog.suggestions.GetLabel().split())
+        assert "isn't offering suggestions to your account yet" in label
+    finally:
+        dialog.Destroy()
+
+
 def test_another_chats_suggestion_waits_for_it(frame, env, fake_runner):
     _start(frame, fake_runner)
     frame._open = None  # the user went elsewhere

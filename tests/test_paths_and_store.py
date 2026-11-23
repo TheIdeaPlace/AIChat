@@ -224,6 +224,26 @@ def test_store_drops_an_unknown_chrome_note(tmp_path):
     assert [store.get(i).prompt_note for i in "abc"] == ["", "", ""]
 
 
+def test_whether_claude_code_offers_suggestions_comes_from_its_flag(tmp_path, monkeypatch):
+    # #709: suggestions came on a PC whose cached flags had this true, and
+    # never on one whose didn't.
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    offered = platform_paths.claude_offers_prompt_suggestions
+    assert offered() is None  # no file: not known, not "off"
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"other": True}}), encoding="utf-8")
+    os.utime(config, (1_700_000_001, 1_700_000_001))
+    assert offered() is None
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": False}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_002, 1_700_000_002))
+    assert offered() is False
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": True}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_003, 1_700_000_003))
+    assert offered() is True
+
+
 def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
     config = tmp_path / ".claude.json"
     monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)

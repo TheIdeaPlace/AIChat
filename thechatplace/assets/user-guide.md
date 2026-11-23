@@ -963,6 +963,11 @@ After a reply, Claude can suggest what you might send next, such as "write the s
 has proposed one. Turn it on with **Settings, "Suggest what to send next after each reply"**. It's
 off at first.
 
+**Suggestions come only if Claude Code offers them to your account.** Anthropic is turning them on
+account by account, so on some accounts none come yet, whatever you set here. When Claude Code
+isn't offering them to yours, the setting says so, and a chat tells you once, after a reply: "No
+suggestion: Claude Code isn't offering suggestions to your account yet."
+
 - **When a reply comes with a suggestion,** you hear it after the reply: "Suggestion: write the
   script. Down Arrow in the message box gets to it." Not every reply has one; Claude suggests
   something only when there's a likely next step.
