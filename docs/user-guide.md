@@ -2319,6 +2319,12 @@ These are for Claude and Codex chats started here:
   Enter to choose: it goes at the start of the reply box, ready to finish and send. In a Codex
   chat, the same picker offers enabled skills and chat controls, such as `/plan` and `/compact`;
   see "More controls for Codex chats started here". Copilot doesn't have this picker yet.
+- **Console output you paste** (Ctrl+V), in the reply box or New Session's First message, goes
+  in as a code block, whichever AI the chat uses: output with a prompt such as `PS C:\work>`,
+  an error from PowerShell or Python, or lines padded with spaces as a console window copies
+  them. The padding is trimmed, and you hear "Pasted console output as a code block" with its
+  lines. It's in the box before you send, so you can change it; to send it as plain text,
+  delete the two lines of backticks around it. Other text pastes as it is.
 - **Ctrl+Shift+F** (or Attach Files) adds files and pictures to your next message, and **Ctrl+V**
   in the reply box attaches a picture on the clipboard, such as a screenshot, or files you
   copied. The attachments are

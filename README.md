@@ -487,6 +487,11 @@ too).
   Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/prompts.json`). The Chat Place doesn't read Claude
   Code's own history of what you've typed.
+- **Console output you paste** (Ctrl+V) into the reply box or New Session's First message goes in
+  as a code block, with the console's padding spaces trimmed, for every provider: output with a
+  prompt such as `PS C:\work>`, a PowerShell or Python error, or lines padded as a console window
+  copies them. You hear "Pasted console output as a code block"; delete the two lines of
+  backticks around it to send it as plain text. Other text pastes as it is.
 - **Attachments**, in The Chat Place's own Claude and Codex sessions: **Attach Files** (Alt+I, after Commands;
   Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
   attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed

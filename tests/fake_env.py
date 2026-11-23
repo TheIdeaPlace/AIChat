@@ -116,6 +116,10 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(bugreport, "claude_code_version", lambda: "2.1.286 (Claude Code)")
     patch(bugreport, "cli_version", lambda provider: {
         "claude": "2.1.286 (Claude Code)", "codex": "0.163.0", "copilot": "1.0.105"}[provider])
+    # Pasting reads env["pasted"], never the real clipboard (#701).
+    from thechatplace.ui import paste
+    pasted = {"text": ""}
+    patch(paste, "clipboard_text", lambda: pasted["text"])
     copied = []
     patch(main_frame.MainFrame, "_copy_text",
             lambda self, text: copied.append(text) or True)
@@ -288,7 +292,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "kept": kept, "about": about, "again": again, "forgotten": forgotten,
             "no_resay": no_resay,
-            "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
+            "copied": copied, "pasted": pasted, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
 

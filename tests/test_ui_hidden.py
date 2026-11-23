@@ -4216,6 +4216,27 @@ class _Paste:
         self.skipped = True
 
 
+def test_pasting_console_output_makes_it_a_code_block(frame, env, monkeypatch):
+    """Console output pasted into the reply box goes in trimmed and fenced,
+    on lines of its own, and you hear so; other text pastes as usual (#701)."""
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    monkeypatch.setattr(frame, "_clipboard_image", lambda: None)
+    pad = " " * 40
+    env["pasted"]["text"] = "PS C:\work> dir" + pad + "\nnotes.txt" + pad + "\n"
+    frame.reply_text.SetValue("It said:")
+    frame.reply_text.SetInsertionPointEnd()
+    event = _Paste()
+    frame._on_reply_paste(event)
+    assert not event.skipped
+    assert frame.reply_text.GetValue() == "It said:\n```console\nPS C:\work> dir\nnotes.txt\n```\n"
+    assert env["feedback"][-1] == "Pasted console output as a code block, 2 lines."
+    env["pasted"]["text"] = "Just two lines\nof ordinary text"
+    event = _Paste()
+    frame._on_reply_paste(event)
+    assert event.skipped  # the box pastes it itself, as it is
+
+
 def test_pasting_copied_files_attaches_them(frame, env, monkeypatch):
     # Kelly copied a .jpg in File Explorer: a file on the clipboard, not a
     # picture, and Ctrl+V did nothing.

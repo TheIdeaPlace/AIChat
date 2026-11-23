@@ -376,6 +376,7 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
+| `thechatplace/console_paste.py`, `thechatplace/ui/paste.py` | Console output pasted into the reply box or New Session's First message goes in as a trimmed `console` code block (#701) |
 | `thechatplace/commands.py` | Every menu command once (#575): its id, label, access key, key, and which menu it's in. `MainFrame._build_menu` builds the menu bar from it, and `_command_handlers` says what each id does. Ids are kept once released: customizable keys (#635) store them |
 | `thechatplace/keymap.py` | Your keyboard shortcuts (#635): `keys.json` (only the keys you changed, by command id, in Windows names; ids it doesn't know are kept), the one name for a key, which keys can't be given and why (`FIXED`, `refusal`), and which command a key runs. `MainFrame.apply_keys` shows a change at once, and feeds `ui_text.your_key`, through which everything the app says names a changeable key (`test_key_names` fails on a default key said any other way) |
 | `thechatplace/ui/keys_dialog.py` | Tools, Customize Keyboard Shortcuts and Change Key (#635), and `event_key`, a key press in keymap's names |

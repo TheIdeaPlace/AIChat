@@ -24,7 +24,7 @@ from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
                        mark_access_key,
                        shortcuts_text)
-from . import gtk_a11y, mac_a11y
+from . import gtk_a11y, mac_a11y, paste
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
@@ -514,6 +514,8 @@ class NewSessionDialog(wx.Dialog):
         # A reply sent on to a new chat (#378) starts here, to read first.
         self.message = wx.TextCtrl(self, value=message, style=wx.TE_MULTILINE | wx.TE_RICH2)
         set_accessible_name(self.message, "First message")
+        # Console output goes in as a code block, as in the reply box (#701).
+        self.message.Bind(wx.EVT_TEXT_PASTE, self._on_message_paste)
         outer.Add(self.message, 1, wx.EXPAND | wx.ALL, 10)
 
         buttons = wx.StdDialogButtonSizer()
@@ -566,6 +568,10 @@ class NewSessionDialog(wx.Dialog):
             wx.CallAfter(load_models, self._set_codex_models)
         # Continuing, the folder is fixed: start at the first thing to type.
         wx.CallAfter(self._focus_first)
+
+    def _on_message_paste(self, event):
+        if not paste.paste_console_as_code(self.message, self._feedback):
+            event.Skip()
 
     def _focus_first(self):
         if self:

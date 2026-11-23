@@ -103,7 +103,7 @@ from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, 
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
                        release_notes_url)
-from . import gtk_a11y, mac_a11y
+from . import gtk_a11y, mac_a11y, paste
 from .sizes import dialog_size, dip
 from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
                    set_empty_list_text, set_list_items_accessible, set_voiceover_menu)
@@ -5744,7 +5744,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _on_reply_paste(self, event):
         """Ctrl+V with files copied in File Explorer or the Finder attaches
         them, and so does a picture on the clipboard (a screenshot from
-        Win+Shift+S, say); text pastes as usual."""
+        Win+Shift+S, say); console output goes in as a code block (#701), and
+        other text pastes as usual."""
         info = self._open
         own = info is not None and info.is_own and info.provider in ('claude', 'codex', 'codex-api')
         copied, folders = self._clipboard_files() if own else ([], [])
@@ -5757,7 +5758,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         bitmap = self._clipboard_image() if own else None
         if bitmap is None:
-            event.Skip()
+            if not paste.paste_console_as_code(self.reply_text, self._feedback):
+                event.Skip()
             return
         path = attachments.pasted_image_path()
         try:
