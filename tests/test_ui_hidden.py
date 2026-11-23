@@ -17502,7 +17502,10 @@ def test_a_suggestion_goes_in_the_empty_box_selected_with_its_sound(frame, env, 
     _suggested(frame, fake_runner)
     assert frame.reply_text.GetValue() == "write the script"
     # Selected, so typing replaces it.
-    assert frame.reply_text.GetSelection() == (0, frame.reply_text.GetLastPosition())
+    # All of it: a Windows rich edit box's select-all takes in its closing
+    # paragraph mark too, so the end can be one past the text.
+    start, end = frame.reply_text.GetSelection()
+    assert start == 0 and end >= frame.reply_text.GetLastPosition()
     assert env["sounds"][-1] == "suggested"
     # Nothing is said about it: the reply only (Kelly, 2026-11-23).
     assert env["spoken"][-1] == "Hub probe replied. Done."
@@ -17530,7 +17533,10 @@ def test_a_failed_turn_offers_nothing(frame, fake_runner):
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="retry"))
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("failed", text="Stopped.", is_error=True))
-    assert frame.reply_text.GetValue() == ""
+    # Your own message may come back to the box, as it always has; the
+    # suggestion doesn't.
+    assert "retry" not in frame.reply_text.GetValue()
+    assert "own-1" not in frame._suggestions
 
 
 def test_more_work_after_a_suggestion_drops_it(frame, fake_runner):
