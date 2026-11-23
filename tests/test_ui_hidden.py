@@ -17669,3 +17669,37 @@ def test_settings_says_when_claude_code_isnt_offering_them(frame, monkeypatch):
         assert "isn't offering suggestions to your account yet" in label
     finally:
         dialog.Destroy()
+
+
+def test_a_message_given_back_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: it went in front of the suggestion, which then went with it.
+    _suggested(frame, fake_runner)
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message"
+    assert "own-1" not in frame._suggestions
+
+
+def test_a_message_given_back_still_goes_before_your_own_text(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("typed since")
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message\n\ntyped since"
+
+
+def test_a_command_put_in_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: "/compact write the script".
+    _suggested(frame, fake_runner)
+    frame._insert_command("compact")
+    assert frame.reply_text.GetValue().strip() == "/compact"
+    assert "own-1" not in frame._suggestions
+
+
+def test_going_back_to_a_chat_puts_it_back_quietly(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    before = env["sounds"].count("suggested")
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["sounds"].count("suggested") == before

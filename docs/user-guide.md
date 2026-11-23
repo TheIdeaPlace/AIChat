@@ -964,10 +964,12 @@ has proposed one. Turn it on with **Settings, "Suggest what to send next after e
 off at first.
 
 - **When a reply comes with a suggestion,** it's put in your message box, selected, and the
-  **Message suggested** sound plays (with sounds on; the status bar says so too). Nothing is said
-  aloud. Not every reply has one: Claude suggests something only when there's a likely next step.
-- **Type to replace it.** Because it's selected, whatever you type takes its place. Arrow keys
-  move into it instead, so you can change it. **Ctrl+Enter** sends it as it stands.
+  **Message suggested** sound plays. Nothing is said aloud, so with sounds off you won't hear that
+  it's there; the status bar says so, and you'll find it when you get to the box. Not every reply
+  has one: Claude suggests something only when there's a likely next step.
+- **Type to replace it.** Because it's selected, whatever you type takes its place. An arrow key
+  keeps it and moves the cursor, so you can change it. **Ctrl+Enter** sends it as it stands, with
+  anything you've attached.
 - **Only into an empty box.** If you've typed something, or the chat has a draft waiting, your text
   is left alone and the suggestion isn't put in.
 - **It isn't your draft.** Leave the chat with the suggestion untouched and it's offered again

@@ -2016,7 +2016,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
         self._show_attachments()
-        self._place_suggestion()
+        # Put back quietly: the sound was for its coming (#709 review).
+        self._place_suggestion(sound=False)
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
         self.chat_list.SetFocus()
@@ -5546,6 +5547,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ""
         return info.cli_session_id
 
+    def _typed_text(self) -> str:
+        """The message box's text, with an untouched suggestion counted as
+        an empty box (#709 review): it's Claude's, not yours, so nothing
+        built on what you typed (a message given back, a command put in)
+        takes it along. Taking it this way drops it."""
+        text = self.reply_text.GetValue()
+        session_id = self._open_claude_id()
+        if session_id and text and text == self._suggestions.get(session_id):
+            self._suggestions.pop(session_id, None)
+            self.reply_text.ChangeValue("")
+            return ""
+        return text
+
     def _place_suggestion(self, sound: bool = True) -> bool:
         """The open chat's suggestion into its message box, selected, if the
         box is empty: typing replaces it, and Ctrl+Enter sends it as it is.
@@ -5557,6 +5571,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return False
         # ChangeValue: no text event, so it isn't taken for your typing.
         self.reply_text.ChangeValue(text)
+        # As the box holds it: a Windows rich edit box can change its line
+        # endings, and an exact match is what says it's untouched.
+        self._suggestions[session_id] = self.reply_text.GetValue()
         self.reply_text.SetSelection(-1, -1)
         if sound:
             self._sound(sound_events.SUGGESTED, self._own_key(session_id))
@@ -5572,8 +5589,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.reply_text.ChangeValue("")
 
     def _offer_suggestion(self, session_id: str, title: str):
-        """After a reply has been said: its suggestion, if one came, into the
-        chat's list, and said for the open chat after the reply (#474)."""
+        """After a reply has been said: its suggestion, if one came, kept for
+        the chat and put in its message box if it's open with the box empty.
+        True if one came (#474)."""
         text = self._suggestion_due.pop(session_id, None)
         if not text:
             return False
@@ -7327,7 +7345,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         typed since (it was written first), so nothing is lost. The caret
         stays at the end, where Kelly was typing."""
         if is_open:
-            typed = self.reply_text.GetValue()
+            typed = self._typed_text()
             self.reply_text.SetValue(f"{message}\n\n{typed.lstrip()}" if typed.strip()
                                      else message)
             self.reply_text.SetInsertionPointEnd()
@@ -8795,7 +8813,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Put ``/name `` at the start of the reply, replacing a command
         that's already there (only a real one: "/path/x is broken" stays),
         keeping the rest of what you typed, line breaks and all."""
-        rest = self.reply_text.GetValue().lstrip(" \t")
+        rest = self._typed_text().lstrip(" \t")
         known = {c["name"] for c in commands or []}
         match = re.match(r"/(\S*)[ \t]*", rest)
         if match and (match.group(1) in known or not commands):
