@@ -272,8 +272,8 @@ API-credit chats. No setting here turns these features on for Codex; **Let Claud
 applies only to Claude. Codex is told these limits with every message, including when you
 reopen a chat or make a copy, so it can explain them instead of sending you to a setting.
 
-An MCP browser server you have configured and explicitly enabled through **View, Connected
-Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
+An MCP browser server you have configured and explicitly enabled through
+**View, Connected Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
 check a page in your own browser.
 
 ### You're asked too often, or you want more control
