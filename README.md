@@ -7,7 +7,7 @@ Return presses the default button, Escape cancels, and Tab or VoiceOver reach th
 
 A keyboard and screen reader friendly home for your AI chats, together in one session list.
 
-The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
+The Chat Place is an independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by
 Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 

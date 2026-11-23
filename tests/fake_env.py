@@ -186,6 +186,9 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
     patch(platform_paths, "claude_home", lambda: root / "claude")
+    # ~/.claude.json too: whether the Chrome extension is installed (#319)
+    # mustn't depend on the machine the tests run on.
+    patch(platform_paths, "claude_config_file", lambda: root / "claude.json")
     patch(platform_paths, "codex_home", lambda: root / "codex")
     patch(platform_paths, "agents_skills_dir", lambda: root / "agents-skills")
     patch(platform_paths, "edit_file", lambda path: opened.append(("edit", path)))
@@ -249,9 +252,10 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     class FakeMcpSession:
         closed = False
 
-        def __init__(self, exe, cwd, disabled=(), mcp_config=None):
+        def __init__(self, exe, cwd, disabled=(), mcp_config=None, chrome=False):
             mcp["calls"].append(("open", cwd))
             mcp["opened_with"] = {"disabled": list(disabled), "mcp_config": mcp_config}
+            mcp["chrome"] = chrome  # Claude in Chrome listed too (#319)
 
         def _check(self):
             if mcp["error"]:

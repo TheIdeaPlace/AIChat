@@ -61,6 +61,11 @@ def describe_claude_rule(rule: str) -> str:
     if match is None:
         return rule
     tool, content = match.group(1), match.group(2)
+    # Claude in Chrome (#319): a site it may act on, and its own tools.
+    if tool == "ClaudeInChromeDomain" and content:
+        return f"Let Claude in Chrome act on {content}."
+    if tool.startswith("mcp__claude-in-chrome__"):
+        return f"Use Claude in Chrome's {tool[len('mcp__claude-in-chrome__'):]} tool."
     if tool.startswith("mcp__"):
         parts = tool.split("__")
         if len(parts) >= 3:

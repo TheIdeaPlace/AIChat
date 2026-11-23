@@ -301,41 +301,84 @@ def is_safe_dir(folder: str) -> bool:
 
 
 APPEND_PROMPT = "--append-system-prompt="
-#: Told to Claude on every turn (#319). Claude Code's own skills describe
-#: Claude in Chrome, computer use and the desktop app's browser pane, but a
-#: chat run here has none of them: turns start without --chrome, and the
-#: other two exist only in the desktop app. Without this, a chat asked
-#: anything that needs a browser told Kelly, three times over, to turn on
-#: Claude in Chrome, which was already on.
-#:
-#: Claude Code records the system prompt on a chat's first request and
-#: reuses the record (--system-prompt-snapshot). So a chat started before
-#: this sees the note only once it's compacted, and a copy (Continue Here,
-#: Rewind or Branch from Here, Continue on API Credits) is made with
-#: prompt_fresh, or it would keep its source's record without the note.
-#: When #319 passes --chrome, the Chrome part must go, and chats recorded
-#: with it need their prompt made afresh too, or they'd be told Chrome
-#: isn't there when it is.
-UNAVAILABLE_NOTE = (
-    "This chat is run by The Chat Place, which starts Claude Code in print mode, not the "
-    "Claude desktop app. Claude in Chrome (mcp__claude-in-chrome__ tools), computer use "
-    "(mcp__computer-use__ tools) and the desktop app's built-in browser pane "
+
+#: Whether a turn has Claude in Chrome (#319), and if not, why: the values a
+#: chat keeps as ``OwnSession.prompt_note``, so it knows when the note below
+#: changed and its recorded system prompt has to be made afresh.
+CHROME_ON = "chrome"
+#: Settings, "Let Claude use Chrome", is off (or the extension isn't installed).
+CHROME_OFF = "no-chrome"
+#: A chat on API credits: Claude Code keeps Claude in Chrome off when it's
+#: signed in with an API key, even with --chrome (Anthropic's Claude in
+#: Chrome page: it needs a claude.ai plan and /login).
+CHROME_API = "no-chrome-api"
+CHROME_STATES = (CHROME_ON, CHROME_OFF, CHROME_API)
+
+_NOTE_START = ("This chat is run by The Chat Place, which starts Claude Code in print mode, "
+               "not the Claude desktop app. ")
+_NOTE_DESKTOP_ONLY = (
+    "Computer use (mcp__computer-use__ tools) and the desktop app's built-in browser pane "
     "(mcp__Claude_Browser__ tools) aren't available in this chat, even if a skill describes "
     "them or the user's settings turn them on, and no setting the user can change here "
-    "turns them on. Don't tell the user to enable them. If a task needs one, say plainly "
-    "that it isn't available in The Chat Place, then use what this chat does have: web "
-    "fetch or search tools, or any browser or computer tools the user's own MCP servers "
-    "provide. Otherwise, ask the user to check in their own browser, or say the Claude "
-    "desktop app can do it.")
+    "turns them on. Don't tell the user to enable them. ")
+_NOTE_FALLBACK = (
+    "If a task needs one, say plainly that it isn't available in The Chat Place, then use "
+    "what this chat does have: web fetch or search tools, or any browser or computer tools "
+    "the user's own MCP servers provide. Otherwise, ask the user to check in their own "
+    "browser, or say the Claude desktop app can do it.")
+_NOTES = {
+    CHROME_ON: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) is available. If its "
+        "tools say the browser extension isn't connected, tell the user to open Chrome with "
+        "the Claude extension signed in to the same claude.ai account as Claude Code. "
+        + _NOTE_DESKTOP_ONLY + "If a task needs a browser, use Claude in Chrome; otherwise use "
+        "web fetch or search tools, or any tools the user's own MCP servers provide."),
+    CHROME_OFF: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) is off in this chat: "
+        "the user can turn it on in The Chat Place's Settings, with \"Let Claude use "
+        "Chrome\", once the Claude in Chrome extension is installed and signed in. "
+        "Say that, rather than pointing to any other setting. " + _NOTE_DESKTOP_ONLY
+        + _NOTE_FALLBACK),
+    CHROME_API: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) isn't available in "
+        "this chat, because it's charged to API credits and Claude in Chrome needs a claude.ai "
+        "plan; a chat on the user's Claude subscription can use it. Say that, rather than "
+        "pointing to a setting. " + _NOTE_DESKTOP_ONLY + _NOTE_FALLBACK),
+}
+
+
+def unavailable_note(chrome: str = CHROME_OFF) -> str:
+    """Told to Claude on every turn (#319): what this chat can and can't use.
+    Claude Code's own skills describe Claude in Chrome, computer use and the
+    desktop app's browser pane. Computer use and the browser pane exist only
+    in the desktop app, and Claude in Chrome only with --chrome. Without a
+    note, a chat asked anything that needs a browser told Kelly, three times
+    over, to turn on Claude in Chrome, which was already on.
+
+    Claude Code records the system prompt on a chat's first request and
+    reuses the record (--system-prompt-snapshot). So when the note a chat
+    gets changes to or from Chrome being available, its prompt is made
+    afresh (``MainFrame._chrome_for_turn``), or it would be told Chrome isn't
+    there when it is. Copies (Continue Here, Rewind or Branch from Here,
+    Continue on API Credits) are always made afresh."""
+    return _NOTES.get(chrome, _NOTES[CHROME_OFF])
+
+
+#: The note when Claude in Chrome is off: what every turn said before #319
+#: passed --chrome, and what the tests check for by this name.
+UNAVAILABLE_NOTE = unavailable_note(CHROME_OFF)
 
 
 def _common_flags(permission_mode: str, model: str = "",
                   allowed_tools: Collection[str] = (), effort: str = "",
                   allowed_dirs: Collection[str] = (),
-                  options: Optional[ChatOptions] = None) -> List[str]:
+                  options: Optional[ChatOptions] = None,
+                  chrome: str = CHROME_OFF) -> List[str]:
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
+    if chrome not in CHROME_STATES:
+        raise ValueError(f"Unknown Claude in Chrome state: {chrome!r}")
     # --replay-user-messages: Claude Code echoes each message as it takes it
     # in, which is how a turn knows whether a steered message joined the work
     # in progress or is being answered after it (#238).
@@ -354,17 +397,27 @@ def _common_flags(permission_mode: str, model: str = "",
             raise ValueError(f"Not a valid effort level: {effort!r}")
         # Every turn, as with the model: each turn is a new process (#189).
         flags += ["--effort", effort]
+    # Claude in Chrome (#319), every turn: each turn is a new process, and
+    # claudeInChromeDefaultEnabled doesn't apply in print mode. Checked with
+    # Claude Code 2.1.326: the extension connects within the turn's first
+    # second, its tools ask through the host's permission prompt like any
+    # other, and a resumed turn still sees the tabs the last one opened (the
+    # extension's tab group goes by the session). With Chrome closed the turn
+    # starts just the same. Off is said too, so a later default can't turn
+    # it on behind the setting.
+    flags.append("--chrome" if chrome == CHROME_ON else "--no-chrome")
     # Agent, instructions and output style (#468), every turn, as the model
     # is. Before the lists below, whose values run to the next flag.
     option_flags = options.flags() if options is not None else []
     # What this chat can't do (#319), after any instructions of the chat's
     # own, in the one --append-system-prompt Claude Code takes.
+    note = unavailable_note(chrome)
     for index, flag in enumerate(option_flags):
         if flag.startswith(APPEND_PROMPT):
-            option_flags[index] = flag + "\n\n" + UNAVAILABLE_NOTE
+            option_flags[index] = flag + "\n\n" + note
             break
     else:
-        option_flags.append(APPEND_PROMPT + UNAVAILABLE_NOTE)
+        option_flags.append(APPEND_PROMPT + note)
     flags += option_flags
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
@@ -397,12 +450,13 @@ def build_new_command(executable: str, session_id: str, title: str,
                       permission_mode: str, model: str = "",
                       allowed_tools: Collection[str] = (), effort: str = "",
                       allowed_dirs: Collection[str] = (),
-                      options: Optional[ChatOptions] = None) -> List[str]:
+                      options: Optional[ChatOptions] = None,
+                      chrome: str = CHROME_OFF) -> List[str]:
     """Command for the first turn of a new session. The prompt goes on stdin."""
     if not platform_paths.is_safe_id(session_id):
         raise ValueError("Not a valid session id.")
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs, options),
+                                          allowed_dirs, options, chrome),
                "--session-id", session_id]
     title = " ".join((title or "").split())
     if title:
@@ -433,7 +487,8 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
                        cowork_ids: Collection[str] = (), effort: str = "",
                        resume_at: str = "",
                        allowed_dirs: Collection[str] = (),
-                       options: Optional[ChatOptions] = None) -> List[str]:
+                       options: Optional[ChatOptions] = None,
+                       chrome: str = CHROME_OFF) -> List[str]:
     """Command for the first turn of a copy of another session (#189), such
     as a desktop app session, to carry on in The Chat Place.
 
@@ -465,7 +520,8 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
     if not platform_paths.is_safe_id(new_id) or new_id == source_id or new_id in taken_ids:
         raise ValueError("The new session needs an id of its own.")
     command = [executable, *_common_flags(permission_mode, model, effort=effort,
-                                          allowed_dirs=allowed_dirs, options=options),
+                                          allowed_dirs=allowed_dirs, options=options,
+                                          chrome=chrome),
                "--resume", source_id, "--fork-session", "--session-id", new_id]
     if resume_at:
         command += ["--resume-session-at", resume_at]
@@ -499,7 +555,8 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
                          desktop_ids: Collection[str], model: str = "",
                          allowed_tools: Collection[str] = (), title: str = "",
                          effort: str = "", allowed_dirs: Collection[str] = (),
-                         options: Optional[ChatOptions] = None) -> List[str]:
+                         options: Optional[ChatOptions] = None,
+                         chrome: str = CHROME_OFF) -> List[str]:
     """Command for a later turn. Refuses anything but The Chat Place's own sessions.
 
     ``--name`` goes on every turn, not just the first (#123). Other sessions
@@ -510,7 +567,7 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
     """
     check_resume_allowed(session_id, own_ids, desktop_ids)
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs, options)]
+                                          allowed_dirs, options, chrome)]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
@@ -630,6 +687,13 @@ def stdin_lines(prompt: str, images: Optional[List[dict]] = None) -> bytes:
     return initialize_line() + message_line(prompt, images)
 
 
+#: Claude in Chrome's tools (#319), and how Claude Code words their
+#: permission requests ("Allow Claude in Chrome to navigate on example.com?")
+#: and names the rule that allows a site ("ClaudeInChromeDomain(example.com)").
+CHROME_TOOL_PREFIX = "mcp__claude-in-chrome__"
+_CHROME_ASK = re.compile(r"Allow Claude in Chrome to (.{1,300}?)\?")
+_CHROME_SITE_RULE = re.compile(r"ClaudeInChromeDomain\(([^()\s]{1,253})\)")
+
 QUESTION_TOOL = "AskUserQuestion"
 PLAN_TOOL = "ExitPlanMode"
 SHELL_TOOLS = ("Bash", "PowerShell")
@@ -723,7 +787,28 @@ class PermissionRequest:
             return f"Claude asks: {first}{more}"
         if self.is_plan:
             return "Claude's plan is ready for you to approve"
+        chrome = self._chrome_summary()
+        if chrome:
+            return chrome
         return f"Claude wants to {describe_tool_use(self.tool_name, self.input)}"
+
+    def _chrome_summary(self) -> str:
+        """A Claude in Chrome request in the words Claude Code gives it
+        (#319): its description is "Allow Claude in Chrome to navigate on
+        example.com?", which names the website, where the tool's name alone
+        ("mcp__claude-in-chrome__navigate") doesn't."""
+        if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
+            return ""
+        match = self._chrome_ask()
+        if match:
+            return f"Claude in Chrome wants to {match.group(1)}"
+        return f"Claude in Chrome wants to use {self.tool_name[len(CHROME_TOOL_PREFIX):]}"
+
+    def _chrome_ask(self):
+        """Claude in Chrome's description in its usual words, or None."""
+        if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
+            return None
+        return _CHROME_ASK.fullmatch(" ".join(self.description.split()))
 
     def detail(self) -> str:
         """Everything about the request, to read by line."""
@@ -731,7 +816,9 @@ class PermissionRequest:
 
     def _detail(self) -> str:
         lines = [self.summary() + "."]
-        if self.description and self.description not in lines[0]:
+        # A Claude in Chrome description already is the summary; any other
+        # (in words this doesn't know) is kept as the reason.
+        if self.description and self.description not in lines[0] and not self._chrome_ask():
             lines.append(f"Why: {self.description}")
         if self.tool_name in SHELL_TOOLS:
             lines += ["", f"{self.tool_name} command:", str(self.input.get("command", ""))]
@@ -802,7 +889,8 @@ class PermissionRequest:
         if rules:
             # Both grants by name: the folder is a working folder for every
             # tool on later turns, not only for this rule (--add-dir).
-            label = "Allow, and don't ask again in this chat for " + ", ".join(rules)
+            label = ("Allow, and don't ask again in this chat for "
+                     + ", ".join(_rule_words(rule) for rule in rules))
             return label + (", and let Claude work in " + _folders_words(dirs) if dirs else "")
         if mode == "acceptEdits":
             return "Allow, and accept all file edits for the rest of this chat"
@@ -821,6 +909,20 @@ class PermissionRequest:
         if mode:
             return [], [], mode
         return [], dirs, ""
+
+
+def _rule_words(rule: str) -> str:
+    """A rule as Allow for This Chat names it: as it is, except Claude in
+    Chrome's (#319): its site rule, "ClaudeInChromeDomain(example.com)", is
+    "Claude in Chrome on example.com", and one of its tools,
+    "mcp__claude-in-chrome__tabs_create_mcp", is "Claude in Chrome's
+    tabs_create_mcp tool"."""
+    match = _CHROME_SITE_RULE.fullmatch(rule)
+    if match:
+        return f"Claude in Chrome on {match.group(1)}"
+    if rule.startswith(CHROME_TOOL_PREFIX) and "(" not in rule:
+        return f"Claude in Chrome's {rule[len(CHROME_TOOL_PREFIX):]} tool"
+    return rule
 
 
 def _folders_words(dirs: List[str]) -> str:

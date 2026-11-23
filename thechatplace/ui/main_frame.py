@@ -68,7 +68,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
-                          normalize_permission_mode)
+                          normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON)
 from .. import codex_long_messages, reply_costs, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
 from .sound_host import SoundHost
@@ -5634,9 +5634,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._keep_for_files_going_back(folder, message, "no chat was started."):
             return
         session_id = new_session_id()
+        chrome = self._chrome_state(billing)
         try:
             command = build_new_command(exe, session_id, title, mode, model, effort=effort,
-                                        allowed_dirs=more_folders, options=chat_options)
+                                        allowed_dirs=more_folders, options=chat_options,
+                                        chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             # The dialog has gone, with the first message you typed in it.
             self._relay_kept(message, f"No chat was started: {exc} Your message wasn't sent.")
@@ -5645,6 +5647,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          permission_mode=mode, started=False, model=model, effort=effort,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          billing=billing,  # fixed from now on (#658)
+                         prompt_note=chrome,
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -5899,6 +5902,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._keep_for_files_going_back(info.cwd, message, "no copy was made."):
             return
         new_id = new_session_id()
+        chrome = self._chrome_state(billing)
         try:
             command = build_fork_command(
                 lookup.path, info.cli_session_id, new_id, title, mode, model,
@@ -5906,7 +5910,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 | set(self._snapshot.desktop_cli_ids),
                 cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
                 allowed_dirs=more_folders,
-                options=dataclasses.replace(chat_options, fresh=True))
+                options=dataclasses.replace(chat_options, fresh=True), chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             # The dialog has gone, with the first message you typed in it.
             self._relay_kept(message, f"No copy was made: {exc} Your message wasn't sent.")
@@ -5920,7 +5924,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          # ignored), so it's made afresh: for its own options,
                          # and for what this chat can't do (#319), which the
                          # source's record may not have.
-                         prompt_fresh=True,
+                         prompt_fresh=True, prompt_note=chrome,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          billing=billing,  # fixed from now on (#658)
                          **_options_fields(chat_options, more_folders))
@@ -6256,6 +6260,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         problem = self._api_send_problem(session_id, ask=False)
         if problem:
             return problem
+        chrome, own = self._chrome_for_turn(own)
         try:
             if self._session_exists(own):
                 command = build_resume_command(
@@ -6263,7 +6268,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     own_ids={s.cli_session_id for s in self.store.all()},
                     desktop_ids=self._snapshot.desktop_cli_ids, model=own.model,
                     allowed_tools=own.allowed_tools, title=own.title, effort=own.effort,
-                    allowed_dirs=own.allowed_dirs, options=own.chat_options())
+                    allowed_dirs=own.allowed_dirs, options=own.chat_options(),
+                    chrome=chrome)
             else:
                 # The first turn never got as far as creating the session:
                 # start it again rather than resume something that isn't there.
@@ -6280,20 +6286,55 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                  cowork_ids=self._snapshot.cowork_cli_ids,
                                                  effort=own.effort, resume_at=own.fork_at,
                                                  allowed_dirs=own.allowed_dirs,
-                                                 options=own.chat_options())
+                                                 options=own.chat_options(),
+                                                 chrome=chrome)
                 else:
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,
                                                 allowed_tools=own.allowed_tools,
                                                 effort=own.effort,
                                                 allowed_dirs=own.allowed_dirs,
-                                                options=own.chat_options())
+                                                options=own.chat_options(),
+                                                chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,
                          queued=queued, images=images, spoken=spoken, attached=attached,
                          announce_send=announce_send)
         return None
+
+    def _chrome_state(self, billing: str) -> str:
+        """Whether a Claude chat charged this way gets Claude in Chrome
+        (#319). Never on API credits: Claude Code keeps it off with an API
+        key even when asked, so the chat is told why instead."""
+        if billing == "api":
+            return CHROME_API
+        return CHROME_ON if self.speech.chrome_on() else CHROME_OFF
+
+    def _chrome_for_turn(self, own: OwnSession) -> Tuple[str, OwnSession]:
+        """The Claude in Chrome state for ``own``'s next turn, and the chat
+        as it is after noting it. When it isn't what the chat's recorded
+        system prompt was made with (Settings changed, or a chat from before
+        #319, recorded without --chrome), the prompt is made afresh from now
+        on: Claude Code would otherwise keep telling it Chrome isn't there.
+
+        Only when Chrome itself comes or goes: a prompt made afresh stays so
+        for the rest of the chat, and the notes for off and for API credits
+        say near enough what a chat recorded before #319 was told (no
+        Chrome), so those chats keep their recorded prompt."""
+        state = self._chrome_state(own.billing)
+        if own.prompt_note == state:
+            return state, own
+        changes = {"prompt_note": state}
+        if (CHROME_ON in (state, own.prompt_note) and not own.prompt_fresh
+                and self._session_exists(own)):
+            changes["prompt_fresh"] = True
+        if self._store_write(self.store.update, own.cli_session_id, **changes):
+            own = self.store.get(own.cli_session_id) or own
+        elif "prompt_fresh" in changes:
+            # Not saved, but this turn still mustn't keep the old note.
+            own = dataclasses.replace(own, **changes)
+        return state, own
 
     def _session_exists(self, own: OwnSession) -> bool:
         if own.started:
@@ -9569,7 +9610,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             f"{APP_NAME} version {__version__}\n\nA home for your AI chats: keyboard and "
             "screen reader friendly, with Claude, Codex and GitHub Copilot in one session list. "
             "Replies use your sign-in with the selected provider.\n\n"
-            "An independent project by Kelly Ford, not made, sponsored or endorsed by "
+            "An independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by "
             "Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; "
             "ChatGPT and Codex are OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.\n\n"
             "Questions and bug reports: support@theideaplace.net",

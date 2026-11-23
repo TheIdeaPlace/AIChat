@@ -105,7 +105,10 @@ a release can take a file added after publishing; releases published in that win
 - The order: a short intro (what it updates, pre-release or not, that it offers itself as an
   update), then **Added**, **Changed** and **Fixed** as needed (what's new is what most people
   came to read), then the footers, copied from the last release: **Reporting Issues**, **Downloads**,
-  **Requirements**, and the independence line.
+  **Requirements**, and the independence line. That line credits "Kelly Ford and other
+  contributors" (from 0.6.3 on, since contributions are now sizable); release notes up to 0.6.2
+  say "Kelly Ford" alone, so don't copy it from those. The README, the user guide and the About
+  box say the same.
 - Write for users: say what they'll notice, in plain words, with the menu path and the key. Don't
   name a screen reader unless the change is specific to one; say "screen readers".
 - The **README is the user guide**: update it in the same PR whenever behaviour changes, along

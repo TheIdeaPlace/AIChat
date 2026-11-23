@@ -205,6 +205,52 @@ def test_store_rename_and_remove(tmp_path):
     assert OwnSessionStore(tmp_path / "s.json").all() == []
 
 
+def test_store_keeps_the_chrome_note_a_chat_last_had(tmp_path):
+    # #319: which Claude in Chrome note the chat's prompt was made with.
+    store = OwnSessionStore(tmp_path / "s.json")
+    store.add(OwnSession("id-1", "T", "C:\\a", prompt_note="chrome"))
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "chrome"
+    store.update("id-1", prompt_note="no-chrome-api")
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "no-chrome-api"
+
+
+def test_store_drops_an_unknown_chrome_note(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"sessions": [
+        {"cli_session_id": "a", "title": "T", "cwd": "C:\\", "prompt_note": "--chrome yes"},
+        {"cli_session_id": "b", "title": "T", "cwd": "C:\\", "prompt_note": 3},
+        {"cli_session_id": "c", "title": "T", "cwd": "C:\\"}]}), encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert [store.get(i).prompt_note for i in "abc"] == ["", "", ""]
+
+
+def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    installed = platform_paths.claude_chrome_extension_installed
+    stamp = [1_700_000_000]
+
+    def write(text):
+        # Each write a second later, as Claude Code's own are.
+        config.write_text(text, encoding="utf-8")
+        stamp[0] += 1
+        os.utime(config, (stamp[0], stamp[0]))
+    assert installed() is False  # no file
+    write(json.dumps({"projects": {}}))
+    assert installed() is False  # not looked for yet
+    write(json.dumps({"cachedChromeExtensionInstalled": "yes"}))
+    assert installed() is False
+    write(json.dumps({"projects": {}, "cachedChromeExtensionInstalled": True}, indent=2))
+    assert installed() is True
+    # Caught mid-rewrite: the last answer stands, not a turn without Chrome.
+    write('{"projects": {"C:/a": {"allowedTools": []')
+    assert installed() is True
+    write(json.dumps({"cachedChromeExtensionInstalled": False}))
+    assert installed() is False
+    config.unlink()
+    assert installed() is False
+
+
 def test_store_rejects_unsafe_id(tmp_path):
     store = OwnSessionStore(tmp_path / "s.json")
     with pytest.raises(ValueError):

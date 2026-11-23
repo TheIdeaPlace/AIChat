@@ -116,6 +116,29 @@ def test_the_ungrouped_view_is_remembered(tmp_path):
     assert "enabled" not in json.loads(path.read_text())
 
 
+def test_claude_in_chrome_follows_the_extension_until_chosen(tmp_path, monkeypatch):
+    # #319: unset, Claude chats get Chrome only where Claude Code has found
+    # the extension; a choice in Settings is kept either way.
+    from thechatplace import platform_paths
+    installed = {"yes": True}
+    monkeypatch.setattr(platform_paths, "claude_chrome_extension_installed",
+                        lambda: installed["yes"])
+    path = tmp_path / "speech.json"
+    settings = SpeechSettings.load(path)
+    assert settings.claude_in_chrome is None and settings.chrome_on()
+    installed["yes"] = False
+    assert not settings.chrome_on()
+    settings.claude_in_chrome = True
+    settings.save(path)
+    assert SpeechSettings.load(path).chrome_on()
+    settings.claude_in_chrome = False
+    settings.save(path)
+    installed["yes"] = True
+    assert not SpeechSettings.load(path).chrome_on()
+    path.write_text(json.dumps({"claude_in_chrome": "on"}), encoding="utf-8")
+    assert SpeechSettings.load(path).claude_in_chrome is None
+
+
 def test_speech_settings_bad_values(tmp_path):
     path = tmp_path / "speech.json"
     path.write_text(json.dumps({"announce": "shout", "rate_preset": "warp"}))

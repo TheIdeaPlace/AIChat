@@ -18,6 +18,7 @@ import threading
 import wx
 
 from .. import claude_mcp, platform_paths
+from ..claude_cli import CHROME_ON
 from ..claude_mcp import McpError, McpServer, with_chat_settings
 
 NOTE = ("Connected tools are the MCP servers and claude.ai connectors Claude can use in this "
@@ -65,6 +66,9 @@ class ClaudeConnectedTools:
         # has them lists them: a desktop chat's turns aren't run here.
         self._mcp_config = (frame._session_tools_config(self.record.cli_session_id)
                             if self.record is not None else None)
+        # Claude in Chrome (#319), listed only where the chat's turns get it.
+        self._chrome = (self.record is not None
+                        and frame._chrome_state(self.record.billing) == CHROME_ON)
 
     def note(self) -> str:
         return NOTE if self.can_turn_off else NOTE_READ_ONLY
@@ -92,7 +96,8 @@ class ClaudeConnectedTools:
                 self._denied = self._disabled()
                 self._session = claude_mcp.open_session(lookup.path, self.cwd,
                                                         disabled=self._denied,
-                                                        mcp_config=self._mcp_config)
+                                                        mcp_config=self._mcp_config,
+                                                        chrome=self._chrome)
                 self._session.on_expired = self._on_expired
             return self._session
 

@@ -20,7 +20,7 @@ This guide starts with the everyday things and goes deeper as it goes on. Each p
 heading, so your screen reader's heading keys move between them. For every key in one list, use
 Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guide uses.
 
-The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
+The Chat Place is an independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by
 Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
@@ -332,12 +332,28 @@ between Claude and a website, so you can say "post this as a draft" instead.
 - If a command-line tool does the job, such as `gh` for GitHub, Claude can use that without
   connecting anything. Just ask.
 
-Claude in Chrome, which lets Claude use your browser, and computer use aren't available in chats
-The Chat Place runs yet. Claude is told so in new chats and copies of chats, so it says so plainly
-and uses what it has, such as web search, rather than asking you to turn them on. A chat started
-before this version is told once Claude Code compacts it. For Chrome, use the Claude
-desktop app, or `claude --chrome` in a terminal.
-Computer use is a preview in the desktop app, off until you turn it on, and not on every plan.
+### You want Claude to use your browser
+
+**Claude in Chrome** lets Claude use your Chrome or Edge browser: open pages, read them, fill in
+forms and click. Claude chats here can use it once you have the Claude in Chrome extension
+installed and signed in to the same claude.ai account as Claude Code. Then:
+
+- It's on in Claude chats on your subscription, new and old, from their next message.
+  **Settings, "Let Claude use Chrome"** turns it off or on. Until you change it, it's on if
+  Claude Code has found the extension on your computer.
+- Ask for it by name the first time, for example "Using Chrome, what tabs do I have open?" Keep
+  Chrome open while Claude works in it.
+- Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
+  example.com". **Allow for This Chat** lets it use that site for the rest of the chat.
+- Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
+  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
+- It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
+  told so, so it says so rather than sending you to a setting.
+
+Computer use, which lets Claude use your other apps, isn't available in chats The Chat Place runs.
+Claude is told so, so it says so plainly and uses what it has, such as Chrome or web search,
+rather than asking you to turn it on. Computer use is a preview in the desktop app, off until you
+turn it on, and not on every plan.
 
 ### You're asked too often, or you want more control
 
@@ -2794,7 +2810,8 @@ copy of the chat.
 **You can't add a new tool from The Chat Place.** It works with the tools already set up in each
 provider. Add or remove Claude's with Claude Code (`claude mcp`) or on claude.ai, and Codex's with
 Codex in a terminal (`codex mcp add`), then press **Refresh** (Alt+F). Copilot chats don't have Connected
-Tools yet. Claude in Chrome isn't available in chats The Chat Place runs yet.
+Tools yet. Claude in Chrome shows in a Claude chat's list as `claude-in-chrome` when it's on (see
+"You want Claude to use your browser").
 
 **"3 tools" on a row** means that server or connector offers three separate things the AI can use,
 such as searching or fetching a page. **Details** (Alt+D) lists their names, as the server gives
@@ -3095,6 +3112,9 @@ setting moves straight to it.
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
   message. On at first.
+- **Let Claude use Chrome** (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
+  subscription, from each chat's next message. On at first if Claude Code has found the Claude in
+  Chrome extension (see "You want Claude to use your browser").
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
