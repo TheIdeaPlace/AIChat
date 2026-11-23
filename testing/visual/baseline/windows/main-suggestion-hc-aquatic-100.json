@@ -297,15 +297,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Suggested messages:",
+   "label": "Suggested messages (Enter puts one in your message):",
    "rect": [
     402,
     502,
-    113,
+    289,
     16
    ],
    "best": [
-    113,
+    289,
     16
    ],
    "depth": 2,
@@ -315,7 +315,7 @@
   },
   {
    "class": "ListBox",
-   "name": "Suggested messages, Enter puts one in your message",
+   "name": "Suggested messages (Enter puts one in your message)",
    "label": "",
    "rect": [
     404,

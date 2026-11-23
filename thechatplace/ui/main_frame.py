@@ -190,8 +190,10 @@ FIND_ALL_KEEP_S = 600
 _REPLY_KINDS = (ASSISTANT, QUESTION, PLAN, ERROR)
 
 
-#: The suggestion list's name (#474): what it is and what Enter does.
-SUGGESTIONS_NAME = "Suggested messages, Enter puts one in your message"
+#: The suggestion list's name (#474): what it is and what Enter does. Its
+#: visible label says the same, as "Your message (Ctrl+Enter sends):" does:
+#: checked with NVDA 2026.2, the list is read by the label before it.
+SUGGESTIONS_NAME = "Suggested messages (Enter puts one in your message)"
 
 #: The read-only note where a desktop app session's reply box would be.
 _DESKTOP_NOTE = (
@@ -961,7 +963,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # puts one in the message box, never sends it.
         # Its label shows with it, so it isn't an unexplained row on screen
         # (the probe's picture); the list's own name is what's read.
-        self.suggestion_label = wx.StaticText(self.own_reply, label="Suggested messages:")
+        self.suggestion_label = wx.StaticText(self.own_reply, label=SUGGESTIONS_NAME + ":")
         osizer.Add(self.suggestion_label, 0, wx.TOP, 6)
         self.suggestion_list = wx.ListBox(self.own_reply, style=wx.LB_SINGLE)
         set_accessible_name(self.suggestion_list, SUGGESTIONS_NAME)
