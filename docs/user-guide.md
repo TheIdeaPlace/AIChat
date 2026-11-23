@@ -966,7 +966,8 @@ off at first.
 - **When a reply comes with a suggestion,** you hear it after the reply: "Suggestion: write the
   script. Down Arrow in the message box gets to it." Not every reply has one; Claude suggests
   something only when there's a likely next step.
-- **Down Arrow** in the message box, when it's empty or you're on its last line, moves to the
+- **Down Arrow** in the message box, when it's empty or you're at the very end of what you've
+  typed, moves to the
   **Suggested messages** list under it. Tab reaches it too, after Attach Files.
 - **Enter** on a suggestion puts it in the message box, after anything you'd already typed, so you
   can change it before you send it. It's never sent by itself.

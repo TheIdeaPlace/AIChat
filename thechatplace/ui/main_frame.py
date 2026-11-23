@@ -190,10 +190,10 @@ FIND_ALL_KEEP_S = 600
 _REPLY_KINDS = (ASSISTANT, QUESTION, PLAN, ERROR)
 
 
-#: The read-only note where a desktop app session's reply box would be.
 #: The suggestion list's name (#474): what it is and what Enter does.
 SUGGESTIONS_NAME = "Suggested messages, Enter puts one in your message"
 
+#: The read-only note where a desktop app session's reply box would be.
 _DESKTOP_NOTE = (
     "This session belongs to the Claude desktop app, so you reply to it "
     "in Claude. The Chat Place only reads it: sending from here while the "
@@ -5553,7 +5553,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         box, or the list hidden when it has none."""
         items = self._suggestions.get(self._open_claude_id(), [])
         if items:
-            self.suggestion_list.Set(items)
+            # One line each in the list; use_suggestion inserts the whole of
+            # it, line breaks and all.
+            self.suggestion_list.Set([" ".join(item.split()) for item in items])
             self.suggestion_list.SetSelection(0)
         if self.suggestion_list.IsShown() != bool(items):
             if not items and self.suggestion_list.HasFocus():
@@ -5580,9 +5582,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if session_id != self._open_claude_id():
             return
         self._show_suggestions()
+        said = announce.suggestion_text(text)
+        # In the status bar too, so it's there with announcements Silent.
+        self._status(f"{title}: {said}")
         if self.speech.enabled:
             # Queued behind the reply, never cutting it off.
-            self._speak_announcement(announce.suggestion_text(text), interrupt=False)
+            self._speak_announcement(said, interrupt=False)
+
+    def drop_all_suggestions(self):
+        """Settings turned suggestions off: none shown, none waiting."""
+        self._suggestions.clear()
+        self._suggestion_due.clear()
+        self._show_suggestions()
 
     def use_suggestion(self):
         """Enter on a suggestion: it goes in the message box, where you can
@@ -5590,7 +5601,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         index = self.suggestion_list.GetSelection()
         if index == wx.NOT_FOUND or index >= self.suggestion_list.GetCount():
             return
-        text = self.suggestion_list.GetString(index)
+        items = self._suggestions.get(self._open_claude_id(), [])
+        text = items[index] if index < len(items) else self.suggestion_list.GetString(index)
         current = self.reply_text.GetValue()
         self.reply_text.SetValue(f"{current.rstrip()}\n{text}" if current.strip() else text)
         self.reply_text.SetFocus()
@@ -6245,7 +6257,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             context_usage=True,  # for Usage and Context (#468)
                             # A suggested next message (#474), as Settings
                             # chose; the runner never asks on API credits.
-                            suggestions=self.speech.prompt_suggestions,
+                            # Not for a slash command or an agent conversation's
+                            # turn, which never show one: a request for nothing.
+                            suggestions=(self.speech.prompt_suggestions
+                                         and not prompt.lstrip().startswith("/")
+                                         and not self._agent_quiet("claude", session_id)),
                             # Charged as the chat was made to be (#658).
                             **self._billing_kwargs(session_id))
         # What came after the last reply is out of date once a turn starts.
@@ -6369,9 +6385,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                        and self._open.cli_session_id == session_id)
         if event.kind == "suggestion":
             # After the result, before the turn ends (#474): offered once the
-            # reply has been said, so it never comes first.
-            self._suggestion_due[session_id] = event.text
+            # reply has been said, so it never comes first. Never in a chat
+            # on API credits, whose turns don't ask: one that came anyway
+            # (a variable of the user's own) would be an uncounted request.
+            own = self.store.get(session_id)
+            if own is None or own.billing != "api":
+                self._suggestion_due[session_id] = event.text
             return
+        if event.kind in ("text", "tool", "steer_taken"):
+            # More work after a reply that came with a suggestion (a steered
+            # message, Send Now, a follow-up): that suggestion was for the
+            # reply before, not for what comes next (#709 review).
+            self._suggestion_due.pop(session_id, None)
         if event.kind == "api_sent":
             # The runner wrote a message on API credits, after its account
             # check (#663): every way one goes in (Send, a queued message,
@@ -6628,7 +6653,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         # cost is still said, as Settings asks (#663).
                         self._speak_announcement(said, interrupt=False, about=session_id)
             if (event.kind == "finished" and not event.is_error and not command_result
-                    and not quiet and not queued and session_id not in self._runners):
+                    and not quiet and not queued and session_id not in self._runners
+                    and not (event.data or {}).get("after_background")):
                 self._offer_suggestion(session_id, title)
             else:
                 self._suggestion_due.pop(session_id, None)
@@ -8402,6 +8428,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.speech = dialog.get_settings()
         finally:
             dialog.Destroy()
+        if not self.speech.prompt_suggestions:
+            self.drop_all_suggestions()  # off means none shown, from now (#474)
         if not self.speech.check_updates_at_start:
             # Turned off in the first seconds after starting: the check still
             # waiting doesn't run either.
@@ -9262,26 +9290,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     # ------------------------------------------------------------- keyboard
 
-    def _on_last_reply_line(self) -> bool:
-        """Whether the message box's caret is on its last line, where Down
-        Arrow has nowhere to go. Counted from the text, not the control's
-        wrapped lines: a long last line that wraps still counts as the last
-        (its Down then goes to the suggestions, not its next wrapped row)."""
-        text = self.reply_text.GetValue()
-        if not text.strip():
+    def _down_leaves_reply(self) -> bool:
+        """Whether Down Arrow in the message box has nowhere to go: the box
+        is empty, or the caret is at the very end of what's typed. Not "on
+        the last line": a paragraph wraps over several lines on screen, and
+        Down on its first must still move to its second (#709 review). The
+        two positions are the control's own, so they count alike on every
+        platform."""
+        if not self.reply_text.GetValue().strip():
             return True
-        # The control's own positions, not the value's: a Windows rich edit
-        # box and the string it returns needn't count a line break alike.
-        after = self.reply_text.GetRange(self.reply_text.GetInsertionPoint(),
-                                         self.reply_text.GetLastPosition())
-        return "\n" not in after and "\r" not in after
+        return self.reply_text.GetInsertionPoint() >= self.reply_text.GetLastPosition()
 
     def _suggestion_key(self, event: wx.KeyEvent, key: int, focus) -> bool:
         """The suggestion list's keys (#474). True if one was used.
 
-        * Down Arrow on the message box's last line (or in an empty box),
-          with suggestions showing, goes to them, as a combo box's does.
-          Above the last line, Down moves between lines as it always has.
+        * Down Arrow in an empty message box, or at the very end of the
+          message, with suggestions showing, goes to them, as a combo box's
+          does. Anywhere else, Down moves between lines as it always has.
         * In the list, Enter puts the suggestion in the message box; Escape,
           or Up on the first, goes back to the box without one."""
         plain = not (event.ControlDown() or event.AltDown() or event.ShiftDown()
@@ -9289,7 +9314,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not plain or not self.suggestion_list.IsShown():
             return False
         if (focus is self.reply_text and key == wx.WXK_DOWN
-                and self._on_last_reply_line() and self.suggestion_list.GetCount()):
+                and self._down_leaves_reply() and self.suggestion_list.GetCount()):
             if self.suggestion_list.GetSelection() == wx.NOT_FOUND:
                 self.suggestion_list.SetSelection(0)
             self.suggestion_list.SetFocus()

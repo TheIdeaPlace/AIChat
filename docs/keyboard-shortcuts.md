@@ -71,6 +71,7 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Ctrl+Period | Stop the running turn; a queued message goes back in the reply box. Chat, Stop Background Task, just below it, ends one background task and lets the turn carry on |
 | Ctrl+/ | Insert a command or skill (Claude and Codex chats; type to search); it goes at the start of the reply box. Codex offers enabled skills and chat controls such as /plan and /compact |
 | Ctrl+Shift+F | Attach files or images to your next Claude or Codex message (Attach Files button, Alt+I); Delete in the attachments list removes one |
+| Down Arrow | With suggested messages showing (Settings, Suggest what to send next), in an empty reply box or at the end of your message: go to the Suggested messages list. There, Enter puts one in the reply box without sending it; Escape, or Up Arrow on the first, goes back |
 | Ctrl+V with a picture or files copied | Attach the picture (a screenshot from Win+Shift+S, say), or files copied in File Explorer or the Finder, to a Claude or Codex message |
 | Ctrl+Shift+M | Other machines: list your sessions on other computers and send one a message, through Claude in the loaded Chat Place session (it needs Remote Control on) |
 | Ctrl+Shift+E | Send Reply to Another Chat: the selected reply (or the latest one) goes to another Chat Place chat, Claude, Codex or Copilot, or a new one, labelled with who wrote it; read and change it first, then Enter sends and you go to that chat. In an agent conversation, hands the waiting reply to the other agent |

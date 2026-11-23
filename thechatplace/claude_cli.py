@@ -1688,6 +1688,10 @@ class TurnRunner:
             self._env[TASK_LIST_VAR] = "1"
         if self.suggestions:
             self._env[SUGGESTION_VAR] = "1"
+        elif self.billing == ROUTE_API:
+            # Not even one the user's own environment asks for (#709 review):
+            # its request would be missing from what the chat has spent.
+            self._env.pop(SUGGESTION_VAR, None)
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
@@ -2398,6 +2402,8 @@ class TurnRunner:
                 self.reservation.amount if self.reservation is not None else None)
             if self.suggestions:
                 command += list(SUGGESTION_FLAGS)
+            elif self.billing == ROUTE_API:
+                command += [SUGGESTION_FLAGS[0], "false"]
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.

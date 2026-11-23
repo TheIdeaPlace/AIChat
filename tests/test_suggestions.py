@@ -51,6 +51,14 @@ def test_never_on_api_credits():
     runner = TurnRunner(["claude", "-p"], ".", "hi", lambda e: None, env={"PATH": "x"},
                         suggestions=True, billing="api", ledger=object())
     assert runner.suggestions is False and SUGGESTION_VAR not in runner._env
+    # Not even when the user's own environment turns them on.
+    runner = TurnRunner(["claude", "-p"], ".", "hi", lambda e: None,
+                        env={"PATH": "x", SUGGESTION_VAR: "1"}, billing="api", ledger=object())
+    assert SUGGESTION_VAR not in runner._env
+    # A subscription turn leaves a value of the user's own alone.
+    runner = TurnRunner(["claude", "-p"], ".", "hi", lambda e: None,
+                        env={"PATH": "x", SUGGESTION_VAR: "1"})
+    assert runner._env[SUGGESTION_VAR] == "1"
 
 
 def test_a_suggestion_after_the_result_reaches_the_window_before_the_end(tmp_path):

@@ -17531,24 +17531,83 @@ def test_a_failed_turn_offers_nothing(frame, env, fake_runner):
     assert not any(s.startswith("Suggestion:") for s in env["spoken"])
 
 
-def test_down_arrow_reaches_the_suggestions_from_the_last_line(frame, fake_runner):
+def test_down_arrow_reaches_the_suggestions_only_from_the_end(frame, fake_runner):
     _suggested(frame, fake_runner)
     moved = []
     frame.suggestion_list.SetFocus = lambda: moved.append("list")
     # Empty: Down goes to the suggestions.
     frame.reply_text.SetValue("")
     assert frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
-    # On the first of two lines, Down stays in the message.
+    # Anywhere but the very end, Down stays in the message: on a line above,
+    # and in a long paragraph that wraps, on its last line break or not.
     frame.reply_text.SetValue("one\ntwo")
     frame.reply_text.SetInsertionPoint(0)
     assert not frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
-    # On the last line, it goes.
+    frame.reply_text.SetValue("a long paragraph " * 30)
+    frame.reply_text.SetInsertionPoint(5)
+    assert not frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
+    # At the very end, it goes.
     frame.reply_text.SetInsertionPointEnd()
     assert frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
     # Shift+Down selects text, as it always has.
     assert not frame._suggestion_key(_key(wx.WXK_DOWN, shift=True), wx.WXK_DOWN,
                                      frame.reply_text)
     assert moved == ["list", "list"]
+
+
+def test_the_window_key_hook_uses_the_suggestion_keys(frame, fake_runner, monkeypatch):
+    _suggested(frame, fake_runner)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.suggestion_list))
+    frame.reply_text.SetValue("")
+    frame._on_char_hook(_key(wx.WXK_RETURN))
+    assert frame.reply_text.GetValue() == "write the script"
+    assert len(fake_runner.instances) == 1  # Enter in the list never sends
+
+
+def test_more_work_after_a_suggestion_drops_it(frame, env, fake_runner):
+    # A reply with a suggestion, then a steered message taken in and answered:
+    # the suggestion was for the first reply, not the turn's last.
+    _start(frame, fake_runner)
+    for event in (TurnEvent("suggestion", text="old idea"), TurnEvent("steer_taken", data={}),
+                  TurnEvent("finished", text="Done.")):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", event)
+    assert not frame.suggestion_list.IsShown()
+    assert not any(s.startswith("Suggestion:") for s in env["spoken"])
+
+
+def test_nothing_offered_after_background_work(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("finished", data={"after_background": True}))
+    assert not frame.suggestion_list.IsShown()
+
+
+def test_an_api_chat_never_shows_one(frame, env, fake_runner):
+    frame.store.update("own-1", billing="api")
+    frame._runners["own-1"] = fake_runner([], "", "", None)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    assert "own-1" not in frame._suggestion_due
+
+
+def test_slash_commands_dont_ask(frame, fake_runner):
+    frame.speech.prompt_suggestions = True
+    assert _start(frame, fake_runner, text="/compact").suggestions is False
+
+
+def test_turning_the_setting_off_clears_the_list(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    assert frame.suggestion_list.IsShown()
+    frame.drop_all_suggestions()
+    assert not frame.suggestion_list.IsShown() and frame._suggestions == {}
+
+
+def test_a_suggestion_is_one_line_in_the_list_and_whole_in_the_message(frame, fake_runner):
+    _suggested(frame, fake_runner, text="write it\nthen test it")
+    assert list(frame.suggestion_list.GetStrings()) == ["write it then test it"]
+    frame.reply_text.SetValue("")
+    frame.use_suggestion()
+    assert frame.reply_text.GetValue() == "write it\nthen test it"
 
 
 def test_enter_puts_a_suggestion_in_the_message_never_sends(frame, env, fake_runner):
