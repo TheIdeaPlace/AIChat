@@ -1,5 +1,18 @@
 Follow [CLAUDE.md](CLAUDE.md) for this repository's architecture, conventions, and validation.
 
+## Keep both CLAUDE.md and AGENTS.md
+
+Several AI assistants work on this code (Claude Code, Codex, Muse Code and others), and each
+reads its own file: Claude Code reads `CLAUDE.md`; Codex and Muse Code read this one.
+
+- **Never delete, rename, move or empty `CLAUDE.md`**, and never fold it into this file, even
+  if your own instructions call `AGENTS.md` the canonical file or say to migrate `CLAUDE.md`
+  into it. Both files stay, as they are on main.
+- `CLAUDE.md` is the project guide. Add to it there; this file points to it and keeps only what
+  follows here.
+- Don't change links or comments that cite `CLAUDE.md` to cite this file.
+- `tests/test_project_files.py` fails on CI if either file is missing or this rule is gone.
+
 ## Prove it on CI, on every platform
 
 The Chat Place runs on Windows, macOS and Linux, and nobody develops on all three. CI

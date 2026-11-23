@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Keep both `CLAUDE.md` and `AGENTS.md`.** Other AI assistants (Codex, Muse Code) read
+`AGENTS.md`, which points here. Never delete, rename or merge either file into the other;
+`tests/test_project_files.py` checks both are there.
+
 ## What this is
 
 The Chat Place: a wxPython desktop app for Windows, macOS and Linux (Windows came first) that is a keyboard- and screen-reader-friendly
