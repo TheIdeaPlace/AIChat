@@ -8,6 +8,15 @@ sys.path.insert(0, str(HERE))
 import pytest  # noqa: E402
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """If the process is still alive a while after the tests end, print
+    where every thread is (#711). On macOS CI, pytest has sometimes passed
+    every test and then hung until the job's 20-minute limit cancelled it,
+    with nothing in the log to say why. Exiting normally cancels this."""
+    import faulthandler
+    faulthandler.dump_traceback_later(90, exit=False)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
