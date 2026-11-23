@@ -286,22 +286,10 @@ def steer_taken_text(title: str, late: bool) -> str:
     return f"{title} has your message."
 
 
-#: The longest suggestion said whole; past it, its start and "…" (the list
-#: has it all).
-SUGGESTION_SAID = 150
 #: Said once a run when suggestions are on but Claude Code isn't offering
 #: them to this account (#709).
 SUGGESTIONS_NOT_OFFERED = ("No suggestion: Claude Code isn't offering suggestions to your "
                            "account yet.")
-
-
-def suggestion_text(text: str) -> str:
-    """What's said after a reply that came with a suggested next message
-    (#474): the suggestion, and how to choose it."""
-    words = " ".join((text or "").split())
-    if len(words) > SUGGESTION_SAID:
-        words = _cut_at_word(words, SUGGESTION_SAID) + "…"
-    return f"Suggestion: {_end_sentence(words)} Down Arrow in the message box gets to it."
 
 
 def background_text(tasks) -> str:

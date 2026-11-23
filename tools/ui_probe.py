@@ -745,8 +745,8 @@ def s_main_attachments(frame, env):
 def s_main_suggestion(frame, env):
     """A reply came with a suggested next message (#474)."""
     _open(frame, "Visual probe")
-    frame._suggestions["own-1"] = ["Write the script, and add a --dry-run option"]
-    frame._show_suggestions()
+    frame._suggestions["own-1"] = "Write the script, and add a --dry-run option"
+    frame._place_suggestion(sound=False)
 
 
 def s_main_desktop(frame, env):

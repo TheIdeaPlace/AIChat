@@ -111,6 +111,7 @@ sound starts.
 | Conversation compacted | The conversation was compacted | `compacted`: C5, E5 and G5 together, settling into C4 |
 | File changed | A file change has been made, once it has worked | `write`: A5 and C-sharp 6 together, settling a fourth onto E5; soft (0.30) and short (0.29 seconds) |
 | Message from another session | Another session sent this chat a message | `peer`: B5 twice like a knock, then E5 answering |
+| Message suggested | Claude's suggested next message was put in your message box (#474); the only sign of it, as nothing is said | `suggested`: your message's D5, rising only a fifth to A5 and stepping back to F-sharp 5, so it doesn't go; soft (0.32) and short (0.39 seconds). A two-note rise was QuickMail's sent and moved, so it has a third note |
 
 File changed was in "work going on" as `edit`, two soft high ticks, A6 then C7. Kelly couldn't tell
 it from Tool ran's tick without listening for it, and it shared Tool ran's setting, though a tool

@@ -236,10 +236,6 @@ SHORTCUTS = [
                    "such as /plan and /compact"),
         ("Ctrl+Shift+F", "Attach files or images to your next Claude or Codex message (Attach Files button, Alt+I); "
                          "Delete in the attachments list removes one"),
-        ("Down Arrow", "With suggested messages showing (Settings, Suggest what to send next), "
-                       "in an empty reply box or at the end of your message: go to the "
-                       "Suggested messages list. There, Enter puts one in the reply box without "
-                       "sending it; Escape, or Up Arrow on the first, goes back"),
         ("Ctrl+V with a picture or files copied", "Attach the picture (a screenshot from Win+Shift+S, say), "
                                                   "or files copied in File Explorer or the Finder, to a "
                                                   "Claude or Codex message"),

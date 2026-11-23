@@ -4,7 +4,6 @@ Synthetic data only, shaped like Claude Code 2.1.326's output."""
 import json
 import threading
 
-from thechatplace import announce
 from thechatplace.claude_cli import (SUGGESTION_FLAGS, SUGGESTION_VAR, StreamParser,
                                      TurnRunner)
 from thechatplace.speech import SpeechSettings
@@ -79,14 +78,6 @@ def test_a_suggestion_after_the_result_reaches_the_window_before_the_end(tmp_pat
     kinds = [e.kind for e in events]
     assert "suggestion" in kinds and kinds.index("suggestion") < kinds.index("finished")
     assert events[kinds.index("suggestion")].text == "write the script"
-
-
-def test_what_is_said():
-    assert announce.suggestion_text("write the script") == (
-        "Suggestion: write the script. Down Arrow in the message box gets to it.")
-    assert announce.suggestion_text("Is it done?").startswith("Suggestion: Is it done? Down")
-    long = announce.suggestion_text("word " * 100)
-    assert "…" in long and len(long) < 260
 
 
 def test_the_setting_is_off_until_turned_on(tmp_path):

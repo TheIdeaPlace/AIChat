@@ -190,11 +190,6 @@ FIND_ALL_KEEP_S = 600
 _REPLY_KINDS = (ASSISTANT, QUESTION, PLAN, ERROR)
 
 
-#: The suggestion list's name (#474): what it is and what Enter does. Its
-#: visible label says the same, as "Your message (Ctrl+Enter sends):" does:
-#: checked with NVDA 2026.2, the list is read by the label before it.
-SUGGESTIONS_NAME = "Suggested messages (Enter puts one in your message)"
-
 #: The read-only note where a desktop app session's reply box would be.
 _DESKTOP_NOTE = (
     "This session belongs to the Claude desktop app, so you reply to it "
@@ -957,24 +952,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         osizer.Add(self.attach_list, 0, wx.EXPAND | wx.TOP, 6)
         self.attach_list.Hide()
         self.attach_list.Bind(wx.EVT_KEY_DOWN, self._on_attach_key)
-        # What you might send next (#474): a real list, so every screen
-        # reader reads it as one, shown only while the open chat has
-        # suggestions. Down Arrow in an empty message box moves here; Enter
-        # puts one in the message box, never sends it.
-        # Its label shows with it, so it isn't an unexplained row on screen
-        # (the probe's picture); the list's own name is what's read.
-        self.suggestion_label = wx.StaticText(self.own_reply, label=SUGGESTIONS_NAME + ":")
-        osizer.Add(self.suggestion_label, 0, wx.TOP, 6)
-        self.suggestion_list = wx.ListBox(self.own_reply, style=wx.LB_SINGLE)
-        set_accessible_name(self.suggestion_list, SUGGESTIONS_NAME)
-        set_empty_list_text(self.suggestion_list, "No suggestions")
-        self.suggestion_list.SetMinSize(dip(self, LIST_MIN_WIDTH, 48))
-        osizer.Add(self.suggestion_list, 0, wx.EXPAND | wx.TOP, 2)
-        self.suggestion_label.Hide()
-        self.suggestion_list.Hide()
-        self.suggestion_list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.use_suggestion())
-        #: Chat id -> its latest suggestions (#474), newest turn's only.
-        self._suggestions: Dict[str, List[str]] = {}
+        # What you might send next (#474): put in the message box, selected,
+        # when it's empty, so typing replaces it and Ctrl+Enter sends it. A
+        # sound says it's there; nothing is said (Kelly, 2026-11-23).
+        #: Chat id -> the suggestion after its latest reply.
+        self._suggestions: Dict[str, str] = {}
         #: A turn's suggestion, held until its reply has been said.
         self._suggestion_due: Dict[str, str] = {}
         #: Said this run that Claude Code isn't offering them (#709).
@@ -1927,7 +1909,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _save_draft(self):
         if self._open is not None and self._open.is_own and self._open.provider == "claude":
-            self._drafts[self._open.cli_session_id] = self.reply_text.GetValue()
+            text = self.reply_text.GetValue()
+            suggestion = self._suggestions.get(self._open.cli_session_id)
+            if suggestion is not None and text != suggestion:
+                # Changed or cleared: it's yours now, or gone (#474).
+                self._suggestions.pop(self._open.cli_session_id, None)
+            # An untouched suggestion isn't your draft: it's put back when
+            # you come back to an empty box.
+            self._drafts[self._open.cli_session_id] = "" if text == suggestion else text
         elif self._open is not None and (
                 (self._open.is_own and self._open.provider in RUNTIME_PROVIDERS)
                 or self._open.provider == AGENTS):
@@ -2027,7 +2016,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
         self._show_attachments()
-        self._show_suggestions()
+        self._place_suggestion()
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
         self.chat_list.SetFocus()
@@ -5557,30 +5546,30 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ""
         return info.cli_session_id
 
-    def _show_suggestions(self):
-        """The open chat's suggested next messages (#474), under the reply
-        box, or the list hidden when it has none."""
-        items = self._suggestions.get(self._open_claude_id(), [])
-        if items:
-            # One line each in the list; use_suggestion inserts the whole of
-            # it, line breaks and all.
-            self.suggestion_list.Set([" ".join(item.split()) for item in items])
-            self.suggestion_list.SetSelection(0)
-        if self.suggestion_list.IsShown() != bool(items):
-            if not items and self.suggestion_list.HasFocus():
-                self.reply_text.SetFocus()  # never left on a hidden list
-            self.suggestion_list.Show(bool(items))
-            self.suggestion_label.Show(bool(items))
-            self.own_reply.Layout()
-            self.session_view.Layout()
+    def _place_suggestion(self, sound: bool = True) -> bool:
+        """The open chat's suggestion into its message box, selected, if the
+        box is empty: typing replaces it, and Ctrl+Enter sends it as it is.
+        A box with anything in it is never touched. True if placed; the
+        sound plays then (#474). The focus stays where it is."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if not text or self.reply_text.GetValue().strip():
+            return False
+        # ChangeValue: no text event, so it isn't taken for your typing.
+        self.reply_text.ChangeValue(text)
+        self.reply_text.SetSelection(-1, -1)
+        if sound:
+            self._sound(sound_events.SUGGESTED, self._own_key(session_id))
+        return True
 
     def _clear_suggestions(self, session_id: str):
         """A new turn has started: what was suggested after the last one is
-        out of date."""
+        out of date. One still sitting untouched in the box goes with it."""
         self._suggestion_due.pop(session_id, None)
-        if self._suggestions.pop(session_id, None) is not None \
-                and session_id == self._open_claude_id():
-            self._show_suggestions()
+        text = self._suggestions.pop(session_id, None)
+        if (text is not None and session_id == self._open_claude_id()
+                and self.reply_text.GetValue() == text):
+            self.reply_text.ChangeValue("")
 
     def _offer_suggestion(self, session_id: str, title: str):
         """After a reply has been said: its suggestion, if one came, into the
@@ -5588,16 +5577,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         text = self._suggestion_due.pop(session_id, None)
         if not text:
             return False
-        self._suggestions[session_id] = [text]
-        if session_id != self._open_claude_id():
-            return True
-        self._show_suggestions()
-        said = announce.suggestion_text(text)
-        # In the status bar too, so it's there with announcements Silent.
-        self._status(f"{title}: {said}")
-        if self.speech.enabled:
-            # Queued behind the reply, never cutting it off.
-            self._speak_announcement(said, interrupt=False)
+        self._suggestions[session_id] = text
+        if session_id == self._open_claude_id() and self._place_suggestion():
+            # Not said (Kelly, 2026-11-23): the sound is what tells you.
+            self._status(f"{title}: a suggested message is in your message box.")
         return True
 
     def _say_suggestions_not_offered(self, session_id: str):
@@ -5614,23 +5597,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def drop_all_suggestions(self):
         """Settings turned suggestions off: none shown, none waiting."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if text is not None and self.reply_text.GetValue() == text:
+            self.reply_text.ChangeValue("")
         self._suggestions.clear()
         self._suggestion_due.clear()
-        self._show_suggestions()
-
-    def use_suggestion(self):
-        """Enter on a suggestion: it goes in the message box, where you can
-        change it or send it (#474). Never sent from here."""
-        index = self.suggestion_list.GetSelection()
-        if index == wx.NOT_FOUND or index >= self.suggestion_list.GetCount():
-            return
-        items = self._suggestions.get(self._open_claude_id(), [])
-        text = items[index] if index < len(items) else self.suggestion_list.GetString(index)
-        current = self.reply_text.GetValue()
-        self.reply_text.SetValue(f"{current.rstrip()}\n{text}" if current.strip() else text)
-        self.reply_text.SetFocus()
-        self.reply_text.SetInsertionPointEnd()
-        self._feedback("In your message.")
 
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
@@ -9315,46 +9287,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     # ------------------------------------------------------------- keyboard
 
-    def _down_leaves_reply(self) -> bool:
-        """Whether Down Arrow in the message box has nowhere to go: the box
-        is empty, or the caret is at the very end of what's typed. Not "on
-        the last line": a paragraph wraps over several lines on screen, and
-        Down on its first must still move to its second (#709 review). The
-        two positions are the control's own, so they count alike on every
-        platform."""
-        if not self.reply_text.GetValue().strip():
-            return True
-        return self.reply_text.GetInsertionPoint() >= self.reply_text.GetLastPosition()
-
-    def _suggestion_key(self, event: wx.KeyEvent, key: int, focus) -> bool:
-        """The suggestion list's keys (#474). True if one was used.
-
-        * Down Arrow in an empty message box, or at the very end of the
-          message, with suggestions showing, goes to them, as a combo box's
-          does. Anywhere else, Down moves between lines as it always has.
-        * In the list, Enter puts the suggestion in the message box; Escape,
-          or Up on the first, goes back to the box without one."""
-        plain = not (event.ControlDown() or event.AltDown() or event.ShiftDown()
-                     or event.MetaDown())
-        if not plain or not self.suggestion_list.IsShown():
-            return False
-        if (focus is self.reply_text and key == wx.WXK_DOWN
-                and self._down_leaves_reply() and self.suggestion_list.GetCount()):
-            if self.suggestion_list.GetSelection() == wx.NOT_FOUND:
-                self.suggestion_list.SetSelection(0)
-            self.suggestion_list.SetFocus()
-            return True
-        if focus is not self.suggestion_list:
-            return False
-        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.use_suggestion()
-            return True
-        if key == wx.WXK_ESCAPE or (key == wx.WXK_UP
-                                    and self.suggestion_list.GetSelection() <= 0):
-            self.reply_text.SetFocus()
-            return True
-        return False
-
     def _on_char_hook(self, event: wx.KeyEvent):
         if self._menu_open and gtk_a11y.IS_LINUX:
             # A menu has the keyboard. On Windows it never gets here, but
@@ -9368,8 +9300,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         ctrl = event.ControlDown()
         in_session = focus is not None and focus is not self.session_list and \
             self._is_in_session_view(focus)
-        if self._suggestion_key(event, key, focus):
-            return
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             if ctrl and event.AltDown() and not event.ShiftDown():

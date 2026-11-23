@@ -859,24 +859,24 @@ the next turn. That setting applies only to Claude.</p>
 <p>After a reply, Claude can suggest what you might send next, such as "write the script" after it
 has proposed one. Turn it on with <strong>Settings, "Suggest what to send next after each reply"</strong>. It's
 off at first.</p>
-<p><strong>Suggestions come only if Claude Code offers them to your account.</strong> Anthropic is turning them on
-account by account, so on some accounts none come yet, whatever you set here. When Claude Code
-isn't offering them to yours, the setting says so, and a chat tells you once, after a reply: "No
-suggestion: Claude Code isn't offering suggestions to your account yet."</p>
 <ul>
-<li><strong>When a reply comes with a suggestion,</strong> you hear it after the reply: "Suggestion: write the
-  script. Down Arrow in the message box gets to it." Not every reply has one; Claude suggests
-  something only when there's a likely next step.</li>
-<li><strong>Down Arrow</strong> in the message box, when it's empty or you're at the very end of what you've
-  typed, moves to the
-  <strong>Suggested messages</strong> list under it. Tab reaches it too, after Attach Files.</li>
-<li><strong>Enter</strong> on a suggestion puts it in the message box, after anything you'd already typed, so you
-  can change it before you send it. It's never sent by itself.</li>
-<li><strong>Escape</strong>, or Up Arrow on the first suggestion, goes back to the message box.</li>
-<li>Sending your next message clears the list, and each chat keeps its own.</li>
+<li><strong>When a reply comes with a suggestion,</strong> it's put in your message box, selected, and the
+  <strong>Message suggested</strong> sound plays (with sounds on; the status bar says so too). Nothing is said
+  aloud. Not every reply has one: Claude suggests something only when there's a likely next step.</li>
+<li><strong>Type to replace it.</strong> Because it's selected, whatever you type takes its place. Arrow keys
+  move into it instead, so you can change it. <strong>Ctrl+Enter</strong> sends it as it stands.</li>
+<li><strong>Only into an empty box.</strong> If you've typed something, or the chat has a draft waiting, your text
+  is left alone and the suggestion isn't put in.</li>
+<li><strong>It isn't your draft.</strong> Leave the chat with the suggestion untouched and it's offered again
+  when you come back. Change it and it's your draft like anything you typed; delete it and it's
+  gone.</li>
+<li>Your next message clears it, and each chat keeps its own.</li>
 <li>It works in Claude chats started here on your subscription. Chats on API credits don't ask for
   suggestions, because each one is an extra request that the reply's cost wouldn't include. Codex
   and Copilot chats don't have them: neither offers suggestions to other apps yet.</li>
+<li><strong>It needs a recent Claude Code:</strong> 2.1.326 sends suggestions, 2.1.286 doesn't. In a terminal,
+  <code>claude update</code> brings yours up to date. If Claude Code's own record says suggestions aren't on
+  for your account, the setting says so, and a chat tells you once, after a reply.</li>
 </ul>
 <h2 id="sounds">Sounds</h2>
 <p>Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.</p>
@@ -993,6 +993,10 @@ suggestion: Claude Code isn't offering suggestions to your account yet."</p>
 <tr>
 <td>Message from another session</td>
 <td>Knock: two knocks, then a lower note answering, when another Claude Code session sends a message into this chat (shown as "From another session")</td>
+</tr>
+<tr>
+<td>Message suggested</td>
+<td>Offer: your message's first note, rising only a fifth and stepping back, soft, when Claude's suggested next message is put in your message box (see "Suggested messages")</td>
 </tr>
 </tbody>
 </table>

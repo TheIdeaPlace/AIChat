@@ -114,15 +114,12 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
-    # Prompt suggestions (#474): the reply came with one. Tab to the empty
-    # message box, Down Arrow into the suggestions, Enter puts it in the box.
-    # Then the box is emptied and the focus put back on that message, so the
-    # steps after this one start where they always have.
+    # Prompt suggestions (#474): the reply came with one, put in the empty
+    # message box and selected. Tab there reads it. Then the box is emptied
+    # and the focus put back on that message, so the steps after this one
+    # start where they always have.
     Step("a suggestion, then Tab to the message box", ["Tab"], trigger="suggestion",
-         after_trigger=True, expect=["Your message"]),
-    Step("Down Arrow, the suggestions", ["Down"],
-         expect=["Suggested messages", "Write the script"], refuse=["unlabeled", "unlabelled"]),
-    Step("Enter, into the message box", ["Return"], expect=["Your message"]),
+         after_trigger=True, expect=["Your message", "Write the script"]),
     Step("back to the message", [], trigger="suggestion-done",
          expect=["Make the uploader flush before it signals"]),
     # Retry from Here (#468, #596) on that message of yours: it opens on the
@@ -850,16 +847,15 @@ def refresh(frame) -> None:
 
 def suggestion(frame) -> None:
     """The open chat's last reply came with a suggested next message (#474)."""
-    frame._suggestions[frame._open_claude_id()] = ["Write the script"]
-    frame._show_suggestions()
+    frame._suggestions[frame._open_claude_id()] = "Write the script"
+    frame._place_suggestion(sound=False)
 
 
 def suggestion_done(frame) -> None:
     """Put things back as they were before ``suggestion``: no draft, no
     suggestion, and the focus on the message it started from."""
-    frame.reply_text.SetValue("")
     frame._suggestions.clear()
-    frame._show_suggestions()
+    frame.reply_text.ChangeValue("")
     frame.chat_list.SetFocus()
 
 
