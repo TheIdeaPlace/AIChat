@@ -286,6 +286,20 @@ def steer_taken_text(title: str, late: bool) -> str:
     return f"{title} has your message."
 
 
+#: The longest suggestion said whole; past it, its start and "…" (the list
+#: has it all).
+SUGGESTION_SAID = 150
+
+
+def suggestion_text(text: str) -> str:
+    """What's said after a reply that came with a suggested next message
+    (#474): the suggestion, and how to choose it."""
+    words = " ".join((text or "").split())
+    if len(words) > SUGGESTION_SAID:
+        words = _cut_at_word(words, SUGGESTION_SAID) + "…"
+    return f"Suggestion: {_end_sentence(words)} Down Arrow in the message box gets to it."
+
+
 def background_text(tasks) -> str:
     """What a session left running when it answered (#161): the turn stays
     open for it, and Claude carries on when it finishes."""

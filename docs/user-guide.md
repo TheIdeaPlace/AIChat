@@ -957,6 +957,25 @@ update. In Claude chats started here, Claude keeps a list only because The Chat 
 as the desktop app does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from
 the next turn. That setting applies only to Claude.
 
+### Suggested messages
+
+After a reply, Claude can suggest what you might send next, such as "write the script" after it
+has proposed one. Turn it on with **Settings, "Suggest what to send next after each reply"**. It's
+off at first.
+
+- **When a reply comes with a suggestion,** you hear it after the reply: "Suggestion: write the
+  script. Down Arrow in the message box gets to it." Not every reply has one; Claude suggests
+  something only when there's a likely next step.
+- **Down Arrow** in the message box, when it's empty or you're on its last line, moves to the
+  **Suggested messages** list under it. Tab reaches it too, after Attach Files.
+- **Enter** on a suggestion puts it in the message box, after anything you'd already typed, so you
+  can change it before you send it. It's never sent by itself.
+- **Escape**, or Up Arrow on the first suggestion, goes back to the message box.
+- Sending your next message clears the list, and each chat keeps its own.
+- It works in Claude chats started here on your subscription. Chats on API credits don't ask for
+  suggestions, because each one is an extra request that the reply's cost wouldn't include. Codex
+  and Copilot chats don't have them: neither offers suggestions to other apps yet.
+
 ## Sounds
 
 Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.
@@ -3022,6 +3041,9 @@ setting moves straight to it.
 - **Let Claude use Chrome** (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
   subscription, from each chat's next message. On at first if Claude Code has found the Claude in
   Chrome extension (see "You want Claude to use your browser").
+- **Suggest what to send next after each reply** (no access key; Tab to it): suggested messages in
+  Claude chats started here on your subscription, from each chat's next message. Off at first
+  (see "Suggested messages").
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once

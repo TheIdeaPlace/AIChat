@@ -17474,3 +17474,132 @@ def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
     frame._note_worktree_move("sub-1", "In a subfolder")
     pump(lambda: False, timeout=1)
     assert frame.store.get("sub-1").cwd == str(folder)
+
+
+# -- prompt suggestions (#474) ---------------------------------------------------------------
+
+
+def _key(code, shift=False):
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(code)
+    event.SetShiftDown(shift)
+    return event
+
+
+def _suggested(frame, fake_runner, text="write the script"):
+    """A turn on Hub probe that ends with a suggestion, as Claude Code sends
+    one: after the result, before the turn's end."""
+    runner = _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text=text))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    return runner
+
+
+def test_turns_ask_for_suggestions_only_when_settings_say(frame, fake_runner):
+    assert _start(frame, fake_runner).suggestions is False
+    frame._runners.clear()
+    frame.speech.prompt_suggestions = True
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    assert fake_runner.instances[-1].suggestions is True
+
+
+def test_a_suggestion_is_said_after_the_reply_and_listed(frame, env, fake_runner):
+    _suggested(frame, fake_runner)
+    # The reply first, then the suggestion, queued behind it.
+    assert env["spoken"][-2] == "Hub probe replied. Done."
+    assert env["spoken"][-1] == ("Suggestion: write the script. "
+                                 "Down Arrow in the message box gets to it.")
+    assert frame.suggestion_list.IsShown()
+    assert list(frame.suggestion_list.GetStrings()) == ["write the script"]
+    assert frame.suggestion_list.GetSelection() == 0
+
+
+def test_no_suggestion_no_list(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert not frame.suggestion_list.IsShown()
+    assert env["spoken"][-1] == "Hub probe replied. Done."
+
+
+def test_a_failed_turn_offers_nothing(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="retry"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    assert not frame.suggestion_list.IsShown()
+    assert not any(s.startswith("Suggestion:") for s in env["spoken"])
+
+
+def test_down_arrow_reaches_the_suggestions_from_the_last_line(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    moved = []
+    frame.suggestion_list.SetFocus = lambda: moved.append("list")
+    # Empty: Down goes to the suggestions.
+    frame.reply_text.SetValue("")
+    assert frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
+    # On the first of two lines, Down stays in the message.
+    frame.reply_text.SetValue("one\ntwo")
+    frame.reply_text.SetInsertionPoint(0)
+    assert not frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
+    # On the last line, it goes.
+    frame.reply_text.SetInsertionPointEnd()
+    assert frame._suggestion_key(_key(wx.WXK_DOWN), wx.WXK_DOWN, frame.reply_text)
+    # Shift+Down selects text, as it always has.
+    assert not frame._suggestion_key(_key(wx.WXK_DOWN, shift=True), wx.WXK_DOWN,
+                                     frame.reply_text)
+    assert moved == ["list", "list"]
+
+
+def test_enter_puts_a_suggestion_in_the_message_never_sends(frame, env, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("")
+    assert frame._suggestion_key(_key(wx.WXK_RETURN), wx.WXK_RETURN, frame.suggestion_list)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert len(fake_runner.instances) == 1  # nothing sent
+    assert env["feedback"][-1] == "In your message."
+    # With a draft, it goes on a line after it.
+    frame.reply_text.SetValue("Thanks.")
+    frame.use_suggestion()
+    assert frame.reply_text.GetValue() == "Thanks.\nwrite the script"
+
+
+def test_escape_or_up_goes_back_to_the_message(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    back = []
+    frame.reply_text.SetFocus = lambda: back.append("box")
+    assert frame._suggestion_key(_key(wx.WXK_ESCAPE), wx.WXK_ESCAPE, frame.suggestion_list)
+    assert frame._suggestion_key(_key(wx.WXK_UP), wx.WXK_UP, frame.suggestion_list)
+    assert back == ["box", "box"]
+
+
+def test_the_next_turn_clears_the_suggestions(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("next")
+    frame.on_send()
+    assert not frame.suggestion_list.IsShown() and "own-1" not in frame._suggestions
+
+
+def test_another_chats_suggestion_waits_for_it(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._open = None  # the user went elsewhere
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert not any(s.startswith("Suggestion:") for s in env["spoken"])
+    assert frame._suggestions == {"own-1": ["go on"]}
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert list(frame.suggestion_list.GetStrings()) == ["go on"]
+
+
+def test_settings_has_the_suggestions_box(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.suggestions
+        assert " ".join(box.GetLabel().split()).startswith("Suggest what to send next")
+        assert not box.GetValue() and dialog.get_settings().prompt_suggestions is False
+        box.SetValue(True)
+        assert dialog.get_settings().prompt_suggestions is True
+    finally:
+        dialog.Destroy()
