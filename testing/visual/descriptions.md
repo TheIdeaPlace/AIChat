@@ -65,6 +65,12 @@ This picture is the same as main-own, except that a small white list 48 tall app
 
 **What looks off:** There is no visible label for the attachments list. The bottom of its border sits 6 pixels from the "Show tool activity" check box, which is tighter than the spacing elsewhere. Three lists now show a blue selected row at once (#181).
 
+## main-suggestion: An own session whose last reply came with a suggested next message
+
+New in #474 (2026-11-23), from light-100 and hc-aquatic-100. The same as main-own, except that under the Send/Stop/Commands/Attach Files row and the "Ready." line, a "Suggested messages:" label appears, and below it a white list 48 tall across the column's width, holding one row: "Write the script, and add a --dry-run option", selected in blue. The label lines up with "Your message (Ctrl+Enter sends):" at the left. To make room, the message box is shorter (about 100 tall) and the messages list ends higher. In High Contrast Aquatic the label is white on #202020 and the selected row is light aqua (#8EE3F0) with near-black text, 11.2:1, as every list's is. In light, the selected row is Windows' own selection blue, #0078D4 with white text, 4.5:1, the same as the other lists' (measured from the pixels). Unlike the attachments list above, this one has a visible label.
+
+**What looks off:** Nothing new. As with attachments, three lists can show a blue selected row at once (#181).
+
 ## main-desktop: A desktop app session loaded: the read-only panel instead of a reply box
 
 Here the session list is 378 wide and the right column 574 wide, the same split as main-own. The heading at the top right, "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch. Claude desktop app session, read-only.", is too long for one line, so it wraps onto two (574 by 31), breaking before "session, read-only.". Everything below moves down 15 pixels to make room. "Messages in Fix the flaky upload test (needs you: Pick a name for the release branch, read-only):" heads the messages list and fits on its line in full, so it shows no "...". The messages list is 574 by 328 and shows four rows, with the last one, "You: Thanks. Which branch name should the release use?", selected. Where the reply box would be, "About replying:" heads a read-only box of the same size. It holds a four-line paragraph explaining that the session belongs to the Claude desktop app. Under it are two buttons, "Open in Claude" and "Continue Here...". The rest matches main-own. The status bar's middle part is too short for its text and ends in "..." (#179).
@@ -216,6 +222,8 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Full c
 **What looks off:** Nothing. The ring is #101010 on white (19:1) in light mode and #8EE3F0 on #202020 (11:1) in High Contrast Aquatic, where the page text is white on #202020 (16.3:1) and the link #75E9FC (11.5:1). The buttons look small beside the page text, as on every formatted page.
 
 ## settings: Settings
+
+**Since #474 (2026-11-23):** 680 by 1003 in light-100, 25 pixels taller, for an unchecked "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)" check box. It sits just under the Chrome one, wrapped onto two lines, lined up with the others at the left, and has no underlined letter. Everything below moves down 25 pixels. Its label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic (#FFFFFF on #202020), as the boxes around it do. Only light-100 and hc-aquatic-100 were run; the Codex, Copilot and speech-problem Settings pictures weren't run again.
 
 **Since #319 (2026-11-22):** the light-100 picture is 680 by 978, 40 pixels taller, for an
 unchecked "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in

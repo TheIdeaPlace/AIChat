@@ -959,11 +959,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # reader reads it as one, shown only while the open chat has
         # suggestions. Down Arrow in an empty message box moves here; Enter
         # puts one in the message box, never sends it.
+        # Its label shows with it, so it isn't an unexplained row on screen
+        # (the probe's picture); the list's own name is what's read.
+        self.suggestion_label = wx.StaticText(self.own_reply, label="Suggested messages:")
+        osizer.Add(self.suggestion_label, 0, wx.TOP, 6)
         self.suggestion_list = wx.ListBox(self.own_reply, style=wx.LB_SINGLE)
         set_accessible_name(self.suggestion_list, SUGGESTIONS_NAME)
         set_empty_list_text(self.suggestion_list, "No suggestions")
         self.suggestion_list.SetMinSize(dip(self, LIST_MIN_WIDTH, 48))
-        osizer.Add(self.suggestion_list, 0, wx.EXPAND | wx.TOP, 6)
+        osizer.Add(self.suggestion_list, 0, wx.EXPAND | wx.TOP, 2)
+        self.suggestion_label.Hide()
         self.suggestion_list.Hide()
         self.suggestion_list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.use_suggestion())
         #: Chat id -> its latest suggestions (#474), newest turn's only.
@@ -5561,6 +5566,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if not items and self.suggestion_list.HasFocus():
                 self.reply_text.SetFocus()  # never left on a hidden list
             self.suggestion_list.Show(bool(items))
+            self.suggestion_label.Show(bool(items))
             self.own_reply.Layout()
             self.session_view.Layout()
 
