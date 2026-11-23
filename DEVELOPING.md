@@ -2,7 +2,7 @@
 
 How to run The Chat Place from source, test it, build it and release it, and where its code
 lives. For what the app does and how to use it, see the [README](README.md) and the
-[user guide](thechatplace/assets/user-guide.md). [AGENTS.md](AGENTS.md) has the project's
+[user guide](thechatplace/assets/user-guide.md). [CLAUDE.md](CLAUDE.md) has the project's
 conventions and the architecture in more detail.
 
 ## Run from source

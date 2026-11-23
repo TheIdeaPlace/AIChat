@@ -9,7 +9,7 @@ For anything bigger than a small fix, **open an issue first** and say what you'd
 ## Getting started
 
 1. Fork the repository and create a branch from `main`.
-2. Read [`AGENTS.md`](AGENTS.md). It's the working reference for the architecture, the tests and the conventions, for people and for AI assistants alike.
+2. Read [`CLAUDE.md`](CLAUDE.md). It's the working reference for the architecture, the tests and the conventions, for people and for AI assistants alike.
 3. The [README](README.md) is the user-facing spec: shortcuts, file locations and behaviour. A change in behaviour updates it, and the in-app guide (`thechatplace/assets/user-guide.md`, then `python tools/make_docs.py`), in the same pull request.
 
 ## Running from source and testing
@@ -49,7 +49,7 @@ If your change needs a screen reader check, list the exact steps in the pull req
 - A commit message is one plain-English sentence about the change as a user would see it, ending with the issue number, for example `Code blocks: list, read and copy each one (#17)`.
 - Work from a fork. Kelly reviews and merges every pull request.
 - Keep a pull request to one feature or fix, and link the issue it closes (`Closes #N`).
-- A user-visible change adds an entry to the open release notes file in `release-notes/` (the highest version without a tag). `AGENTS.md` explains the format. Tests, CI and refactors need no entry.
+- A user-visible change adds an entry to the open release notes file in `release-notes/` (the highest version without a tag). `CLAUDE.md` explains the format. Tests, CI and refactors need no entry.
 - Research and design notes go in `dev-notes/`, not `docs/`: GitHub Pages publishes everything in `docs/`.
 
 ## Questions

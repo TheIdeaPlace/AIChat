@@ -10,7 +10,7 @@ Muse Code (branch `Muse_Code`, notes in `dev-notes/muse-code-*.md`). Muse is
 the worked example throughout: when unsure how to do a step, read what Muse
 did, then check this provider's own protocol before copying it.
 
-Read `AGENTS.md` first. Everything there still applies: accessibility is the
+Read `CLAUDE.md` (or `AGENTS.md`, which points to it) first. Everything there still applies: accessibility is the
 point of the app, OS calls go in `platform_paths.py`, tests come first, the
 README is the user guide, never write to another app's files.
 

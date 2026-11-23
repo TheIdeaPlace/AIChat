@@ -240,7 +240,7 @@ def test_release_notes_exist_for_this_version():
     assert notes.is_file(), f"write {notes.name} before tagging"
     text = notes.read_text(encoding="utf-8")
     # What changed, under "What's new" (0.1.0, 0.1.1) or the Added, Changed and
-    # Fixed sections the release-notes process in AGENTS.md uses since 0.1.2.
+    # Fixed sections the release-notes process in CLAUDE.md uses since 0.1.2.
     assert any(h in text for h in ("## What's new", "## Added", "## Changed", "## Fixed"))
     for heading in ("## Downloads", "## Requirements"):
         assert heading in text

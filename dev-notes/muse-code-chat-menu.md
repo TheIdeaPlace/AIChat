@@ -276,7 +276,7 @@ folder and outside it (only writes are confined to the workspace).
 - `attachments` is granted to chats started here only; the window builds the
   `MuseInput` on Send and clears the attachments once it has gone.
 - The new module is in all four PyInstaller command lines and the smoke
-  test, as AGENTS.md requires for a lazily imported one.
+  test, as CLAUDE.md requires for a lazily imported one.
 
 Checked natively through `build_input()` and `send()`: a green picture and
 a text file from outside the folder in one message; the reply was "green
