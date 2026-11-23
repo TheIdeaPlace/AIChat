@@ -188,12 +188,12 @@ def test_new_session_first_message_takes_console_output_as_a_code_block(frame, e
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, folder, feedback=frame._feedback)
     try:
-        env["pasted"]["text"] = "C:\work>dir /b\nnotes.txt"
+        env["pasted"]["text"] = "C:\\work>dir /b\nnotes.txt"
         dialog.message.SetFocus()
         skipped = []
         dialog._on_message_paste(type("Paste", (), {"Skip": lambda self: skipped.append(1)})())
         assert not skipped
-        assert dialog.message.GetValue() == "```console\nC:\work>dir /b\nnotes.txt\n```\n"
+        assert dialog.message.GetValue() == "```console\nC:\\work>dir /b\nnotes.txt\n```\n"
         assert env["feedback"][-1] == "Pasted console output as a code block, 2 lines."
     finally:
         dialog.Destroy()

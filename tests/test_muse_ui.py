@@ -506,7 +506,7 @@ def test_new_muse_chat_starts_on_your_profile_model_and_effort_before_sending(
     all before the first message. One not taken is said, and the chat kept."""
     from thechatplace.own_store import OwnSession
     from thechatplace.providers.muse_connection import MuseHistoryError
-    record = OwnSession("synthetic-new-muse", "Synthetic new", "C:\work", provider="muse",
+    record = OwnSession("synthetic-new-muse", "Synthetic new", "C:\\work", provider="muse",
                         started=True)
     calls, said = [], []
     monkeypatch.setattr(frame, "_codex_work", lambda action, done: done(action(), False))
@@ -526,7 +526,7 @@ def test_new_muse_chat_starts_on_your_profile_model_and_effort_before_sending(
     monkeypatch.setattr(frame, "_send_codex_owned",
                         lambda current, text: calls.append(("send", text)))
     monkeypatch.setattr(frame, "_feedback", said.append)
-    frame._create_muse_owned("C:\work", "Synthetic new", "First message",
+    frame._create_muse_owned("C:\\work", "Synthetic new", "First message",
                              model="synthetic-b", effort="high", profile=":read-only")
     assert calls == [("create", "muse", {"profile": ":read-only"}),
                      ("set_model", "synthetic-b"), ("set_effort", "high"),
@@ -542,7 +542,7 @@ def test_new_muse_chat_starts_on_your_profile_model_and_effort_before_sending(
 
 def test_new_muse_chat_with_muse_defaults_sets_nothing_after_start(frame, monkeypatch):
     from thechatplace.own_store import OwnSession
-    record = OwnSession("synthetic-plain-muse", "Plain", "C:\work", provider="muse", started=True)
+    record = OwnSession("synthetic-plain-muse", "Plain", "C:\\work", provider="muse", started=True)
     calls = []
     monkeypatch.setattr(frame, "_codex_work", lambda action, done: done(action(), False))
     monkeypatch.setattr(frame.sessions, "create_owned",
@@ -550,5 +550,5 @@ def test_new_muse_chat_with_muse_defaults_sets_nothing_after_start(frame, monkey
     monkeypatch.setattr(frame.sessions, "owned_action",
                         lambda *args: pytest.fail("Muse's own model and effort need no call"))
     monkeypatch.setattr(frame, "open_session", lambda info: None)
-    frame._create_muse_owned("C:\work", "Plain", "")
+    frame._create_muse_owned("C:\\work", "Plain", "")
     assert calls == [{}]

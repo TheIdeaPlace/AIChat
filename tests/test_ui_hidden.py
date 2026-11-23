@@ -4223,13 +4223,13 @@ def test_pasting_console_output_makes_it_a_code_block(frame, env, monkeypatch):
     frame.on_open_session()
     monkeypatch.setattr(frame, "_clipboard_image", lambda: None)
     pad = " " * 40
-    env["pasted"]["text"] = "PS C:\work> dir" + pad + "\nnotes.txt" + pad + "\n"
+    env["pasted"]["text"] = "PS C:\\work> dir" + pad + "\nnotes.txt" + pad + "\n"
     frame.reply_text.SetValue("It said:")
     frame.reply_text.SetInsertionPointEnd()
     event = _Paste()
     frame._on_reply_paste(event)
     assert not event.skipped
-    assert frame.reply_text.GetValue() == "It said:\n```console\nPS C:\work> dir\nnotes.txt\n```\n"
+    assert frame.reply_text.GetValue() == "It said:\n```console\nPS C:\\work> dir\nnotes.txt\n```\n"
     assert env["feedback"][-1] == "Pasted console output as a code block, 2 lines."
     env["pasted"]["text"] = "Just two lines\nof ordinary text"
     event = _Paste()
