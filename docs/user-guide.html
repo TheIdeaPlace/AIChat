@@ -1194,7 +1194,10 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Local paths are listed as <strong>file</strong>: Windows drive paths, network paths and file: URLs,
 bare or in inline code, quotes, angle brackets or Markdown link targets. Paths containing spaces
 need one of those delimiters. A line suffix such as <code>:12</code> means the file itself. Clear relative
-file references use the session's working folder when it is known.</p>
+file references use the session's working folder when it is known. In inline code, a command
+such as <code>winget install Kitware.CMake</code>, or a program named on its own such as <code>app.exe</code>, stays
+code rather than becoming a file in that folder; a full path such as <code>C:\Tools\app.exe</code> is still
+a file.</p>
 <ul>
 <li><strong>Open</strong> opens an existing safe file in its default app.</li>
 <li><strong>Open containing folder</strong> selects the file in File Explorer or Finder. On Linux it uses the

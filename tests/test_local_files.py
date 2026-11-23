@@ -70,6 +70,31 @@ def test_relative_paths_use_only_the_known_session_folder(tmp_path):
     assert links_in_text('[readme](README.md)', str(tmp_path))[0][0] == str(tmp_path / 'README.md')
 
 
+@pytest.mark.parametrize('code', [
+    'winget install Kitware.CMake', 'pip install requests.adapters', 'cargo build --release.x',
+    'directcut-rs.exe', 'build.bat', 'setup.ps1:3', 'installer.msi',
+])
+def test_commands_in_inline_code_stay_code(code, tmp_path):
+    """A command in backticks isn't a file in the chat's folder: one with a
+    space (".CMake" looked like an extension), or a program run by name."""
+    assert links_in_text(f'Run `{code}` first.', str(tmp_path)) == []
+    page = message_page('Reply', f'Run `{code}` first.', cwd=str(tmp_path))
+    assert 'file:' not in page and f'<code>{html.escape(code)}</code>' in page
+
+
+def test_files_in_inline_code_are_still_references(tmp_path):
+    text = '`src/main.py`, `README.md`, `tools/build.bat` and `bin/app.exe`'
+    assert [p for p, _, _ in links_in_text(text, str(tmp_path))] == [
+        str(tmp_path / 'src' / 'main.py'), str(tmp_path / 'README.md'),
+        str(tmp_path / 'tools' / 'build.bat'), str(tmp_path / 'bin' / 'app.exe')]
+
+
+@windows_paths
+def test_absolute_paths_in_inline_code_keep_their_spaces():
+    path = r'C:\Program Files\Tool\tool.exe'
+    assert links_in_text(f'`{path}`')[0][0] == path
+
+
 def _link(path):
     return FoundLink(str(path), '', 'Claude', 0, True)
 

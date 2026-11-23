@@ -1259,7 +1259,10 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Local paths are listed as **file**: Windows drive paths, network paths and file: URLs,
 bare or in inline code, quotes, angle brackets or Markdown link targets. Paths containing spaces
 need one of those delimiters. A line suffix such as `:12` means the file itself. Clear relative
-file references use the session's working folder when it is known.
+file references use the session's working folder when it is known. In inline code, a command
+such as `winget install Kitware.CMake`, or a program named on its own such as `app.exe`, stays
+code rather than becoming a file in that folder; a full path such as `C:\Tools\app.exe` is still
+a file.
 
 - **Open** opens an existing safe file in its default app.
 - **Open containing folder** selects the file in File Explorer or Finder. On Linux it uses the
