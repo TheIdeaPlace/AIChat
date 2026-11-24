@@ -111,27 +111,44 @@ class SoundHost:
             # didn't come from your key press (on_its_own): yours always sounds.
             self._sound_hushed_sends.discard(key)
             return
+        chosen = self._sound_chosen(event_id, key, own, on_its_own)
+        if chosen is None:
+            return
+        path, fallback = chosen
+        played = self._sound_player().play(path, key=event_id,
+                                           priority=sound_events.BY_ID[event_id].priority,
+                                           volume=self.speech.sound_volume / 100,
+                                           fallback=fallback)
+        if played:
+            self._sound_last_played = time.monotonic()
+
+    def _sound_would_play(self, event_id: str, key: Optional[str] = None, own: bool = True,
+                          on_its_own: bool = False) -> bool:
+        """Whether ``_sound`` would play this event now, by the same rules, for an event that
+        says its words instead when no sound will tell you (Prompt suggested, #474; #550 for
+        the rest). The player's own limits aren't asked: they drop a repeat, never the first."""
+        try:
+            return self._sound_chosen(event_id, key, own, on_its_own) is not None
+        except Exception:  # noqa: BLE001 - as for _sound: then it's not heard
+            return False
+
+    def _sound_chosen(self, event_id: str, key: Optional[str], own: bool,
+                      on_its_own: bool):
+        """The (path, fallback) the event plays, or None if it doesn't play now."""
         settings = self.speech
         if self._sound_closed or not settings.sounds_on or settings.sounds_muted:
-            return
+            return None
         event = sound_events.BY_ID[event_id]
         if key is not None and not self._sound_chat_loaded(key):
             if event_id in TOOL_EVENTS:
                 if settings.sound_tools != TOOLS_ALL:
-                    return
+                    return None
             elif (settings.sound_others == OTHERS_NONE
                   or (settings.sound_others == OTHERS_OWN and not own)):
-                return
+                return None
         if (on_its_own or not event.answers_you) and quiet_now():
-            return
-        chosen = sound_events.resolve(event_id, self._sound_scheme())
-        if chosen is None:
-            return
-        path, fallback = chosen
-        played = self._sound_player().play(path, key=event_id, priority=event.priority,
-                                           volume=settings.sound_volume / 100, fallback=fallback)
-        if played:
-            self._sound_last_played = time.monotonic()
+            return None
+        return sound_events.resolve(event_id, self._sound_scheme())
 
     def _sound_scheme(self) -> sound_events.Scheme:
         """The scheme playing, read again only when the settings change (a tap can come every

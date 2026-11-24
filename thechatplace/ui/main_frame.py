@@ -5582,19 +5582,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._suggestions[session_id] = self.reply_text.GetValue()
         self.reply_text.SetSelection(-1, -1)
         if sound:
-            if self._suggestion_sound_heard():
-                self._sound(sound_events.SUGGESTED, self._own_key(session_id))
+            key = self._own_key(session_id)
+            if self._sound_would_play(sound_events.SUGGESTED, key):
+                self._sound(sound_events.SUGGESTED, key)
             elif self.speech.enabled:
-                # No sound to tell you (sounds off or muted, or a scheme with
-                # none for it): its words instead, never the suggestion itself
+                # No sound to tell you (sounds off or muted, a scheme with
+                # none for it, or held back during a presentation): its words
+                # instead, never the suggestion itself, queued after the reply
                 # (Kelly, 0.6.3 review; #550 settles this for every event).
                 self._speak_announcement(announce.PROMPT_SUGGESTED, interrupt=False)
         return True
-
-    def _suggestion_sound_heard(self) -> bool:
-        settings = self.speech
-        return (settings.sounds_on and not settings.sounds_muted
-                and self._sound_scheme_has(sound_events.SUGGESTED))
 
     def _clear_suggestions(self, session_id: str):
         """A new turn has started: what was suggested after the last one is
@@ -5614,7 +5611,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return False
         self._suggestions[session_id] = text
         if session_id == self._open_claude_id() and self._place_suggestion():
-            # Not said (Kelly, 2026-11-23): the sound is what tells you.
+            # The suggestion isn't read out (Kelly, 2026-11-23): its sound
+            # tells you, or with none, _place_suggestion says "Prompt suggested."
             self._status(f"{title}: a suggested message is in your message box.")
         return True
 

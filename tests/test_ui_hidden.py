@@ -17528,7 +17528,56 @@ def test_muted_sounds_say_the_suggestion_too(frame, env, fake_runner):
     frame.speech.sounds_on = True
     frame.speech.sounds_muted = True
     _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
     assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_a_scheme_without_the_sound_says_the_suggestion(frame, env, fake_runner, explicit_none):
+    """A scheme of your own from before Prompt suggested (no entry), or with
+    None chosen for it: no sound will tell you, so its words do."""
+    from thechatplace import sound_events as se
+    sid = "user-" + "e" * 32
+    events = {e.key: se.built_in_ref(e.sound, "wood") for e in se.EVENTS if e.id != se.SUGGESTED}
+    if explicit_none:
+        events["PromptSuggested"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine", "events": events}}
+    frame.speech.sound_scheme = sid
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_during_a_presentation_the_suggestion_is_said(frame, env, fake_runner, monkeypatch):
+    """Its sound holds back in a presentation or full-screen program, as
+    sounds that just happen do; the reply is still said, so this is too."""
+    from thechatplace.ui import sound_host
+    monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_silent_announcements_say_nothing_but_fill_the_box(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    frame.speech.announce = speech.ANNOUNCE_SILENT
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_coming_back_with_sounds_off_stays_quiet(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    said = list(env["feedback"])
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["feedback"] == said
 
 
 def test_a_box_with_text_in_it_is_never_touched(frame, env, fake_runner):

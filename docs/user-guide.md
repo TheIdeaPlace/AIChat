@@ -977,8 +977,10 @@ off at first.
 
 - **When a reply comes with a suggestion,** it's put in your message box, selected, and the
   **Prompt suggested** sound plays. The suggestion itself isn't read aloud. With sounds off or
-  muted, you hear "Prompt suggested" instead of the sound, and the status bar says so too. Not
-  every reply has one: Claude suggests something only when there's a likely next step.
+  muted, or when the sound is held back during a presentation, you hear "Prompt suggested"
+  instead (unless announcements are set to Silent), and the status bar says a suggested message
+  is in your message box. Not every reply has one: Claude suggests something only when there's a
+  likely next step.
 - **Type to replace it.** Because it's selected, whatever you type takes its place. An arrow key
   keeps it and moves the cursor, so you can change it. **Ctrl+Enter** sends it as it stands, with
   anything you've attached.
