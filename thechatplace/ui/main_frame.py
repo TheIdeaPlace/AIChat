@@ -9313,7 +9313,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     #: Keys that go to the top or bottom of a list, and which end each means.
     _LIST_END_KEYS = {wx.WXK_UP: "top", wx.WXK_HOME: "top",
-                      wx.WXK_DOWN: "bottom", wx.WXK_END: "bottom"}
+                      wx.WXK_DOWN: "bottom", wx.WXK_END: "bottom",
+                      # The numpad's, with Num Lock off (#714 review).
+                      wx.WXK_NUMPAD_UP: "top", wx.WXK_NUMPAD_HOME: "top",
+                      wx.WXK_NUMPAD_DOWN: "bottom", wx.WXK_NUMPAD_END: "bottom"}
 
     def _list_end_cue(self, event: wx.KeyEvent, key: int, focus) -> None:
         """The Reached the end of a list sound (#714), as QuickMail has it:

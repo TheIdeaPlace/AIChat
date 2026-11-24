@@ -17777,3 +17777,38 @@ def test_the_edge_sound_in_the_messages_list_and_not_in_an_empty_one(frame, env,
     frame.chat_list.SetSelection(1)
     frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, frame.chat_list)
     assert env["sounds"] == [se.LIST_END]
+
+
+def test_the_edge_sound_through_the_real_key_path(frame, env, monkeypatch):
+    """The window's char hook plays it, and a real key-up on the list lets the
+    next press play it again (#714 review): not just the helper called directly."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: listing))
+    for _repeat in range(3):
+        frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END]
+    up = wx.KeyEvent(wx.wxEVT_KEY_UP)
+    up.SetEventObject(listing)
+    listing.GetEventHandler().ProcessEvent(up)
+    frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END] * 2
+    assert listing.GetSelection() == 0
+
+
+def test_the_numpad_arrows_play_the_edge_sound_too(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_UP), wx.WXK_NUMPAD_UP, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_HOME), wx.WXK_NUMPAD_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_DOWN), wx.WXK_NUMPAD_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_END), wx.WXK_NUMPAD_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4

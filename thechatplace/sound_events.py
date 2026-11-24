@@ -110,8 +110,11 @@ EVENTS: Tuple[SoundEvent, ...] = (
     # sounded like "message adjusted".
     SoundEvent(SUGGESTED, "PromptSuggested", "Prompt suggested", "suggested"),
     # Up or Home at the top of the session or messages list, Down or End at the bottom (#714):
-    # QuickMail's event and sound, the same event in both apps. It answers your key press.
-    SoundEvent(LIST_END, "ListEnd", "Reached the end of a list", "edge", answers_you=True),
+    # QuickMail's event and sound, the same event in both apps. It answers your key press, so it
+    # plays at once or not at all (AMBIENT): never late, behind another sound, by when you've
+    # moved, and a second press soon after isn't taken for a repeat (#714 review).
+    SoundEvent(LIST_END, "ListEnd", "Reached the end of a list", "edge", AMBIENT,
+               answers_you=True),
 )
 BY_ID: Dict[str, SoundEvent] = {event.id: event for event in EVENTS}
 BY_KEY: Dict[str, SoundEvent] = {event.key: event for event in EVENTS}

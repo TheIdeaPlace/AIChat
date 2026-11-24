@@ -63,6 +63,22 @@ def test_one_sound_one_meaning():
         assert sorted(p.stem for p in se.built_in_path("tool", pack).parent.glob("*.wav")) == sorted(sounds)
 
 
+def test_the_list_end_sound_plays_at_once_or_not_at_all():
+    """#714 review: under app-kit's player policy a second press at the end, half a second after
+    the first, still plays, and a press while another sound plays is skipped, not queued to
+    play late after you've moved on."""
+    from theideaplace_appkit.sounds import SoundPolicy
+    now = [0.0]
+    policy = SoundPolicy(clock=lambda: now[0])
+    event = se.BY_ID[se.LIST_END]
+    assert policy.admit(event.id, event.priority, busy=False, waiting=0)
+    now[0] = 0.5
+    assert policy.admit(event.id, event.priority, busy=False, waiting=0)
+    now[0] = 1.0
+    assert not policy.admit(event.id, event.priority, busy=True, waiting=0)
+    assert not policy.admit(event.id, event.priority, busy=False, waiting=1)
+
+
 def test_a_preview_choice_keeps_its_meaning_under_the_new_names():
     loaded = se.load_schemes({"wood": {"events": {"ToolRan": "builtin:tap", "NeedsYou": "builtin:glass/attention",
                                                   "ReplyFinished": "builtin:Arrived"}},
