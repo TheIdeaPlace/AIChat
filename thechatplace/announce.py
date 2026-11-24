@@ -291,6 +291,10 @@ def steer_taken_text(title: str, late: bool) -> str:
 SUGGESTIONS_NOT_OFFERED = ("No suggestion: Claude Code isn't offering suggestions to your "
                            "account yet.")
 
+#: Said when a suggestion is put in your message box and no sound tells you:
+#: the Prompt suggested event's own words, never the suggestion (#474).
+PROMPT_SUGGESTED = "Prompt suggested."
+
 
 def background_text(tasks) -> str:
     """What a session left running when it answered (#161): the turn stays

@@ -5582,8 +5582,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._suggestions[session_id] = self.reply_text.GetValue()
         self.reply_text.SetSelection(-1, -1)
         if sound:
-            self._sound(sound_events.SUGGESTED, self._own_key(session_id))
+            if self._suggestion_sound_heard():
+                self._sound(sound_events.SUGGESTED, self._own_key(session_id))
+            elif self.speech.enabled:
+                # No sound to tell you (sounds off or muted, or a scheme with
+                # none for it): its words instead, never the suggestion itself
+                # (Kelly, 0.6.3 review; #550 settles this for every event).
+                self._speak_announcement(announce.PROMPT_SUGGESTED, interrupt=False)
         return True
+
+    def _suggestion_sound_heard(self) -> bool:
+        settings = self.speech
+        return (settings.sounds_on and not settings.sounds_muted
+                and self._sound_scheme_has(sound_events.SUGGESTED))
 
     def _clear_suggestions(self, session_id: str):
         """A new turn has started: what was suggested after the last one is

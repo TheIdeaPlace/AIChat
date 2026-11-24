@@ -16,7 +16,7 @@ from thechatplace.ui_text import key_name
 
 wx = pytest.importorskip("wx")
 
-from thechatplace import hub, platform_paths, speech  # noqa: E402
+from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
@@ -17510,6 +17510,25 @@ def test_a_suggestion_goes_in_the_empty_box_selected_with_its_sound(frame, env, 
     # Nothing is said about it: the reply only (Kelly, 2026-11-23).
     assert env["spoken"][-1] == "Hub probe replied. Done."
     assert not any("write the script" in s for s in env["feedback"])
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_with_sounds_off_a_suggestion_is_said_by_its_event_name(frame, env, fake_runner):
+    """Kelly, 0.6.3 review: no sound to tell you, so its words, never the
+    suggestion itself (#550 will settle this for every event)."""
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+def test_muted_sounds_say_the_suggestion_too(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    frame.speech.sounds_muted = True
+    _suggested(frame, fake_runner)
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
 
 
 def test_a_box_with_text_in_it_is_never_touched(frame, env, fake_runner):
