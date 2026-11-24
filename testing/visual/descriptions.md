@@ -67,9 +67,9 @@ This picture is the same as main-own, except that a small white list 48 tall app
 
 ## main-suggestion: An own session whose last reply came with a suggested next message
 
-New in #474 (2026-11-23), from light-100 and hc-aquatic-100. The same as main-own, except that under the Send/Stop/Commands/Attach Files row and the "Ready." line, a "Suggested messages (Enter puts one in your message):" label appears, and below it a white list 48 tall across the column's width, holding one row: "Write the script, and add a --dry-run option", selected in blue. The label lines up with "Your message (Ctrl+Enter sends):" at the left. To make room, the messages list ends higher; the message box keeps its height. In High Contrast Aquatic the label is white on #202020 and the selected row is light aqua (#8EE3F0) with near-black text, 11.2:1, as every list's is. In light, the selected row is Windows' own selection blue, #0078D4 with white text, 4.5:1, the same as the other lists' (measured from the pixels). Unlike the attachments list above, this one has a visible label.
+#474, taken again on 2026-11-23 for the design where the suggestion goes in the message box. From light-100 and hc-aquatic-100. The same as main-own, except that the message box holds one line, "Write the script, and add a --dry-run option", in its ordinary text: black on white in light (21:1, measured from the pixels), white on #202020 in High Contrast Aquatic. It's selected, so typing replaces it, but the picture doesn't show that: Windows draws a text box's selection only while the box has the focus, and here the messages list has it. Nothing else is added under the box; the earlier picture's "Suggested messages" label and list are gone, and the layout is main-own's.
 
-**What looks off:** Nothing new. As with attachments, three lists can show a blue selected row at once (#181).
+**What looks off:** Nothing. On screen, nothing marks the text as a suggestion rather than something you typed until you reach the box; the sound is the cue (Kelly's choice).
 
 ## main-desktop: A desktop app session loaded: the read-only panel instead of a reply box
 

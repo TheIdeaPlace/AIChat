@@ -1811,7 +1811,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds on a scheme of your own"
+   "about": "Tools, Sounds on a scheme of your own"
   },
   "sound-gallery": {
    "kind": "dialog",
@@ -1825,7 +1825,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Sounds, Browse Gallery: two schemes, one added"
+   "about": "Tools, Sounds, Browse Gallery: two schemes, one added"
   },
   "sound-tutorial": {
    "kind": "dialog",
@@ -2092,6 +2092,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "OpenAI Usage with estimated maximum and unknown spending"
+  },
+  "main-suggestion": {
+   "kind": "window",
+   "png": "main-suggestion-hc-aquatic-100.png",
+   "json": "main-suggestion-hc-aquatic-100.json",
+   "title": "Visual probe — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "An own session whose last reply came with a suggested next message"
   }
  },
  "seconds": 280.2
