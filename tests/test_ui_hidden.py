@@ -17709,3 +17709,71 @@ def test_going_back_to_a_chat_puts_it_back_quietly(frame, env, fake_runner):
     frame._place_suggestion(sound=False)
     assert frame.reply_text.GetValue() == "write the script"
     assert env["sounds"].count("suggested") == before
+
+
+# -- the end of a list (#714) ----------------------------------------------------------------
+
+
+def _edge_key(code, **mods):
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(code)
+    for name, down in mods.items():
+        getattr(event, f"Set{name}Down")(down)
+    return event
+
+
+def test_the_edge_sound_at_the_top_and_bottom_of_the_session_list(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._list_end_held = None  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_HOME), wx.WXK_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4
+
+
+def test_no_edge_sound_away_from_the_ends_or_with_a_modifier(frame, env):
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(1)  # a middle row: Up and Down move
+    for code in (wx.WXK_UP, wx.WXK_DOWN):
+        frame._list_end_cue(_edge_key(code), code, listing)
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP, Shift=True), wx.WXK_UP, listing)
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)  # Down at the top moves
+    # Not in the message box either.
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.reply_text)
+    assert env["sounds"] == []
+
+
+def test_a_held_key_plays_the_edge_once(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    for _repeat in range(4):  # Up held: the key repeats
+        frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._on_list_key_up(wx.KeyEvent(wx.wxEVT_KEY_UP))  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END] * 2
+
+
+def test_the_edge_sound_in_the_messages_list_and_not_in_an_empty_one(frame, env, fake_runner):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    frame.chat_list.Clear()
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.chat_list)
+    assert env["sounds"] == []  # empty: it says so already
+    frame.chat_list.Append("one")
+    frame.chat_list.Append("two")
+    frame.chat_list.SetSelection(1)
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, frame.chat_list)
+    assert env["sounds"] == [se.LIST_END]

@@ -964,7 +964,7 @@ has proposed one. Turn it on with **Settings, "Suggest what to send next after e
 off at first.
 
 - **When a reply comes with a suggestion,** it's put in your message box, selected, and the
-  **Message suggested** sound plays. Nothing is said aloud, so with sounds off you won't hear that
+  **Prompt suggested** sound plays. Nothing is said aloud, so with sounds off you won't hear that
   it's there; the status bar says so, and you'll find it when you get to the box. Not every reply
   has one: Claude suggests something only when there's a likely next step.
 - **Type to replace it.** Because it's selected, whatever you type takes its place. An arrow key
@@ -1031,7 +1031,8 @@ Every event has a sound of its own, and events that belong together sound alike:
 | Usage or context warning | Alert: high notes, alternating |
 | Conversation compacted | Settle: a chord settling down into one low note |
 | Message from another session | Knock: two knocks, then a lower note answering, when another Claude Code session sends a message into this chat (shown as "From another session") |
-| Message suggested | Offer: your message's first note, rising only a fifth and stepping back, soft, when Claude's suggested next message is put in your message box (see "Suggested messages") |
+| Prompt suggested | Taps: two light high taps, when Claude's suggested next prompt is put in your message box (see "Suggested messages") |
+| Reached the end of a list | Edge: one soft, short note, when Up or Home on the first row of the session list or the messages list, or Down or End on the last, has nowhere to go. The same sound as QuickMail's |
 
 When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
 

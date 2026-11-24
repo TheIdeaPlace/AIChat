@@ -900,6 +900,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pending_messages_label: Optional[str] = None
         self._messages_label_key: Optional[tuple] = None  # (key, title, kind)
         self.chat_list.Bind(wx.EVT_KILL_FOCUS, self._on_chat_list_left)
+        # The end-of-list sound plays once per press, not on a held key's
+        # repeats (#714): letting go of a key lets it play again.
+        #: (list, key) of the end-of-list cue last played and still held.
+        self._list_end_held = None
+        for listing in (self.session_list, self.chat_list):
+            listing.Bind(wx.EVT_KEY_UP, self._on_list_key_up)
 
         # Where the reply goes: one panel for The Chat Place's sessions, one for
         # desktop ones, in the same place so the layout is the same.
@@ -9305,6 +9311,35 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     # ------------------------------------------------------------- keyboard
 
+    #: Keys that go to the top or bottom of a list, and which end each means.
+    _LIST_END_KEYS = {wx.WXK_UP: "top", wx.WXK_HOME: "top",
+                      wx.WXK_DOWN: "bottom", wx.WXK_END: "bottom"}
+
+    def _list_end_cue(self, event: wx.KeyEvent, key: int, focus) -> None:
+        """The Reached the end of a list sound (#714), as QuickMail has it:
+        Up or Home on the first row of the session list or the messages list,
+        Down or End on the last, unmodified, moves nothing, and without a
+        sound sounded like a key that didn't register. Once per press: a key
+        held down repeats, and the cue waits for it to be let go
+        (_on_list_key_up). An empty list says it's empty already."""
+        end = self._LIST_END_KEYS.get(key)
+        if (end is None or focus not in (self.session_list, self.chat_list)
+                or event.HasAnyModifiers()):
+            self._list_end_held = None
+            return
+        count, row = focus.GetCount(), focus.GetSelection()
+        if count == 0 or row == wx.NOT_FOUND or row != (0 if end == "top" else count - 1):
+            self._list_end_held = None
+            return
+        if self._list_end_held == (focus, key):
+            return  # the same key, still held
+        self._list_end_held = (focus, key)
+        self._sound(sound_events.LIST_END)
+
+    def _on_list_key_up(self, event: wx.KeyEvent):
+        self._list_end_held = None
+        event.Skip()
+
     def _on_char_hook(self, event: wx.KeyEvent):
         if self._menu_open and gtk_a11y.IS_LINUX:
             # A menu has the keyboard. On Windows it never gets here, but
@@ -9318,6 +9353,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         ctrl = event.ControlDown()
         in_session = focus is not None and focus is not self.session_list and \
             self._is_in_session_view(focus)
+        # Before anything else, and without taking the key: it goes on as usual.
+        self._list_end_cue(event, key, focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             if ctrl and event.AltDown() and not event.ShiftDown():
