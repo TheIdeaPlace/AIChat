@@ -142,7 +142,11 @@ class Rpc:
 def run(binary):
     results = {'codex': subprocess.check_output([binary, '--version'], text=True).strip(),
                'platform': sys.platform, 'scenarios': []}
-    with tempfile.TemporaryDirectory(prefix='tcp-native-approvals-') as temporary:
+    # ignore_cleanup_errors: Codex can still be writing its plugins clone
+    # (codex-home/.tmp/plugins-clone-*) as the folder goes, and macOS then
+    # refused with "Directory not empty", failing a run whose checks passed.
+    with tempfile.TemporaryDirectory(prefix='tcp-native-approvals-',
+                                     ignore_cleanup_errors=True) as temporary:
         root = Path(temporary).resolve()
         home, work = root / 'codex-home', root / 'work'
         home.mkdir()
