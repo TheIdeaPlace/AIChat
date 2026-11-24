@@ -1084,6 +1084,12 @@ a terminal: codex mcp login notes." **Answer** (Ctrl+Shift+A) shows a tool's for
 address to open. Escape leaves the question waiting; Decline refuses it. A request The Chat
 Place can't show at all is declined with a notice.
 
+Codex chats here cannot use the desktop app's built-in browser, browser extension, native
+computer use or Codex Cloud, on either subscriptions or API credits. No setting here enables
+these for Codex; **Let Claude use Chrome** applies only to Claude. Codex is told these limits
+in each chat, including reopened chats and copies. An explicitly enabled MCP browser
+server in **Connected Tools** is a separate tool.
+
 Codex keeps your own saved command rules in effect, including user rules such
 as `~/.codex/rules/default.rules` and system rules installed for your computer.
 Commands you've told Codex to always allow will run without asking and outside
