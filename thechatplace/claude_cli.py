@@ -1412,11 +1412,9 @@ OVERAGE_PAUSED = ("fable",)
 #: Said when a turn is stopped because it's now charged to usage credits.
 OVERAGE_STOPPED = (
     "Claude Code said this turn is now being charged to usage credits, past your plan's "
-    "{model} allowance, so The Chat Place stopped it. Anything already sent may have been "
-    "charged. To keep going, send again and choose to use usage credits, or choose another "
+    "{model} allowance, so The Chat Place stopped it. The request that went past it may have "
+    "been charged. To keep going, send again and choose Use Usage Credits, or choose another "
     "model with Chat, Chat Settings, Change Model.")
-#: What Keep Going sends after such a stop: the turn was cut off mid-work.
-OVERAGE_CARRY_ON = "Please carry on from where you were stopped."
 
 
 def overage_paused(model: str) -> bool:
@@ -2709,8 +2707,23 @@ class TurnRunner:
                         if problem:
                             self.stopped_for_overage = True
                             self.overage_model = self._turn_model()
-                            self.stopped_mid_turn = True
+                            with sent_lock:
+                                unsent = not message_sent
+                                message_sent = True  # and never: the timer can't send it
+                            if unsent:
+                                # Before the message went (not seen, but a
+                                # resumed process could): it comes back.
+                                unanswered.cancel()
+                                self.stopped_before_answer = True
                             self._kill()
+                            if (not unsent and final is not None and not final.is_error
+                                    and not carrying_on):
+                                # Answered already, and only a later request
+                                # (a suggestion, say) went over: the answer
+                                # stands, and the next Send asks.
+                                stop_reading = True
+                                break
+                            self.stopped_mid_turn = not unsent
                             final = TurnEvent("failed", text=problem, is_error=True,
                                               session_id=self.parser.session_id)
                             break

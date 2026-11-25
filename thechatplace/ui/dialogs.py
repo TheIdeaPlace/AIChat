@@ -123,7 +123,7 @@ API_CREDITS_NOTE = ("Every message in this chat is charged to your Claude API ke
 #: Said in New Session on a plan whose limits include Fable (#722).
 FABLE_PLAN_NOTE = ("Fable uses your plan's Fable allowance. If a turn would go past it and "
                    "be charged to usage credits, The Chat Place stops the turn as soon as "
-                   "Claude Code says so, and asks whether to keep going.")
+                   "Claude Code says so, and asks each time you send whether to use them.")
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:

@@ -93,6 +93,18 @@ def test_keep_going_runs_that_one_turn_on_usage_credits(tmp_path):
     assert events[-1].kind == "finished" and not runner.stopped_for_overage
 
 
+def test_overage_after_the_answer_keeps_the_answer(tmp_path):
+    """Answered, then a later request (a suggested message, say) went over
+    while the turn waited to be idle: the answer stands, and the process is
+    stopped so nothing more is charged; the next Send asks."""
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, FABLE_INIT, FABLE_REPLY, RESULT, limits(True), IDLE],
+        command=FABLE)
+    assert done.wait(5)
+    assert events[-1].kind == "finished" and not events[-1].is_error
+    assert runner.stopped_for_overage and not runner.stopped_mid_turn
+
+
 def test_other_models_are_not_paused_yet(tmp_path):
     """Opus past the limits with usage credits on: noted in Usage as before,
     not stopped. Adding it to OVERAGE_PAUSED is a separate issue."""

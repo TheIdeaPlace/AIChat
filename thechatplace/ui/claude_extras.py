@@ -215,6 +215,16 @@ class ClaudeExtras:
             wx.MessageBox(lookup.problem, "Ask Aside", wx.OK | wx.ICON_ERROR, self)
             return
         model = own.model if own is not None else ""
+        # An aside on a Fable chat runs on Fable (#722): only on a plan that
+        # includes it, and on usage credits only if you say so. An aside is
+        # one request, so asking first is the only way to stop it.
+        problem, _allow = self._fable_send_problem(own)
+        if problem is not None:
+            if problem:
+                wx.MessageBox(problem, "Ask Aside", wx.OK | wx.ICON_WARNING, self)
+            else:
+                self._feedback("Not asked.")
+            return
         cowork_ids = self._snapshot.cowork_cli_ids
         allowed_dirs = own.allowed_dirs if own is not None else ()
 

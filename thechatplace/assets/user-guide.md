@@ -3675,16 +3675,21 @@ Change Model; it's offered on Max and Ultra plans.
 **Fable and usage credits.** Max and Ultra plans include a weekly Fable allowance. Past it,
 Fable stops working, or, if usage credits are turned on for your account, Claude Code charges
 Fable turns to them without asking. So The Chat Place stops a Fable turn as soon as Claude Code
-says it's being charged to usage credits. Only requests already under way can be charged.
-Then it asks **Use usage credits?**:
-- **Keep Going** sends "Please carry on from where you were stopped." on usage credits, for that
-  one turn.
-- **Change Model** opens Change Model for that chat.
-- **Leave Stopped** sends nothing.
+says it's being charged to usage credits, and says so. The request that went past the allowance,
+and any already under way, may be charged.
 
-Once turns are being charged to usage credits, sending to a chat on Fable asks first (Use Usage
-Credits, Change Model or Cancel). It asks every time and never remembers your answer. A queued
-message isn't sent on usage credits: it comes back to your message box.
+From then on, each time you send to a chat on Fable (Send, Steer, Other Machines, Ask Aside, or
+a new chat's first message), it asks **Use usage credits?**:
+- **Use Usage Credits** sends it on usage credits, for that one turn.
+- **Change Model** opens Change Model for that chat.
+- **Cancel** (the default, and Escape) sends nothing; your message stays in the message box.
+
+It asks every time and never remembers your answer. A queued message, or an agent
+conversation's message, isn't sent on usage credits: it comes back with the reason.
+
+A chat on Fable isn't sent at all while Claude Code isn't signed in to a plan that includes
+Fable: on Pro, Team or Enterprise, or before The Chat Place has checked your plan. Choose another
+model with Change Model, or check the sign-in with Tools, Sign In, Claude Code.
 
 **Claude doesn't use one of my connectors or MCP servers.** Choose Tools, Connected Tools (MCP)
 with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and

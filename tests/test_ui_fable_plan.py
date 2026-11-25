@@ -1,23 +1,27 @@
 """Fable in subscription chats on a plan that has it (#722), on a frame
 that's never shown: which models New Session and Change Model offer, the
-question before a Fable turn once turns are charged to usage credits, and
-the question after a turn stopped for it. No real claude or speech."""
+plan checked before every Fable turn, and "Use usage credits?" asked only
+when you send, once a Fable turn has said turns are charged to usage
+credits. No real claude or speech."""
 import time
+from types import SimpleNamespace
 
 import pytest
 
 wx = pytest.importorskip("wx")
 
 from thechatplace import platform_paths, signin  # noqa: E402
-from thechatplace.claude_cli import OVERAGE_CARRY_ON, TurnEvent  # noqa: E402
+from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 
 from records import assistant_block, text_block, user_text  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import FakeRunner, add_transcript, now_ms, pump  # noqa: E402
 
-OVERAGE = {"status": "allowed", "rateLimitType": "seven_day", "isUsingOverage": True,
-           "overageStatus": "allowed", "resetsAt": time.time() + 86400}
+
+def overage(on=True, resets_in=86400):
+    return {"status": "allowed", "rateLimitType": "seven_day", "isUsingOverage": on,
+            "overageStatus": "allowed", "resetsAt": time.time() + resets_in}
 
 
 @pytest.fixture
@@ -70,9 +74,14 @@ def asked(frame, monkeypatch, answer):
     """Stand in for "Use usage credits?"; returns what it was asked."""
     calls = []
     monkeypatch.setattr(frame, "_ask_overage",
-                        lambda title, model, stopped: calls.append((title, model, stopped))
-                        or answer)
+                        lambda title, model: calls.append((title, model)) or answer)
     return calls
+
+
+def boxes(monkeypatch):
+    shown = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: shown.append(text) or wx.OK)
+    return shown
 
 
 def send(frame, text="Next step"):
@@ -92,7 +101,6 @@ def test_the_plan_decides_whether_fable_is_offered(frame):
     assert "fable" not in dict(frame._claude_models(opus))
     # A chat already on Fable keeps it on the list rather than losing it.
     assert ("fable", "Fable") in frame._claude_models(frame.store.get("fab-1"))
-    # Signed out: no plan.
     frame._on_sign_in_result(signin.SignIn(True, signed_in=False), manual=False)
     assert frame.claude_plan == ""
     # Couldn't ask: what was known stays.
@@ -121,11 +129,39 @@ def test_new_session_offers_fable_on_max_with_its_note(frame, folder):
         dialog.Destroy()
 
 
-# -- before a turn -----------------------------------------------------------------------------
+# -- the plan, before every Fable turn ---------------------------------------------------------
+
+@pytest.mark.parametrize("plan, says", [("pro", "Claude Pro plan doesn't include Fable"),
+                                        ("", "hasn't confirmed")])
+def test_a_fable_chat_isnt_sent_without_a_plan_that_includes_it(frame, monkeypatch, plan, says):
+    shown = boxes(monkeypatch)
+    calls = asked(frame, monkeypatch, "credits")
+    signed_in(frame, plan) if plan else None
+    open_chat(frame, "fab-1")
+    send(frame)
+    assert FakeRunner.instances == [] and calls == []
+    assert says in shown[-1] and "Change Model" in shown[-1]
+    assert frame.reply_text.GetValue() == "Next step"
+    # Nor queued, Other Machines' way or an agent's relay.
+    assert says in frame._send_now("fab-1", "Queued one", queued=True)
+    assert not frame._send_claude(frame.store.get("fab-1").to_info(), "Relayed", [],
+                                  announce_send=False)
+    assert FakeRunner.instances == []
+
+
+def test_other_models_dont_need_the_plan(frame, monkeypatch):
+    signed_in(frame, "pro")
+    open_chat(frame, "opus-1")
+    send(frame)
+    assert FakeRunner.instances
+
+
+# -- usage credits, asked when you send --------------------------------------------------------
 
 def test_no_question_while_fable_is_inside_the_plan(frame, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "cancel")
-    frame._limits = {**OVERAGE, "isUsingOverage": False}
+    frame._fable_limits = overage(on=False)
     open_chat(frame, "fab-1")
     send(frame)
     assert calls == []
@@ -133,19 +169,21 @@ def test_no_question_while_fable_is_inside_the_plan(frame, monkeypatch):
 
 
 def test_cancel_keeps_the_message_and_sends_nothing(frame, env, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "cancel")
-    frame._limits = dict(OVERAGE)
+    frame._fable_limits = overage()
     open_chat(frame, "fab-1")
     send(frame)
-    assert calls == [("On Fable", "fable", False)]
+    assert calls == [("On Fable", "fable")]
     assert FakeRunner.instances == []
     assert frame.reply_text.GetValue() == "Next step"
     assert env["feedback"][-1] == "Not sent."
 
 
 def test_use_usage_credits_sends_that_turn_only_on_them(frame, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "credits")
-    frame._limits = dict(OVERAGE)
+    frame._fable_limits = overage()
     open_chat(frame, "fab-1")
     send(frame)
     assert len(calls) == 1
@@ -157,10 +195,11 @@ def test_use_usage_credits_sends_that_turn_only_on_them(frame, monkeypatch):
 
 
 def test_change_model_opens_change_model_for_that_chat(frame, monkeypatch):
+    signed_in(frame, "max")
     asked(frame, monkeypatch, "model")
     changed = []
     monkeypatch.setattr(frame, "on_change_model", lambda info=None: changed.append(info))
-    frame._limits = dict(OVERAGE)
+    frame._fable_limits = overage()
     open_chat(frame, "fab-1")
     send(frame)
     assert pump(lambda: changed)
@@ -169,52 +208,93 @@ def test_change_model_opens_change_model_for_that_chat(frame, monkeypatch):
 
 
 def test_other_models_and_a_reset_limit_arent_asked(frame, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "cancel")
-    frame._limits = dict(OVERAGE)
+    frame._fable_limits = overage()
     open_chat(frame, "opus-1")
     send(frame)
     assert calls == [] and FakeRunner.instances
     frame._runners.clear()
-    frame._limits = {**OVERAGE, "resetsAt": time.time() - 60}
+    frame._fable_limits = overage(resets_in=-60)
     open_chat(frame, "fab-1")
     send(frame)
     assert calls == []
 
 
-def test_a_message_that_doesnt_ask_isnt_sent_on_usage_credits(frame, monkeypatch):
+def test_only_a_fable_turns_report_counts_for_fable(frame):
+    """Fable has its own weekly allowance: an Opus turn saying it isn't on
+    usage credits doesn't mean Fable isn't."""
+    frame._runners["fab-1"] = SimpleNamespace(overage_model="", _turn_model=lambda: "claude-fable-5-2")
+    frame._note_limits("fab-1", overage())
+    frame._runners["opus-1"] = SimpleNamespace(overage_model="", _turn_model=lambda: "claude-opus-5-5")
+    frame._note_limits("opus-1", overage(on=False))
+    assert frame._overage_now()
+    assert frame._limits["isUsingOverage"] is False  # Usage shows the latest, as before
+    frame._note_limits("fab-1", overage(on=False))
+    assert not frame._overage_now()
+
+
+def test_what_isnt_you_pressing_send_never_goes_on_usage_credits(frame, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "credits")
-    frame._limits = dict(OVERAGE)
+    frame._fable_limits = overage()
     problem = frame._send_now("fab-1", "Queued one", queued=True)
     assert problem and "usage credits" in problem
+    assert not frame._send_claude(frame.store.get("fab-1").to_info(), "Relayed", [],
+                                  announce_send=False)
     assert calls == [] and FakeRunner.instances == []
 
 
-# -- after a turn stopped for it ---------------------------------------------------------------
-
-def stop_for_overage(frame, runner):
-    runner.stopped_for_overage = True
-    runner.stopped_mid_turn = True
-    runner.overage_model = "claude-fable-5-2"
-    runner.session_started = True
-    frame._on_turn_event({"id": "fab-1"}, "On Fable",
-                         TurnEvent("failed", text="Charged to usage credits.", is_error=True))
+def test_other_machines_asks_as_send_does(frame, monkeypatch):
+    signed_in(frame, "max")
+    calls = asked(frame, monkeypatch, "credits")
+    frame._fable_limits = overage()
+    frame._send_generated(frame.store.get("fab-1").to_info(), "Send this on", "Sending.")
+    assert len(calls) == 1 and FakeRunner.instances[-1].allow_overage is True
 
 
-def test_keep_going_sends_a_carry_on_message_on_usage_credits(frame, monkeypatch):
+def test_a_turn_allowed_on_usage_credits_asks_again_before_a_steer(frame, monkeypatch):
+    signed_in(frame, "max")
+    calls = asked(frame, monkeypatch, "cancel")
+    frame._fable_limits = overage()
+    runner = SimpleNamespace(allow_overage=True)
+    assert not frame._running_overage_ok("fab-1", runner)
+    assert len(calls) == 1
+    assert frame._running_overage_ok("fab-1", SimpleNamespace(allow_overage=False))
+    assert len(calls) == 1
+
+
+def test_a_stopped_turn_doesnt_pop_up_a_question(frame, monkeypatch):
+    """Stopped at usage credits: said as the turn's end, and the question
+    waits for your next Send, so no key you're typing elsewhere answers it."""
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "credits")
     open_chat(frame, "fab-1")
     send(frame)
-    stop_for_overage(frame, FakeRunner.instances[-1])
-    assert pump(lambda: len(FakeRunner.instances) == 2)
-    assert calls == [("On Fable", "claude-fable-5-2", True)]
-    again = FakeRunner.instances[-1]
-    assert again.prompt == OVERAGE_CARRY_ON and again.allow_overage is True
+    runner = FakeRunner.instances[-1]
+    runner.stopped_for_overage = runner.stopped_mid_turn = runner.session_started = True
+    frame._on_turn_event({"id": "fab-1"}, "On Fable",
+                         TurnEvent("failed", text="Charged to usage credits.", is_error=True))
+    wx.GetApp().ProcessPendingEvents()
+    assert calls == [] and len(FakeRunner.instances) == 1
 
 
-def test_leave_stopped_sends_nothing(frame, monkeypatch):
+def test_the_answers_map_and_escape_cancels():
+    from thechatplace.ui.main_frame import MainFrame
+    assert MainFrame._overage_answer(wx.ID_YES) == "credits"
+    assert MainFrame._overage_answer(wx.ID_NO) == "model"
+    for other in (wx.ID_CANCEL, wx.ID_CLOSE, -1):
+        assert MainFrame._overage_answer(other) == "cancel"
+
+
+def test_ask_aside_on_a_fable_chat_asks_first(frame, monkeypatch):
+    signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "cancel")
+    frame._fable_limits = overage()
+    opened = []
+    from thechatplace.ui import claude_extras
+    monkeypatch.setattr(claude_extras, "AskAsideDialog",
+                        lambda *a, **k: opened.append(a) or pytest.fail("opened"))
     open_chat(frame, "fab-1")
-    send(frame)
-    stop_for_overage(frame, FakeRunner.instances[-1])
-    assert pump(lambda: calls)
-    assert len(FakeRunner.instances) == 1
+    frame.on_ask_aside()
+    assert calls == [("On Fable", "fable")] and opened == []

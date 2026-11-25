@@ -17,7 +17,13 @@ from typing import List, Optional
 from . import platform_paths
 from .claude_cli import child_environment
 
-_PLANS = {"max": "Max", "pro": "Pro", "team": "Team", "enterprise": "Enterprise"}
+_PLANS = {"max": "Max", "pro": "Pro", "team": "Team", "enterprise": "Enterprise",
+          "ultra": "Ultra"}
+
+
+def plan_name(plan: str) -> str:
+    """How a ``subscriptionType`` is named ("Max"), or "" for one not known."""
+    return _PLANS.get((plan or "").strip().lower(), "")
 _PROVIDERS = {"bedrock": "Amazon Bedrock", "vertex": "Google Vertex AI",
               "foundry": "Microsoft Foundry"}
 

@@ -69,7 +69,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
                           normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON,
-                          OVERAGE_CARRY_ON, model_allowed, overage_paused, paused_family,
+                          fable_in_plan, model_allowed, overage_paused, paused_family,
                           using_overage)
 from .. import codex_long_messages, reply_costs, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
@@ -509,6 +509,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # (they're the account's), each own session's context window, and
         # what's been warned about already, so it's said once.
         self._limits: Optional[dict] = None
+        #: The latest usage report from a turn on Fable (#722): its own allowance.
+        self._fable_limits: Optional[dict] = None
         #: The Claude plan Claude Code is signed in to (``subscriptionType``,
         #: #722), "" until the sign-in check says: whether Fable is offered.
         self.claude_plan = ""
@@ -2253,57 +2255,81 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             models = models_for("api")
         return models
 
+    def _note_limits(self, session_id: str, info: dict):
+        """A turn's usage report (#19). One from a turn on a model that pauses
+        at usage credits (#722, Fable) is also kept as that model's own: Fable
+        has a weekly allowance of its own, so another model's turn saying it
+        isn't on usage credits says nothing about Fable."""
+        self._limits = info
+        runner = self._runners.get(session_id)
+        model = getattr(runner, "overage_model", "") or ""
+        if not model and runner is not None:
+            turn_model = getattr(runner, "_turn_model", None)
+            model = turn_model() if callable(turn_model) else getattr(runner, "chosen", "")
+        if overage_paused(model):
+            self._fable_limits = info
+
     def _overage_now(self) -> bool:
-        """Whether the latest usage Claude Code reported says turns are
-        charged to usage credits (#722), and that limit hasn't reset since."""
-        info = self._limits
+        """Whether the latest report from a Fable turn says turns are charged
+        to usage credits (#722), and the limit it names hasn't reset since."""
+        info = self._fable_limits
         if not using_overage(info):
             return False
         resets = info.get("resetsAt")
         return not (type(resets) in (int, float) and resets < time.time())
 
-    def _overage_send_problem(self, session_id: str, ask: bool = True):
-        """Before a subscription turn on a model that pauses at usage credits
-        (#722, Fable): if the last usage report says turns are charged to
-        them, ask. Returns (problem, allow): problem is None to send, "" when
-        you chose not to (the message stays in the reply box), or why a
-        queued message didn't go; allow is True when you chose usage credits,
-        for that one turn only."""
-        own = self.store.get(session_id)
-        if (own is None or own.billing == "api" or not overage_paused(own.model)
-                or not self._overage_now()):
+    def _fable_send_problem(self, own, ask: bool = True):
+        """Before any turn of a subscription chat on Fable (#722): the plan
+        must include Fable, and once a Fable turn has said turns are charged
+        to usage credits, you're asked. Returns (problem, allow): problem is
+        None to send, "" when you chose not to (the message stays with you),
+        or why it can't go; allow is True when you chose usage credits, for
+        that one turn only. ``ask``: you pressed Send; anything else (a
+        queued message, an agent conversation's relay) never goes on usage
+        credits, and gets the reason instead."""
+        if own is None or getattr(own, "provider", "claude") != "claude" \
+                or own.billing == "api" or not overage_paused(own.model):
+            return None, False
+        name = model_label(paused_family(own.model))
+        if not fable_in_plan(self.claude_plan):
+            # Pro and the like charge every Fable message to usage credits;
+            # an unknown plan is treated the same (fails closed).
+            plan = signin.plan_name(self.claude_plan)
+            why = (f"Your Claude {plan} plan doesn't include {name}, so every message on it "
+                   "would be charged to usage credits." if plan else
+                   f"The Chat Place hasn't confirmed that your Claude plan includes {name}. "
+                   "Tools, Sign In, Claude Code checks it.")
+            return (f"{why} Nothing was sent. To send it, choose another model with Chat, "
+                    "Chat Settings, Change Model."), False
+        if not self._overage_now():
             return None, False
         if not ask:
-            # Never sent on usage credits without asking: a queued message
-            # comes back instead, said in its own words by the caller.
-            return (f"Turns on {model_label(own.model)} are now charged to usage credits, so "
-                    "send it again to choose whether to use them."), False
-        choice = self._ask_overage(own.title, own.model, stopped=False)
+            return (f"Turns on {name} are now charged to usage credits, so it wasn't sent. "
+                    "Send it yourself to choose whether to use them."), False
+        choice = self._ask_overage(own.title, own.model)
         if choice == "credits":
             return None, True
         if choice == "model":
-            wx.CallAfter(self._change_model_of, session_id)
+            wx.CallAfter(self._change_model_of, own.cli_session_id)
         return "", False
 
-    def _ask_overage(self, title: str, model: str, stopped: bool) -> str:
+    def _ask_overage(self, title: str, model: str) -> str:
         """ "Use usage credits?" (#722): "credits", "model" (Change Model) or
-        "cancel". Asked every time, never remembered. ``stopped``: a turn was
-        just stopped for it, rather than a message about to go."""
+        "cancel". Only ever asked when you send, never popped up by itself,
+        and never remembered. The button that spends has no access key, and
+        Cancel is the default, so a stray key can't spend."""
         name = model_label(paused_family(model))  # "Fable", not claude-fable-5-2
-        if stopped:
-            text = (f"{title} was stopped: Claude Code said its turn was being charged to usage "
-                    f"credits, past your plan's {name} allowance. Keep going on usage credits "
-                    "for one more turn, change the model, or leave it stopped?")
-            labels = ("&Keep Going", "Change &Model", "Leave Stopped")
-        else:
-            text = (f"Turns on {name} are now charged to usage credits, past your plan's "
-                    f"{name} allowance. Send this message to {title} on usage credits, change "
-                    "the model, or cancel?")
-            labels = ("&Use Usage Credits", "Change &Model", "Cancel")
+        text = (f"Turns on {name} are now charged to usage credits, past your plan's {name} "
+                f"allowance. Send this message to {title} on usage credits, change the model, "
+                "or cancel?")
         dialog = wx.MessageDialog(self, text, "Use usage credits?",
                                   wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
-        dialog.SetYesNoCancelLabels(*labels)
-        answer = self._modal(dialog)  # which destroys it
+        dialog.SetYesNoCancelLabels("Use Usage Credits", "Change &Model", "Cancel")
+        return self._overage_answer(self._modal(dialog))  # _modal destroys it
+
+    @staticmethod
+    def _overage_answer(answer: int) -> str:
+        """The answer "Use usage credits?" gave: Escape and closing it cancel."""
         return {wx.ID_YES: "credits", wx.ID_NO: "model"}.get(answer, "cancel")
 
     def _change_model_of(self, session_id: str):
@@ -2312,18 +2338,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is not None:
             self.on_change_model(info)
 
-    def _after_overage_stop(self, session_id: str, title: str, model: str):
-        """A turn stopped at usage credits (#722): ask what to do next. Keep
-        Going sends a message to carry on, on usage credits for that turn."""
-        if self._gone() or session_id in self._runners:
-            return
-        choice = self._ask_overage(title, model, stopped=True)
-        if choice == "model":
-            self._change_model_of(session_id)
-        elif choice == "credits":
-            problem = self._send_now(session_id, OVERAGE_CARRY_ON, allow_overage=True)
-            if problem:
-                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+    def _running_overage_ok(self, session_id: str, runner) -> bool:
+        """Whether more may go into a running turn (a steer, Send Now, a
+        message while it waits on background work): one you allowed on usage
+        credits took only its own message (#722), so more is asked again."""
+        if not getattr(runner, "allow_overage", False):
+            return True
+        problem, allow = self._fable_send_problem(self.store.get(session_id))
+        if problem:
+            wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+        elif problem == "":
+            self._feedback("Not sent.")
+        return problem is None
 
     def _api_notice_spoken(self, session_id: str) -> bool:
         """Whether "Sent on API credits" is spoken for this chat (#663): an
@@ -2480,6 +2506,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         key, or Cancel at "Send on API credits?", #658): the chat is made
         and opened, with the message in its reply box. False to send it."""
         problem = self._api_send_problem(own.cli_session_id)
+        if problem is None:
+            # Fable's plan, and usage credits asked about, as Send does
+            # (#722). Its "allow" is the new chat's first turn's alone.
+            problem, allow = self._fable_send_problem(own)
+            self._first_turn_overage = allow
         if problem is None:
             return False
         if message:
@@ -4800,6 +4831,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback("Not sent.")
             return
         runner = self._runners.get(session_id)
+        allow_overage = False
+        if runner is None or runner.waiting_on_background:
+            # Fable's plan, and usage credits asked about, as Send does (#722).
+            problem, allow_overage = self._fable_send_problem(self.store.get(session_id))
+            if problem is not None:
+                if problem:
+                    wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+                else:
+                    self._feedback("Not sent.")
+                return
         if runner is not None and runner.waiting_on_background:
             # Answered and only waiting on background work (#161): it goes in.
             if runner.send_follow_up(message):
@@ -4812,7 +4853,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"{info.title} is working. Use Other Machines again when "
                            "the turn ends.")
             return
-        problem = self._send_now(session_id, message, spoken="")
+        problem = self._send_now(session_id, message, spoken="", allow_overage=allow_overage)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return
@@ -5589,7 +5630,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._first_message_held(own, message):
             return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
         # Start the turn first, so the session view sees it running.
-        self._start_turn(own.cli_session_id, command, folder, message, title)
+        self._start_turn(own.cli_session_id, command, folder, message, title,
+                         allow_overage=getattr(self, "_first_turn_overage", False))
         self.open_session(own.to_info())
         self.refresh_sessions()
         if made is not None:
@@ -5959,7 +6001,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 pass
         if self._first_message_held(own, message):
             return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
-        self._start_turn(new_id, command, info.cwd, message, title)
+        self._start_turn(new_id, command, info.cwd, message, title,
+                         allow_overage=getattr(self, "_first_turn_overage", False))
         self.open_session(own.to_info())
         self.refresh_sessions()
         if remote_control == "on":
@@ -6059,8 +6102,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         title = f"{info.title} (continued)"[:MAX_TITLE]
         own = OwnSession(cli_session_id=new_session_id(), title=title, cwd=source.cwd,
                          permission_mode=source.permission_mode, started=False,
-                         # Fable stays the subscription's to refuse; every
-                         # other model is kept.
+                         # Fable is kept (#722): every turn checks the plan
+                         # and usage credits before it goes.
                          model=source.model, effort=source.effort,
                          fork_source=source.cli_session_id, forked_from=info.title,
                          created_ms=now, last_activity_ms=now, billing="api",
@@ -6184,6 +6227,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # stop lands, so keep the text and say why.
             self._feedback("Still stopping. Send again in a moment.")
             return False
+        allow_overage = False
+        if runner is None or runner.waiting_on_background:
+            # A message that goes now, on Fable (#722): only on a plan that
+            # includes it, and on usage credits only if you say so, asked
+            # each time you press Send. An agent conversation's relay
+            # (``announce_send`` off) isn't asked: it gets the reason. A
+            # message queued now is checked when it goes.
+            problem, allow_overage = self._fable_send_problem(self.store.get(session_id),
+                                                              ask=announce_send)
+            if problem is not None:
+                if problem and announce_send:
+                    wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+                elif problem:
+                    self._feedback(problem)
+                else:
+                    self._feedback("Not sent.")
+                return False
         if runner is not None and runner.waiting_on_background:
             # Claude has answered and is only waiting for background work
             # (#161): the message goes in now, as the next one, rather than
@@ -6223,15 +6283,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                     self.speech.announce_own,
                                                     added=bool(waiting)))
             return True
-        # A new turn on Fable once turns are charged to usage credits: asked
-        # every time (#722). Cancel keeps the message with you.
-        problem, allow_overage = self._overage_send_problem(session_id)
-        if problem is not None:
-            if problem:
-                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
-            else:
-                self._feedback("Not sent.")
-            return False
         prompt, images = attachments.build(message, attached)
         problem = self._send_now(session_id, prompt, images=images, spoken=message,
                                  attached=attached, announce_send=announce_send,
@@ -6278,9 +6329,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if problem:
             return problem
         if not allow_overage:
-            # Nothing goes on usage credits without your say (#722): Send
-            # asked already; a queued message or Other Machines doesn't ask.
-            problem, _allow = self._overage_send_problem(session_id, ask=False)
+            # Nothing goes on Fable without the plan for it, or on usage
+            # credits without your say (#722): Send asked already; a queued
+            # message going on its own gets the reason.
+            problem, _allow = self._fable_send_problem(own, ask=False)
             if problem:
                 return problem
         chrome, own = self._chrome_for_turn(own)
@@ -6561,7 +6613,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._queue_activity("text", event.text)
             return
         if event.kind == "limits" and event.data is not None:
-            self._limits = event.data
+            self._note_limits(session_id, event.data)
             warning = usage.limit_warning(event.data)
             key = ("limit", usage.limit_warning_key(event.data))
             if warning and key not in self._warned:
@@ -6705,12 +6757,6 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
-            if (event.kind == "failed" and runner is not None
-                    and getattr(runner, "stopped_for_overage", False)):
-                # Stopped at usage credits (#722): what next, asked once the
-                # turn's ending has been said.
-                wx.CallAfter(self._after_overage_stop, session_id, title,
-                             getattr(runner, "overage_model", ""))
             self._steers_ended(session_id)
             # Steered or sent with Send Now but never taken in (Stop, or the
             # turn ended first): it comes back rather than being lost (#238,
@@ -6956,6 +7002,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # (#663); it was confirmed when it was queued. If it can't go,
             # it waits, and the turn's end gives it back saying why.
             problem = self._api_send_problem(session_id, ask=False)
+            if (problem is None and getattr(runner, "allow_overage", False)
+                    and self._overage_now()):
+                # Not on usage credits without asking (#722): it comes back at
+                # the turn's end instead, saying why.
+                problem = "usage credits"
             if problem is None and runner is not None and runner.send_follow_up(queued):
                 self._sound(sound_events.QUEUED_SENT, key, on_its_own=True)
                 self._feedback(f"Sent your queued message. {title} is working.")
@@ -7336,6 +7387,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         # Attachments go as @"path", as a queued message's do.
         text, _images = attachments.build(message, attached, images_inline=False)
+        if not self._running_overage_ok(session_id, runner):
+            return  # a turn allowed on usage credits took only its own message (#722)
         if not runner.steer(text):
             self._sound(sound_events.NOT_SENT, self._own_key(session_id))
             self._feedback(f"The turn has just ended. {key_name('Ctrl+Enter')} sends your "
@@ -7389,6 +7442,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         text = waiting[index]
         if self._history_unknown():
             return
+        if not self._running_overage_ok(info.cli_session_id, runner):
+            return  # a turn allowed on usage credits took only its own message (#722)
         if not runner.steer(text):
             self._feedback("The turn is already ending: the message stays queued and goes "
                            "when it's done.")
