@@ -72,8 +72,8 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Rain at Night, by Synthetic Author. 12 of 24 events have a sound.",
-    "Bright Bells, by Another Author. 15 of 24 events have a sound. Added."
+    "Rain at Night, by Synthetic Author. 12 of 25 events have a sound.",
+    "Bright Bells, by Another Author. 15 of 25 events have a sound. Added."
    ],
    "selection": 0
   },
@@ -114,7 +114,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Soft, low sounds for working late, with a quiet tap for tools. By Synthetic Author. Licence: CC0-1.0."
+   "value": "Soft, low sounds for working late, with a quiet tap for tools. By Synthetic Author. License: CC0-1.0."
   },
   {
    "class": "Button",

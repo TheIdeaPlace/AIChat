@@ -1578,7 +1578,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
         assert pump(lambda: dialog.list.GetCount() == 1)
         assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 25 events have a sound. "
                                             "Update available.")
-        assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
+        assert dialog.details.GetValue() == "Soft. By Someone. License: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
         assert said == ["Loading the sound scheme gallery…"]
     finally:
