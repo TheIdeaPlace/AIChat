@@ -196,11 +196,10 @@ def normalize_permission_mode(mode: str) -> str:
 #: says. Aliases, so each means that family's latest model. "" passes no
 #: ``--model`` at all, leaving it to Claude Code's own setting.
 #:
-#: Fable is left out on purpose. Claude Code's docs: on some plans Fable
-#: bills to usage credits, and in ``-p`` mode (every turn The Chat Place runs) it
-#: does so without asking. The Chat Place must never cost extra, and the
-#: ``apiKeySource`` check can't catch this (it's still the subscription
-#: login). Add it only once Kelly's plan is known to include it.
+#: Fable isn't here: it's offered only by plan (#722, below). On Pro, Fable
+#: isn't in the plan's limits and every message is charged to usage credits,
+#: in ``-p`` mode (every turn The Chat Place runs) without asking, and the
+#: ``apiKeySource`` check can't catch that (it's still the subscription login).
 MODELS = [
     ("", "Default (your Claude Code setting)"),
     ("opus", "Opus"),
@@ -210,20 +209,35 @@ MODELS = [
 MODEL_LABELS = dict(MODELS)
 #: The choices for a chat on API credits (#658): Fable too. On an API key
 #: Fable is charged like any other model, at its own price, to the credits
-#: the chat was made to spend, so the reason it's left out above doesn't
-#: apply. Subscription chats never get it.
+#: the chat was made to spend.
 API_MODELS = MODELS + [("fable", "Fable")]
 API_MODEL_LABELS = dict(API_MODELS)
+#: The plans (``claude auth status``'s ``subscriptionType``) whose limits
+#: include Fable, with a weekly Fable allowance of their own (#722). Anything
+#: else, Pro, Team, Enterprise or a value not known yet, gets no Fable:
+#: only "max" was seen (2026-11-25); "ultra" is what Anthropic's pages name.
+FABLE_PLANS = ("max", "ultra")
 
 
-def models_for(billing: str) -> list:
-    """The model choices for a chat charged ``billing`` (billing.ROUTE_*)."""
-    return API_MODELS if billing == "api" else MODELS
+def fable_in_plan(plan: str) -> bool:
+    """Whether a subscription on ``plan`` has Fable in its limits (#722)."""
+    return (plan or "").strip().lower() in FABLE_PLANS
+
+
+def models_for(billing: str, plan: str = "") -> list:
+    """The model choices for a chat charged ``billing`` (billing.ROUTE_*):
+    Fable on API credits, and on a subscription whose ``plan`` includes it."""
+    if billing == "api" or fable_in_plan(plan):
+        return API_MODELS
+    return MODELS
 
 
 def model_allowed(model: str, billing: str) -> bool:
-    """Whether a chat charged ``billing`` may keep ``model``."""
-    return model in dict(models_for(billing))
+    """Whether a chat charged ``billing`` may keep ``model``. A subscription
+    chat may keep Fable (#722): the plan decides whether it's offered, and a
+    turn is stopped once it would be charged to usage credits, whatever the
+    plan is by then (``overage_problem``)."""
+    return model in dict(API_MODELS)
 
 #: The effort choices for a session (#189): ``--effort`` value and what the
 #: picker says. Checked with Claude Code 2.1.296: ``-p`` takes ``--effort``
@@ -1389,6 +1403,51 @@ def fable_problem(actual: str, chosen: str, sent: bool = False,
             "Chat Settings, Change Model, then send again.")
 
 
+#: The models whose subscription turns pause once they'd be charged to usage
+#: credits (#722). Fable first: its own weekly limit is reached soonest. With
+#: usage credits on, any model can go past the plan's limits, so the rule
+#: takes a list; adding a model here is all the turn and the window need.
+OVERAGE_PAUSED = ("fable",)
+
+#: Said when a turn is stopped because it's now charged to usage credits.
+OVERAGE_STOPPED = (
+    "Claude Code said this turn is now being charged to usage credits, past your plan's "
+    "{model} allowance, so The Chat Place stopped it. Anything already sent may have been "
+    "charged. To keep going, send again and choose to use usage credits, or choose another "
+    "model with Chat, Chat Settings, Change Model.")
+#: What Keep Going sends after such a stop: the turn was cut off mid-work.
+OVERAGE_CARRY_ON = "Please carry on from where you were stopped."
+
+
+def overage_paused(model: str) -> bool:
+    """Whether a subscription turn on ``model`` pauses at usage credits."""
+    model = (model or "").lower()
+    return any(mark in model for mark in OVERAGE_PAUSED)
+
+
+def using_overage(info) -> bool:
+    """Whether a ``rate_limit_event``'s info says turns are now charged to
+    usage credits (Claude Code's ``isUsingOverage``)."""
+    return isinstance(info, dict) and info.get("isUsingOverage") is True
+
+
+def overage_problem(info, model: str, billing: str = "subscription",
+                    allowed: bool = False) -> Optional[str]:
+    """The message for a turn on ``model`` to stop at (#722): a subscription
+    turn on a paused model, once ``info`` says it's charged to usage credits,
+    unless you chose to keep going on them for this turn (``allowed``). On
+    API credits that's how every turn is charged, and the limits bound it."""
+    if allowed or billing == "api" or not overage_paused(model) or not using_overage(info):
+        return None
+    return OVERAGE_STOPPED.format(model=model_label(paused_family(model)))
+
+
+def paused_family(model: str) -> str:
+    """The alias in OVERAGE_PAUSED that ``model`` belongs to, for its label."""
+    model = (model or "").lower()
+    return next((mark for mark in OVERAGE_PAUSED if mark in model), model)
+
+
 #: How long a finished turn waits for Claude Code to say it's idle (its SDK's
 #: own ceiling) before ending the turn anyway.
 IDLE_AFTER_RESULT_WAIT = 600.0
@@ -1560,8 +1619,16 @@ class TurnRunner:
                  context_usage: bool = False,
                  billing: str = "subscription", api_key_name: str = "",
                  ledger=None, chat_id: str = "", purpose: str = "turn",
-                 cost_baselines=None, suggestions: bool = False) -> None:
+                 cost_baselines=None, suggestions: bool = False,
+                 allow_overage: bool = False) -> None:
         self.command = command
+        #: You chose to keep going on usage credits for this one turn (#722);
+        #: never kept for the next.
+        self.allow_overage = allow_overage
+        #: Stopped because the turn was now charged to usage credits (#722).
+        self.stopped_for_overage = False
+        #: The model it was on then, for "Use usage credits?".
+        self.overage_model = ""
         #: Ask for a suggested next message (#474). Never on API credits:
         #: it's another request the turn's result doesn't count, so its cost
         #: would be missing from the chat's spending.
@@ -1948,6 +2015,20 @@ class TurnRunner:
             waiting = list(self._controls)
         for request_id in waiting:
             self._control_done(request_id, False, {}, TURN_ENDED)
+
+    def _turn_model(self) -> str:
+        """The model the usage-credit pause goes by (#722): the one that
+        wrote the latest reply, else what system/init or initialize said,
+        else the chosen one. A chosen paused model counts as well: an agent
+        on it (allowed only when the chat chose it, chat_options) writes
+        replies the main reply_model never shows."""
+        reply = self.parser.reply_model if self.parser.reply_model != "<synthetic>" else ""
+        actual = (reply or self.parser.model
+                  or resolved_model(self.parser.resolved_models, self.chosen))
+        chosen = self.chosen or ""
+        if overage_paused(chosen) and not overage_paused(actual):
+            return chosen
+        return actual or chosen
 
     def set_model(self, model: str, on_done: Callable[[bool, dict, str], None]) -> bool:
         """Change the running turn's model (Change Model, #468). Checked with
@@ -2615,6 +2696,24 @@ class TurnRunner:
                                     and not self._unanswered)):
                             self.retry = {**(event.data or {}), "at": self._clock()}
                         self._emit(event)
+                        continue
+                    if event.kind == "limits":
+                        # Usage first, so Tools, Usage says it (#19); then
+                        # whether the turn is now charged to usage credits
+                        # (#722). Claude Code sends this again whenever its
+                        # status or isUsingOverage changes, so the request
+                        # that tipped it over brings it, mid-turn.
+                        self._emit(event)
+                        problem = overage_problem(event.data, self._turn_model(),
+                                                  self.billing, self.allow_overage)
+                        if problem:
+                            self.stopped_for_overage = True
+                            self.overage_model = self._turn_model()
+                            self.stopped_mid_turn = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
                         continue
                     if event.kind == "fallback":
                         # A fallback mid-turn gets no new system/init, so the

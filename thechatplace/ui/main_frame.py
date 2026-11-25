@@ -68,7 +68,9 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
-                          normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON)
+                          normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON,
+                          OVERAGE_CARRY_ON, model_allowed, overage_paused, paused_family,
+                          using_overage)
 from .. import codex_long_messages, reply_costs, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
 from .sound_host import SoundHost
@@ -507,6 +509,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # (they're the account's), each own session's context window, and
         # what's been warned about already, so it's said once.
         self._limits: Optional[dict] = None
+        #: The Claude plan Claude Code is signed in to (``subscriptionType``,
+        #: #722), "" until the sign-in check says: whether Fable is offered.
+        self.claude_plan = ""
         self._windows: Dict[str, int] = {}  # by session id
         self._model_windows: Dict[str, int] = {}  # by model, from any turn of ours
         self._warned: set = set()
@@ -2236,6 +2241,89 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return dialog.ShowModal() == wx.ID_OK
         finally:
             dialog.Destroy()
+
+    def _claude_models(self, own=None, billing: str = "") -> list:
+        """The models a Claude chat may be given (#722): Fable on API credits
+        and on a plan that has it; and Fable kept for a chat that already has
+        it, while the plan isn't known yet, rather than lost from the list."""
+        billing = own.billing if own is not None else (billing or "subscription")
+        models = models_for(billing, self.claude_plan)
+        if own is not None and own.model and own.model not in dict(models) \
+                and model_allowed(own.model, billing):
+            models = models_for("api")
+        return models
+
+    def _overage_now(self) -> bool:
+        """Whether the latest usage Claude Code reported says turns are
+        charged to usage credits (#722), and that limit hasn't reset since."""
+        info = self._limits
+        if not using_overage(info):
+            return False
+        resets = info.get("resetsAt")
+        return not (type(resets) in (int, float) and resets < time.time())
+
+    def _overage_send_problem(self, session_id: str, ask: bool = True):
+        """Before a subscription turn on a model that pauses at usage credits
+        (#722, Fable): if the last usage report says turns are charged to
+        them, ask. Returns (problem, allow): problem is None to send, "" when
+        you chose not to (the message stays in the reply box), or why a
+        queued message didn't go; allow is True when you chose usage credits,
+        for that one turn only."""
+        own = self.store.get(session_id)
+        if (own is None or own.billing == "api" or not overage_paused(own.model)
+                or not self._overage_now()):
+            return None, False
+        if not ask:
+            # Never sent on usage credits without asking: a queued message
+            # comes back instead, said in its own words by the caller.
+            return (f"Turns on {model_label(own.model)} are now charged to usage credits, so "
+                    "send it again to choose whether to use them."), False
+        choice = self._ask_overage(own.title, own.model, stopped=False)
+        if choice == "credits":
+            return None, True
+        if choice == "model":
+            wx.CallAfter(self._change_model_of, session_id)
+        return "", False
+
+    def _ask_overage(self, title: str, model: str, stopped: bool) -> str:
+        """ "Use usage credits?" (#722): "credits", "model" (Change Model) or
+        "cancel". Asked every time, never remembered. ``stopped``: a turn was
+        just stopped for it, rather than a message about to go."""
+        name = model_label(paused_family(model))  # "Fable", not claude-fable-5-2
+        if stopped:
+            text = (f"{title} was stopped: Claude Code said its turn was being charged to usage "
+                    f"credits, past your plan's {name} allowance. Keep going on usage credits "
+                    "for one more turn, change the model, or leave it stopped?")
+            labels = ("&Keep Going", "Change &Model", "Leave Stopped")
+        else:
+            text = (f"Turns on {name} are now charged to usage credits, past your plan's "
+                    f"{name} allowance. Send this message to {title} on usage credits, change "
+                    "the model, or cancel?")
+            labels = ("&Use Usage Credits", "Change &Model", "Cancel")
+        dialog = wx.MessageDialog(self, text, "Use usage credits?",
+                                  wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
+        dialog.SetYesNoCancelLabels(*labels)
+        answer = self._modal(dialog)  # which destroys it
+        return {wx.ID_YES: "credits", wx.ID_NO: "model"}.get(answer, "cancel")
+
+    def _change_model_of(self, session_id: str):
+        """Change Model for this chat, wherever the selection is (#722)."""
+        info = self._current_info(self._own_key(session_id))
+        if info is not None:
+            self.on_change_model(info)
+
+    def _after_overage_stop(self, session_id: str, title: str, model: str):
+        """A turn stopped at usage credits (#722): ask what to do next. Keep
+        Going sends a message to carry on, on usage credits for that turn."""
+        if self._gone() or session_id in self._runners:
+            return
+        choice = self._ask_overage(title, model, stopped=True)
+        if choice == "model":
+            self._change_model_of(session_id)
+        elif choice == "credits":
+            problem = self._send_now(session_id, OVERAGE_CARRY_ON, allow_overage=True)
+            if problem:
+                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
 
     def _api_notice_spoken(self, session_id: str) -> bool:
         """Whether "Sent on API credits" is spoken for this chat (#663): an
@@ -4843,25 +4931,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except Exception:  # noqa: BLE001 - none to offer, Copilot's own is
             return ()
 
-    def on_change_model(self):
+    def on_change_model(self, info: Optional[SessionInfo] = None):
         """Chat, Chat Settings, Change Model: the model for this session's next turns, and
         the running turn's if Claude Code takes it (#468). A session's model
-        goes with every turn, so it can change at any time."""
-        selected = self._selected_session()
+        goes with every turn, so it can change at any time. ``info``: the
+        chat to change, when it isn't the selected one ("Use usage
+        credits?" offers it for the chat it's about, #722)."""
+        selected = info if info is not None else self._selected_session()
         if selected is not None and selected.provider in ('codex', 'codex-api'):
             self._change_codex_settings(selected, 'model')
             return
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
-        found = self._own_for_setting("model")
+        found = self._own_for_setting("model", selected)
         if found is None:
             return
         info, own = found
         model = self._change_setting("Change Model",
                                      f"Model for {info.title}, now {model_label(own.model)}:",
-                                     # Fable too for a chat on API credits (#658).
-                                     models_for(own.billing), own.model)
+                                     # Fable too for a chat on API credits
+                                     # (#658), and on a plan with Fable (#722).
+                                     self._claude_models(own), own.model)
         if model is None:
             return
         # own's id, not info's: Claude may have given the session another id
@@ -6132,9 +6223,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                     self.speech.announce_own,
                                                     added=bool(waiting)))
             return True
+        # A new turn on Fable once turns are charged to usage credits: asked
+        # every time (#722). Cancel keeps the message with you.
+        problem, allow_overage = self._overage_send_problem(session_id)
+        if problem is not None:
+            if problem:
+                wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+            else:
+                self._feedback("Not sent.")
+            return False
         prompt, images = attachments.build(message, attached)
         problem = self._send_now(session_id, prompt, images=images, spoken=message,
-                                 attached=attached, announce_send=announce_send)
+                                 attached=attached, announce_send=announce_send,
+                                 allow_overage=allow_overage)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return False
@@ -6145,10 +6246,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _send_now(self, session_id: str, message: str, queued: bool = False,
                   images: Optional[List[dict]] = None, spoken: Optional[str] = None,
                   attached: Optional[List[str]] = None,
-                  announce_send: bool = True) -> Optional[str]:
+                  announce_send: bool = True, allow_overage: bool = False) -> Optional[str]:
         """Start a turn with ``message``. Returns why it can't, or None once
         sent; the caller decides how to say it (a dialog when Kelly pressed
-        Send, speech for a queued message going out on its own)."""
+        Send, speech for a queued message going out on its own).
+        ``allow_overage``: you chose usage credits for this turn (#722)."""
         own = self.store.get(session_id)
         if session_id in self._rewinding_files or (own is not None
                                                    and self._files_going_back_in(own.cwd)):
@@ -6175,6 +6277,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         problem = self._api_send_problem(session_id, ask=False)
         if problem:
             return problem
+        if not allow_overage:
+            # Nothing goes on usage credits without your say (#722): Send
+            # asked already; a queued message or Other Machines doesn't ask.
+            problem, _allow = self._overage_send_problem(session_id, ask=False)
+            if problem:
+                return problem
         chrome, own = self._chrome_for_turn(own)
         try:
             if self._session_exists(own):
@@ -6215,7 +6323,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,
                          queued=queued, images=images, spoken=spoken, attached=attached,
-                         announce_send=announce_send)
+                         announce_send=announce_send, allow_overage=allow_overage)
         return None
 
     def _chrome_state(self, billing: str) -> str:
@@ -6259,7 +6367,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _start_turn(self, session_id: str, command, cwd: str, prompt: str, title: str,
                     queued: bool = False, images: Optional[List[dict]] = None,
                     spoken: Optional[str] = None, attached: Optional[List[str]] = None,
-                    announce_send: bool = True):
+                    announce_send: bool = True, allow_overage: bool = False):
         """``spoken`` is what's read back (what you typed, without the
         attachment lines added to ``prompt``)."""
         holder = {"id": session_id}
@@ -6290,6 +6398,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             suggestions=(self.speech.prompt_suggestions
                                          and not prompt.lstrip().startswith("/")
                                          and not self._agent_quiet("claude", session_id)),
+                            allow_overage=allow_overage,  # this turn only (#722)
                             # Charged as the chat was made to be (#658).
                             **self._billing_kwargs(session_id))
         # What came after the last reply is out of date once a turn starts.
@@ -6596,6 +6705,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         p for p in waiting_now if p not in attached_back]
                     if is_open:
                         self._show_attachments()
+            if (event.kind == "failed" and runner is not None
+                    and getattr(runner, "stopped_for_overage", False)):
+                # Stopped at usage credits (#722): what next, asked once the
+                # turn's ending has been said.
+                wx.CallAfter(self._after_overage_stop, session_id, title,
+                             getattr(runner, "overage_model", ""))
             self._steers_ended(session_id)
             # Steered or sent with Send Now but never taken in (Stop, or the
             # turn ended first): it comes back rather than being lost (#238,
@@ -9211,6 +9326,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._gone():
             return
         text = signin.describe(status)
+        if status.known:
+            # Which models are offered (#722): Fable on a plan that has it.
+            self.claude_plan = (status.plan if status.signed_in and status.subscription
+                                else "")
         if not manual:
             # At start-up, only a problem is news, and not over the list.
             if getattr(self, "_sign_in_asked", False):

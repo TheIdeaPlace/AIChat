@@ -1349,6 +1349,19 @@ def d_new_session_api_credits(frame, env):
     return lambda: frame._modal(dialog)
 
 
+def d_new_session_fable_plan(frame, env):
+    """New Session signed in to a Max plan (#722): the subscription offers
+    Fable, which is chosen, and the note says what happens past its allowance."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    before, frame.claude_plan = frame.claude_plan, "max"
+    try:
+        dialog = NewSessionDialog(frame, env["folders"]["Scratch"])
+    finally:
+        frame.claude_plan = before  # the dialog keeps what it read
+    dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
+    return lambda: frame._modal(dialog)
+
+
 def d_new_session_openai(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',),
@@ -2658,6 +2671,9 @@ SURFACES = {
     "new-session-api-credits": ("dialog", d_new_session_api_credits,
                                 "New Session once a Claude API key is added, with Charge to "
                                 "on API credits and Fable chosen (#658)"),
+    "new-session-fable-plan": ("dialog", d_new_session_fable_plan,
+                               "New Session on a Max plan, with Fable chosen and its note "
+                               "(#722)"),
     'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
     'new-session-unpriced': ('dialog', d_new_session_unpriced, 'New Session offers a model with price unknown'),
     'openai-unpriced-confirm': ('dialog', d_openai_unpriced, 'Mandatory price-unknown warning, Cancel default'),
@@ -2833,6 +2849,7 @@ DIALOG_CLASSES = {
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "new-session-api-credits": "NewSessionDialog",
+    "new-session-fable-plan": "NewSessionDialog",
     'new-session-openai': 'NewSessionDialog',
     'new-session-unpriced': 'NewSessionDialog',
     'openai-unpriced-confirm': 'UnpricedApiDialog',

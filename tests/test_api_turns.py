@@ -839,17 +839,23 @@ def test_billing_is_kept_and_anything_odd_is_the_subscription(tmp_path):
     assert again.get("aaaa-2").billing == "subscription"
     for odd in ("API", "credits", None, 5, ""):
         session = _session_from_dict({"cli_session_id": "bbbb-1", "title": "t", "cwd": "c",
-                                      "billing": odd, "model": "fable"})
+                                      "billing": odd, "model": "opus[1m]"})
         assert session.billing == "subscription" and session.model == ""
 
 
-def test_fable_is_kept_only_for_api_chats(tmp_path):
+def test_fable_is_offered_on_api_credits_and_plans_with_it(tmp_path):
+    """#722: a subscription chat may keep Fable (the plan decides whether
+    it's offered, and the usage-credit stop guards every turn)."""
     store = OwnSessionStore(tmp_path / "sessions.json")
-    with pytest.raises(ValueError):
-        store.add(OwnSession("aaaa-3", "t", str(tmp_path), model="fable"))
-    assert cli.model_allowed("fable", "api") and not cli.model_allowed("fable", "subscription")
+    store.add(OwnSession("aaaa-3", "t", str(tmp_path), model="fable"))
+    assert OwnSessionStore(tmp_path / "sessions.json").get("aaaa-3").model == "fable"
+    assert cli.model_allowed("fable", "api") and cli.model_allowed("fable", "subscription")
+    assert not cli.model_allowed("opus[1m]", "subscription")
     assert ("fable", "Fable") in cli.models_for("api")
-    assert "fable" not in dict(cli.models_for("subscription"))
+    for plan in ("", "pro", "team", "enterprise", "free", "Maximum"):
+        assert "fable" not in dict(cli.models_for("subscription", plan)), plan
+    for plan in ("max", "Max", "ultra", " ULTRA "):
+        assert ("fable", "Fable") in cli.models_for("subscription", plan), plan
     assert cli.MODELS == [m for m in cli.API_MODELS if m[0] != "fable"]
     assert cli.model_label("fable") == "Fable"
 

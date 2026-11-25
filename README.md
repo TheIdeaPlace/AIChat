@@ -349,10 +349,20 @@ too).
   and plan are offered) and the first message. The models are Default (your Claude Code setting), Opus,
   Sonnet and Haiku, each the latest of its family. The model is kept with the session and
   passed to every turn. Arriving in the messages, you hear it ("Messages in Build (idle, on
-  Opus)"). Fable isn't offered: on some plans it bills to usage credits, and in the headless
-  mode The Chat Place uses, Claude Code does that without asking. So if a turn would run on
-  Fable anyway (Claude Code's own default, or a fallback), The Chat Place stops it before
-  anything is sent and says why. **Change Model** (Chat, Chat Settings: Alt+C, N, M) changes a session's model from its
+  Opus)"). **Fable** is offered too when Claude Code is signed in to a Max or Ultra plan,
+  whose limits include a Fable allowance (The Chat Place checks the plan at start-up and with
+  Tools, Sign In, Claude Code). On Pro, or a plan it doesn't recognize, Fable isn't offered,
+  because every Fable message would be charged to usage credits. Past the allowance, with usage
+  credits turned on, Claude Code charges Fable turns to them without asking, so The Chat Place
+  stops a Fable turn as soon as Claude Code says it's being charged to usage credits (only
+  requests already under way can be charged). It then asks **Use usage credits?**: Keep Going
+  (sends "Please carry on from where you were stopped." on usage credits, for that one turn),
+  Change Model, or Leave Stopped. Once turns are being charged to usage credits, sending to a chat
+  on Fable asks first as well (Use Usage Credits, Change Model or Cancel); it asks every time and
+  never remembers the answer. A queued message isn't sent on usage credits: it comes back to the
+  message box. A Fable you didn't choose is still stopped: if a turn would run on Fable anyway
+  (Claude Code's own default, or a fallback), The Chat Place stops it before anything is sent
+  and says why. **Change Model** (Chat, Chat Settings: Alt+C, N, M) changes a session's model from its
   next turn, and a running turn's too (below). **Effort** is Default (your Claude Code setting), Low, Medium, High, Extra high or
   Max, passed to every turn as Claude Code's `--effort`; models that don't support effort levels
   ignore it. **Change Effort** (Alt+C, N, E) and **Change Permission Mode**

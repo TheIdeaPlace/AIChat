@@ -2038,9 +2038,11 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
 - **Title:** optional; without one, it's made from the first words of your message.
 - **Model:**
     - Claude: Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
-      kind. Change Model (Chat, Chat Settings) changes it later, from the next turn. Fable isn't offered, because
-      on some plans it bills to usage credits without asking; if a turn would run on Fable anyway,
-      The Chat Place stops it before anything is sent, and says why.
+      kind, and Fable on a Max or Ultra plan. Change Model (Chat, Chat Settings) changes it later,
+      from the next turn. On Pro, or a plan The Chat Place doesn't recognize, Fable isn't offered,
+      because every Fable message would be charged to usage credits. See "Fable and usage
+      credits". If a turn would run on a Fable you didn't choose, The Chat Place stops it before
+      anything is sent, and says why.
     - Codex: **Codex's default** (your Codex settings), or one of the models Codex offers. A chat
       on Codex's default uses whatever that is at each turn, so it moves with it if it changes. The
       list loads in the background; if it can't be loaded, Codex's default is still there.
@@ -3667,7 +3669,22 @@ The Chat Place uses. Run `claude update` in a terminal, then send again.
 with Fable, which the chat didn't choose: its default model, or a fallback from the model you
 chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
 your message is sent, and puts your message back in the message box. Choose another model with
-Chat, Chat Settings, Change Model, then send again.
+Chat, Chat Settings, Change Model, then send again. To use Fable on purpose, choose it with
+Change Model; it's offered on Max and Ultra plans.
+
+**Fable and usage credits.** Max and Ultra plans include a weekly Fable allowance. Past it,
+Fable stops working, or, if usage credits are turned on for your account, Claude Code charges
+Fable turns to them without asking. So The Chat Place stops a Fable turn as soon as Claude Code
+says it's being charged to usage credits. Only requests already under way can be charged.
+Then it asks **Use usage credits?**:
+- **Keep Going** sends "Please carry on from where you were stopped." on usage credits, for that
+  one turn.
+- **Change Model** opens Change Model for that chat.
+- **Leave Stopped** sends nothing.
+
+Once turns are being charged to usage credits, sending to a chat on Fable asks first (Use Usage
+Credits, Change Model or Cancel). It asks every time and never remembers your answer. A queued
+message isn't sent on usage credits: it comes back to your message box.
 
 **Claude doesn't use one of my connectors or MCP servers.** Choose Tools, Connected Tools (MCP)
 with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and
