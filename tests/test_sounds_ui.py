@@ -1222,11 +1222,11 @@ def test_each_built_in_scheme_keeps_its_own_changes(dialog):
     dialog.scheme.SetStringSelection("Wood")
     dialog._scheme_chosen()
     assert "Reply finished: Rise" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (23 of 23 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (25 of 25 events have a sound):"
     dialog.scheme.SetStringSelection("Glass")
     dialog._scheme_chosen()
     assert "Reply finished: None" in dialog.events.GetItems()
-    assert dialog.events_label.GetLabelText() == "Sound events (22 of 23 events have a sound):"
+    assert dialog.events_label.GetLabelText() == "Sound events (24 of 25 events have a sound):"
     settings = dialog.get_settings()
     assert settings.sound_scheme == "glass"
     assert settings.sound_schemes == {"glass": {"events": {"ReplyFinished": "none"}}}
@@ -1576,7 +1576,7 @@ def test_the_gallery_lists_and_says_what_you_have(frame):
     dialog, said = _gallery_dialog(frame, se.load_schemes({}) + [mine], _FakeGallery([entry]))
     try:
         assert pump(lambda: dialog.list.GetCount() == 1)
-        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 23 events have a sound. "
+        assert dialog.list.GetString(0) == ("Rain, by Someone. 2 of 25 events have a sound. "
                                             "Update available.")
         assert dialog.details.GetValue() == "Soft. By Someone. Licence: CC0-1.0."
         assert dialog.add.GetLabel() == "&Update" and dialog.add.IsEnabled()
@@ -1744,12 +1744,12 @@ def test_no_more_than_100_schemes_of_your_own(dialog, env, ask):
 
 
 def test_the_events_lists_name_says_how_many_have_a_sound(dialog):
-    assert dialog._events_name() == "Sound events, 23 of 23 events have a sound"
+    assert dialog._events_name() == "Sound events, 25 of 25 events have a sound"
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert dialog._events_name() == "Sound events, 22 of 23 events have a sound"
-    assert dialog.events.GetName() == "Sound events, 22 of 23 events have a sound"
+    assert dialog._events_name() == "Sound events, 24 of 25 events have a sound"
+    assert dialog.events.GetName() == "Sound events, 24 of 25 events have a sound"
 
 
 def label_name(control):
@@ -1767,14 +1767,14 @@ def test_each_label_answers_with_its_controls_name_so_nvda_doesnt_read_them_on_o
     assert label_name(dialog.others) == (wx.ACC_OK, "Other sounds play for")
     assert label_name(dialog.sound) == (wx.ACC_OK, "Sound")
     # The events list's label follows the count in the list's name.
-    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 23 of 23 events have a sound")
+    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 25 of 25 events have a sound")
     select_event(dialog, se.TOOL)
     dialog.sound.SetStringSelection("None")
     dialog._sound_chosen()
-    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 22 of 23 events have a sound")
+    assert label_name(dialog.events) == (wx.ACC_OK, "Sound events, 24 of 25 events have a sound")
     # What the labels show doesn't change.
     assert dialog.volume.GetPrevSibling().GetLabel() == "&Volume:"
-    assert dialog.events_label.GetLabel() == "Sound &events (22 of 23 events have a sound):"
+    assert dialog.events_label.GetLabel() == "Sound &events (24 of 25 events have a sound):"
 
 
 @msaa
@@ -1810,8 +1810,8 @@ def test_a_note_before_a_control_keeps_its_own_name(frame):
 @pytest.mark.parametrize("label, name, tied", [
     ("&Volume:", "Volume", True),
     ("&Title:", "Title (optional)", True),
-    ("Sound &events (3 of 23 events have a sound):", "Sound events, 3 of 23 events have a sound", True),
-    ("Sound &events:", "Sound events, 3 of 23 events have a sound", True),
+    ("Sound &events (3 of 25 events have a sound):", "Sound events, 3 of 25 events have a sound", True),
+    ("Sound &events:", "Sound events, 3 of 25 events have a sound", True),
     ("Changes apply to new chats.", "Model", False),
     # A label saying more than the name keeps its own, so its example isn't lost.
     ("First agent's &role (optional), such as Build the fix:", "First agent's role (optional)", False),
@@ -1857,7 +1857,7 @@ def test_sound_tutorial_lists_event_names_only_on_the_first(frame):
     try:
         assert dialog.GetTitle() == "Sound Tutorial"
         assert dialog.events.GetItems() == [e.label for e in se.EVENTS]
-        assert len(dialog.events.GetItems()) == 23
+        assert len(dialog.events.GetItems()) == 25
         assert dialog.events.GetSelection() == 0
         assert dialog.events.GetName() == "Sound events"
         assert "in the Wood scheme" in dialog.intro.GetLabel().replace("\n", " ")

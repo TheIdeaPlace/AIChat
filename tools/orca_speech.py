@@ -114,6 +114,14 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
+    # Prompt suggestions (#474): the reply came with one, put in the empty
+    # message box and selected. Tab there reads it. Then the box is emptied
+    # and the focus put back on that message, so the steps after this one
+    # start where they always have.
+    Step("a suggestion, then Tab to the message box", ["Tab"], trigger="suggestion",
+         after_trigger=True, expect=["Your message", "Write the script"]),
+    Step("back to the message", [], trigger="suggestion-done",
+         expect=["Make the uploader flush before it signals"]),
     # Retry from Here (#468, #596) on that message of yours: it opens on the
     # chosen option of What Goes Back, Tab reads What Happens, Shift+Tab goes
     # back to the option, Escape comes back. The option is checked after
@@ -837,8 +845,24 @@ def refresh(frame) -> None:
                   timeout=10)
 
 
+def suggestion(frame) -> None:
+    """The open chat's last reply came with a suggested next message (#474)."""
+    frame._suggestions[frame._open_claude_id()] = "Write the script"
+    frame._place_suggestion(sound=False)
+
+
+def suggestion_done(frame) -> None:
+    """Put things back as they were before ``suggestion``: no draft, no
+    suggestion, and the focus on the message it started from."""
+    frame._suggestions.clear()
+    frame.reply_text.ChangeValue("")
+    frame.chat_list.SetFocus()
+
+
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    "suggestion": lambda frame, env: suggestion(frame),
+    "suggestion-done": lambda frame, env: suggestion_done(frame),
     'local-file-links': lambda frame, env: _codex_dialog('d_local_file_links', frame, env),
     'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
     "question": lambda frame, env: ask_question(frame),

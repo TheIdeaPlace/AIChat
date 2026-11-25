@@ -153,6 +153,18 @@ SESSION_INJECTED_PREFIXES = ("CLAUDE_CODE_SDK_", "CLAUDE_CODE_HOST_",
 #: Turns Claude's task-list tools on for every model (#231).
 TASK_LIST_VAR = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
 
+#: Prompt suggestions (#474): a predicted next message after each turn.
+#: Checked with Claude Code 2.1.326: ``--prompt-suggestions`` alone sends
+#: nothing; with this variable set too, a ``prompt_suggestion`` message
+#: ({"suggestion": "write the script"}) comes about 1.2 s after the turn's
+#: result, before the process exits, even once stdin is closed. At most one
+#: per turn, and not every turn: Claude Code skips it when it has nothing
+#: likely to offer (3 of 4 tries on the default model, fewer on Haiku).
+SUGGESTION_VAR = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
+SUGGESTION_FLAGS = ("--prompt-suggestions", "true")
+#: The longest suggestion kept: one message, not a document.
+MAX_SUGGESTION = 2000
+
 #: Turns on Claude Code's file checkpoints for a ``-p`` turn (#468): before
 #: each of your messages it saves the files Claude is about to change
 #: (``~/.claude/file-history/<session>``) and writes a
@@ -1232,6 +1244,13 @@ class StreamParser:
                     if path and not block.get("is_error"):
                         events.append(TurnEvent("edited", data={"file_path": path}))
             return events
+        if etype == "prompt_suggestion":
+            # What you might send next (#474), after the turn's result.
+            text = event.get("suggestion")
+            if isinstance(text, str) and text.strip():
+                text = text.strip()[:MAX_SUGGESTION]
+                return [TurnEvent("suggestion", text=text, session_id=self.session_id)]
+            return []
         if etype == "result":
             self.finished = True
             models = event.get("modelUsage")
@@ -1541,8 +1560,12 @@ class TurnRunner:
                  context_usage: bool = False,
                  billing: str = "subscription", api_key_name: str = "",
                  ledger=None, chat_id: str = "", purpose: str = "turn",
-                 cost_baselines=None) -> None:
+                 cost_baselines=None, suggestions: bool = False) -> None:
         self.command = command
+        #: Ask for a suggested next message (#474). Never on API credits:
+        #: it's another request the turn's result doesn't count, so its cost
+        #: would be missing from the chat's spending.
+        self.suggestions = suggestions and normalize_route(billing) != ROUTE_API
         #: How this turn is charged (#658): billing.ROUTE_SUBSCRIPTION or
         #: ROUTE_API, fixed for the process. Anything but "api" is the
         #: subscription.
@@ -1663,6 +1686,12 @@ class TurnRunner:
             # and later). Off, the environment is left as it was, so a value
             # the user set themselves still applies.
             self._env[TASK_LIST_VAR] = "1"
+        if self.suggestions:
+            self._env[SUGGESTION_VAR] = "1"
+        elif self.billing == ROUTE_API:
+            # Not even one the user's own environment asks for (#709 review):
+            # its request would be missing from what the chat has spent.
+            self._env.pop(SUGGESTION_VAR, None)
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
@@ -2371,6 +2400,10 @@ class TurnRunner:
             self.costs = cost_tracker_for(
                 self.command, self.baselines,
                 self.reservation.amount if self.reservation is not None else None)
+            if self.suggestions:
+                command += list(SUGGESTION_FLAGS)
+            elif self.billing == ROUTE_API:
+                command += [SUGGESTION_FLAGS[0], "false"]
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.

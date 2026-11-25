@@ -900,6 +900,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pending_messages_label: Optional[str] = None
         self._messages_label_key: Optional[tuple] = None  # (key, title, kind)
         self.chat_list.Bind(wx.EVT_KILL_FOCUS, self._on_chat_list_left)
+        # The end-of-list sound plays once per press, not on a held key's
+        # repeats (#714): letting go of a key lets it play again.
+        #: (list, key) of the end-of-list cue last played and still held.
+        self._list_end_held = None
+        for listing in (self.session_list, self.chat_list):
+            listing.Bind(wx.EVT_KEY_UP, self._on_list_key_up)
 
         # Where the reply goes: one panel for The Chat Place's sessions, one for
         # desktop ones, in the same place so the layout is the same.
@@ -952,6 +958,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         osizer.Add(self.attach_list, 0, wx.EXPAND | wx.TOP, 6)
         self.attach_list.Hide()
         self.attach_list.Bind(wx.EVT_KEY_DOWN, self._on_attach_key)
+        # What you might send next (#474): put in the message box, selected,
+        # when it's empty, so typing replaces it and Ctrl+Enter sends it. A
+        # sound says it's there; nothing is said (Kelly, 2026-11-23).
+        #: Chat id -> the suggestion after its latest reply.
+        self._suggestions: Dict[str, str] = {}
+        #: A turn's suggestion, held until its reply has been said.
+        self._suggestion_due: Dict[str, str] = {}
+        #: Said this run that Claude Code isn't offering them (#709).
+        self._told_suggestions_not_offered = False
         self.reply_text.Bind(wx.EVT_TEXT_PASTE, self._on_reply_paste)
 
         self.desktop_reply = wx.Panel(root)
@@ -1900,7 +1915,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _save_draft(self):
         if self._open is not None and self._open.is_own and self._open.provider == "claude":
-            self._drafts[self._open.cli_session_id] = self.reply_text.GetValue()
+            text = self.reply_text.GetValue()
+            suggestion = self._suggestions.get(self._open.cli_session_id)
+            if suggestion is not None and text != suggestion:
+                # Changed or cleared: it's yours now, or gone (#474).
+                self._suggestions.pop(self._open.cli_session_id, None)
+            # An untouched suggestion isn't your draft: it's put back when
+            # you come back to an empty box.
+            self._drafts[self._open.cli_session_id] = "" if text == suggestion else text
         elif self._open is not None and (
                 (self._open.is_own and self._open.provider in RUNTIME_PROVIDERS)
                 or self._open.provider == AGENTS):
@@ -2000,6 +2022,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
         self._show_attachments()
+        # Put back quietly: the sound was for its coming (#709 review).
+        self._place_suggestion(sound=False)
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
         self.chat_list.SetFocus()
@@ -5522,6 +5546,97 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._attachments.pop(session_id, None)
         self._show_attachments()
 
+    def _open_claude_id(self) -> str:
+        """The open chat's id if it's a Claude chat of The Chat Place's own."""
+        info = self._open
+        if info is None or not info.is_own or info.provider != "claude":
+            return ""
+        return info.cli_session_id
+
+    def _typed_text(self) -> str:
+        """The message box's text, with an untouched suggestion counted as
+        an empty box (#709 review): it's Claude's, not yours, so nothing
+        built on what you typed (a message given back, a command put in)
+        takes it along. Taking it this way drops it."""
+        text = self.reply_text.GetValue()
+        session_id = self._open_claude_id()
+        if session_id and text and text == self._suggestions.get(session_id):
+            self._suggestions.pop(session_id, None)
+            self.reply_text.ChangeValue("")
+            return ""
+        return text
+
+    def _place_suggestion(self, sound: bool = True) -> bool:
+        """The open chat's suggestion into its message box, selected, if the
+        box is empty: typing replaces it, and Ctrl+Enter sends it as it is.
+        A box with anything in it is never touched. True if placed; the
+        sound plays then (#474). The focus stays where it is."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if not text or self.reply_text.GetValue().strip():
+            return False
+        # ChangeValue: no text event, so it isn't taken for your typing.
+        self.reply_text.ChangeValue(text)
+        # As the box holds it: a Windows rich edit box can change its line
+        # endings, and an exact match is what says it's untouched.
+        self._suggestions[session_id] = self.reply_text.GetValue()
+        self.reply_text.SetSelection(-1, -1)
+        if sound:
+            key = self._own_key(session_id)
+            if self._sound_would_play(sound_events.SUGGESTED, key):
+                self._sound(sound_events.SUGGESTED, key)
+            elif self.speech.enabled:
+                # No sound to tell you (sounds off or muted, a scheme with
+                # none for it, or held back during a presentation): its words
+                # instead, never the suggestion itself, queued after the reply
+                # (Kelly, 0.6.3 review; #550 settles this for every event).
+                self._speak_announcement(announce.PROMPT_SUGGESTED, interrupt=False)
+        return True
+
+    def _clear_suggestions(self, session_id: str):
+        """A new turn has started: what was suggested after the last one is
+        out of date. One still sitting untouched in the box goes with it."""
+        self._suggestion_due.pop(session_id, None)
+        text = self._suggestions.pop(session_id, None)
+        if (text is not None and session_id == self._open_claude_id()
+                and self.reply_text.GetValue() == text):
+            self.reply_text.ChangeValue("")
+
+    def _offer_suggestion(self, session_id: str, title: str):
+        """After a reply has been said: its suggestion, if one came, kept for
+        the chat and put in its message box if it's open with the box empty.
+        True if one came (#474)."""
+        text = self._suggestion_due.pop(session_id, None)
+        if not text:
+            return False
+        self._suggestions[session_id] = text
+        if session_id == self._open_claude_id() and self._place_suggestion():
+            # The suggestion isn't read out (Kelly, 2026-11-23): its sound
+            # tells you, or with none, _place_suggestion says "Prompt suggested."
+            self._status(f"{title}: a suggested message is in your message box.")
+        return True
+
+    def _say_suggestions_not_offered(self, session_id: str):
+        """A turn asked for a suggestion and none came, and Claude Code's own
+        flag says it isn't offering them to this account (#709): said once a
+        run, for the open chat, so the setting isn't taken to be broken. Not
+        when the flag is on or unknown: then a reply without one is just a
+        reply with nothing likely to suggest."""
+        if (self._told_suggestions_not_offered or session_id != self._open_claude_id()
+                or platform_paths.claude_offers_prompt_suggestions() is not False):
+            return
+        self._told_suggestions_not_offered = True
+        self._feedback(announce.SUGGESTIONS_NOT_OFFERED)
+
+    def drop_all_suggestions(self):
+        """Settings turned suggestions off: none shown, none waiting."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if text is not None and self.reply_text.GetValue() == text:
+            self.reply_text.ChangeValue("")
+        self._suggestions.clear()
+        self._suggestion_due.clear()
+
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
         info = self._open
@@ -6168,8 +6283,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             # Tools turned off for this chat (#468).
                             disabled_mcp=list(own.disabled_mcp) if own is not None else [],
                             context_usage=True,  # for Usage and Context (#468)
+                            # A suggested next message (#474), as Settings
+                            # chose; the runner never asks on API credits.
+                            # Not for a slash command or an agent conversation's
+                            # turn, which never show one: a request for nothing.
+                            suggestions=(self.speech.prompt_suggestions
+                                         and not prompt.lstrip().startswith("/")
+                                         and not self._agent_quiet("claude", session_id)),
                             # Charged as the chat was made to be (#658).
                             **self._billing_kwargs(session_id))
+        # What came after the last reply is out of date once a turn starts.
+        self._clear_suggestions(session_id)
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -6287,6 +6411,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
+        if event.kind == "suggestion":
+            # After the result, before the turn ends (#474): offered once the
+            # reply has been said, so it never comes first. Never in a chat
+            # on API credits, whose turns don't ask: one that came anyway
+            # (a variable of the user's own) would be an uncounted request.
+            own = self.store.get(session_id)
+            if own is None or own.billing != "api":
+                self._suggestion_due[session_id] = event.text
+            return
+        if event.kind in ("text", "tool", "steer_taken"):
+            # More work after a reply that came with a suggestion (a steered
+            # message, Send Now, a follow-up): that suggestion was for the
+            # reply before, not for what comes next (#709 review).
+            self._suggestion_due.pop(session_id, None)
         if event.kind == "api_sent":
             # The runner wrote a message on API credits, after its account
             # check (#663): every way one goes in (Send, a queued message,
@@ -6542,6 +6680,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         # Silent, or nothing new to say but its cost: the
                         # cost is still said, as Settings asks (#663).
                         self._speak_announcement(said, interrupt=False, about=session_id)
+            if (event.kind == "finished" and not event.is_error and not command_result
+                    and not quiet and not queued and session_id not in self._runners
+                    and not (event.data or {}).get("after_background")):
+                if not self._offer_suggestion(session_id, title) and \
+                        getattr(runner, "suggestions", False) is True:
+                    self._say_suggestions_not_offered(session_id)
+            else:
+                self._suggestion_due.pop(session_id, None)
             # The turn is over: a "Sent on API credits" still owed for it
             # would be stale news now (speech.Speaker, #663).
             speaker.forget(session_id)
@@ -7214,7 +7360,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         typed since (it was written first), so nothing is lost. The caret
         stays at the end, where Kelly was typing."""
         if is_open:
-            typed = self.reply_text.GetValue()
+            typed = self._typed_text()
             self.reply_text.SetValue(f"{message}\n\n{typed.lstrip()}" if typed.strip()
                                      else message)
             self.reply_text.SetInsertionPointEnd()
@@ -8312,6 +8458,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.speech = dialog.get_settings()
         finally:
             dialog.Destroy()
+        if not self.speech.prompt_suggestions:
+            self.drop_all_suggestions()  # off means none shown, from now (#474)
         if not self.speech.check_updates_at_start:
             # Turned off in the first seconds after starting: the check still
             # waiting doesn't run either.
@@ -8680,7 +8828,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Put ``/name `` at the start of the reply, replacing a command
         that's already there (only a real one: "/path/x is broken" stays),
         keeping the rest of what you typed, line breaks and all."""
-        rest = self.reply_text.GetValue().lstrip(" \t")
+        rest = self._typed_text().lstrip(" \t")
         known = {c["name"] for c in commands or []}
         match = re.match(r"/(\S*)[ \t]*", rest)
         if match and (match.group(1) in known or not commands):
@@ -9172,6 +9320,38 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     # ------------------------------------------------------------- keyboard
 
+    #: Keys that go to the top or bottom of a list, and which end each means.
+    _LIST_END_KEYS = {wx.WXK_UP: "top", wx.WXK_HOME: "top",
+                      wx.WXK_DOWN: "bottom", wx.WXK_END: "bottom",
+                      # The numpad's, with Num Lock off (#714 review).
+                      wx.WXK_NUMPAD_UP: "top", wx.WXK_NUMPAD_HOME: "top",
+                      wx.WXK_NUMPAD_DOWN: "bottom", wx.WXK_NUMPAD_END: "bottom"}
+
+    def _list_end_cue(self, event: wx.KeyEvent, key: int, focus) -> None:
+        """The Reached the end of a list sound (#714), as QuickMail has it:
+        Up or Home on the first row of the session list or the messages list,
+        Down or End on the last, unmodified, moves nothing, and without a
+        sound sounded like a key that didn't register. Once per press: a key
+        held down repeats, and the cue waits for it to be let go
+        (_on_list_key_up). An empty list says it's empty already."""
+        end = self._LIST_END_KEYS.get(key)
+        if (end is None or focus not in (self.session_list, self.chat_list)
+                or event.HasAnyModifiers()):
+            self._list_end_held = None
+            return
+        count, row = focus.GetCount(), focus.GetSelection()
+        if count == 0 or row == wx.NOT_FOUND or row != (0 if end == "top" else count - 1):
+            self._list_end_held = None
+            return
+        if self._list_end_held == (focus, key):
+            return  # the same key, still held
+        self._list_end_held = (focus, key)
+        self._sound(sound_events.LIST_END)
+
+    def _on_list_key_up(self, event: wx.KeyEvent):
+        self._list_end_held = None
+        event.Skip()
+
     def _on_char_hook(self, event: wx.KeyEvent):
         if self._menu_open and gtk_a11y.IS_LINUX:
             # A menu has the keyboard. On Windows it never gets here, but
@@ -9185,6 +9365,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         ctrl = event.ControlDown()
         in_session = focus is not None and focus is not self.session_list and \
             self._is_in_session_view(focus)
+        # Before anything else, and without taking the key: it goes on as usual.
+        self._list_end_cue(event, key, focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             if ctrl and event.AltDown() and not event.ShiftDown():

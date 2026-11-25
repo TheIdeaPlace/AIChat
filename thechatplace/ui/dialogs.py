@@ -35,6 +35,14 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 #: stock label is "&Cancel" on a Mac and Linux), so it's reached with Tab.
 CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscription (needs "
                         "the Claude in Chrome extension; from the next turn)")
+#: Settings' prompt suggestions check box (#474). No access key, for the
+#: same reason as the Chrome one: every letter in it is taken.
+SUGGESTIONS_SETTING_LABEL = ("Suggest what to send next after each reply in Claude chats on "
+                             "your subscription (from the next turn)")
+#: Added to it when Claude Code's own flag says it isn't offering them to
+#: this account (platform_paths.claude_offers_prompt_suggestions, #709).
+SUGGESTIONS_NOT_OFFERED = (". Claude Code isn't offering suggestions to your account yet, so "
+                           "none will appear until Anthropic turns them on for it")
 
 
 class UnpricedApiDialog(wx.Dialog):
@@ -1733,6 +1741,15 @@ class SettingsDialog(wx.Dialog):
         self.chrome.SetValue(self._initial_chrome)
         outer.Add(self.chrome, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Prompt suggestions (#474), off until turned on. Its label says
+        # when Claude Code isn't offering them to this account (#709).
+        offered = platform_paths.claude_offers_prompt_suggestions()
+        self.suggestions = wx.CheckBox(body, label=_wrapped(
+            self, SUGGESTIONS_SETTING_LABEL + (SUGGESTIONS_NOT_OFFERED if offered is False else ""),
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.suggestions.SetValue(speech.prompt_suggestions)
+        outer.Add(self.suggestions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         codex_label = "Include Code&x chats (restart required)"
         if not platform_paths.find_codex():
             codex_label += (". Codex isn't installed on this computer; "
@@ -1888,7 +1905,8 @@ class SettingsDialog(wx.Dialog):
         if height + chrome > screen_area(self).height:
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
-            for box in (self.remote_control, self.task_list, self.chrome, self.codex_enabled,
+            for box in (self.remote_control, self.task_list, self.chrome, self.suggestions,
+                        self.codex_enabled,
                         self.copilot_enabled, self.agent_auto):
                 if box is None:
                     continue
@@ -1921,6 +1939,7 @@ class SettingsDialog(wx.Dialog):
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
                                    task_list=self.task_list.GetValue(),
+                                   prompt_suggestions=self.suggestions.GetValue(),
                                    claude_in_chrome=(
                                        self.chrome.GetValue()
                                        if self.chrome.GetValue() != self._initial_chrome

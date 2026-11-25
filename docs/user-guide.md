@@ -1011,6 +1011,34 @@ update. In Claude chats started here, Claude keeps a list only because The Chat 
 as the desktop app does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from
 the next turn. That setting applies only to Claude.
 
+### Suggested messages
+
+After a reply, Claude can suggest what you might send next, such as "write the script" after it
+has proposed one. Turn it on with **Settings, "Suggest what to send next after each reply"**. It's
+off at first.
+
+- **When a reply comes with a suggestion,** it's put in your message box, selected, and the
+  **Prompt suggested** sound plays. The suggestion itself isn't read aloud. With sounds off or
+  muted, or when the sound is held back during a presentation, you hear "Prompt suggested"
+  instead (unless announcements are set to Silent), and the status bar says a suggested message
+  is in your message box. Not every reply has one: Claude suggests something only when there's a
+  likely next step.
+- **Type to replace it.** Because it's selected, whatever you type takes its place. An arrow key
+  keeps it and moves the cursor, so you can change it. **Ctrl+Enter** sends it as it stands, with
+  anything you've attached.
+- **Only into an empty box.** If you've typed something, or the chat has a draft waiting, your text
+  is left alone and the suggestion isn't put in.
+- **It isn't your draft.** Leave the chat with the suggestion untouched and it's offered again
+  when you come back. Change it and it's your draft like anything you typed; delete it and it's
+  gone.
+- Your next message clears it, and each chat keeps its own.
+- It works in Claude chats started here on your subscription. Chats on API credits don't ask for
+  suggestions, because each one is an extra request that the reply's cost wouldn't include. Codex
+  and Copilot chats don't have them: neither offers suggestions to other apps yet.
+- **It needs a recent Claude Code:** 2.1.326 sends suggestions, 2.1.286 doesn't. In a terminal,
+  `claude update` brings yours up to date. If Claude Code's own record says suggestions aren't on
+  for your account, the setting says so, and a chat tells you once, after a reply.
+
 ## Sounds
 
 Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.
@@ -1059,6 +1087,8 @@ Every event has a sound of its own, and events that belong together sound alike:
 | Usage or context warning | Alert: high notes, alternating |
 | Conversation compacted | Settle: a chord settling down into one low note |
 | Message from another session | Knock: two knocks, then a lower note answering, when another Claude Code session sends a message into this chat (shown as "From another session") |
+| Prompt suggested | Taps: two light high taps, when Claude's suggested next prompt is put in your message box (see "Suggested messages") |
+| Reached the end of a list | Edge: one soft, short note, when Up or Home on the first row of the session list or the messages list, or Down or End on the last, has nowhere to go. The same sound as QuickMail's |
 
 When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
 
@@ -3076,6 +3106,9 @@ setting moves straight to it.
 - **Let Claude use Chrome** (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
   subscription, from each chat's next message. On at first if Claude Code has found the Claude in
   Chrome extension (see "You want Claude to use your browser").
+- **Suggest what to send next after each reply** (no access key; Tab to it): suggested messages in
+  Claude chats started here on your subscription, from each chat's next message. Off at first
+  (see "Suggested messages").
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
