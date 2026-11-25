@@ -289,6 +289,10 @@ work counts against your plan's usage, and more than ordinary chat.
   background, and each keeps the size Chrome's window had when Claude opened it. If the window was
   small then, sites show their phone layout and screenshots are tiny. Resizing and reloading
   doesn't fix a tab that's already open: maximize Chrome and ask Claude to open a new tab.
+  Windows 11 is adding a setting that does this for you: **Open apps maximized**, in Settings,
+  Accessibility, Visual effects, which maximizes every app's window as it opens. It came to Windows
+  Insiders in August 2026 and to Release Preview in September 2026, so your Windows may not have
+  it yet.
 - **A tab opened by a link can be left behind.** If a link opens a new tab, Claude may not be able
   to close it afterwards. Close it yourself with Ctrl+W.
 
