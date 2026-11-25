@@ -365,6 +365,9 @@ def test_ask_aside_asks_about_each_question(frame, monkeypatch):
         def ShowModal(self):
             return wx.ID_CANCEL
 
+        def settle(self):
+            pass
+
         def Destroy(self):
             pass
     monkeypatch.setattr(claude_extras, "AskAsideDialog", Dialog)
