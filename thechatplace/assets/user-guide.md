@@ -250,12 +250,18 @@ installed and signed in to the same claude.ai account as Claude Code. Then:
 - It's on in Claude chats on your subscription, new and old, from their next message.
   **Settings, "Let Claude use Chrome"** turns it off or on. Until you change it, it's on if
   Claude Code has found the extension on your computer.
-- Ask for it by name the first time, for example "Using Chrome, what tabs do I have open?" Keep
-  Chrome open while Claude works in it.
-- Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
-  example.com". **Allow for This Chat** lets it use that site for the rest of the chat.
+- Ask for it by name the first time, for example "Using Chrome, open example.com and tell me
+  what's on it." Keep Chrome open while Claude works in it.
+- The first time in a chat, Claude in Chrome asks to "create a browser window and read your
+  tabs", and often to "open a new browser tab". Then each website asks your permission, as
+  "Claude in Chrome wants to navigate on example.com", and again for reading, clicking or typing
+  there. **Allow for This Chat** lets it use that site for the rest of the chat. A local address
+  counts with its port, such as 127.0.0.1:8765. In Auto mode, sites Claude Code judges safe may
+  not ask at all.
 - Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
   next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
+  Claude often closes its tabs when it's done: ask it to leave a tab open if you want to come
+  back to it. It sees only its own tabs, not the ones you opened.
 - It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
   told so, so it says so rather than sending you to a setting.
 
@@ -268,8 +274,9 @@ installed and signed in to the same claude.ai account as Claude Code. Then:
 - Take screenshots, and record what it does as an animated GIF.
 - Read the page's console messages and the network requests it made, and run JavaScript in it:
   useful for checking a web page you're building.
-- Upload a file from your computer to a page's upload field, up to 10 MB. It refuses key and
-  password files, such as `.env` and anything in `.ssh`.
+- Upload a file to a page's upload field, up to 10 MB. The file has to be one the chat can read:
+  in its folder, or a folder you've added to the chat. It refuses key and password files, such as
+  `.env`, `.pem` and `.key` files and anything in `.ssh`.
 - Resize the window, and choose between browsers when more than one has the extension.
 - Work in sites you're already signed in to, such as Gmail, Google Docs or GitHub, as you.
 
@@ -281,20 +288,25 @@ on this page into a CSV file" or "Record a GIF of signing up on my test site".
 in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:
 
 - **To describe a page in words:** "What's on the page you have open? List the headings, links and
-  form fields", or "Read me the main article".
-- **What tabs it's using:** "Which tabs have you got open, and what's in each?"
+  form fields", or "Read me the main article". Claude usually tells you an article in its own
+  words rather than reading it out word for word.
+- **What tabs it's using:** "Which tabs have you got open, and what's in each?" It knows only the
+  tabs it opened.
 - **To tell you when it needs you:** "Tell me when you need me to go to Chrome and do something,
   and what." Claude stops at a sign-in page, a CAPTCHA or a pop-up box anyway; this way its reply,
   which The Chat Place announces as usual, says what to do there.
 - **To save what it sees:** "Take a screenshot and save it in my Documents folder", then open the
-  file yourself, or "Record a GIF of what you do".
+  file yourself. Claude may ask to run a command to copy it there. "Record a GIF of what you do"
+  saves the GIF where Chrome saves downloads, usually your Downloads folder.
 - **What size it's working at:** "What size is the page in the tab you're using? Check
-  window.innerWidth and window.innerHeight." With Chrome maximized it's about your screen's size;
+  window.innerWidth and window.innerHeight." With Chrome maximized it's your screen's width and a little less than its height;
   something like 400 by 500 means the tab is too small (see "Known problems").
 
-**What it won't do.** It stops and asks you to sign in or solve a CAPTCHA yourself. It won't buy
-things, create accounts, enter card or ID numbers, or follow instructions it finds on a page or in
-an email. Some kinds of sites are blocked, such as banking and adult sites. If a page puts up a
+**What it won't do.** It stops and asks you to sign in, type passwords or solve CAPTCHAs yourself.
+It won't trade stocks, enter sensitive information such as card or ID numbers, or follow
+instructions it finds on a page or in an email. It can fill in a signup or checkout form if you
+ask, so check what it's about to do. Adult and pirated-content sites are blocked; banking and
+other financial sites ask your permission first, like any other site. If a page puts up a
 pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
 work counts against your plan's usage, and more than ordinary chat.
 
@@ -309,7 +321,8 @@ work counts against your plan's usage, and more than ordinary chat.
   Insiders in August 2026 and to Release Preview in September 2026, so your Windows may not have
   it yet.
 - **A tab opened by a link can be left behind.** If a link opens a new tab, Claude may not be able
-  to close it afterwards. Close it yourself with Ctrl+W.
+  to close it afterwards. The same can happen to a blank tab when Claude closes its other tabs.
+  Close it yourself with Ctrl+W.
 
 The extension keeps its own list of sites you've always allowed: open the extension, then its
 menu (three dots), **Extension settings**, Permissions. Anthropic describes it all in more detail:
