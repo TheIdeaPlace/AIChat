@@ -259,6 +259,39 @@ installed and signed in to the same claude.ai account as Claude Code. Then:
 - It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
   told so, so it says so rather than sending you to a setting.
 
+**What Claude can do in Chrome.** More than open pages and click. Its tools let it:
+
+- Go to pages, go back and forward, and open, switch between and close its own tabs.
+- Read a page: its text, its layout as a list of the things on it (links, buttons, fields), or a
+  search of it for something you describe ("the Submit button").
+- Click, type, press keys, scroll, drag, and fill in form fields, check boxes and lists.
+- Take screenshots, and record what it does as an animated GIF.
+- Read the page's console messages and the network requests it made, and run JavaScript in it:
+  useful for checking a web page you're building.
+- Upload a file from your computer to a page's upload field, up to 10 MB. It refuses key and
+  password files, such as `.env` and anything in `.ssh`.
+- Resize the window, and choose between browsers when more than one has the extension.
+- Work in sites you're already signed in to, such as Gmail, Google Docs or GitHub, as you.
+
+Things to ask, for example: "In Chrome, open my calendar and list tomorrow's meetings", "Fill in
+this form from contacts.csv", "Check the console on localhost:3000 for errors", "Copy the prices
+on this page into a CSV file" or "Record a GIF of signing up on my test site".
+
+**What it won't do.** It stops and asks you to sign in or solve a CAPTCHA yourself. It won't buy
+things, create accounts, enter card or ID numbers, or follow instructions it finds on a page or in
+an email. Some kinds of sites are blocked, such as banking and adult sites. If a page puts up a
+pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
+work counts against your plan's usage, and more than ordinary chat.
+
+The extension keeps its own list of sites you've always allowed: open the extension, then its menu (three dots),
+**Extension settings**, Permissions. Anthropic describes it all in more detail:
+
+- [Get started with Claude in Chrome](https://support.claude.com/en/articles/12012173-getting-started-with-claude-in-chrome)
+- [Use Claude Code with Chrome](https://code.claude.com/docs/en/chrome), which is how chats here use it
+- [Claude in Chrome permissions guide](https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide)
+  and [Use Claude in Chrome safely](https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely)
+- [Claude in Chrome troubleshooting](https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting)
+
 Computer use, which lets Claude use your other apps, isn't available in chats The Chat Place runs.
 Claude is told so, so it says so plainly and uses what it has, such as Chrome or web search,
 rather than asking you to turn it on. Computer use is a preview in the desktop app, off until you
