@@ -277,6 +277,20 @@ Things to ask, for example: "In Chrome, open my calendar and list tomorrow's mee
 this form from contacts.csv", "Check the console on localhost:3000 for errors", "Copy the prices
 on this page into a CSV file" or "Record a GIF of signing up on my test site".
 
+**Working from here, not in Chrome.** You can stay in The Chat Place and let Claude tell you what's
+in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:
+
+- **To describe a page in words:** "What's on the page you have open? List the headings, links and
+  form fields", or "Read me the main article".
+- **What tabs it's using:** "Which tabs have you got open, and what's in each?"
+- **To tell you when it needs you:** "If you get to a sign-in page, a CAPTCHA or a pop-up box, stop
+  and tell me which site." It stops at those anyway; this way its reply says what to do.
+- **To save what it sees:** "Take a screenshot and save it in my Documents folder", then open the
+  file yourself, or "Record a GIF of what you do".
+- **What size it's working at:** "What size is the page in the tab you're using? Check
+  window.innerWidth and window.innerHeight." With Chrome maximized it's about your screen's size;
+  something like 400 by 500 means the tab is too small (see "Known problems").
+
 **What it won't do.** It stops and asks you to sign in or solve a CAPTCHA yourself. It won't buy
 things, create accounts, enter card or ID numbers, or follow instructions it finds on a page or in
 an email. Some kinds of sites are blocked, such as banking and adult sites. If a page puts up a
