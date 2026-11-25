@@ -483,8 +483,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
         note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-                           value=(CONTINUE_NOTE + "\n\n" + permission_note()) if continue_from
-                           else permission_note())
+                           # Fable's note too, on a plan with it (#722).
+                           value=self._claude_note())
         set_accessible_name(note, about)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
