@@ -22,6 +22,7 @@ from ..transcript import (Transcript, ChatMessage, USER, ASSISTANT, TOOL,
                           TOOL_RESULT, THINKING, ERROR, EVENT, COMPACTION)
 from ..ui_text import last_message_line
 from .base import Snapshot, SessionCapabilities
+from . import muse_usage
 from .muse_connection import ExecutionConnection, ManagedMuseConnection, MuseHistoryError, MuseRequestError
 
 
@@ -239,6 +240,7 @@ class MuseProvider:
     provider_id = "muse"
     MAX_PAGES = 1000
     DISCOVERY_SECONDS = 30.
+    PLAN_CACHE_SECONDS = 60
 
     def __init__(self, connection=None, *, executable=None, execution=None):
         self.connection = connection if connection is not None else ManagedMuseConnection(executable)
@@ -247,6 +249,8 @@ class MuseProvider:
         self._closed = threading.Event()
         self._previews = OrderedDict()
         self._preview_lock = threading.Lock()
+        self._plan, self._plan_until = None, 0.0
+        self._plan_lock = threading.Lock()
 
     def _check(self, session):
         if self._closed.is_set():
@@ -293,8 +297,36 @@ class MuseProvider:
         # Foreign chats stay read-only even when execution exists; only
         # chats started here can send, stop, or answer permissions.
         enabled = self._owned is not None and session.is_own
+        # Usage and Context is for every chat, read-only ones too, as for the
+        # other providers: a chat started elsewhere gets the plan's lines and
+        # says its context is known only for chats started here (#701).
         return SessionCapabilities(send=enabled, approvals=enabled, steer=enabled, aside=enabled,
-                                   attachments=enabled)
+                                   attachments=enabled, usage=True)
+
+    def usage_lines(self, session):
+        """Usage and Context (Ctrl+Shift+U, #701): the chat's context and last
+        turn's tokens, for a chat started here, from its view; then the
+        account's plan, kept a minute as Copilot's quota is (Muse Code
+        refreshes it at most once a minute anyway)."""
+        self._check(session)
+        if not session.is_own:
+            lines = [muse_usage.CONTEXT_ONLY_HERE]
+        else:
+            try:
+                lines = muse_usage.context_lines(*self._owned_chats().usage_events(session.cli_session_id))
+            except MuseHistoryError:
+                lines = ["Context: Muse Code couldn't say how full it is. Try again."]
+        return lines + self._plan_lines()
+
+    def _plan_lines(self):
+        with self._plan_lock:
+            if self._plan is None or time.monotonic() >= self._plan_until:
+                try:
+                    self._plan = tuple(muse_usage.plan_lines(self._owned_chats().plan_usage()))
+                except MuseHistoryError:
+                    self._plan = (muse_usage.PLAN_UNAVAILABLE,)
+                self._plan_until = time.monotonic() + self.PLAN_CACHE_SECONDS
+            return list(self._plan)
 
     def owned_state(self, record):
         """The Status column for a chat started here, from The Chat Place's
@@ -988,6 +1020,54 @@ class MuseOwnedChats:
             if not isinstance(cursor, str) or not cursor or len(cursor) > 4096:
                 raise MuseHistoryError("Muse Code sent an unreadable view page.")
         return None
+
+    def usage_events(self, native_id: str) -> tuple:
+        """(newest ``session/contextUsage`` params, newest ``session/tokenUsage``
+        params) in a chat started here, either None if not found within the
+        same bound the effort is read in. Read from the view, as the effort
+        is: no resume, no turn."""
+        with self._lock:
+            self._require_available()
+            if not _identity(native_id):
+                raise MuseHistoryError("Not a Muse Code chat started here.")
+            found, cursor = {}, None
+            wanted = ("session/contextUsage", "session/tokenUsage")
+            for _ in range(10):
+                params = {"sessionId": native_id, "limit": 200, "direction": "backward"}
+                if cursor:
+                    params["cursor"] = cursor
+                result = self.execution.request("view/page", params)
+                for event in reversed(_request_array(result, "events")):
+                    method = event.get("method") if isinstance(event, dict) else None
+                    if method in wanted and method not in found and isinstance(event.get("params"), dict):
+                        found[method] = event["params"]
+                cursor = result.get("nextCursor")
+                if len(found) == len(wanted) or cursor is None:
+                    break
+                if not isinstance(cursor, str) or not cursor or len(cursor) > 4096:
+                    raise MuseHistoryError("Muse Code sent an unreadable view page.")
+            return found.get(wanted[0]), found.get(wanted[1])
+
+    def plan_usage(self) -> dict:
+        """The account's plan usage: ``usage/refresh`` (fresh, without a model
+        call), or, when Muse Code refuses it because it was asked under a
+        minute ago, what it last observed (``usage/read``). usage/read has no
+        tier (checked on 1.4.24), so the last refresh's tier and state go
+        with it, rather than the plan's line going missing."""
+        with self._lock:
+            self._require_available()
+            try:
+                result = self.execution.request("usage/refresh", {})
+                if isinstance(result, dict):
+                    self._plan_facts = {key: result[key] for key in ("tierName", "subscriptionActive")
+                                        if key in result}
+            except MuseRequestError:
+                result = self.execution.request("usage/read", {})
+                if isinstance(result, dict):
+                    result = {**getattr(self, "_plan_facts", {}), **result}
+            if not isinstance(result, dict):
+                raise MuseHistoryError("Muse Code didn't say how much of the plan is used.")
+            return result
 
     def _effort_now(self, record: OwnSession, entry):
         standing = self._standing_effort(record)

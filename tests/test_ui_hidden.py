@@ -11947,10 +11947,11 @@ def test_store_validation_failure_is_reported_without_escaping_event_handler(fra
     assert any('synthetic duplicate session identity' in line for line in env['spoken'])
 
 
-def test_codex_usage_reads_on_worker_and_uses_existing_dialog(frame, monkeypatch):
+@pytest.mark.parametrize('provider', ['codex', 'muse'])  # Muse Code too (#701)
+def test_codex_usage_reads_on_worker_and_uses_existing_dialog(frame, monkeypatch, provider):
     from types import SimpleNamespace
     from thechatplace.ui import main_frame
-    info = dataclasses.replace(frame._snapshot.sessions[0], provider='codex')
+    info = dataclasses.replace(frame._snapshot.sessions[0], provider=provider)
     frame._open = info
     monkeypatch.setattr(frame, '_require_capability', lambda *args: True)
     threads, shown = [], []

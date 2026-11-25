@@ -211,6 +211,28 @@ Checked natively through `send()`: "/plan ..." loaded the plan skill and the
 reply followed it; "/not-a-skill ..." was answered as plain text.
 
 
+### Step 3, Usage and Context done (2026-11-25)
+
+Native check first (installed 1.4.24):
+
+- A chat's view carries `session/contextUsage` (`windowTokens`, `usedTokens`,
+  `pressure`: `normal`, `warning` at the soft threshold, `blocked` at the hard
+  one) and `session/tokenUsage` (a turn's `usage`: input, output, cached and
+  reasoning tokens). `view/page` reads them backwards with no resume, as the
+  effort is read. `session/read` carries neither.
+- `usage/refresh` (now allowlisted) answers `tierName` and
+  `subscriptionActive`, with a `usage` member (`window` and `weekly`, each
+  `usedPercent` and `resetsAtMs`; the window its `windowDurationMins`) only
+  once Muse Code has observed the plan's usage. On the checking account it had
+  none. A second refresh within a minute is refused; `usage/read` then
+  answers what was observed, without the tier, so the last tier is kept.
+
+As the other providers do, Usage and Context is on for every chat
+(`usage=True`): a chat started in Muse Code gets the plan's lines and says its
+context is known only for chats started here, as Copilot's read-only chats do,
+since only the execution connection can read a view. The plan's lines are kept
+a minute, as Copilot's quota is. Lines are worded in `providers/muse_usage.py`.
+
 ### Step 3, Ask Aside: checked natively, waiting on a decision (2026-11-14)
 
 `session/sideChat` (from a loaded main session, `{sessionId, commandId}`)

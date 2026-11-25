@@ -303,6 +303,9 @@ class ExecutionConnection(HistoryConnection):
         "view/page",
         "model/list",
         "usage/read",
+        # Usage and Context: the plan's usage, fetched fresh at most once a
+        # minute by Muse Code, with no model call and no chat touched.
+        "usage/refresh",
         "permissionProfile/list",
     })
     EVENTS = True

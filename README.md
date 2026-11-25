@@ -1844,6 +1844,12 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Branch from Here, on the Chat menu and the messages list's menu, asks first, then
   makes a new chat through the whole turn of your message or Muse Code's reply, ready for
   your next message; the original is kept.
+  Tools, Usage and Context (Ctrl+Shift+U) works for every Muse Code chat. For a chat started
+  here it says how full the context is, such as "Context 5% full: 47,956 of 1,007,997 tokens,
+  normal" ("nearly full" or "full" as it fills), and the last turn's tokens. A chat started in
+  Muse Code itself says its context is known only for chats started in The Chat Place. Then
+  come your Muse Code plan and whether it's active, and the 5-hour and weekly limits when
+  Muse Code reports them.
   For bigger jobs, such as reviewing a whole code base, Muse Code can start a workflow:
   several sub-agents that work in the background after its reply. You hear that Muse Code
   is working in the background; each sub-agent's permission request is announced like any

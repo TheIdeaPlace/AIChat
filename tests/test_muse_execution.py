@@ -72,6 +72,8 @@ class Execution:
         self.events = []
         self.receipts = []
         # Shaped like installed 1.4.20's skill/list rows (names synthetic).
+        self.plan = {"tierName": "Synthetic Tier", "subscriptionActive": True}
+        self.refresh_refused = False
         self.skills = [
             {"selector": "synthetic-plan", "displayName": "synthetic-plan", "source": "bundled",
              "description": "Plan a synthetic change."},
@@ -172,6 +174,15 @@ class Execution:
             assert uuid.UUID(params["commandId"]).version == 7
             self.session["modelId"] = params["model"]["modelId"]
             return {"commandId": params["commandId"], "status": "accepted"}
+        if method == "usage/refresh":
+            # Installed 1.4.24: tier and state; usage only once observed.
+            assert params == {}
+            if self.refresh_refused:
+                raise MuseRequestError(-32029)  # asked again within a minute
+            return copy.deepcopy(self.plan)
+        if method == "usage/read":
+            assert params == {}
+            return {"usage": copy.deepcopy(self.plan["usage"])} if "usage" in self.plan else {}
         if method == "task/list":
             return {"tasks": []}  # installed 1.4.20 with nothing running
         if method == "turn/steer":
@@ -458,9 +469,9 @@ def test_history_and_foreign_actions_remain_read_only(owned):
     provider = MuseProvider(connection=Execution(), execution=owned.execution)
     provider.set_owned_persistence(lambda record: None)
     foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
-    assert provider.capabilities(foreign) == SessionCapabilities()
+    assert provider.capabilities(foreign) == SessionCapabilities(usage=True)
     own = provider.create_owned("C:\\synthetic", "Synthetic own chat")
-    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True, aside=True, attachments=True)
+    assert provider.capabilities(own.to_info()) == SessionCapabilities(send=True, approvals=True, steer=True, aside=True, attachments=True, usage=True)
     assert provider.open_reader(foreign).connection is provider.connection
     assert provider.open_reader(own.to_info()).connection is owned.execution
     provider.close()
@@ -907,3 +918,76 @@ def test_a_sub_agents_request_on_the_parent_is_offered_like_the_chats_own(owned)
     owned.execution.approvals = [raw]
     pending = owned.pending_approvals(own)
     assert [(p.kind, p.summary) for p in pending] == [("approval", "Synthetic command")]
+
+
+# -- Usage and Context (#701), shapes as installed 1.4.24 sends them -------------
+
+CONTEXT = {"sessionId": NATIVE_ID, "windowTokens": 1007997, "usedTokens": 47956,
+           "pressure": "normal"}
+TOKENS = {"sessionId": NATIVE_ID, "turnId": "turn-1", "modelId": "synthetic-model-b",
+          "usage": {"inputTokens": 47478, "outputTokens": 294, "cachedTokens": 32625,
+                    "cacheWriteTokens": 0, "cacheReadTokens": 32625, "reasoningTokens": 60}}
+
+
+def usage_provider(owned):
+    provider = MuseProvider(connection=Execution(), execution=owned.execution)
+    provider.set_owned_persistence(lambda record: None)
+    return provider
+
+
+def test_usage_for_a_chat_started_here_reads_its_view_and_the_plan(owned):
+    provider = usage_provider(owned)
+    own = provider.create_owned("C:\\synthetic", "Synthetic own chat")
+    owned.execution.view +=[{"method": "session/tokenUsage", "params": TOKENS},
+                             {"method": "session/contextUsage", "params": CONTEXT},
+                             {"method": "session/approvalModeChanged", "params": {}}]
+    sent_before = len(owned.execution.messages)
+    assert provider.usage_lines(own.to_info()) == [
+        "Context 5% full: 47,956 of 1,007,997 tokens, normal.",
+        "Last turn: 47,478 input (32,625 cached), 294 output, 60 reasoning tokens.",
+        "Muse Code plan: Synthetic Tier, active.",
+        "Muse Code usage limits: not reported."]
+    methods = [m for m, _ in owned.execution.messages[sent_before:]]
+    # Read only: no resume, no turn, nothing changed.
+    assert set(methods) == {"view/page", "usage/refresh"}
+    provider.close()
+
+
+def test_usage_for_a_chat_started_in_muse_code_never_reads_it(owned):
+    """As Copilot's read-only chats: the plan's lines, and context said to be
+    known only for chats started here; the chat itself isn't touched."""
+    provider = usage_provider(owned)
+    foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
+    assert provider.usage_lines(foreign) == [
+        "Context: known only for chats started in The Chat Place.",
+        "Muse Code plan: Synthetic Tier, active.",
+        "Muse Code usage limits: not reported."]
+    assert [m for m, _ in owned.execution.messages] == ["usage/refresh"]
+    provider.close()
+
+
+def test_usage_plan_is_kept_a_minute_and_read_when_refresh_is_refused(owned, monkeypatch):
+    from thechatplace.providers import muse as muse_module
+    provider = usage_provider(owned)
+    foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
+    clock = [1000.0]
+    monkeypatch.setattr(muse_module.time, "monotonic", lambda: clock[0])
+    provider.usage_lines(foreign)
+    provider.usage_lines(foreign)
+    assert [m for m, _ in owned.execution.messages].count("usage/refresh") == 1
+    clock[0] += 61
+    owned.execution.refresh_refused = True
+    owned.execution.plan["usage"] = {"window": {"usedPercent": 25, "windowDurationMins": 300},
+                                     "weekly": {"usedPercent": 10.5}}
+    # usage/read has no tier: the last refresh's is kept with it.
+    assert provider.usage_lines(foreign)[1:] == [
+        "Muse Code plan: Synthetic Tier, active.",
+        "5-hour limit: 25% used, 75% remaining.", "Weekly limit: 10.5% used, 89.5% remaining."]
+    provider.close()
+
+
+def test_usage_without_muse_code_execution_still_opens(owned):
+    provider = MuseProvider(connection=Execution())
+    foreign = session_from_muse({"sessionId": NATIVE_ID, "name": "Synthetic foreign chat"})
+    assert provider.usage_lines(foreign)[-1].startswith("Muse Code plan usage isn't available.")
+    provider.close()

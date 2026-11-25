@@ -90,7 +90,7 @@ def test_discovery_pages_until_null_and_deduplicates_without_reading_messages():
                              ("session/list", {"limit": 200, "cursor": "opaque"})]
     assert not snap.desktop_cli_ids and not snap.live
     info = snap.sessions[0]
-    assert provider.capabilities(info) == SessionCapabilities()
+    assert provider.capabilities(info) == SessionCapabilities(usage=True)
     assert not provider.can_create()
     provider.close()
     assert conn.closed
@@ -202,7 +202,7 @@ def test_provider_routes_reading_and_rejects_other_provider_before_any_request()
     controller = SessionController([provider])
     assert controller.read(info).last_reply().text == "Synthetic reply"
     assert controller.last_reply(info) == "Synthetic reply"
-    assert controller.capabilities(info) == SessionCapabilities()
+    assert controller.capabilities(info) == SessionCapabilities(usage=True)
     assert not controller.can_create("muse")
     foreign = deepcopy(info)
     foreign.provider = "claude"
@@ -276,7 +276,7 @@ def test_forged_local_ownership_never_grants_muse_write_actions():
     from dataclasses import replace
     provider = MuseProvider(connection=Connection())
     forged = replace(session_from_muse(session()), source="own")
-    assert provider.capabilities(forged) == SessionCapabilities()
+    assert provider.capabilities(forged) == SessionCapabilities(usage=True)
     controller = SessionController([provider])
     assert not controller.can_create("muse")
     with pytest.raises(ValueError):
