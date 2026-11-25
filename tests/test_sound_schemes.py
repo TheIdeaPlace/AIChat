@@ -706,8 +706,8 @@ def test_gallery_rows_say_what_you_have():
     assert sound_gallery.row_label(entry, [mine]).endswith(" Update available.")
     assert sound_gallery.added_as(entry, [mine]) is mine
     assert sound_gallery.row_label(_entry(events=None), []) == "Rain, by Someone."
-    assert sound_gallery.details(entry) == "Soft. By Someone. Licence: CC0-1.0."
-    assert sound_gallery.details(_entry(description="")) == "By Someone. Licence: CC0-1.0."
+    assert sound_gallery.details(entry) == "Soft. By Someone. License: CC0-1.0."
+    assert sound_gallery.details(_entry(description="")) == "By Someone. License: CC0-1.0."
 
 
 def test_the_gallery_is_this_apps_and_checks_its_key():

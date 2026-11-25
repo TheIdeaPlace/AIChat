@@ -352,7 +352,7 @@ A dialog titled "Sounds", 546 by 633 at 100%. At the top, two check boxes, "Play
 
 ## sounds-own-scheme: Tools, Sounds on a scheme of your own
 
-The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 25 events have a sound):". Rows read "Tool ran: Tick (Soft bell)", "Reply finished: Rise (Wood)", "Needs you: Call (Glass)" and "Turn failed: Fall"; the other nineteen, "Queued message removed", "Agent reply handed on" and "Answer sent" among them, say "None". The third drop-down is labeled "Tool sounds play for". The list scrolls as in sounds. The Sound drop-down shows "Tick (Soft bell)".
+The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 25 events have a sound):". Rows read "Tool ran: Tick (Soft bell)", "Reply finished: Rise (Wood)", "Needs you: Call (Glass)" and "Turn failed: Fall"; the other twenty-one, "Queued message removed", "Agent reply handed on" and "Answer sent" among them, say "None". The third drop-down is labeled "Tool sounds play for". The list scrolls as in sounds. The Sound drop-down shows "Tick (Soft bell)".
 
 **What looks off:** Nothing. The longest row ("Message steered into the turn: None") and the drop-down's "Tick (Soft bell)" fit without cutting off. High Contrast Aquatic as in sounds.
 
@@ -364,7 +364,7 @@ A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 
 
 ## sound-tutorial: Help, Sound Tutorial
 
-A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in Tools, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 23 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
+A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in Tools, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 25 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", "Prompt suggested" and "Reached the end of a list". The list is full: the last row sits just above its bottom edge, whole, with no scroll bar (#474, #714; it had empty space below 23 rows). A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
 
 ## sound-tutorial-from-sounds: Tools, Sounds, Sound Tutorial
 
