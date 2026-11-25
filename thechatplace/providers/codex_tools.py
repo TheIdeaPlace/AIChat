@@ -304,6 +304,8 @@ class CodexToolLogins:
             raise
 
     def result(self, cwd, name, login_id):
+        if not isinstance(login_id, str) or not login_id:
+            raise CodexRpcError('A completed sign-in start is required to check its result.')
         import time
         from pathlib import Path
         folder = str(Path(cwd).resolve())

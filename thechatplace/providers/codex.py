@@ -507,7 +507,7 @@ class CodexProvider:
         self.connection = (connection if connection is not None
                            else ManagedCodexConnection(executable))
         from .codex_tools import CodexToolLogins
-        self._tool_logins = CodexToolLogins(executable)
+        self._tool_logins = CodexToolLogins(executable) if self.provider_id == 'codex' else None
         self._last_messages = OrderedDict()
         self._last_lock = threading.Lock()
         self._last_cursor = 0

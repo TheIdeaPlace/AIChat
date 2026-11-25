@@ -1,5 +1,6 @@
 """Verified owned text turns, typed requests and session-scoped interruption."""
 import threading
+from collections import deque
 from dataclasses import dataclass, field, replace
 
 from .codex_events import CodexTurnBuffer, CodexTokenUsageEvent, CodexEvent, _text
@@ -145,7 +146,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 
     def _prepare_event(self, event):
         # The reader only stamps local context. Ancestry RPCs run later on
-        # the event consumer, so they cannot deadlock the protocol reader.
+        # bounded workers, so neither reader nor shared listener waits for them.
         if event.kind in ('activity', 'file_changes', 'auto_review'):
             with self._runtime_lock:
                 if event.thread_id not in self._runtime_threads:
@@ -465,6 +466,10 @@ class CodexTurnExecutor:
         self._busy = set()
         self._pending_events = {}
         self._child_event_parents = {}
+        self._child_event_lock = threading.Lock()
+        self._child_event_pending = {}
+        self._child_event_ready = deque(maxlen=128)
+        self._child_event_workers = threading.BoundedSemaphore(4)
         self._broken = False
         self._requests = {}
         self._notices = {}
@@ -764,21 +769,29 @@ class CodexTurnExecutor:
             if event.thread_id in self.connection._runtime_threads:
                 return event
         key = (event.thread_id, event.turn_id)
-        bound = self._child_event_parents.get(key)
+        with self._child_event_lock:
+            if key in self._child_event_parents:
+                bound = self._child_event_parents[key]
+            elif key in self._child_event_pending:
+                waiting = self._child_event_pending[key]
+                if len(waiting) < 32:
+                    waiting.append(event)
+                return event
+            else:
+                if not event.parent_turns:
+                    return event
+                if not self._child_event_workers.acquire(blocking=False):
+                    return event  # capacity is transient; a later event may retry
+                self._child_event_pending[key] = [event]
+                try:
+                    threading.Thread(target=self._resolve_child_parent,
+                        args=(key, event, ancestry), name='codex-child-display', daemon=True).start()
+                except RuntimeError:
+                    self._child_event_pending.pop(key, None)
+                    self._child_event_workers.release()
+                return event
         if bound is None:
-            if not event.parent_turns:
-                return event
-            try:
-                proof = ancestry(event.thread_id)
-            except (ValueError, CodexRpcError):
-                return event  # optional display data must not break other chats
-            parent_turn = dict(event.parent_turns).get(proof.native_id) if proof is not None else None
-            if not parent_turn:
-                return event
-            bound = (proof, parent_turn)
-            if len(self._child_event_parents) >= 128:
-                self._child_event_parents.pop(next(iter(self._child_event_parents)))
-            self._child_event_parents[key] = bound
+            return event
         proof, parent_turn = bound
         if not self.connection.owns_runtime(proof):
             return event
@@ -791,6 +804,36 @@ class CodexTurnExecutor:
             item_id='subagent:' + identity, text='', paths=(),
             kind='subagent_tool' if event.kind == 'activity' else 'subagent_edit')
 
+    def _cache_child_parent(self, key, bound):
+        # Called with _child_event_lock; failures are cached too, so a foreign
+        # or unavailable child cannot make every event repeat native RPCs.
+        if len(self._child_event_parents) >= 128:
+            self._child_event_parents.pop(next(iter(self._child_event_parents)))
+        self._child_event_parents[key] = bound
+
+    def _resolve_child_parent(self, key, event, ancestry):
+        bound = None
+        try:
+            proof = ancestry(event.thread_id)
+            parent_turn = dict(event.parent_turns).get(proof.native_id) if proof is not None else None
+            if parent_turn and self.connection.owns_runtime(proof):
+                bound = (proof, parent_turn)
+        except (ValueError, CodexRpcError):
+            pass  # Optional display data never blocks the connection's listener.
+        finally:
+            with self._child_event_lock:
+                self._cache_child_parent(key, bound)
+                waiting = self._child_event_pending.pop(key, ())
+                if bound is not None:
+                    self._child_event_ready.extend(waiting)
+            self._child_event_workers.release()
+
+    def _next_event(self):
+        with self._child_event_lock:
+            if self._child_event_ready:
+                return self._child_event_ready.popleft()
+        return self.connection.pop_event()
+
     def drain(self):
         # Pop and apply as one ordered consumer even if two worker callbacks
         # happen to overlap. Final text must precede its terminal event.
@@ -800,7 +843,7 @@ class CodexTurnExecutor:
     def _drain(self):
         changed = set()
         try:
-            while (event := self.connection.pop_event()) is not None:
+            while (event := self._next_event()) is not None:
                 event = self._route_child_event(event)
                 with self._lock:
                     if isinstance(event, CodexRequestDeclined):

@@ -2329,7 +2329,9 @@ queued message depends on the provider:</p>
   in the same turn. Its menu can also edit or remove it, and Delete removes it (on a Mac,
   Fn+Delete).</li>
 <li><strong>Codex:</strong> <strong>Edit Queued Message</strong> brings the selected message back to the message box,
-  keeping its images, skills and full text. <strong>Remove Queued Message</strong> or <strong>Delete</strong> removes
+  keeping its images, skills and full text. The text box shows what you typed; restored files
+  and skills appear in Attachments, where Delete removes one. A skill token you typed stays
+  in your text. <strong>Remove Queued Message</strong> or <strong>Delete</strong> removes
   just that message. Sending an edited message again puts it after any others still queued.
   <strong>Send Now</strong> (<strong>Ctrl+Enter</strong> on its row) steers it into the running turn, as <strong>Ctrl+Alt+Enter</strong>
   does, without interrupting a command. A refused steer stays queued; if delivery is uncertain,
@@ -2939,7 +2941,7 @@ on or off in the chat itself.</p>
   why. The server is first in this list, and <strong>Copy with Tool Off</strong> makes a copy without it. Or
   add it back to Codex's <code>config.toml</code>.</li>
 <li>When Codex asks permission to run a connected tool, <strong>Answer</strong> shows the tool's request and
-  arguments. Accept covers this call only. Whether a tool asks depends on Codex's configuration;
+  arguments. Long arguments show a preview and the number of characters not shown. Accept covers this call only. Whether a tool asks depends on Codex's configuration;
   enabling a tool does not guarantee that every call asks. Its file and service access can extend
   beyond the chat folder.</li>
 <li>When a connected tool asks for something, <strong>Answer</strong> (Ctrl+Shift+A) shows its form or the web

@@ -25,7 +25,12 @@ class Model(BaseHTTPRequestHandler):
    return self.send_json({'issuer':origin,'authorization_endpoint':origin+'/authorize','token_endpoint':origin+'/token','registration_endpoint':origin+'/register','response_types_supported':['code'],'grant_types_supported':['authorization_code','refresh_token'],'code_challenge_methods_supported':['S256'],'token_endpoint_auth_methods_supported':['none']})
   if self.path.startswith('/authorize'):
    params=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-   target=params['redirect_uri'][0]+'?'+urllib.parse.urlencode({'code':'local-test-code','state':params['state'][0]})
+   redirect=params['redirect_uri'][0]
+   parsed=urllib.parse.urlsplit(redirect)
+   if '\r' in redirect or '\n' in redirect or parsed.scheme!='http' or parsed.hostname not in ('127.0.0.1','localhost','::1') or parsed.username or parsed.password:
+    return self.send_json({},400)
+   target=redirect+'?'+urllib.parse.urlencode({'code':'local-test-code','state':params['state'][0]})
+   if '\r' in target or '\n' in target: return self.send_json({},400)
    self.send_response(302);self.send_header('Location',target);self.end_headers();return
   return self.send_json({},404)
  def do_POST(self):

@@ -1525,7 +1525,7 @@ def test_edit_queue_restores_images_skills_and_preserves_a_new_draft(tmp_path):
     original=build_input('Review this',[str(image)],skills=[('review',str(skill))])
     w=_queue_edit_window(original)
     w._take_codex_queued(w._open,editing=True);_run(w,0)
-    assert w.reply_text.GetValue().endswith('New draft')
+    assert w.reply_text.GetValue() == 'Review this\n\nNew draft'
     resent=w._codex_message(w._open,w.reply_text.GetValue())
     assert input_items(resent)[1:]==input_items(original)[1:]
     assert str(resent).count('Attached image:')==1
@@ -1578,6 +1578,48 @@ def test_failed_long_send_recovers_native_images_and_skills(tmp_path):
     original=build_input('x'*40000,[str(image)],skills=[('review',str(skill))],allow_long=True)
     w=Window();w._send_codex_owned(w.record,original)
     w.work[0][1]('Synthetic refusal',True)
-    assert w._attachments[w._open.key]==[str(image.resolve())]
+    assert w._attachments[w._open.key]==[str(image.resolve()), str(skill.resolve())]
     assert w._codex_skills[w._open.key]=={'review':str(skill.resolve())}
     assert w.reply_text.GetValue().startswith('x'*40000)
+
+
+def test_edit_queue_removing_restored_image_and_skill_removes_native_parts(tmp_path):
+    from thechatplace.providers.codex_input import build_input, input_items
+    image = tmp_path / 'sample.png'; image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 64)
+    skill = tmp_path / 'SKILL.md'; skill.write_text('Synthetic skill')
+    file = tmp_path / 'notes.txt'; file.write_text('Synthetic file')
+    original = build_input('Review this', [str(image), str(file)], skills=[('review', str(skill))])
+    w = _queue_edit_window(original)
+    w._take_codex_queued(w._open, editing=True); _run(w, 0)
+    assert w.reply_text.GetValue() == 'Review this\n\nNew draft'
+    assert set(w._attachments[w._open.key]) == {str(image.resolve()), str(skill.resolve()), str(file.resolve())}
+    w._attachments[w._open.key] = []
+    resent = w._codex_message(w._open, w.reply_text.GetValue())
+    assert input_items(resent) == [{'type': 'text', 'text': 'Review this\n\nNew draft'}]
+
+
+def test_edit_queue_keeps_authored_attachment_like_lines_and_skill_tokens(tmp_path):
+    from thechatplace.providers.codex_input import build_input
+    skill = tmp_path / 'SKILL.md'; skill.write_text('Synthetic skill')
+    authored = '$review Check this\n\nAttached image: example literal text'
+    original = build_input(authored, skills=[('review', str(skill))])
+    w = _queue_edit_window(original)
+    w._take_codex_queued(w._open, editing=True); _run(w, 0)
+    assert w.reply_text.GetValue() == authored + '\n\nNew draft'
+
+
+def test_long_input_recovery_keeps_only_draft_text_and_restores_removable_parts(tmp_path):
+    from thechatplace.providers.codex_input import build_input, prepend_context
+    from thechatplace import codex_long_messages
+    image = tmp_path / 'sample.png'; image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 64)
+    skill = tmp_path / 'SKILL.md'; skill.write_text('Synthetic skill')
+    draft = 'Full draft ' + 'x' * 40000
+    text = prepend_context(build_input(draft, [str(image)], skills=[('review', str(skill))], allow_long=True), 'Context\n')
+    w = Window()
+    prompt, path = w._codex_sendable(w.record, text)
+    try:
+        w._restore_codex_text(w._open.key, (prompt,))
+        assert w.reply_text.GetValue() == 'Context\n' + draft + '\n\nNew draft'
+        assert w._attachments[w._open.key] == [str(image.resolve()), str(skill.resolve())]
+    finally:
+        codex_long_messages.delete_files((path,))

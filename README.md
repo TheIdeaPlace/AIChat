@@ -925,7 +925,9 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   in all), and deletes a chat's copies when you delete the chat permanently.
 - **Change a queued message without stopping Codex.** On its row, choose **Edit Queued Message**
   from the message menu to bring it back to the message box, or **Remove Queued Message**
-  (**Delete**) to discard it. Editing keeps images, skills and long messages. Sending it again
+  (**Delete**) to discard it. Editing keeps images, skills and long messages. Your text comes
+  back without generated file or skill lines; the restored files and skills appear in Attachments,
+  where Delete removes one. Any skill token you typed stays in your text. Sending it again
   puts it after any messages still queued. **Send Now** (**Ctrl+Enter** on the row) steers it
   into Codex's running turn, as **Ctrl+Alt+Enter** does: Codex takes it at its next step,
   without interrupting the command it is running. A message Codex refuses stays queued;
@@ -1100,7 +1102,8 @@ Sign-in waits up to three minutes. It needs a recent Codex; unsupported sign-ins
 If a server a chat uses is later removed from Codex's settings, turns are refused and say why;
 the list shows it first, and **Copy with Tool Off** makes a copy without it, or you can add it back.
 A chat started elsewhere still has its tools left as they are. When Codex asks permission
-for a tool call, Answer shows its arguments and your answer covers only that call. Whether
+for a tool call, Answer shows its arguments and your answer covers only that call. Long arguments
+show a preview and the number of characters not shown. Whether
 Codex asks depends on its configuration; enabling a tool does not guarantee a question before
 every call. **Answer** (Ctrl+Shift+A) shows a tool's forms or a web
 address to open. Escape leaves the question waiting; Decline refuses it. A request The Chat

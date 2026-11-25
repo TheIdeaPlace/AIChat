@@ -867,7 +867,9 @@ class CodexChatRuntime:
                 # UI actions must never remove a different row after a concurrent dispatch.
                 from .codex_input import CodexInput
                 queue.append(CodexInput(str(text), input_items(text)[1:],
-                                        original=getattr(text, 'original_text', None)))
+                                        original=getattr(text, 'original_text', None),
+                    draft=getattr(text, 'draft_text', None),
+                    attachments=getattr(text, 'attachment_paths', ())))
                 queued = True
             else:
                 self._sending.add(native_id)

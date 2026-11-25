@@ -10,9 +10,11 @@ from ..attachments import media_type, sniffed_type
 
 
 class CodexInput(str):
-    def __new__(cls, text, parts=(), *, original=None):
+    def __new__(cls, text, parts=(), *, original=None, draft=None, attachments=()):
         value = super().__new__(cls, text)
         value.original_text = original
+        value.draft_text = draft
+        value.attachment_paths = tuple(attachments)
         value._parts = tuple(tuple(sorted(part.items())) for part in parts)
         validate_input(value.items())
         return value
@@ -51,9 +53,11 @@ class LongCodexInput(str):
     text over in a file and sends the parts with the short prompt
     (CodexInput(prompt, parts)), so an attached image still reaches Codex."""
 
-    def __new__(cls, text, parts=()):
+    def __new__(cls, text, parts=(), *, draft=None, attachments=()):
         value = super().__new__(cls, text)
         value.parts = tuple(dict(part) for part in parts)
+        value.draft_text = draft
+        value.attachment_paths = tuple(attachments)
         return value
 
 
@@ -66,26 +70,25 @@ def build_input(text, paths=(), *, skills=(), allow_long=False):
     if not isinstance(text, str) or len(paths) + len(skills) > 20:
         raise ValueError('Choose at most 20 attachments.')
     lines, parts = [text.strip()] if text.strip() else [], []
+    attachments = []
     for supplied in paths:
         path = Path(supplied).resolve(strict=True)
         if not path.is_file():
             raise ValueError('An attachment is not a file.')
+        attachments.append(str(path))
         if media_type(str(path)) and sniffed_type(str(path)):
             parts.append({'type': 'localImage', 'path': str(path)})
-            line = 'Attached image: ' + str(path)
-            if line not in text.split('\n\n'):
-                lines.append(line)
+            lines.append('Attached image: ' + str(path))
         else:
             lines.append('Attached file (read this file for the request): ' + str(path))
     for name, path in skills:
-        if '$' + name not in text.split('\n\n'):
-            lines.append('$' + name)
+        lines.append('$' + name)
         parts.append({'type': 'skill', 'name': name, 'path': str(Path(path).resolve(strict=True))})
     joined = '\n\n'.join(lines)
     from .codex_rpc import MAX_MESSAGE_CHARS
     if allow_long and len(joined) > MAX_MESSAGE_CHARS:
-        return LongCodexInput(joined, parts)
-    return CodexInput(joined, parts)
+        return LongCodexInput(joined, parts, draft=text.strip(), attachments=attachments)
+    return CodexInput(joined, parts, draft=text.strip(), attachments=attachments)
 
 
 def input_items(text):
@@ -100,4 +103,8 @@ def prepend_context(text, context):
         return text
     parts = text.items()[1:] if isinstance(text, CodexInput) else getattr(text, 'parts', ())
     joined = context + str(text)
-    return LongCodexInput(joined, parts) if len(joined) > 32000 else CodexInput(joined, parts)
+    draft = getattr(text, 'draft_text', None)
+    if draft is not None:
+        draft = context + draft
+    options = dict(draft=draft, attachments=getattr(text, 'attachment_paths', ()))
+    return LongCodexInput(joined, parts, **options) if len(joined) > 32000 else CodexInput(joined, parts, **options)

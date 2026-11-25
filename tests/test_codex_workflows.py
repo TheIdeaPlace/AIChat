@@ -30,6 +30,8 @@ def test_take_queue_keeps_native_parts_and_refuses_a_stale_occurrence(tmp_path):
         before = len(connection.calls)
         taken = service.take_queued(record, 0, first)
         assert input_items(taken) == input_items(text)
+        assert taken.draft_text == 'Look at this'
+        assert taken.attachment_paths == (str(image.resolve()),)
         with pytest.raises(ValueError, match='changed'):
             service.take_queued(record, 0, first)
         assert service.snapshot(record.cli_session_id).queued == (second,)
@@ -56,13 +58,26 @@ def test_take_queue_waits_for_inflight_queue_operations(state):
         service.close()
 
 
+def drain_children(executor):
+    import time
+    deadline = time.monotonic() + 3
+    while True:
+        executor.drain()
+        with executor._child_event_lock:
+            done = not executor._child_event_pending and not executor._child_event_ready
+        if done:
+            return
+        assert time.monotonic() < deadline, 'child display lookup did not finish'
+        time.sleep(.001)
+
+
 def child_executor():
     connection, proof = child_transport()
     executor = CodexTurnExecutor(connection)
     executor._turns['owned'] = CodexTurnBuffer('owned', 'parent-turn')
     for child in ('child', 'other-child'):
         connection._receive({'method':'turn/started', 'params':{'threadId':child,'turn':{'id':'turn','status':'inProgress'}}})
-    executor.drain()
+    drain_children(executor)
     return connection, proof, executor
 
 
@@ -80,7 +95,7 @@ def test_child_tools_edits_and_reviews_route_once_without_replies_or_ownership()
         'action':{'command':'echo synthetic'}}})
     c._receive({'method':'item/completed','params':{'threadId':'child','turnId':'turn',
         'item':{'type':'agentMessage','id':'reply','text':'A child reply'}}})
-    executor.drain()
+    drain_children(executor)
     state = executor.snapshot(proof)
     assert state.tools_started == state.edits_made == 1
     assert not state.replies and not state.changed_paths and not state.file_changes
@@ -106,7 +121,7 @@ def test_child_activity_cannot_attach_to_unproven_or_later_parent_turn(bad):
     c.request=request
     c._receive({'method':'item/started','params':{'threadId':'child','turnId':'turn',
         'item':{'id':'tool','type':'commandExecution','command':'echo synthetic'}}})
-    executor.drain()
+    drain_children(executor)
     assert executor.snapshot(proof).tools_started == 0
     assert not c.closed
 
@@ -117,7 +132,7 @@ def test_distinct_child_review_ids_do_not_collide_with_each_other_or_parent():
         c._receive({'method':'item/autoApprovalReview/completed','params':{
             'threadId':thread,'turnId':'parent-turn' if thread=='owned' else 'turn','reviewId':'same',
             'review':{'status':'approved'}}})
-    executor.drain()
+    drain_children(executor)
     state = executor.snapshot(proof)
     assert len(state.review_notices)==3
     assert len({i for i,t in state.review_notices})==3
@@ -205,7 +220,7 @@ def test_first_child_review_after_parent_completion_stays_with_original_turn(new
     c,proof,executor=child_executor()
     c._receive({'method':'turn/completed','params':{'threadId':'owned',
         'turn':{'id':'parent-turn','status':'completed'}}})
-    executor.drain()
+    drain_children(executor)
     if new_turn:
         c._active_turns['owned']='later'
         executor._turns['owned']=CodexTurnBuffer('owned','later')
@@ -213,7 +228,7 @@ def test_first_child_review_after_parent_completion_stays_with_original_turn(new
         c._receive({'method':'turn/started','params':{'threadId':'child','turn':{'id':'turn','status':'inProgress'}}})
     c._receive({'method':'item/autoApprovalReview/completed','params':{
         'threadId':'child','turnId':'turn','reviewId':'late','review':{'status':'denied'}}})
-    executor.drain()
+    drain_children(executor)
     assert len(executor.snapshot(proof).review_notices)==(0 if new_turn else 1)
 
 
@@ -256,7 +271,12 @@ def test_native_mcp_call_consent_shows_arguments_and_never_keeps_a_grant():
     params['_meta']['tool_params']['path']='changed.txt'
     assert 'changed.txt' not in request.elicitation().message
     params['_meta']['tool_params']={'huge':'x'*64000}
-    with pytest.raises(ValueError): decode_request('too-large',ELICITATION,params)
+    bounded = decode_request('large', ELICITATION, params).elicitation().message
+    assert len(bounded) < 4400
+    assert 'more characters not shown' in bounded
+    assert bounded.endswith('Your answer covers this call only.')
+    # The native request and answer remain unchanged, including its actual args.
+    assert len(params['_meta']['tool_params']['huge']) == 64000
 
 
 def test_provider_signin_does_not_require_chat_ownership_or_enable_tools(tmp_path):
@@ -281,11 +301,11 @@ def test_late_child_activity_only_updates_same_successful_parent(status):
         'threadId': 'child', 'turnId': 'turn',
         'item': {'id': 'late-tool', 'type': 'commandExecution', 'command': 'echo synthetic'}}}
     c._receive(wire); c._receive(wire)
-    executor.drain()
+    drain_children(executor)
     assert executor.snapshot(proof).tools_started == (1 if status == 'completed' else 0)
     assert buffer.status == status and buffer.activity == activity
     executor._turns['owned'] = CodexTurnBuffer('owned', 'later-parent')
-    c._receive(wire); executor.drain()
+    c._receive(wire); drain_children(executor)
     assert executor.snapshot(proof).tools_started == 0
 
 
@@ -303,3 +323,120 @@ def test_native_probe_restores_both_storage_overrides(monkeypatch, tmp_path):
             raise RuntimeError('synthetic failure')
     assert os.environ['CODEX_HOME'] == 'original-home'
     assert 'CODEX_SQLITE_HOME' not in os.environ
+
+
+def test_slow_child_lookup_does_not_block_parent_updates_or_repeat_requests():
+    c, proof, executor = child_executor()
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    def ancestry(child):
+        calls.append(child); entered.set()
+        assert release.wait(3)
+        return None
+    c.child_ancestor = ancestry
+    wire = {'method': 'item/started', 'params': {'threadId': 'child', 'turnId': 'turn',
+        'item': {'id': 'tool', 'type': 'commandExecution', 'command': 'echo synthetic'}}}
+    try:
+        c._receive(wire)
+        executor.drain()
+        assert entered.wait(1)
+        for _ in range(80): c._receive(wire)
+        c._receive({'method': 'item/completed', 'params': {'threadId': 'owned', 'turnId': 'parent-turn',
+            'item': {'id': 'reply', 'type': 'agentMessage', 'text': 'Parent keeps working'}}})
+        executor.drain()
+        assert executor.snapshot(proof).replies
+        assert calls == ['child']
+        with executor._child_event_lock:
+            assert len(executor._child_event_pending[('child', 'turn')]) <= 32
+        release.set(); drain_children(executor)
+        for _ in range(5):
+            c._receive(wire); executor.drain()
+        assert calls == ['child']
+        assert executor._child_event_parents[('child', 'turn')] is None
+    finally:
+        release.set()
+
+
+def test_child_display_workers_and_negative_cache_are_bounded():
+    c, proof, executor = child_executor()
+    release = threading.Event()
+    active = []
+    def ancestry(child):
+        active.append(child)
+        assert release.wait(3)
+        return None
+    c.child_ancestor = ancestry
+    try:
+        for index in range(150):
+            executor._route_child_event(CodexEvent('activity', 'child-' + str(index), 'turn',
+                item_id='tool', tool=True, parent_turns=(('owned', 'parent-turn'),)))
+        assert len(active) <= 4
+        assert len(executor._child_event_pending) <= 4
+        assert len(executor._child_event_parents) <= 128
+    finally:
+        release.set(); drain_children(executor)
+    assert len(executor._child_event_parents) <= 128
+
+
+@pytest.mark.parametrize('login_id', [None, '', 3])
+def test_login_result_rejects_starting_or_invalid_identity(tmp_path, login_id):
+    service = CodexToolLogins()
+    # Same shape as a reserved attempt while connection startup is pending.
+    service._attempts['starting'] = (None, str(tmp_path.resolve()), 'notes', None, 0, None)
+    with pytest.raises(CodexRpcError, match='completed sign-in start'):
+        service.result(str(tmp_path), 'notes', login_id)
+
+
+def test_api_provider_does_not_create_tool_login_owner(tmp_path):
+    from thechatplace.providers.codex_api import CodexApiProvider
+    provider = CodexApiProvider()
+    try:
+        assert provider._tool_logins is None
+    finally:
+        provider.close()
+
+
+def test_child_skipped_during_worker_saturation_can_route_a_later_event():
+    c, proof, executor = child_executor()
+    release = threading.Event()
+    entered = threading.Barrier(5)
+    def ancestry(child):
+        entered.wait(timeout=3)
+        assert release.wait(3)
+        return proof
+    c.child_ancestor = ancestry
+    def event(child):
+        return CodexEvent('activity', child, 'turn', item_id='tool', tool=True,
+                          parent_turns=(('owned', 'parent-turn'),))
+    try:
+        for index in range(4): executor._route_child_event(event('child-' + str(index)))
+        entered.wait(timeout=3)
+        executor._route_child_event(event('fifth'))
+        assert ('fifth', 'turn') not in executor._child_event_parents
+        release.set(); drain_children(executor)
+        c.child_ancestor = lambda child: proof
+        executor._route_child_event(event('fifth')); drain_children(executor)
+        assert executor.snapshot(proof).tools_started == 5
+    finally:
+        release.set()
+
+
+def test_probe_rejects_external_and_header_injection_redirects():
+    import importlib.util
+    import json
+    from pathlib import Path
+    import urllib.request, urllib.parse, urllib.error
+    from http.server import ThreadingHTTPServer
+    spec = importlib.util.spec_from_file_location('workflow_redirect_probe', Path(__file__).parents[1] / 'tools/probe_codex_workflows.py')
+    probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+    server = ThreadingHTTPServer(('127.0.0.1', 0), probe.Model)
+    worker = threading.Thread(target=server.serve_forever); worker.start()
+    try:
+        for redirect in ('https://example.com/callback', 'http://127.0.0.1/callback\r\nInjected: yes'):
+            query = urllib.parse.urlencode({'redirect_uri': redirect, 'state': 'probe'})
+            with pytest.raises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/authorize?{query}', timeout=3)
+            assert error.value.code == 400
+            assert error.value.headers.get('Location') is None
+    finally:
+        server.shutdown(); server.server_close(); worker.join(3)

@@ -490,6 +490,9 @@ def decode_request(request_id, method, params):
             if body['mode'] != 'form' or not isinstance(arguments, dict):
                 raise ValueError('Unsupported connected tool approval')
             detail = json.dumps(arguments, ensure_ascii=False, indent=2, allow_nan=False)
+            if len(detail) > 4096:
+                omitted = len(detail) - 4096
+                detail = detail[:4096] + f'\n({omitted} more characters not shown)'
             body['message'] += '\n\nTool arguments:\n' + detail + '\n\nYour answer covers this call only.'
         if body['mode'] == 'form' and not isinstance(body.get('requestedSchema'), dict):
             raise ValueError('Invalid connected tool form')

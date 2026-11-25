@@ -1,7 +1,7 @@
 # Codex workflow follow-up
 
 Based on main at `224deece` (0.6.3), in `codex/workflows-20261125`.
-Claude Fable subscription work is a separate session and branch.
+Current main, including the separately developed Claude Fable work, is merged for integration verification.
 
 ## Queue controls (#526)
 
@@ -11,7 +11,7 @@ that was already dispatched. Take and indexed steer compare object identity
 under the same lock as dispatch, Stop and queue advancement. Taking a message
 refuses while another steer is in flight, so restoration cannot reorder edits.
 
-Edit returns native images to attachments and skills to the selected inventory,
+Edit returns files, native images and skills to removable attachments,
 merging with a draft typed meanwhile. A switched chat gets its own draft, never
 the newly open chat's box. Stop and uncertain-send recovery preserve those parts
 too. Live long inputs retain their full original independently of the bounded
@@ -27,7 +27,7 @@ and never replays it. Claude's interrupt-and-send and Copilot's queue stay as be
 The connection captures active owned parent turns when each child turn starts.
 A bounded context table survives child/parent completion for late reviews;
 duplicate start notifications cannot rebind the child to a later parent turn.
-The event consumer, never the protocol reader, verifies native parentThreadId
+Bounded background workers, never the reader or shared event listener, verify native parentThreadId
 ancestry (OpenAI provider, matching IDs, bounded depth and cycle rejection).
 The connection must still hold the same owned proof. Child metadata never
 becomes execution ownership.
@@ -67,7 +67,7 @@ A real app-server with a local synthetic model and stdio MCP tool established:
 - A harmless tool marked destructiveHint=true, under on-request, triggers
   mcpServer/elicitation/request. Its form has no fields; its metadata identifies
   mcp_tool_call and contains the arguments. TCP now copies those arguments into
-  the bounded immutable Message text. Replies use the existing one-call answer;
+  the immutable Message text, previewed at 4096 characters with an omitted count. Replies use the existing one-call answer;
   metadata offers to persist the grant are never sent back. This does not promise
   every configured tool asks: native tool/configuration policy decides.
 
@@ -113,3 +113,18 @@ parent activity/status and completion announcements stay unchanged. Windowed
 Codex feature tests passed in the Windows VM (50 tests). Eight visual surfaces
 were independently inspected; inherited light native-border contrast remains
 documented in testing/visual/descriptions.md.
+
+
+PR comment follow-up: merged current main including Fable notes and visual surfaces.
+Child presentation ancestry now runs on at most four daemon workers, with 128
+positive/negative cached turn bindings, 32 pending events per lookup and 128
+ready events. Saturation skips optional display data without poisoning the
+cache; later events can retry. The shared listener never waits for ancestry.
+MCP arguments are previewed at 4096 characters with an exact omitted count.
+Editable draft text and explicit attachment paths travel separately from native
+wire text through queueing, long-message handoff and context prepending, so
+user-written text is never stripped heuristically. Recovered skills are visible
+in Attachments and retain native skill type when resent. Invalid login IDs are
+rejected, and API providers create no subscription OAuth owner. Shutdown cleanup
+is already on the non-daemon provider-cleanup worker in main_frame.py.
+The local OAuth probe rejects external and CR/LF redirect addresses.

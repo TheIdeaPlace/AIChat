@@ -886,3 +886,34 @@ def test_codex_send_now_uses_steering_without_stopping(frame,env,monkeypatch):
     monkeypatch.setattr(frame,'_stop_codex_owned',lambda *a: calls.append('stop'))
     frame.send_queued_now()
     assert calls==['steer']
+
+
+def test_edited_queue_attachments_can_be_removed_without_sending_internal_lines(frame, env, monkeypatch):
+    from thechatplace.providers.codex_input import build_input, input_items
+    from thechatplace.providers.codex_runtime import CodexChatState
+    image = env['tmp'] / 'queued.png'; image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 64)
+    skill = env['tmp'] / 'SKILL.md'; skill.write_text('Synthetic skill')
+    record = owned(frame, env)
+    monkeypatch.setattr(frame, '_can_edit', lambda info: True)
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    message = build_input('Review this', [str(image)], skills=[('review', str(skill))])
+    state = CodexChatState(record.cli_session_id, 'working', 'turn', 'inProgress', queued=(message,))
+    frame._codex_states[record.to_info().key] = state
+    frame._chat_messages = []
+    frame._rebuild_chat_list()
+    frame.chat_list.SetSelection(len(frame._visible_messages()) - 1)
+    frame.reply_text.SetValue('')
+    def action(*args):
+        frame._codex_states[record.to_info().key] = replace(state, queued=())
+        return message
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    _sync_work(frame, monkeypatch)
+    frame.edit_queued()
+    assert frame.reply_text.GetValue() == 'Review this'
+    assert frame.attach_list.GetStrings() == ['queued.png', 'SKILL.md']
+    for _ in range(2):
+        frame.attach_list.SetSelection(0)
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN); event.SetKeyCode(wx.WXK_DELETE)
+        frame._on_attach_key(event)
+    resent = frame._codex_message(frame._open, frame.reply_text.GetValue())
+    assert input_items(resent) == [{'type': 'text', 'text': 'Review this'}]

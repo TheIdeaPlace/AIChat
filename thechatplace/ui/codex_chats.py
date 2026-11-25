@@ -30,6 +30,11 @@ from .codex_extras import CodexExtras
 from .sound_host import SoundHost
 
 
+def _draft_text(text):
+    draft = getattr(text, 'draft_text', None)
+    return codex_long_messages.expand(text) if draft is None else draft
+
+
 class CodexChats(SoundHost, CodexExtras):
     def _delete_codex(self, info):
         """Let Codex delete its history before forgetting our owned record."""
@@ -178,11 +183,13 @@ class CodexChats(SoundHost, CodexExtras):
         from ..providers.codex_input import CodexInput
         parts = [part for text in texts
                  for part in (text.items()[1:] if isinstance(text, CodexInput) else getattr(text, 'parts', ()))]
-        if not parts:
+        paths = [path for text in texts for path in getattr(text, 'attachment_paths', ())]
+        if not parts and not paths:
             return
         attached = getattr(self, '_attachments', {})
         images = attached.setdefault(key, [])
-        images.extend(p['path'] for p in parts if p['type'] == 'localImage' and p['path'] not in images)
+        images.extend(path for path in paths if path not in images)
+        images.extend(p['path'] for p in parts if p['path'] not in images)
         self._attachments = attached
         skills = getattr(self, '_codex_skills', {})
         skills.setdefault(key, {}).update({p['name']: p['path'] for p in parts if p['type'] == 'skill'})
@@ -194,7 +201,7 @@ class CodexChats(SoundHost, CodexExtras):
 
     def _restore_codex_text(self, key, texts):
         self._restore_codex_parts(key, texts)
-        text = '\n\n'.join(codex_long_messages.expand(text) for text in texts)
+        text = '\n\n'.join(_draft_text(text) for text in texts)
         if not text:
             return
         if self._open is not None and self._open.key == key:
@@ -702,7 +709,9 @@ class CodexChats(SoundHost, CodexExtras):
         # history cache: editing or Stop must not return a dead file prompt.
         from ..providers.codex_input import CodexInput
         try:
-            prompt = CodexInput(prompt, parts, original=str(text))
+            prompt = CodexInput(prompt, parts, original=str(text),
+                draft=getattr(text, 'draft_text', None),
+                attachments=getattr(text, 'attachment_paths', ()))
         except ValueError:
             codex_long_messages.delete_files((saved,))
             return text, None
@@ -1221,7 +1230,7 @@ class CodexChats(SoundHost, CodexExtras):
             # (Stop): it stays until the history is read again (#410).
             self._steers_turn_over(key)
         # A saved long message comes back as it was written, not as its prompt.
-        unsent = tuple(codex_long_messages.expand(text) for text in state.unsent)
+        unsent = tuple(_draft_text(text) for text in state.unsent)
         prefix = getattr(self, "_api_context_prefixes", {}).get(key, "")
         if prefix:
             unsent = tuple(text[len(prefix):] if text.startswith(prefix) else text for text in unsent)
@@ -1233,7 +1242,7 @@ class CodexChats(SoundHost, CodexExtras):
         # Return native parts only for messages that stayed with this chat,
         # after the agent-conversation handoff and API context stripping.
         def recovered(raw):
-            written = codex_long_messages.expand(raw)
+            written = _draft_text(raw)
             return written[len(prefix):] if prefix and written.startswith(prefix) else written
         self._restore_codex_parts(key, [raw for raw in state.unsent if recovered(raw) in unsent])
         self._restore_codex_text(key, unsent)
