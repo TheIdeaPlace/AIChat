@@ -30,6 +30,15 @@ jobs:
         with:
           node-version: '22'
       - run: npm install -g @openai/codex@${{ matrix.codex }}
+      - name: Install the shared library used by tool approval forms
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          import sys
+          requirement = next(line for line in Path('requirements.txt').read_text().splitlines()
+                             if line.startswith('theideaplace-appkit'))
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', requirement], check=True)
       - name: Exercise real Codex approvals and workflows with local synthetic services
         shell: bash
         run: |
