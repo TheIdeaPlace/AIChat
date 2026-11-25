@@ -856,6 +856,14 @@ def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,
     frame.chat_list.SetSelection(len(frame._visible_messages())-1)
     frame.reply_text.SetValue('New draft')
     calls=[]
+    focused=[]
+    set_focus=frame.reply_text.SetFocus
+    def focus_reply():
+        focused.append('reply')
+        set_focus()
+    # A hidden Cocoa window cannot own global focus. Check the requested
+    # destination here; shown-window keyboard/focus checks run in the VM.
+    monkeypatch.setattr(frame.reply_text,'SetFocus',focus_reply)
     def action(name,saved,index,expected):
         calls.append((name,saved,index,expected))
         assert name=='take_queued' and expected is message
@@ -867,7 +875,7 @@ def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,
     assert calls==[('take_queued',record,0,message)]
     assert frame.reply_text.GetValue()==('Queued request\n\nNew draft' if editing else 'New draft')
     assert not frame._queued_rows()
-    if editing: assert wx.Window.FindFocus() is frame.reply_text
+    assert focused==(['reply'] if editing else [])
 
 
 def test_codex_send_now_uses_steering_without_stopping(frame,env,monkeypatch):
