@@ -81,7 +81,8 @@ from .billing import (KEY_REFUSED, ROUTE_API, account_problem, api_settings, bud
 from .claude_cli import (INIT_ANSWER_WAIT, INIT_UNANSWERED_API, STOP_COST_WAIT, ResumeRefused,
                          StreamParser, child_environment, cost_tracker_for, exit_message,
                          fable_problem, initialize_line, is_safe_dir, is_safe_model,
-                         message_line, resolved_model, _decode, _session_of)
+                         message_line, overage_paused, overage_problem, resolved_model,
+                         _decode, _session_of)
 
 #: The tools an aside may use: it can look at files, never change anything.
 ASIDE_TOOLS = "Read,Grep,Glob"
@@ -362,6 +363,9 @@ _ASIDE_WORDS = (
     ("Choose another model with Chat, Chat Settings, Change Model, then send again.",
      "Choose another model with Claude Code's model setting, or with Chat, Chat Settings, Change Model for "
      "a chat started here, then ask again."),
+    # Usage credits (#722).
+    ("this turn is now being charged", "this question is now being charged"),
+    ("send again and choose Use Usage Credits", "ask again and choose Use Usage Credits"),
     # API credits (#658).
     ("this message", "this question"),
     ("the message wasn't sent", "the question wasn't asked"),
@@ -390,8 +394,14 @@ class AsideRunner:
                  env: Optional[Dict[str, str]] = None,
                  timer: Callable[..., threading.Timer] = threading.Timer,
                  billing: str = "subscription", api_key_name: str = "",
-                 ledger=None) -> None:
+                 ledger=None, allow_overage: bool = False,
+                 on_limits: Optional[Callable[[dict, str], None]] = None) -> None:
         self.command = list(command)
+        #: You chose usage credits for this question (#722).
+        self.allow_overage = allow_overage
+        #: Given each usage report and the model it came from (#722), so the
+        #: window knows when Fable is on usage credits.
+        self.on_limits = on_limits
         #: Charged as the chat it's about is (#658).
         self.billing = normalize_route(billing)
         self.api_key_name = api_key_name or platform_paths.CLAUDE_API_KEY_SECRET
@@ -649,6 +659,23 @@ class AsideRunner:
                                     if event.kind == "fallback" else self.parser.reply_model)
                         problem = fable_problem(moved_to, chosen, midway=True,
                                                 billing=self.billing)
+                        if problem:
+                            final = AsideEvent("failed", _in_aside_words(problem))
+                            self._kill()
+                            break
+                    elif event.kind == "limits":
+                        # As a turn does (#722): reported to the window, and
+                        # an aside on Fable stops once it's charged to usage
+                        # credits, unless you chose them for this question.
+                        reply = self.parser.reply_model
+                        model = (reply if reply != "<synthetic>" else "") \
+                            or self.parser.model or chosen
+                        if overage_paused(chosen) and not overage_paused(model):
+                            model = chosen  # the chat chose Fable: it counts
+                        if self.on_limits is not None:
+                            self.on_limits(event.data or {}, model)
+                        problem = overage_problem(event.data, model, self.billing,
+                                                  self.allow_overage)
                         if problem:
                             final = AsideEvent("failed", _in_aside_words(problem))
                             self._kill()

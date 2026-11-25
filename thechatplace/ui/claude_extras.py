@@ -215,10 +215,18 @@ class ClaudeExtras:
             wx.MessageBox(lookup.problem, "Ask Aside", wx.OK | wx.ICON_ERROR, self)
             return
         model = own.model if own is not None else ""
+        # An aside on a Fable chat runs on Fable (#722): only on a plan that
+        # includes it, said before the dialog opens. Usage credits are asked
+        # about for each question (``ask`` below): an aside is often one
+        # request, so asking first is the way to stop it.
+        problem, _allow = self._fable_send_problem(own, plan_only=True)
+        if problem:
+            wx.MessageBox(problem, "Ask Aside", wx.OK | wx.ICON_WARNING, self)
+            return
         cowork_ids = self._snapshot.cowork_cli_ids
         allowed_dirs = own.allowed_dirs if own is not None else ()
 
-        def command_at(cut=""):
+        def command_at(cut="", model=model):
             return build_aside_command(lookup.path, info.cli_session_id, model,
                                        cowork_ids=cowork_ids, allowed_dirs=allowed_dirs,
                                        resume_at=cut)
@@ -253,6 +261,20 @@ class ClaudeExtras:
         notice_key = f"aside:{own.cli_session_id}" if api else ""
 
         def ask(question, on_event):
+            # Each question is asked about on its own (#722): Fable's plan,
+            # and usage credits once a Fable turn said they're in use.
+            # The chat is read now, and its model then is the one the
+            # question runs on, so what's checked is what runs: Change Model
+            # chosen here, with the dialog still open, applies.
+            now = self.store.get(own.cli_session_id) if own is not None else None
+            problem, allow = self._fable_send_problem(now, aside=True)
+            if problem is not None:
+                return problem or "Not asked."
+            model_now = now.model if now is not None else model
+
+            def command_now(cut=""):
+                return command_at(cut, model_now)
+
             def arrived(event):
                 if event.kind == "sent":
                     # The question really went on API credits (#663):
@@ -270,9 +292,12 @@ class ClaudeExtras:
                         speaker.forget(notice_key)
 
             def start(at):
-                return main_frame.AsideRunner(at, cwd, question,
-                                              lambda event: wx.CallAfter(arrived, event),
-                                              **billing)
+                return main_frame.AsideRunner(
+                    at, cwd, question, lambda event: wx.CallAfter(arrived, event),
+                    allow_overage=allow,
+                    on_limits=lambda data, model: wx.CallAfter(
+                        self._note_limits, info.cli_session_id, data, model),
+                    **billing)
 
             def begin(at):
                 runner = start(at)
@@ -283,7 +308,7 @@ class ClaudeExtras:
             # running, since a stopped turn leaves the same unfinished end and
             # one just sent may not be written yet.
             try:
-                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, begin,
+                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_now, begin,
                                             on_event).begin(self._pool.submit)
             except RuntimeError:  # the pool is shut down: the window is closing
                 return "The Chat Place is closing, so Claude can't be asked now."
