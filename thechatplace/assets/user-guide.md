@@ -283,8 +283,17 @@ an email. Some kinds of sites are blocked, such as banking and adult sites. If a
 pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
 work counts against your plan's usage, and more than ordinary chat.
 
-The extension keeps its own list of sites you've always allowed: open the extension, then its menu (three dots),
-**Extension settings**, Permissions. Anthropic describes it all in more detail:
+**Known problems.** These are Claude in Chrome's, and happen in Claude Code too:
+
+- **Maximize Chrome before you ask Claude to browse.** Claude works in its own tabs in the
+  background, and each keeps the size Chrome's window had when Claude opened it. If the window was
+  small then, sites show their phone layout and screenshots are tiny. Resizing and reloading
+  doesn't fix a tab that's already open: maximize Chrome and ask Claude to open a new tab.
+- **A tab opened by a link can be left behind.** If a link opens a new tab, Claude may not be able
+  to close it afterwards. Close it yourself with Ctrl+W.
+
+The extension keeps its own list of sites you've always allowed: open the extension, then its
+menu (three dots), **Extension settings**, Permissions. Anthropic describes it all in more detail:
 
 - [Get started with Claude in Chrome](https://support.claude.com/en/articles/12012173-getting-started-with-claude-in-chrome)
 - [Use Claude Code with Chrome](https://code.claude.com/docs/en/chrome), which is how chats here use it
