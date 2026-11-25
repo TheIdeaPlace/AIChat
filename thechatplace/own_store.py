@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -154,10 +155,10 @@ _FIELDS = {f.name for f in fields(OwnSession)}
 _TYPES = {f.name: f.type for f in fields(OwnSession)}
 _DEFAULTS = {f.name: f.default for f in fields(OwnSession)}
 #: Every provider a record may name.
-PROVIDERS = ("claude", "codex", "copilot", "codex-api")
+PROVIDERS = ("claude", "codex", "copilot", "codex-api", "muse")
 #: Providers kept in a companion file of their own, never in
 #: provider-sessions.json (see the module docstring).
-SEPARATE_PROVIDERS = ("copilot", "codex-api")
+SEPARATE_PROVIDERS = ("copilot", "codex-api", "muse")
 #: The name Claude's API-credit chats' own file goes by (#663), in the
 #: place a separate provider's would.
 API_CHATS = "claude-api"
@@ -193,6 +194,54 @@ def _valid_codex_extra(name: str, value) -> bool:
     return (isinstance(value, list) and len(value) <= 100
             and len(set(map(str, value))) == len(value)
             and all(is_safe_server_name(n) and n.strip() for n in value))
+
+
+def _valid_muse_options(options: dict) -> bool:
+    """Keep only bounded command recovery state, never a prompt or policy grant."""
+    if not options:
+        return True
+    if not set(options) <= {"muse_command", "muse_profile"}:
+        return False
+    # The permission profile chosen with Change Permission Mode: one of Muse
+    # Code's four, passed when the chat is reopened and checked before sends.
+    if "muse_profile" in options and options["muse_profile"] not in {
+            ":read-only", ":ask-me", ":auto-review", ":unrestricted"}:
+        return False
+    if "muse_command" not in options:
+        return True
+    command = options["muse_command"]
+    if not isinstance(command, dict) or not (
+            {"command_id", "turn_id", "state"} <= set(command)
+            <= {"command_id", "turn_id", "state", "terminal", "steers"}):
+        return False
+    # Steers sent into the turn: Muse makes each its own turn (id = its
+    # commandId), so the turn's end may be a steer's. Bounded UUIDv7 ids only.
+    if "steers" in command:
+        steers = command["steers"]
+        if not isinstance(steers, list) or len(steers) > 16:
+            return False
+        for steer in steers:
+            try:
+                parsed = uuid.UUID(steer)
+            except (ValueError, TypeError, AttributeError):
+                return False
+            if parsed.version != 7 or str(parsed) != steer:
+                return False
+    # How native Muse ended a finished turn, so Stop isn't said as finished.
+    if "terminal" in command and (command["state"] != "completed"
+                                  or command["terminal"] not in {"completed", "cancelled", "failed"}):
+        return False
+    try:
+        ident = uuid.UUID(command["command_id"])
+        if ident.version != 7 or str(ident) != command["command_id"]:
+            return False
+    except (ValueError, TypeError, AttributeError):
+        return False
+    turn = command["turn_id"]
+    return (isinstance(turn, str) and len(turn) <= 128 and not any(ord(c) < 32 for c in turn)
+            and isinstance(command["state"], str)
+            and command["state"] in {"submitting", "running", "waiting", "cancelling",
+                                      "unknown", "completed", "rejected"})
 
 
 def _stored_record(session: "OwnSession") -> dict:
@@ -244,6 +293,11 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             options = item[name]
             if not isinstance(options, dict):
                 return None
+            if provider == "muse":
+                if not _valid_muse_options(options):
+                    return None
+                values[name] = json.loads(json.dumps(options))
+                continue
             # Separate backend settings; never interpret Codex policy names as
             # Claude permission modes. Runtime model support needs validation.
             allowed = {"model", "effort", "sandbox", "approval_policy", "workspace_root", "approvals_reviewer"}

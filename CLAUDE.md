@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Keep both `CLAUDE.md` and `AGENTS.md`.** Other AI assistants (Codex, Muse Code) read
+`AGENTS.md`, which points here. Never delete, rename or merge either file into the other;
+`tests/test_project_files.py` checks both are there.
+
 ## What this is
 
 The Chat Place: a wxPython desktop app for Windows, macOS and Linux (Windows came first) that is a keyboard- and screen-reader-friendly
@@ -175,6 +179,11 @@ active window's ATK notification), and `speak-engine-linux.sh` is speech-dispatc
 menu item goes there, with its handler in `MainFrame._command_handlers`, never straight into
 `_build_menu`. `ui_text.py` holds UI text that can be tested without wx
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
+
+**Connecting another agent.** To add a provider, follow the `connect-agent` skill
+(`.claude/skills/connect-agent/SKILL.md`): detection and sign-in, read-only history, chats of
+the app's own with native permissions, then every menu command, each checked against the
+installed agent before it's built. Muse Code is its worked example.
 
 **Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
 if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the

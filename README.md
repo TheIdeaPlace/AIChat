@@ -28,6 +28,9 @@ identifies the AI; Kind identifies where a session started. Support for other pr
 Ollama, is planned. Provider-specific features name their provider and are available where that
 provider supports them.
 
+Muse Code conversations can also be listed and read. Reply to those chats in
+Muse Code; running Muse chats here is planned for a later milestone.
+
 For Claude chats, replies use your existing Claude subscription, signed in to Claude Code, and never use an API
 key, unless you make a chat on API credits (see [Chats on API credits](#chats-on-api-credits)). Its own sessions' turns are Claude Code turns in headless mode (`claude -p`). Anthropic's
 help article [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
@@ -68,10 +71,12 @@ too).
   hidden), hidden (the ones you've hidden), or one of your groups. The list's name says what it
   shows and how many ("Session list, needs you, 2 of 139"), and the choice is remembered.
   Choosing one keeps you on the same session when it's still listed.
-  **Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
-  available with Codex or Copilot turned off; each is empty until its provider is enabled.
+  **Claude Chats**, **Codex Chats**, **GitHub Copilot Chats** and **Muse Code Chats** filter by provider.
+  Codex and Copilot filters remain available when their providers are turned off;
+  they are empty until enabled. Muse chats are listed automatically when Muse Code
+  is installed at app startup.
   **View, Session List Columns** (Alt+V, C) chooses what each line says and in what order, so
-  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex or Copilot),
+  it can start with the status rather than the title. The columns are Title, Provider (Claude, Codex, Copilot or Muse Code),
   Charged to, Cost, Folder, Status, New reply, Last activity, Kind (desktop app, Cowork, terminal or The Chat Place),
   Remote Control, Archived, Hidden and Groups, all shown at first, and **Started** and **Last message**,
   which aren't shown until you add them. Provider says which AI; Kind says where the session started.
@@ -493,6 +498,11 @@ too).
   Prompts are kept in `%APPDATA%\TheChatPlace\prompts.json` (on a Mac,
   `~/Library/Application Support/TheChatPlace/prompts.json`). The Chat Place doesn't read Claude
   Code's own history of what you've typed.
+- **Console output you paste** (Ctrl+V) into the reply box or New Session's First message goes in
+  as a code block, with the console's padding spaces trimmed, for every provider: output with a
+  prompt such as `PS C:\work>`, a PowerShell or Python error, or lines padded as a console window
+  copies them. You hear "Pasted console output as a code block"; delete the two lines of
+  backticks around it to send it as plain text. Other text pastes as it is.
 - **Attachments**, in The Chat Place's own Claude and Codex sessions: **Attach Files** (Alt+I, after Commands;
   Ctrl+Shift+F) adds files and images to your next message, and **Ctrl+V** in the reply box
   attaches a picture on the clipboard, such as a screenshot from Win+Shift+S. They're listed
@@ -1794,6 +1804,109 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
 
 ### Sign-in, the user guide and bug reports
 
+- **Muse Code sign-in** (Tools, Sign In, Muse Code) checks whether Muse Code is installed and
+  reports its sign-in status. Status, error and installation notices use standard
+  OK dialogs, as the other providers' sign-in commands do. Installation is a step you run
+  yourself; the app does not run the installer. The same command helps you sign
+  in and check again afterward. When sign-in is needed, it asks first, then
+  shows the browser address and device code in boxes you can read and copy.
+  **Open Browser** opens the sign-in page; **Cancel** stops waiting. The app
+  checks the account again when sign-in ends. If Muse cannot report its account,
+  it explains that it could not check and asks you to update Muse Code and retry.
+  Stored API keys take precedence over browser sign-in and must be managed in
+  Muse Code itself.
+- **Muse Code history.** With Muse Code installed, its stored conversations appear
+  automatically in the session list. **View, Show Sessions, Muse Code Chats** lists
+  only those conversations. Open one with Enter and read, copy, find or export its
+  messages using the existing conversation controls. Conversations Muse Code
+  started are read-only; reply in Muse Code.
+  File, New Session offers Muse Code as the Provider to start a chat here.
+  After Title, Model lists the models Muse Code offers, after Muse Code's default;
+  Effort lists the efforts the chosen model offers, after the model's default (with
+  Muse Code's default model, only the efforts every model offers); and Permission mode
+  lists Muse Code's Read only, Ask me (the default), Auto-review and Unrestricted. Start
+  asks you first, with No as the default, before Auto-review or Unrestricted. If Muse
+  Code doesn't take the model or effort you chose, you hear that the chat started on its
+  default instead, before your first message is sent. The chat streams replies, and each
+  pending request is announced with its chat title, even while you read another
+  conversation. Press Ctrl+Shift+A in that chat to choose Muse Code's one-time Allow
+  once or Reject for a request (Reject also ends the turn), or to answer its questions.
+  While a turn runs, Chat, Steer (Ctrl+Alt+Enter) sends what you've typed into it; if
+  the turn ends just then, Muse Code refuses it and your message comes back to the
+  reply box. Chat, Chat Settings, Change Model lists the models Muse Code offers the chat,
+  with its own marked "(now)", and switches it from Muse's next model call, even during a
+  turn. Muse lists some models an account can't use: if a turn then fails, you hear that
+  the chat's model may not be available to you. Change Effort lists the efforts the
+  chat's model offers, with the one it uses marked "(now)". Switching to a model that
+  doesn't offer the chat's effort sets that model's default, and you hear which.
+  Chat, Insert Command or Skill (Ctrl+/) lists the chat's Muse Code skills, with a
+  search box, and puts the one you choose before your message as "/name ". A message
+  starting with a skill's name runs that skill, with the rest as what you ask it; a
+  name Muse doesn't list goes as ordinary text.
+  Chat, Ask Aside (Ctrl+Shift+Y) asks Muse Code a quick question about the chat in a
+  read-only side chat that never asks you anything; the question and answer don't join
+  the chat. Muse Code keeps each side chat in its own list, so The Chat Place hides it
+  from yours: View, Show Sessions, Hidden shows them.
+  Chat, Attach Files (Ctrl+Shift+F) attaches files to your next message: Muse Code sees
+  an image, and reads any other file wherever it is.
+  A chat starts on the permissions chosen in New Session. Chat, Chat Settings, Change Permission
+  Mode (Ctrl+Shift+O) switches it between Read only, Ask me, Auto-review and Unrestricted,
+  and asks you first, with No as the default, before the two that don't ask you: with
+  Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file
+  sandbox and no approval prompts.
+  Chat, Retry from Here (Ctrl+Shift+Z), also on the messages list's menu, makes a new
+  chat of the history before one of your messages and opens it with that message in the
+  reply box to change and send; the original chat is kept. Files aren't put back, and
+  the copy keeps the chat's permission profile.
+  Branch from Here, on the Chat menu and the messages list's menu, asks first, then
+  makes a new chat through the whole turn of your message or Muse Code's reply, ready for
+  your next message; the original is kept.
+  Tools, Usage and Context (Ctrl+Shift+U) works for every Muse Code chat. For a chat started
+  here it says how full the context is, such as "Context 5% full: 47,956 of 1,007,997 tokens,
+  normal" ("nearly full" or "full" as it fills), and the last turn's tokens. A chat started in
+  Muse Code itself says its context is known only for chats started in The Chat Place. Then
+  come your Muse Code plan and whether it's active, and the 5-hour and weekly limits when
+  Muse Code reports them.
+  For bigger jobs, such as reviewing a whole code base, Muse Code can start a workflow:
+  several sub-agents that work in the background after its reply. You hear that Muse Code
+  is working in the background; each sub-agent's permission request is announced like any
+  other (Ctrl+Shift+A), and when the work is done Muse Code replies with the results and
+  you hear that it finished. The conversation shows the workflow, whether it's still
+  running, and each sub-agent's task. Meanwhile the chat's Status is Working, and Needs
+  you while a sub-agent waits for your answer. A command Muse Code leaves running after its
+  reply, such as a test suite, keeps the chat Working in the same way, and you hear that it's
+  working in the background, until the command ends.
+  Chat, Stop Background Task lists the chat's running background work by tool and
+  command, asks before stopping the one you choose, and the turn carries on.
+  Muse's **Ask me** policy prompts for restricted actions; safe actions can run without
+  asking. Stop waits for Muse to confirm cancellation, and when a turn ends you hear
+  whether it finished or stopped. On Windows, a command you allow runs in Muse's sandbox
+  from Muse Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its
+  sandbox is unavailable. To update, run `muse` in a terminal: it updates itself.
+  The sandbox runs commands as a separate Windows account, so an app shortcut installed
+  only for you, such as the Python install manager's `python`, fails there with "Access is
+  denied": make a virtual environment in the chat's folder and ask Muse to use
+  `.venv\Scripts\python`. Git refuses the folder as "dubious ownership" until an
+  administrator runs `git config --system --add safe.directory C:/path/to/folder`.
+  Chat, Chat Settings, Chat Permissions
+  explains a Muse chat's permissions. Deleting Muse chats here is not available yet.
+  Signing in to Muse Code does not create a saved conversation.
+  If Muse has no stored conversations, the filter explains that none were found;
+  start a conversation in Muse Code, then press F5 to refresh the list. Pending
+  or unavailable discovery is reported separately.
+  Reading history does not resume a session or start a model
+  turn, and background discovery never starts sign-in.
+  History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
+  Sending is unavailable if the human permission policy cannot be established.
+  If a build's
+  interface differs, the app reports that Muse Code is unavailable. Session status is shown as
+  unavailable because stored history cannot establish what another Muse process
+  is doing. If a refresh fails, previously listed chats and loaded messages stay
+  available; press F5 to retry. Unsupported or shortened history is identified
+  rather than presented as complete. A history format that cannot be read safely
+  must be opened in Muse Code. The Last message column shows a cached preview
+  after a conversation has been read; it does not fetch every conversation in
+  the background.
 - **Claude Code sign-in** (Tools, Sign In, Claude Code) says whether Claude Code is signed in, to which plan and
   as whom ("Claude Code is signed in to your Claude Max plan as …"). If it isn't, it offers to
   sign in: `claude auth login` opens in its own window (a Terminal window on a Mac) and your

@@ -160,3 +160,39 @@ def test_diagnostics_are_bounded_and_do_not_block_when_logging_fails(tmp_path, m
     monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: (_ for _ in ()).throw(OSError('No log')))
     codex_diagnostics.record_failure(ValueError('secret'))
     assert codex_diagnostics.last_failure() == ''
+
+
+def test_a_discovery_failure_is_logged_in_the_apps_words_and_reaches_the_bug_report(tmp_path, monkeypatch):
+    """The list says "Muse Code discovery unavailable" without saying why;
+    the log keeps why, in the app's own words, never the exception's text."""
+    from thechatplace.providers.muse_connection import MuseHistoryError
+    path = tmp_path / 'codex-errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    codex_diagnostics.record_discovery_failure(
+        'muse', MuseHistoryError("Muse Code history timed out. Try refreshing."))
+    codex_diagnostics.record_discovery_failure('codex', RuntimeError(r'C:\Users\private\secret.txt'))
+    codex_diagnostics.record_discovery_failure('claude', RuntimeError('not a listed provider'))
+    text = path.read_text(encoding='utf-8')
+    assert 'private' not in text and 'secret' not in text and 'claude' not in text
+    assert len(text.splitlines()) == 2
+    failures = codex_diagnostics.recent_failures()
+    assert failures['Muse Code discovery'][0][1] == (
+        'MuseHistoryError: Muse Code history timed out. Try refreshing.')
+    assert failures['Codex discovery'][0][1] == 'RuntimeError; details redacted.'
+
+
+def test_a_discovery_reason_with_a_path_is_redacted(tmp_path, monkeypatch):
+    from thechatplace.providers.muse_connection import MuseHistoryError
+    path = tmp_path / 'codex-errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    codex_diagnostics.record_discovery_failure('muse', MuseHistoryError(r'Failed reading C:\Users\x\chat'))
+    assert path.read_text(encoding='utf-8').rstrip().endswith('muse discovery failed: MuseHistoryError; details redacted.')
+
+
+def test_a_muse_worker_failure_is_named_muse_not_codex(tmp_path, monkeypatch):
+    from thechatplace.providers.muse_connection import MuseHistoryError
+    path = tmp_path / 'codex-errors.log'
+    monkeypatch.setattr(platform_paths, 'codex_diagnostic_path', lambda: path)
+    codex_diagnostics.record_failure(MuseHistoryError("synthetic"))
+    assert 'Muse worker failed: MuseHistoryError; details redacted.' in path.read_text(encoding='utf-8')
+    assert 'Muse' in codex_diagnostics.recent_failures()

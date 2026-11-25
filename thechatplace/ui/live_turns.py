@@ -185,8 +185,11 @@ class LiveTurns:
         background work as it goes. Codex is asked only when you choose it,
         and it says if none are running, so it's on for its own chats."""
         info = info if info is not None else self._open
+        # Muse, like Codex, is asked when you choose it (task/list), and says
+        # if nothing is running; only its chats started here can stop work.
         return bool(self._background_entries(info)) or (
-            info is not None and info.provider in ('codex', 'codex-api') and info.is_own)
+            info is not None and info.provider in ('codex', 'codex-api') and info.is_own) or (
+            info is not None and info.provider == "muse" and info.is_own and self._can_edit(info))
 
     def on_stop_background_task(self):
         """Chat, Stop Background Task: end one shell command or agent Claude
@@ -194,6 +197,12 @@ class LiveTurns:
         info = self._open
         if info is not None and info.provider in ('codex', 'codex-api') and info.is_own:
             self._codex_control(info, '/background')
+            return
+        if info is not None and info.provider == "muse":
+            if info.is_own and self._can_edit(info):
+                self._stop_muse_task(info)
+            else:
+                self._require_capability("send", info)  # says it's Muse Code's, read-only
             return
         if info is None or info.provider != "claude" or not info.is_own:
             self._feedback("Load one of your Claude chats with background work running first.")

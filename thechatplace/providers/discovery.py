@@ -46,8 +46,14 @@ class DiscoveryRegistry:
                         if fill is not None:
                             fill(snapshot.sessions)
                     result.append(snapshot)
-                except Exception:  # backend errors never enter UI diagnostics
-                    pass
+                except Exception as error:  # backend errors never enter UI diagnostics
+                    # Only the error's type and the app's own words reach the
+                    # log, so a "discovery unavailable" can be explained later.
+                    try:
+                        from ..codex_diagnostics import record_discovery_failure
+                        record_discovery_failure(provider_id, error)
+                    except Exception:
+                        pass
                 finally:
                     done.set()
             job = done, result

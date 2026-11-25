@@ -41,6 +41,33 @@ def test_unknown_text_is_never_hidden():
     assert not approvals.is_routine('x', 'Something new Codex says.')
 
 
+def muse_decision(decision, summary='Run the synthetic tests', details='pytest -q'):
+    from thechatplace.providers.muse import MuseApproval, approval_decision_text
+    approval = MuseApproval('native-1', 'request-1', 'approval', summary, details)
+    return 'muse:request-1', approval_decision_text(approval, decision)
+
+
+def test_muse_decisions_read_back_as_yours():
+    identity, text = muse_decision('allow')
+    parsed = approvals.parse(identity, text)
+    assert (parsed.outcome, parsed.by, parsed.command) == (
+        approvals.ALLOWED, approvals.BY_YOU, 'Run the synthetic tests')
+    assert parsed.routine is True
+    assert parsed.row() == 'Allowed: Run the synthetic tests. You decided.'
+    denied = approvals.parse(*muse_decision('deny'))
+    assert (denied.outcome, denied.routine) == (approvals.DENIED, False)
+    assert denied.row() == 'Denied: Run the synthetic tests. You decided.'
+    item = lists.approval_items([('', identity, text)])[0]
+    assert item.row == 'Allowed: Run the synthetic tests. You decided.'
+    assert item.copy_text == 'Run the synthetic tests' and item.copy_what == 'the command'
+
+
+def test_muse_decision_without_readable_outcome_is_never_hidden():
+    parsed = approvals.parse('muse:request-9', 'Something new Muse says.')
+    assert (parsed.outcome, parsed.by) == ('noted', approvals.BY_YOU)
+    assert parsed.routine is False
+
+
 def test_a_long_command_is_shortened_in_the_row_but_copied_whole():
     identity, text = review('approved', command='x' * 300)
     item = lists.approval_items([('turn-1', identity, text)])[0]

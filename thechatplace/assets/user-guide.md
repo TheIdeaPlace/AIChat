@@ -26,6 +26,103 @@ OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
 ## Before you start
 
+Tools, **Sign In**, **Muse Code** provides setup assistance for Muse Code. It checks
+installation and sign-in, shows status, errors and installation instructions in
+standard OK dialogs, and helps you sign in and check again. You run the installer yourself.
+If sign-in is needed, confirm the offer, read or copy the browser address and
+device code, then choose **Open Browser** to sign in. **Cancel** stops waiting;
+the app checks your status again afterward. An older Muse build may need an
+update before the app can check its account. If Muse reports a stored API key,
+manage it in Muse Code first: it takes precedence over browser sign-in.
+With Muse Code installed, its stored conversations appear automatically in the
+session list. **View, Show Sessions, Muse Code Chats** shows only those chats.
+Press Enter to open one, then read, copy, find or export its messages using the
+existing conversation controls. The read-only reply area explains that replies
+to those chats must be made in Muse Code.
+File, New Session offers Muse Code as the Provider to start a chat here.
+After Title, Model lists the models Muse Code offers, after Muse Code's default;
+Effort lists the efforts the chosen model offers, after the model's default (with
+Muse Code's default model, only the efforts every model offers); and Permission mode
+lists Muse Code's Read only, Ask me (the default), Auto-review and Unrestricted. Start
+asks you first, with No as the default, before Auto-review or Unrestricted. If Muse
+Code doesn't take the model or effort you chose, you hear that the chat started on its
+default instead, before your first message is sent. The chat streams replies, and each
+pending request is announced with its chat title, even while you read another
+conversation. Press Ctrl+Shift+A in that chat to choose Muse Code's one-time Allow once
+or Reject for a request (Reject also ends the turn), or to answer its questions.
+While a turn runs, Chat, Steer (Ctrl+Alt+Enter) sends what you've typed into it; if
+the turn ends just then, Muse Code refuses it and your message comes back to the
+reply box. Chat, Chat Settings, Change Model lists the models Muse Code offers the chat,
+with its own marked "(now)", and switches it from Muse's next model call, even during a
+turn. Muse lists some models an account can't use: if a turn then fails, you hear that
+the chat's model may not be available to you. Change Effort lists the efforts the
+chat's model offers, with the one it uses marked "(now)". Switching to a model that
+doesn't offer the chat's effort sets that model's default, and you hear which.
+Chat, Insert Command or Skill (Ctrl+/) lists the chat's Muse Code skills, with a
+search box, and puts the one you choose before your message as "/name ". A message
+starting with a skill's name runs that skill, with the rest as what you ask it; a
+name Muse doesn't list goes as ordinary text.
+Chat, Ask Aside (Ctrl+Shift+Y) asks Muse Code a quick question about the chat in a
+read-only side chat that never asks you anything; the question and answer don't join
+the chat. Muse Code keeps each side chat in its own list, so The Chat Place hides it
+from yours: View, Show Sessions, Hidden shows them.
+Chat, Attach Files (Ctrl+Shift+F) attaches files to your next message: Muse Code sees
+an image, and reads any other file wherever it is.
+A chat starts on the permissions chosen in New Session. Chat, Chat Settings, Change Permission
+Mode (Ctrl+Shift+O) switches it between Read only, Ask me, Auto-review and Unrestricted,
+and asks you first, with No as the default, before the two that don't ask you: with
+Auto-review an AI reviewer may approve restricted actions, and Unrestricted has no file
+sandbox and no approval prompts.
+Chat, Retry from Here (Ctrl+Shift+Z), also on the messages list's menu, makes a new
+chat of the history before one of your messages and opens it with that message in the
+reply box to change and send; the original chat is kept. Files aren't put back, and
+the copy keeps the chat's permission profile.
+Branch from Here, on the Chat menu and the messages list's menu, asks first, then
+makes a new chat through the whole turn of your message or Muse Code's reply, ready for
+your next message; the original is kept.
+Tools, Usage and Context (Ctrl+Shift+U) works for every Muse Code chat. For a chat started
+here it says how full the context is, such as "Context 5% full: 47,956 of 1,007,997 tokens,
+normal" ("nearly full" or "full" as it fills), and the last turn's tokens. A chat started in
+Muse Code itself says its context is known only for chats started in The Chat Place. Then
+come your Muse Code plan and whether it's active, and the 5-hour and weekly limits when
+Muse Code reports them.
+For bigger jobs, such as reviewing a whole code base, Muse Code can start a workflow:
+several sub-agents that work in the background after its reply. You hear that Muse Code
+is working in the background; each sub-agent's permission request is announced like any
+other (Ctrl+Shift+A), and when the work is done Muse Code replies with the results and
+you hear that it finished. The conversation shows the workflow, whether it's still
+running, and each sub-agent's task. Meanwhile the chat's Status is Working, and Needs
+you while a sub-agent waits for your answer. A command Muse Code leaves running after its
+reply, such as a test suite, keeps the chat Working in the same way, and you hear that it's
+working in the background, until the command ends.
+Chat, Stop Background Task lists the chat's running background work by tool and
+command, asks before stopping the one you choose, and the turn carries on. Muse's
+**Ask me** policy prompts for restricted actions; safe actions can run without asking.
+Stop waits for Muse to confirm cancellation, and when a turn ends you hear whether it
+finished or stopped. On Windows, a command you allow runs in Muse's sandbox from Muse
+Code 1.4.24; with 1.4.20 it doesn't run, because Muse reports that its sandbox is
+unavailable. To update, run `muse` in a terminal: it updates itself. If a command there
+says "Access is denied", or Git says a folder has "dubious ownership", see Troubleshooting,
+Muse Code. Deleting Muse chats here is not available yet.
+Reading does not resume a session or start a turn.
+
+History supports Muse Code 1.4.18, 1.4.20 and 1.4.24; execution targets 1.4.24.
+Sending is unavailable if Muse Code can't confirm the chat's permission profile. Other
+interfaces may be reported as unavailable. In the Status column, a Muse Code chat started
+here says Working, Needs you or Idle. One started in Muse Code says status unavailable:
+The Chat Place can't see what another Muse Code program is doing. If a refresh fails, the
+last good session list and loaded messages stay available; press F5 to retry. An item Muse
+Code shortened says so where it is, history the app can't read is identified, and a history
+format the app cannot read safely must be opened in Muse Code. Background discovery does not start sign-in.
+The Last message column uses a cached preview after you read a conversation;
+it does not fetch every chat in the background.
+
+Signing in to Muse Code does not create a saved conversation.
+If Muse has no stored conversations, Muse Code Chats explains that none were
+found. Start a conversation in Muse Code, then press F5 to refresh the list.
+Pending or unavailable discovery is reported separately. With no rows listed,
+Enter repeats this guidance.
+
 You need:
 
 - Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
@@ -1284,7 +1381,10 @@ address is always what's opened or copied. A link in a code block or in inline c
 code". Local paths are listed as **file**: Windows drive paths, network paths and file: URLs,
 bare or in inline code, quotes, angle brackets or Markdown link targets. Paths containing spaces
 need one of those delimiters. A line suffix such as `:12` means the file itself. Clear relative
-file references use the session's working folder when it is known.
+file references use the session's working folder when it is known. In inline code, a command
+such as `winget install Kitware.CMake`, or a program named on its own such as `app.exe`, stays
+code rather than becoming a file in that folder; a full path such as `C:\Tools\app.exe` is still
+a file.
 
 - **Open** opens an existing safe file in its default app.
 - **Open containing folder** selects the file in File Explorer or Finder. On Linux it uses the
@@ -2343,6 +2443,12 @@ These are for Claude and Codex chats started here:
   Enter to choose: it goes at the start of the reply box, ready to finish and send. In a Codex
   chat, the same picker offers enabled skills and chat controls, such as `/plan` and `/compact`;
   see "More controls for Codex chats started here". Copilot doesn't have this picker yet.
+- **Console output you paste** (Ctrl+V), in the reply box or New Session's First message, goes
+  in as a code block, whichever AI the chat uses: output with a prompt such as `PS C:\work>`,
+  an error from PowerShell or Python, or lines padded with spaces as a console window copies
+  them. The padding is trimmed, and you hear "Pasted console output as a code block" with its
+  lines. It's in the box before you send, so you can change it; to send it as plain text,
+  delete the two lines of backticks around it. Other text pastes as it is.
 - **Ctrl+Shift+F** (or Attach Files) adds files and pictures to your next message, and **Ctrl+V**
   in the reply box attaches a picture on the clipboard, such as a screenshot, or files you
   copied. The attachments are
@@ -2946,9 +3052,11 @@ With many chats, these keep the list manageable.
 you or are working; just the ones that need you; just the working ones; the ones with a new reply
 you haven't read yet; the idle ones; desktop app chats (Code and Cowork); just Cowork chats;
 chats started here; terminal chats; Remote Control chats; ungrouped chats; Claude chats; Codex
-chats; GitHub Copilot chats; archived ones; hidden ones; or one of your groups.
-**Claude Chats**, **Codex Chats** and **GitHub Copilot Chats** filter by provider. They remain
-available when Codex or Copilot is off; each is empty until its provider is enabled.
+chats; GitHub Copilot chats; Muse Code chats; archived ones; hidden ones; or one of your groups.
+**Claude Chats**, **Codex Chats**, **GitHub Copilot Chats** and **Muse Code Chats** filter by provider.
+Codex and Copilot filters remain available when their providers are off; they are
+empty until enabled. Muse chats are listed automatically when Muse Code is
+installed at app startup.
 **View, Sort Sessions** (Alt+V, O) chooses the order: by status, newest first, oldest first, by
 title, or by folder. Both choices are remembered, and you stay on the same chat when it's
 still listed.
@@ -2959,7 +3067,7 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Cost, Folder,
+The parts are called columns: Title, Provider (Claude, Codex, Copilot or Muse Code), Charged to, Cost, Folder,
 Status, New reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the
 others in "The kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at
 first. Started and Last message are read only once you add them. Charged to says how each of
@@ -3764,6 +3872,24 @@ report it (see Reporting a problem).
 answer was billed to GitHub Copilot, open the chat again, or restart The Chat Place if it has
 stopped sending to Copilot altogether. The other reasons (a folder's Copilot hooks, a chat used
 in Copilot CLI since you opened it, a message starting with `/`) are in Starting a Copilot chat.
+
+### Muse Code
+
+**A Muse Code command fails with "Access is denied", such as when it runs Python.** On Windows,
+Muse's sandbox runs the commands you allow as a separate Windows account of its own, not as you.
+A command that is an app shortcut installed for your account only can't start for that account.
+The Python install manager's `python` is one: it's in `C:\Program Files\WindowsApps`, so Muse
+reports that the sandbox denied launching Python. Python itself is reachable: make a virtual
+environment in the chat's folder, in a terminal of your own (`py -m venv .venv`, then install
+the project's packages with `.venv\Scripts\python -m pip install`), and ask Muse to run
+`.venv\Scripts\python` instead of `python`. Putting that in the project's instructions for
+agents saves asking again.
+
+**Git in a Muse Code chat says the folder has "dubious ownership".** It's the same separate
+account: the folder belongs to you, and Git trusts another account's folder only if told to.
+In a terminal run as administrator, run
+`git config --system --add safe.directory C:/path/to/folder`, with the chat's folder written
+with forward slashes.
 
 ### Reporting a problem
 

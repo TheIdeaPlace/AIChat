@@ -127,6 +127,15 @@ class ClaudeExtras:
         if info.provider in ('codex', 'codex-api'):
             self._change_codex_settings(info, "chat options")
             return
+        if info.provider == "muse" and info.is_own and self._can_edit(info):
+            # Checked with Muse Code 1.4.20: its protocol has no agent,
+            # instructions or output style, and it refuses workspaceRoots
+            # (dev-notes/muse-code-chat-menu.md). A chat started in Muse Code
+            # gets the read-only refusal below instead.
+            self._feedback("Muse Code doesn't offer chat options yet: it has no agent, "
+                           "instructions or output style for its chats, and doesn't accept "
+                           "more folders.")
+            return
         if ((info.provider != "claude" or info.source == "kept")
                 and not self._require_capability("chat_options", info)):
             return  # another provider's chat, or a kept copy: says why
@@ -196,6 +205,11 @@ class ClaudeExtras:
             return
         if info.provider in ('codex', 'codex-api'):
             self._codex_ask_aside(info)
+            return
+        if info.provider == "muse":
+            # Before the capability check: Muse grants "aside" to chats
+            # started here, which must never reach the Claude path below.
+            self._muse_ask_aside(info)
             return
         if info.provider == "claude" and info.cowork:
             self._feedback(COWORK_REFUSED)

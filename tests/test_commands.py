@@ -5,6 +5,15 @@ from thechatplace import commands
 from thechatplace.commands import Command, Menu, access_key, menu_label
 
 
+def test_muse_sign_in_joins_the_other_providers_under_tools():
+    tools = next(menu for menu in commands.MENU_BAR if menu.label.replace("&", "") == "Tools")
+    sign_in = next(item for item in tools.items
+                   if isinstance(item, commands.Menu) and item.label.replace("&", "") == "Sign In")
+    assert [item.id for item in sign_in.items] == [
+        "claude_sign_in", "codex_sign_in", "copilot_sign_in", "muse_sign_in"]
+    assert commands.command("muse_sign_in").label == "&Muse Code..."
+
+
 def all_menus():
     return [Menu("bar", commands.MENU_BAR)] + [m for m in commands.walk() if isinstance(m, Menu)]
 
@@ -181,6 +190,7 @@ GOLDEN = [
     ('Tools > Sign In', '&Claude Code...'),
     ('Tools > Sign In', 'C&odex...'),
     ('Tools > Sign In', 'Co&pilot...'),
+    ('Tools > Sign In', '&Muse Code...'),
     ('Tools', 'A&PI Keys...'),  # #658
     ('Tools', '---'),
     ('Tools', 'S&ounds...'),

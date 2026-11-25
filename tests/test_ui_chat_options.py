@@ -66,6 +66,139 @@ def select(frame, title):
 # -- New Session and the Chat Options dialog ------------------------------------------------
 
 
+def test_new_session_names_each_provider_as_the_session_list_does(frame, folder):
+    """Muse Code, not "Muse" (Orca, #701): the Provider box was each id capitalized."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "codex", "copilot", "muse"),
+                              provider="muse")
+    try:
+        choice = dialog.provider_choice
+        assert [choice.GetString(i) for i in range(choice.GetCount())] == [
+            "Claude", "Codex", "Copilot", "Muse Code"]
+        assert choice.GetStringSelection() == "Muse Code"
+    finally:
+        dialog.Destroy()
+
+
+#: Shaped like installed 1.4.24's catalog and profiles (ids synthetic).
+MUSE_CHOICES = {
+    "models": (("synthetic-a", "Synthetic A", ("low", "medium", "high"), "medium"),
+               ("synthetic-b", "Synthetic B", ("minimal", "low", "high", "max"), "max")),
+    "profiles": ((":read-only", "Read only"), (":ask-me", "Ask me"),
+                 (":auto-review", "Auto-review"), (":unrestricted", "Unrestricted"))}
+
+
+def _muse_dialog(frame, folder, loaded=MUSE_CHOICES):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    asked = []
+    dialog = NewSessionDialog(frame, folder, providers=("claude", "muse"), provider="muse",
+                              load_muse_choices=lambda done: (asked.append(done),
+                                                              done(loaded, loaded is None)))
+    wx.GetApp().ProcessPendingEvents()  # the CallAfter that asks for the choices
+    return dialog, asked
+
+
+def _strings(choice):
+    return [choice.GetString(i) for i in range(choice.GetCount())]
+
+
+def test_new_session_offers_muse_models_efforts_and_profiles(frame, folder):
+    """Model, Effort and Permission mode are on for Muse Code, so Tab stops on
+    each, and list what Muse offers: they were turned off, and so skipped."""
+    dialog, asked = _muse_dialog(frame, folder)
+    try:
+        assert len(asked) == 1
+        for control in (dialog.model, dialog.effort_choice, dialog.mode):
+            assert control.IsEnabled()
+        assert _strings(dialog.model) == ["Muse Code's default", "Synthetic A", "Synthetic B"]
+        # Muse's own model isn't known until the chat starts: only the tiers
+        # every model has, so whichever it is takes the one chosen.
+        assert _strings(dialog.effort_choice) == ["The model's default", "low", "high"]
+        assert _strings(dialog.mode) == ["Read only", "Ask me", "Auto-review", "Unrestricted"]
+        assert dialog.mode.GetStringSelection() == "Ask me"
+        assert dialog.values()[4] == "" and dialog.effort() == ""
+        assert dialog.muse_profile() == ":ask-me"
+        # Their Alt keys, now they're on (#515).
+        assert dialog.model_label.GetLabel() == "Mo&del:"
+        assert dialog.effort_label.GetLabel() == "&Effort:"
+        assert dialog.mode_label.GetLabel() == "Permission m&ode:"
+    finally:
+        dialog.Destroy()
+
+
+def test_new_session_muse_effort_follows_the_model_and_keeps_your_choice(frame, folder):
+    dialog, _asked = _muse_dialog(frame, folder)
+    try:
+        dialog.effort_choice.SetStringSelection("high")
+        dialog.model.SetSelection(2)  # Synthetic B
+        dialog._on_codex_model()
+        assert _strings(dialog.effort_choice) == [
+            "The model's default (maximum)", "minimal", "low", "high", "maximum"]
+        assert dialog.effort_choice.GetStringSelection() == "high"
+        dialog.mode.SetSelection(0)
+        assert dialog.values()[4] == "synthetic-b" and dialog.effort() == "high"
+        assert dialog.muse_profile() == ":read-only"
+        # Away to Claude and back: Muse's choices are kept.
+        dialog.provider_choice.SetSelection(0)
+        dialog._on_provider()
+        assert dialog.muse_profile() == "" and dialog.values()[4] == ""
+        dialog.provider_choice.SetSelection(1)
+        dialog._on_provider()
+        assert dialog.values()[4] == "synthetic-b" and dialog.effort() == "high"
+        assert dialog.muse_profile() == ":read-only"
+    finally:
+        dialog.Destroy()
+
+
+def test_new_session_muse_without_its_list_still_offers_its_defaults(frame, folder):
+    dialog, _asked = _muse_dialog(frame, folder, loaded=None)
+    try:
+        assert _strings(dialog.model) == ["Muse Code's default"]
+        assert _strings(dialog.effort_choice) == ["The model's default"]
+        assert dialog.mode.GetStringSelection() == "Ask me"
+        assert dialog.model.IsEnabled() and dialog.mode.IsEnabled()
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("answer,started", [("yes", True), ("no", False)])
+def test_new_session_confirms_a_muse_profile_you_dont_review(frame, folder, monkeypatch,
+                                                            answer, started):
+    dialog, _asked = _muse_dialog(frame, folder)
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: (
+        asked.append(text), wx.YES if answer == "yes" else wx.NO)[1])
+    try:
+        dialog.folder.ChangeValue(folder)
+        dialog.message.SetValue("Synthetic first message")
+        dialog.mode.SetStringSelection("Unrestricted")
+        dialog._on_ok(None)
+        assert len(asked) == 1 and "the new chat runs with no file sandbox" in asked[0]
+        assert (dialog.GetReturnCode() == wx.ID_OK) is started
+        dialog.SetReturnCode(0)
+        asked.clear()
+        dialog.mode.SetStringSelection("Read only")  # you review it: no warning
+        dialog._on_ok(None)
+        assert not asked and dialog.GetReturnCode() == wx.ID_OK
+    finally:
+        dialog.Destroy()
+
+
+def test_new_session_first_message_takes_console_output_as_a_code_block(frame, env, folder):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, folder, feedback=frame._feedback)
+    try:
+        env["pasted"]["text"] = "C:\\work>dir /b\nnotes.txt"
+        dialog.message.SetFocus()
+        skipped = []
+        dialog._on_message_paste(type("Paste", (), {"Skip": lambda self: skipped.append(1)})())
+        assert not skipped
+        assert dialog.message.GetValue() == "```console\nC:\\work>dir /b\nnotes.txt\n```\n"
+        assert env["feedback"][-1] == "Pasted console output as a code block, 2 lines."
+    finally:
+        dialog.Destroy()
+
+
 def test_new_session_keeps_chat_options_separate_by_provider(frame, folder):
     from thechatplace.ui.dialogs import NewSessionDialog
     dialog = NewSessionDialog(frame, folder, providers=("claude", "codex"), provider="claude")

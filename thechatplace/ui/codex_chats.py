@@ -7,6 +7,7 @@ rules, plans and creation stay Codex's own."""
 import os
 import tempfile
 import time
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -21,7 +22,7 @@ from .. import announce, sound_events
 from ..claude_cli import describe_elapsed
 from .. import codex_long_messages, reply_costs
 from ..codex_diagnostics import record_failure, safe_reason
-from ..ui_text import key_name, with_stop_key, your_key
+from ..ui_text import MUSE_MODE_WARNINGS, key_name, with_stop_key, your_key
 from .dialogs import (COPILOT_AUTO, COPILOT_AUTO_LABEL, COPILOT_SESSION_MODES,
                       CodexPermissionDialog, QuestionDialog, codex_permission_prompt,
                       copilot_auto_warning, copilot_mode_name)
@@ -195,6 +196,10 @@ class CodexChats(SoundHost, CodexExtras):
     def _load_codex_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex'), callback)
 
+    def _load_muse_choices(self, callback):
+        """New Session's Muse Code models and profiles (model_choices)."""
+        self._codex_work(lambda: self.sessions.model_choices('muse'), callback)
+
     def _load_codex_api_models(self, callback):
         self._codex_work(lambda: self.sessions.model_choices('codex-api'), callback)
 
@@ -280,6 +285,216 @@ class CodexChats(SoundHost, CodexExtras):
             self._say_early_notice(provider, record, message)
         self._codex_work(create, done)
 
+    def _create_muse_owned(self, folder, title, message, made=None, joint=False,
+                           model="", effort="", profile=""):
+        """A new Muse Code chat: created natively on ``profile``, stored here,
+        then sent to like any owned runtime chat. ``model`` and ``effort``
+        ("" for Muse Code's own) are set once it exists, before its first
+        message, through Change Model's and Change Effort's checked calls:
+        Muse takes neither in session/start. If one isn't taken, the chat is
+        kept on Muse's own and you hear which, before anything is sent."""
+        name = provider_name("muse")
+        notes = []
+        def create():
+            options = {"profile": profile} if profile else {}
+            record = self.sessions.create_owned("muse", folder, title, **options)
+            if model:
+                try:
+                    _label, note = self.sessions.owned_action("set_model", record, model)
+                    if note:
+                        notes.append(note)
+                except Exception as exc:  # noqa: BLE001 - the chat exists; say what didn't take
+                    notes.append(f"{title} started on Muse Code's default model, not the one you "
+                                 f"chose. {safe_reason(exc)}".rstrip())
+            if effort:
+                try:
+                    self.sessions.owned_action("set_effort", record, effort)
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f"{title} started on its model's default effort, not the one you "
+                                 f"chose. {safe_reason(exc)}".rstrip())
+            return record
+        def done(record, error):
+            for note in ([] if error else notes):
+                self._feedback(note)
+            if error:
+                text = record or (f'Could not create this {name} chat. Check that '
+                                  f'{name} is installed and signed in.')
+                if message:
+                    text = self._keep_first_message(message, "muse") + ' ' + text
+                self._feedback(text)
+                return
+            if not self._store_write(self.store.add, record):
+                kept = self._keep_first_message(message, "muse") + ' ' if message else ''
+                self._feedback(kept + f'{name} created the chat, but it could not be saved here. Open it in '
+                               f'{home_app("muse")}.')
+                return
+            if joint:
+                self.refresh_sessions()
+                made(record.to_info(), message)
+                self._say_early_notice("muse", record, message)
+                return
+            self._codex_drafts[record.to_info().key] = message
+            self.open_session(record.to_info())
+            self.refresh_sessions()
+            if message:
+                self.reply_text.SetValue('')
+                self._codex_drafts.pop(record.to_info().key, None)
+                self._send_codex_owned(record, message)
+            if made is not None:
+                made(record.to_info(), message)
+            self._say_early_notice("muse", record, message)
+        self._codex_work(create, done)
+
+    def _poll_muse_owned(self, record):
+        """Monitor native state for the owned turn, independent of the open view.
+
+        The provider decides whether a turn ended; quiet history is not proof.
+        Only callbacks on the UI thread publish requests or touch controls.
+        """
+        ident = record.cli_session_id
+        if self._closing or ident in self._muse_monitors:
+            return
+        cancelled = threading.Event()
+        self._muse_monitors[ident] = cancelled
+        def work():
+            while not cancelled.is_set():
+                try:
+                    update = self.sessions.owned_action("poll", record)
+                except Exception:  # noqa: BLE001 - private transport details stay out of UI
+                    update = {"state": "unknown", "notice":
+                        "Muse Code's running state could not be confirmed. "
+                        "Check the chat before sending again."}
+                wx.CallAfter(self._apply_muse_owned_update, record, update, cancelled)
+                if update.get("background"):
+                    # A workflow or a background command outlives its turn
+                    # (Muse 1.4.24): keep asking, less often, so the chat
+                    # stays Working, sub-agents' permission requests and
+                    # Muse's reply with the results still reach you.
+                    if cancelled.wait(5):
+                        return
+                    continue
+                if update.get("state") in ("idle", "completed", "failed", "unknown"):
+                    return
+                if cancelled.wait(2.5):
+                    return
+        try:
+            self._pool.submit(work)
+        except RuntimeError:  # shutdown has already stopped accepting work
+            self._muse_monitors.pop(ident, None)
+
+    def _apply_muse_owned_update(self, record, update, token):
+        """Publish one native state read; callbacks never reopen or focus a chat."""
+        ident = record.cli_session_id
+        if (self._gone() or self._closing or self._muse_monitors.get(ident) is not token
+                or self.store.get(ident, provider="muse") is None):
+            return
+        previous = self._muse_runtime.get(ident, {})
+        self._muse_runtime[ident] = update
+        state = update.get("state", "unknown")
+        if "pending" in update:
+            pending = update["pending"]
+            live = {(approval.native_id, approval.request_id) for approval in pending}
+            for key in tuple(self._muse_approvals):
+                if key[0] == ident and key not in live:
+                    self._muse_approvals.pop(key, None)
+            for approval in pending:
+                key = (approval.native_id, approval.request_id)
+                fresh = key not in self._muse_approvals
+                self._muse_approvals[key] = approval
+                if fresh:
+                    self._announce_muse_approval(record, approval)
+        notice = update.get("notice", "")
+        if notice and notice != previous.get("notice"):
+            self._say(f"{record.title}: {notice}", interrupt=False)
+            self._status(f"{record.title}: {notice}")
+        background = bool(update.get("background"))
+        if state in ("idle", "completed", "failed", "unknown") and not background:
+            self._muse_monitors.pop(ident, None)
+        if background and state == "idle" and update.get("terminal", "") not in ("cancelled", "failed"):
+            # Not "finished": Muse ended the turn to work in the background,
+            # and answers again when that work is done. Said once, not each
+            # time a sub-agent's request is answered.
+            if not previous.get("background"):
+                self._say(f"{record.title}: Muse Code is working in the background. "
+                          "You'll hear its reply when the work is done.", interrupt=False)
+        elif state in ("idle", "completed") and previous.get("state") in (
+                "running", "waiting", "submitting", "cancelling"):
+            # Say how Muse says it ended: Stop gives "cancelled" (seen on
+            # installed 1.4.20), which mustn't sound like a finished reply.
+            ended = {"cancelled": "Muse Code stopped.",
+                     "failed": "Muse Code's turn failed. Its messages so far are in the chat.",
+                     }.get(update.get("terminal", ""), "Muse Code finished.")
+            # Why, by Muse's error kind only, in the app's own words.
+            why = {"modelError": "Muse Code's turn failed: it couldn't use this chat's model, "
+                                 "which your account may not have access to. Choose another "
+                                 "with Chat, Chat Settings, Change Model."}
+            if update.get("terminal") == "failed" and update.get("failure") in why:
+                ended = why[update["failure"]]
+            self._say(f"{record.title}: {ended}", interrupt=False)
+        if self._open is not None and self._open.identity == record.identity:
+            self._refresh_chat()
+        self._update_send_state()
+
+    def _announce_muse_approval(self, record, approval):
+        """Say a Muse Code permission request once, with how to answer it."""
+        if self._gone() or self._closing:
+            return
+        kinds = {"approval": "asks permission to run",
+                 "question": "asks"}
+        what = kinds.get(approval.kind, "asks permission for")
+        answer_key = key_name(your_key('Ctrl+Shift+A'))
+        action = "answer it" if approval.kind == "question" else "review and decide"
+        self._say(f'{record.title}: Muse Code {what}: {approval.summary}. '
+                  f'Press {answer_key} to {action}, or Stop to cancel the turn.',
+                  interrupt=False)
+        self._status(f'{record.title}: Muse Code {what}: {approval.summary}.')
+
+    def _answer_muse_owned(self, info, approval):
+        """Answer one announced Muse Code request with Allow Once or Deny."""
+        from .dialogs import MuseApprovalDialog
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback("That chat is no longer in The Chat Place's list.")
+            return
+        dialog = MuseApprovalDialog(self, record.title, approval.summary,
+                                    approval.details, approval.kind,
+                                    choices=tuple(choice for choice in getattr(approval, "choices", ())
+                                                  if choice.get("scope") == "once"),
+                                    questions=getattr(approval, "questions", ()))
+        returning_to = wx.Window.FindFocus()
+        try:
+            if dialog.ShowModal() != wx.ID_OK or dialog.decision is None:
+                self._feedback('Not answered yet. Muse Code is still waiting; '
+                               f'{key_name(your_key("Ctrl+Shift+A"))} answers.')
+                return
+            decision = dialog.decision
+            answers = dialog.answers
+        finally:
+            dialog.Destroy()
+            if returning_to is not None:
+                try:
+                    if returning_to.IsShown() and returning_to.IsEnabled():
+                        returning_to.SetFocus()
+                except RuntimeError:
+                    pass
+        key = (approval.native_id, approval.request_id)
+        def done(result, error):
+            if error:
+                self._feedback(result or 'Muse Code could not confirm the decision. '
+                                        'Check the chat before deciding again.')
+            else:
+                self._muse_approvals.pop(key, None)
+                from ..providers.muse import approval_decision_text
+                decided = self._muse_decisions.setdefault(approval.native_id, [])
+                decided.append((approval.request_id,
+                                approval_decision_text(approval, decision)))
+                self._feedback('Answer sent to Muse Code.' if approval.kind == "question"
+                               and decision != "deny" else 'Decision sent to Muse Code.')
+                self._poll_muse_owned(record)
+            self._update_send_state()
+        self._codex_work(lambda: self.sessions.owned_action(
+            "answer", record, approval, decision, answers=answers), done)
+
     def _say_early_notice(self, provider, record, message=''):
         """Say a notice a new chat had before the window had its record.
         The runtime can report one while it is still being created (Copilot
@@ -332,6 +547,347 @@ class CodexChats(SoundHost, CodexExtras):
             else:
                 self._feedback(f'{info.title} now uses {names[chosen]}, from its next turn.')
         self._codex_work(lambda: self.sessions.owned_action('set_model', record, chosen), done)
+
+    def _change_muse_model(self, info):
+        """Chat, Chat Settings, Change Model for a Muse chat started here: the
+        models Muse offers it, read when chosen, with its own marked. Muse
+        applies the change from its next model call, even mid-turn."""
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("options", info)  # Muse Code's own chat: read-only
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+
+        def listed(models, error):
+            if error or not models:
+                self._feedback(models if isinstance(models, str) and models
+                               else "Muse Code couldn't list its models. Try again.")
+                return
+            names = {model_id: label for model_id, label, _active in models}
+            now = next((model_id for model_id, _label, active in models if active), "")
+            current = names.get(now, "a model Muse Code doesn't list now")
+            chosen = self._change_setting("Change Model", f"Model for {info.title}, now {current}:",
+                                          [(model_id, label) for model_id, label, _a in models], now)
+            if chosen is None:
+                return
+
+            def changed(result, error):
+                if error:
+                    self._feedback(result if isinstance(result, str) and result
+                                   else "Muse Code couldn't switch to that model.")
+                else:
+                    label, note = result
+                    self._feedback(f"{info.title} now uses {label}, from Muse Code's next "
+                                   "model call." + (f" {note}" if note else ""))
+            self._codex_work(lambda: self.sessions.owned_action("set_model", record, chosen), changed)
+        self._codex_work(lambda: self.sessions.owned_action("prepare_settings", record), listed)
+
+    #: What Retry from Here says about files for a Muse chat.
+    MUSE_REWIND_FILES_NOTE = ("Muse Code doesn't put files back, so only the conversation goes back. "
+                              "A retried Muse Code chat keeps the original's permission profile.")
+
+    def _retry_muse(self, info, message):
+        """Retry from Here for a Muse chat started here (MuseOwnedChats.retry):
+        a new chat of its history before your message, opened with the
+        message in the reply box to change and send. The original is kept."""
+        from .. import rewind
+        from ..transcript import USER
+        from .dialogs import RewindDialog
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("branch", info)  # Muse Code's own chat: read-only
+            return
+        if not self._chat_loaded:
+            self._feedback("Wait for this Muse Code chat to load first.")
+            return
+        if message is None or message.kind != USER or not message.key:
+            self._feedback("Choose one of your own messages in the messages list, then "
+                           "Retry from Here.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        title = rewind.rewound_title(info.title)
+        plan = rewind.RewindPlan(info.title, message, message.key,
+                                 files_problem=self.MUSE_REWIND_FILES_NOTE)
+        dialog = RewindDialog(self, plan, feedback=self._feedback)
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+        finally:
+            dialog.Destroy()
+        draft = message.text
+
+        def created(copy, error):
+            if error:
+                self._feedback(copy if isinstance(copy, str) and copy
+                               else "Muse Code could not make the copy.")
+                return
+            copy.forked_from = info.title
+            if not self._store_write(self.store.add, copy):
+                self._feedback("The Muse Code copy was made but could not be saved in The Chat Place.")
+                return
+            self._codex_drafts[copy.to_info().key] = draft
+            self.open_session(copy.to_info())
+            self.refresh_sessions()
+            self.reply_text.SetFocus()
+            self._feedback(f"Opened {title}. The original chat is kept. Change your message and "
+                           "send when ready.")
+        self._feedback(f"Creating {title}.")
+        self._codex_work(lambda: self.sessions.owned_action("retry", record, message.key, title), created)
+
+    def _branch_muse(self, info, message):
+        """Branch from Here for a Muse chat started here (MuseOwnedChats.branch):
+        a new chat through the whole turn of your message or Muse Code's
+        reply, asked first with No the default, then opened for your next
+        message. The original is kept."""
+        from .. import rewind
+        from ..transcript import ASSISTANT, USER
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("branch", info)  # Muse Code's own chat: read-only
+            return
+        if not self._chat_loaded:
+            self._feedback("Wait for this Muse Code chat to load first.")
+            return
+        if message is None or message.kind not in (USER, ASSISTANT) or not message.key:
+            self._feedback("Choose one of your messages or one of Muse Code's replies in the "
+                           "messages list, then Branch from Here.")
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        if wx.MessageBox("A new Muse Code chat will start with the whole turn containing this "
+                         "message, and this chat is kept. Muse Code doesn't copy files, and the "
+                         "new chat keeps this one's permission profile. Branch here?",
+                         "Branch from Here", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                         self) != wx.YES:
+            return
+        title = rewind.branch_title(info.title)
+
+        def created(copy, error):
+            if error:
+                self._feedback(copy if isinstance(copy, str) and copy
+                               else "Muse Code could not make the branch.")
+                return
+            copy.forked_from = info.title
+            if not self._store_write(self.store.add, copy):
+                self._feedback("The Muse Code copy was made but could not be saved in The Chat Place.")
+                return
+            self.open_session(copy.to_info())
+            self.refresh_sessions()
+            self.reply_text.SetFocus()
+            self._feedback(f"Opened {title}. The original chat is kept.")
+        self._feedback(f"Creating {title}.")
+        self._codex_work(lambda: self.sessions.owned_action("branch", record, message.key, title), created)
+
+    def _stop_muse_task(self, info):
+        """Chat, Stop Background Task for a Muse chat started here: choose one
+        of its running background tasks, confirm (No the default), and Muse
+        ends it; the turn and any other background work carry on."""
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+
+        def listed(tasks, error):
+            if error:
+                self._feedback(tasks if isinstance(tasks, str) and tasks
+                               else "Muse Code couldn't list its background work. Try again.")
+                return
+            if not tasks:
+                self._feedback(f"No background work is running in {info.title}.")
+                return
+            index = self._choose("Stop Background Task", f"Background work in {info.title}. Stop which?",
+                                 [task["label"] for task in tasks])
+            if index is None:
+                return
+            task = tasks[index]
+            if wx.MessageBox(f"Stop {task['label']}? Muse Code ends it at once; the turn and any "
+                             "other background work carry on.", "Stop Background Task",
+                             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+                return
+
+            def stopped(result, error):
+                if error:
+                    self._feedback(result if isinstance(result, str) and result
+                                   else "Muse Code couldn't stop that background work.")
+                elif result == "finished":
+                    self._feedback(f"{task['label']} had already finished.")
+                else:
+                    self._feedback(f"Stopping {task['label']}.")
+            self._codex_work(lambda: self.sessions.owned_action("stop_task", record, task["id"]), stopped)
+        self._codex_work(lambda: self.sessions.owned_action("tasks", record), listed)
+
+    def _muse_ask_aside(self, info):
+        """Chat, Ask Aside for a Muse chat started here (MuseAsideRunner):
+        read-only, and never asks you anything. Muse keeps the side chat as
+        an ordinary chat; it is hidden here as soon as it exists."""
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("aside", info)  # Muse Code's own chat: read-only
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        from .dialogs import AskAsideDialog
+        from .. import announce
+
+        def ask(question, on_event):
+            return self.sessions.owned_action(
+                "aside", record, question, lambda event: wx.CallAfter(on_event, event),
+                lambda side: wx.CallAfter(self._hide_muse_aside, side))
+        focus = wx.Window.FindFocus()
+        dialog = AskAsideDialog(self, info.title, ask, provider="Muse Code",
+            say=lambda text, failed=False: self._say(text if failed else
+                announce.reply_text("Ask Aside", text, self.speech.announce)),
+            copy=self._copy_text, feedback=self._feedback, history=self._aside_history(info))
+        try:
+            dialog.ShowModal()
+        finally:
+            dialog.settle()
+            dialog.Destroy()
+        if focus and wx.Window.FindFocus() is not focus:
+            focus.SetFocus()
+
+    def _hide_muse_aside(self, side_id):
+        """Hide a side chat Ask Aside made: Muse lists it as an ordinary chat."""
+        if self._gone():
+            return
+        self.hidden.hide(f"muse:{side_id}")
+
+    def _muse_skills(self, info):
+        """Chat, Insert Command or Skill for a Muse chat started here: its
+        skills, read when chosen. The chosen one goes before your draft as
+        "/name "; sent, Muse runs it with the rest as its arguments."""
+        from .dialogs import CommandPickerDialog
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+        self._feedback("Getting the Muse Code skills for this chat.")
+
+        def loaded(skills, error):
+            if error:
+                self._feedback(skills if isinstance(skills, str) and skills
+                               else "Muse Code couldn't list its skills. Try again.")
+                return
+            if not skills:
+                self._feedback("Muse Code has no skills for this chat.")
+                return
+            if self._open is None or self._open.key != info.key:
+                return  # another chat is loaded now: a picker would fill its reply box
+            rows = [dict(skill, prefix="/", builtin=False) for skill in skills]
+            dialog = CommandPickerDialog(self, rows)
+            try:
+                if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
+                    return
+                chosen = dialog.chosen
+            finally:
+                dialog.Destroy()
+            draft = self.reply_text.GetValue().lstrip()
+            self.reply_text.SetValue("/" + chosen["name"] + " " + draft)
+            self.reply_text.SetFocus()
+            self.reply_text.SetInsertionPointEnd()
+        self._codex_work(lambda: self.sessions.owned_action("skills", record), loaded)
+
+    #: What a Muse profile without your review means, said before it's set.
+    MUSE_MODE_WARNINGS = MUSE_MODE_WARNINGS
+
+    def _confirm_muse_mode(self, title, profile, now_label) -> bool:
+        """Whether to go on to ``profile``: True straight away for one you
+        still review; else Yes in a warning that says who decides, with No
+        the default. No says the chat keeps ``now_label``. Orca's speech
+        check opens this same warning (tools/orca_speech.py)."""
+        warning = self.MUSE_MODE_WARNINGS.get(profile)
+        if not warning:
+            return True
+        if wx.MessageBox(warning.format(title=title), "Change Permission Mode",
+                         wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING, self) == wx.YES:
+            return True
+        self._feedback(f"{title} keeps {now_label}.")
+        return False
+
+    def _change_muse_mode(self, info, after=None):
+        """Change Permission Mode for a Muse chat started here: Muse Code's
+        permission profiles, with the chat's marked. A profile you don't
+        review yourself is confirmed first, with No as the default."""
+        after = after or (lambda: None)
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("options", info)  # Muse Code's own chat: read-only
+            after()
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            after()
+            return
+
+        def listed(result, error):
+            if error or not result:
+                self._feedback(result if isinstance(result, str) and result
+                               else "Muse Code couldn't list its permission profiles. Try again.")
+                after()
+                return
+            choices, now = result
+            names = dict(choices)
+            chosen = self._change_setting("Change Permission Mode",
+                                          f"Permission mode for {info.title}, now {names.get(now, now)}:",
+                                          list(choices), now)
+            if chosen is None:
+                after()
+                return
+            if not self._confirm_muse_mode(info.title, chosen, names.get(now, now)):
+                after()
+                return
+
+            def changed(label, error):
+                if error:
+                    self._feedback(label if isinstance(label, str) and label
+                                   else "Muse Code couldn't change the permission mode.")
+                else:
+                    self._feedback(f"{info.title} now uses Muse Code's {label} permissions.")
+                self._update_send_state()
+                after()
+            self._codex_work(lambda: self.sessions.owned_action("set_mode", record, chosen), changed)
+        self._codex_work(lambda: self.sessions.owned_action("prepare_mode", record), listed)
+
+    def _change_muse_effort(self, info):
+        """Chat, Chat Settings, Change Effort for a Muse chat started here:
+        the efforts its model offers, read when chosen, with the one it uses
+        now marked. Muse applies it from its next model call, even mid-turn."""
+        if not info.is_own or not self._can_edit(info):
+            self._require_capability("options", info)  # Muse Code's own chat: read-only
+            return
+        record = self.store.get(info.cli_session_id, provider="muse")
+        if record is None:
+            self._feedback(f"Couldn't find {info.title} in The Chat Place's sessions.")
+            return
+
+        def listed(result, error):
+            if error or not result:
+                self._feedback(result if isinstance(result, str) and result
+                               else "Muse Code couldn't list this chat's efforts. Try again.")
+                return
+            choices, now = result
+            names = dict(choices)
+            current = names.get(now, "unknown")
+            chosen = self._change_setting("Change Effort", f"Effort for {info.title}, now {current}:",
+                                          list(choices), now or "")
+            if chosen is None:
+                return
+
+            def changed(label, error):
+                if error:
+                    self._feedback(label if isinstance(label, str) and label
+                                   else "Muse Code couldn't change the effort.")
+                else:
+                    self._feedback(f"{info.title}: effort is now {label}, from Muse Code's next "
+                                   "model call.")
+            self._codex_work(lambda: self.sessions.owned_action("set_effort", record, chosen), changed)
+        self._codex_work(lambda: self.sessions.owned_action("prepare_effort", record), listed)
 
     def _change_copilot_mode(self, info, after=None):
         """Change Permission Mode for a Copilot chat (_start_copilot_mode_change).
@@ -592,6 +1148,8 @@ class CodexChats(SoundHost, CodexExtras):
         def done(_result, error):
             self._codex_preparation_running.discard(key)
             self._codex_preparing.pop(key, None)
+            if provider == 'muse':
+                self._poll_muse_owned(record)
             from ..providers.copilot_runtime import MODE_PROBLEMS
             state = self._codex_states.get(key)
             problem = getattr(state, 'problem', '')
@@ -810,6 +1368,10 @@ class CodexChats(SoundHost, CodexExtras):
             if not remaining:
                 for state in self._codex_delayed_updates.pop(key, ()):
                     self._on_owned_update(record.provider, state)
+            if record.provider == "muse":
+                # An uncertain send still needs native reconciliation.
+                # The provider retains its command identity until confirmed.
+                self._poll_muse_owned(record)
             self._update_send_state()
             if on_result is not None:
                 on_result(queued, error)
@@ -825,6 +1387,8 @@ class CodexChats(SoundHost, CodexExtras):
             # exact recovery metadata for this window, even after completion.
             prefixes = self._api_context_prefixes = getattr(self, "_api_context_prefixes", {})
             prefixes[key] = record.api_context
+        # Codex's long messages become a file (#625); others, a Muse Code
+        # message and its attached images included, go as they were.
         try:
             sendable, saved = self._codex_sendable(record, prepend_context(
                 text, record.api_context if record.provider == "codex-api" else ""))
@@ -834,6 +1398,11 @@ class CodexChats(SoundHost, CodexExtras):
 
         def send():
             try:
+                if record.provider == "muse":
+                    # A plain success, not a queued one: Muse has no message
+                    # queue, so the send either started its turn or failed.
+                    self.sessions.owned_action('send', record, sendable)
+                    return False
                 return self.sessions.owned_action('send', record, sendable)
             except (CodexTurnRejected, CodexMessageTooLong, ValueError):
                 # Refusals written before anything is sent; any other error
@@ -955,6 +1524,18 @@ class CodexChats(SoundHost, CodexExtras):
         # nothing, and the message is worded from what the runtime found
         # (Kelly, #372, #386).
         def done(result, error):
+            if record.provider == 'muse':
+                if error:
+                    self._feedback(result or f'Could not stop this {name} chat. '
+                                            f'Check its state in {name}.')
+                elif result == 'idle':
+                    # Muse said nothing was running, so nothing was sent.
+                    self._feedback(f'Nothing is running in {record.title}.')
+                else:
+                    self._feedback(f'Stop requested for {record.title}. Send again once it has stopped.')
+                self._poll_muse_owned(record)
+                self._update_send_state()
+                return
             if error:
                 self._feedback(result or f'Could not stop or recover this {name} chat. Check its state in {name}.')
                 self._update_send_state()
@@ -1022,6 +1603,8 @@ class CodexChats(SoundHost, CodexExtras):
                 return recover()
             if record.provider in ('codex', 'codex-api'):
                 return False, (), None
+            if record.provider == 'muse':
+                return stopped  # "idle" or "cancelling": done's Muse branch words it
             if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
                 return False, tuple(stopped.waiting), stopped
             # A provider that gives back only the waiting messages, or

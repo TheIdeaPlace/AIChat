@@ -352,6 +352,8 @@ def test_smoke_test_reports_whether_velopack_finds_the_updater(tmp_path, monkeyp
     out = tmp_path / "smoke.json"
     app.smoke_test(str(out))
     assert json.loads(out.read_text())["updater"] == "0.1.0"
+    assert json.loads(out.read_text())["muse_setup"] is True
+    assert json.loads(out.read_text())["muse_reader"] is True
 
     def missing(url):
         raise RuntimeError("UpdateMac does not exist")

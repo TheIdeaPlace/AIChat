@@ -54,6 +54,7 @@ LANGUAGE_NAMES = {
     "powershell": "PowerShell", "ps1": "PowerShell", "pwsh": "PowerShell", "cs": "C#",
     "csharp": "C#", "c": "C", "cpp": "C++", "sql": "SQL", "yaml": "YAML", "yml": "YAML",
     "md": "Markdown", "markdown": "Markdown", "diff": "Diff", "text": "Text", "toml": "TOML",
+    "console": "Console",  # console output pasted into a message (console_paste)
 }
 
 #: WCAG 2.2 AA, checked for the published user guide (#102): the reader's own

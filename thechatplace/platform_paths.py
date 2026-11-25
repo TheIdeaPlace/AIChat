@@ -2631,6 +2631,198 @@ def start_codex_api_server(executable=None, *, home=None) -> CodexServerProcess:
 
 
 # ---------------------------------------------------------------------------
+# Muse Code: executable discovery and safe environment
+# ---------------------------------------------------------------------------
+
+
+class MuseLookup:
+    """Where ``muse`` is, or why the installed command cannot be used."""
+
+    def __init__(self, path: Optional[str] = None, reason: str = "",
+                 install_help: str = "", unusable: str = "") -> None:
+        self.path = path
+        self.reason = reason
+        self.install_help = install_help
+        self.unusable = unusable
+
+    @property
+    def problem(self) -> str:
+        if not self.reason:
+            return ""
+        return f"{self.reason} To install it, choose Tools, Sign In, Muse Code."
+
+
+MUSE_INSTALL_SH = "curl -fsSL https://dev.meta.ai/install.sh | sh"
+MUSE_INSTALL_PS1 = "irm https://dev.meta.ai/install.ps1 | iex"
+
+
+def muse_install_help() -> str:
+    """Commands from Muse Code's official installer documentation."""
+    if sys.platform == "win32":
+        command = f"In PowerShell:\n    {MUSE_INSTALL_PS1}"
+    elif sys.platform == "darwin":
+        command = f"In Terminal:\n    {MUSE_INSTALL_SH}"
+    else:
+        command = f"In a terminal:\n    {MUSE_INSTALL_SH}"
+    return (f"To install Muse Code, use its official installer. {command}\n"
+            "Verify it with: muse --version\n"
+            "Then choose Tools, Sign In, Muse Code again. If it still isn't found, restart "
+            "The Chat Place.\n"
+            "Official instructions: https://dev.meta.ai/docs/muse-code")
+
+
+def muse_native_candidates() -> List[Path]:
+    """Installer locations, including the Windows layout verified with 1.4.18."""
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        binary = _muse_windows_binary(Path(local) / "Programs" / "muse") if local else None
+        return [binary] if binary else []
+    if sys.platform == "darwin" or sys.platform.startswith("linux"):
+        return [Path.home() / ".local/bin/muse"]
+    return []
+
+
+def _muse_windows_binary(directory: Path) -> Optional[Path]:
+    """Follow the installer's active version without executing its CMD/PS1 wrapper."""
+    try:
+        with (directory / ".muse-version").open(encoding="utf-8-sig") as state:
+            version = state.read(129).strip()
+        if len(version) > 128 or not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?", version):
+            return None
+        binary = directory / f"muse-bin-{version}.exe"
+        return binary if _native_muse(str(binary)) else None
+    except (OSError, UnicodeError):
+        return None
+
+
+def _native_muse(path: str) -> bool:
+    """Accept a native executable, never a command or interpreter script."""
+    if path.lower().endswith(_SCRIPT_SUFFIXES):
+        return False
+    try:
+        with open(path, "rb") as stream:
+            header = stream.read(4)
+        native = (header.startswith(b"MZ") or header == b"\x7fELF"
+                  or header in (b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",
+                                b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",
+                                b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",
+                                b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"))
+        return native and os.access(path, os.X_OK)
+    except OSError:
+        return False
+
+
+def find_muse(which=None, native_candidates=None) -> MuseLookup:
+    """Find Muse Code's native executable without invoking it."""
+    import shutil
+
+    found = (which or shutil.which)("muse")
+    if native_candidates is None:
+        native_candidates = muse_native_candidates()
+    if found and _native_muse(str(found)):
+        return MuseLookup(str(found))
+    if found and Path(found).name.lower() == "muse.cmd":
+        binary = _muse_windows_binary(Path(found).parent)
+        if binary:
+            return MuseLookup(str(binary))
+    for candidate in native_candidates:
+        candidate = str(candidate)
+        if _native_muse(candidate):
+            return MuseLookup(candidate)
+    if found:
+        return MuseLookup(
+            reason=("The muse command on this computer is not a native Muse Code "
+                    f"program, so The Chat Place will not run it. ({found})"),
+            install_help=muse_install_help(), unusable=str(found))
+    return MuseLookup(reason="Muse Code isn't installed, or The Chat Place can't find it.",
+                      install_help=muse_install_help())
+
+
+MUSE_OVERRIDE_VARS = frozenset({"META_API_KEY"})
+
+
+def muse_child_environment(environ=None) -> dict:
+    """Environment for sign-in checks and app-launched Muse.
+
+    An API key would override the browser sign-in and bill a different
+    credential, so the app deliberately removes it from its own checks.
+    """
+    source = os.environ if environ is None else environ
+    return {key: value for key, value in source.items()
+            if key.upper() not in MUSE_OVERRIDE_VARS}
+
+
+def start_muse_server(executable: Optional[str] = None) -> CodexServerProcess:
+    """Start Muse's stdio session protocol without a shell."""
+    import subprocess
+
+    executable = executable or find_muse().path
+    if not executable or not _native_muse(executable):
+        raise OSError("Install Muse Code, then restart The Chat Place.")
+    tree = ProcessTree()
+    process = subprocess.Popen([executable, "serve"],
+                               env=muse_child_environment(),
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, **tree.popen_kwargs())
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except Exception:
+        owned.close()
+        raise
+    return owned
+
+
+_MUSE_VERSION = re.compile(
+    r"\bmuse(?:\s+code)?\s+v?(\d+(?:\.\d+){1,3})\b",
+    re.IGNORECASE,
+)
+
+
+def _verify_muse_history_executable(executable: str) -> None:
+    """Verify the native Muse binary before starting its history protocol."""
+    if not _native_muse(executable):
+        raise OSError("Muse Code is not a supported native executable.")
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            env=muse_child_environment(),
+            creationflags=hidden_window_flags(),
+        )
+    except subprocess.TimeoutExpired:
+        raise OSError("Muse Code did not report its version within 10 seconds.") from None
+    except (OSError, subprocess.SubprocessError):
+        raise OSError("Muse Code could not be verified.") from None
+
+    if result.returncode != 0:
+        raise OSError("Muse Code did not report a supported 1.x version.")
+    output = "\n".join(
+        value for value in (result.stdout, result.stderr) if isinstance(value, str)
+    )
+    match = _MUSE_VERSION.search(output)
+    if not match or match.group(1).split(".", 1)[0] != "1":
+        raise OSError("Muse Code did not report a supported 1.x version.")
+
+
+def start_muse_history_server(executable: Optional[str] = None) -> CodexServerProcess:
+    """Start Muse's history protocol only after bounded native verification."""
+    selected = executable or find_muse().path
+    if not selected:
+        raise OSError("Install Muse Code, then restart The Chat Place.")
+    selected = str(selected)
+    _verify_muse_history_executable(selected)
+    return start_muse_server(selected)
+
+
+# ---------------------------------------------------------------------------
 # GitHub Copilot CLI (#352)
 # ---------------------------------------------------------------------------
 

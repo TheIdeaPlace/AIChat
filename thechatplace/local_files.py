@@ -28,6 +28,13 @@ BLOCKED_SUFFIXES = frozenset("""
 .theme .themepack .deskthemepack .ins .isp .mshxml .msh .msh1 .msh2
 """.split())
 
+#: Programs run by name. In inline code a bare one (`directcut-rs.exe`) is
+#: something to run, not a file to open, and opening it is blocked anyway.
+RUN_BY_NAME_SUFFIXES = frozenset("""
+.exe .com .bat .cmd .ps1 .msi .msix .msixbundle .appx .appxbundle .appinstaller
+.sh .bash .zsh .command .run .app
+""".split())
+
 WINDOWS_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[/\\]|\\\\[^\\/]+[/\\][^\\/]+)")
 _LINE = re.compile(r":\d+(?::\d+)?$")
 _RELATIVE = re.compile(r"^[\w .-]+(?:[/\\][\w .-]+)*\.[A-Za-z][\w.-]*$")
@@ -146,6 +153,22 @@ class LocalReference:
     in_code: bool = False
 
 
+def inline_command(value: str) -> bool:
+    """Whether inline code that would only be a path relative to the chat's
+    folder is a command instead, and so stays code: one with a space
+    (`winget install Kitware.CMake`, whose ".CMake" looked like an extension),
+    or a bare program name (`directcut-rs.exe`). An absolute path, or a
+    file:// one, is still a reference, spaces and all."""
+    value = value.strip()
+    if value.lower().startswith('file:') or WINDOWS_ABSOLUTE.match(value) or value.startswith('/'):
+        return False
+    if re.search(r'\s', value):
+        return True
+    name = _LINE.sub('', value)
+    return ('/' not in name and '\\' not in name
+            and ntpath.splitext(name.rstrip(' .'))[1].lower() in RUN_BY_NAME_SUFFIXES)
+
+
 def local_references(text: str, cwd: str = '', *, markdown: bool = True):
     """References with source spans, shared by Links and formatted reading.
 
@@ -158,6 +181,8 @@ def local_references(text: str, cwd: str = '', *, markdown: bool = True):
     def add(start, end, value, words='', code=False):
         if re.fullmatch(r'/[A-Za-z][\w:-]*', value):
             return False  # a closing HTML/XML tag, such as </h1>
+        if code and inline_command(value):
+            return False
         path = local_path(value, cwd)
         if not path:
             return False

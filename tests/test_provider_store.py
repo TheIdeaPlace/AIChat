@@ -286,6 +286,90 @@ def test_copilot_records_carry_no_claude_or_codex_settings(tmp_path):
             OwnSession("x", "t", "/synthetic", provider="copilot", provider_options={"model": "m"}))
 
 
+# -- Muse records have a file of their own, like Copilot's --------------------
+
+
+def muse_chat(native="muse-id"):
+    return OwnSession(native, "Synthetic Muse chat", "/synthetic", provider="muse",
+                      started=True)
+
+
+def test_muse_records_never_reach_the_files_older_releases_read(tmp_path):
+    """Releases that read provider-sessions.json refuse all of it over a
+    provider they don't know, so Muse is kept out of it entirely."""
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(chat())
+    store.add(chat("codex"))
+    store.add(muse_chat())
+    codex_file = json.loads((tmp_path / "provider-sessions.json").read_text(encoding="utf-8"))
+    assert [item["provider"] for item in codex_file["sessions"]] == ["codex"]
+    assert "muse" not in (tmp_path / "sessions.json").read_text(encoding="utf-8")
+    own = json.loads((tmp_path / "provider-sessions-muse.json").read_text(encoding="utf-8"))
+    assert own["version"] == 2 and [item["provider"] for item in own["sessions"]] == ["muse"]
+    again = OwnSessionStore(path)
+    assert again.get("muse-id", "muse") == store.get("muse-id", "muse")
+    assert again.get("muse-id", "muse").to_info().key == "muse:muse-id"
+    assert len(again.all(None)) == 3 and not again.load_error
+
+
+def test_removing_the_last_muse_chat_leaves_an_empty_muse_file(tmp_path):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    store.remove("muse-id", "muse")
+    own = json.loads((tmp_path / "provider-sessions-muse.json").read_text(encoding="utf-8"))
+    assert own == {"version": 2, "sessions": []}
+    assert OwnSessionStore(path).all(None) == []
+
+
+def test_muse_command_identity_and_uncertain_state_survive_restart(tmp_path):
+    import uuid
+    from thechatplace.providers.muse import _command_id
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    command = {"command_id": _command_id(), "turn_id": "", "state": "submitting"}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    reopened = OwnSessionStore(path)
+    assert reopened.get("muse-id", "muse").provider_options == {"muse_command": command}
+    assert not reopened.load_error
+    assert json.loads((tmp_path / "provider-sessions.json").read_text())["sessions"] == []
+
+
+@pytest.mark.parametrize("terminal", ["completed", "cancelled", "failed"])
+def test_muse_finished_command_keeps_how_it_ended(tmp_path, terminal):
+    """How native Muse ended the turn is saved with it, so a stopped turn
+    isn't announced as finished; refusing it broke every completed turn."""
+    import uuid
+    from thechatplace.providers.muse import _command_id
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    ident = _command_id()
+    command = {"command_id": ident, "turn_id": ident, "state": "completed", "terminal": terminal}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
+
+
+@pytest.mark.parametrize("command", [
+    {"command_id": "invalid", "turn_id": "", "state": "running"},
+    {"command_id": "00000000-0000-4000-8000-000000000000", "turn_id": "", "state": "running"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "allowAll"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "prompt": "synthetic"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "completed", "terminal": "allowAll"},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running", "steers": ["not-a-uuid"]},
+    {"command_id": "00000000-0000-7000-8000-000000000000", "turn_id": "", "state": "running",
+     "steers": ["00000000-0000-7000-8000-000000000000"] * 17},
+])
+def test_muse_recovery_store_refuses_invalid_commands_and_prompt_content(tmp_path, command):
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    store.add(muse_chat())
+    with pytest.raises(ValueError):
+        store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert store.get("muse-id", "muse").provider_options == {}
+
+
 def test_a_failed_save_puts_the_copilot_file_back(tmp_path, monkeypatch):
     from thechatplace import provider_storage
     path = tmp_path / "sessions.json"
@@ -456,3 +540,33 @@ def test_a_codex_setting_cleared_here_stays_cleared_and_a_later_one_stays(tmp_pa
     codex, = _records(tmp_path, "provider-sessions.json")
     assert codex["provider_extras"] == {"later_mode": "pair", "mcp_servers": ["docs"]}
     assert OwnSessionStore(path).get("same-id", "codex").provider_options == {"mcp_servers": ["docs"]}
+
+
+
+def test_muse_command_keeps_the_steers_sent_into_its_turn(tmp_path):
+    import uuid
+    from thechatplace.providers.muse import _command_id
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    ident = _command_id()
+    command = {"command_id": ident, "turn_id": ident, "state": "running", "steers": [_command_id()]}
+    store.update("muse-id", provider="muse", provider_options={"muse_command": command})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_command": command}
+
+
+
+@pytest.mark.parametrize("profile", [":read-only", ":ask-me", ":auto-review", ":unrestricted"])
+def test_muse_chat_keeps_its_permission_profile(tmp_path, profile):
+    path = tmp_path / "sessions.json"
+    store = OwnSessionStore(path)
+    store.add(muse_chat())
+    store.update("muse-id", provider="muse", provider_options={"muse_profile": profile})
+    assert OwnSessionStore(path).get("muse-id", "muse").provider_options == {"muse_profile": profile}
+
+
+def test_muse_chat_refuses_an_unknown_profile(tmp_path):
+    store = OwnSessionStore(tmp_path / "sessions.json")
+    store.add(muse_chat())
+    with pytest.raises(ValueError):
+        store.update("muse-id", provider="muse", provider_options={"muse_profile": ":allow-all"})

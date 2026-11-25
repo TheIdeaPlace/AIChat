@@ -87,6 +87,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     (the probe photographs it); the tests keep it out, because it opens
     modal and waits."""
     patch(platform_paths, "find_codex", lambda: None)
+    patch(platform_paths, "find_muse", lambda *args, **kwargs: platform_paths.MuseLookup())
     # Never this computer's own Copilot CLI sessions (#352).
     patch(platform_paths, "copilot_sessions_dir", lambda: root / "copilot" / "session-state")
     # Nor its Copilot CLI, settings, hooks or organisation policy.
@@ -115,17 +116,24 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(bugreport, "claude_code_version", lambda: "2.1.286 (Claude Code)")
     patch(bugreport, "cli_version", lambda provider: {
         "claude": "2.1.286 (Claude Code)", "codex": "0.163.0", "copilot": "1.0.105"}[provider])
+    # Pasting reads env["pasted"], never the real clipboard (#701).
+    from thechatplace.ui import paste
+    pasted = {"text": ""}
+    patch(paste, "clipboard_text", lambda: pasted["text"])
     copied = []
     patch(main_frame.MainFrame, "_copy_text",
             lambda self, text: copied.append(text) or True)
     # Nor the real claude for its sign-in (#52): signed in, unless a test says not.
-    from thechatplace import codex_signin, copilot_signin, signin
+    from thechatplace import codex_signin, copilot_signin, muse_signin, signin
     patch(signin, "check", lambda *a, **k: signin.SignIn(
         True, signed_in=True, method="claude.ai", plan="max", email="k@example.com"))
     patch(codex_signin, "check", lambda *a, **k: codex_signin.SignIn(
         True, signed_in=True, method="ChatGPT"))
     patch(copilot_signin, "check", lambda *a, **k: copilot_signin.SignIn(
         True, signed_in=True, login="synthetic-user", host="https://github.com"))
+    patch(muse_signin, "check", lambda *a, **k: muse_signin.SignIn(
+        False, signed_in=False, missing=True,
+        problem="Muse Code wasn't found", install_help=platform_paths.muse_install_help()))
     # Nor the real claude for a folder's slash commands (#23).
     patch(main_frame, "fetch_commands", lambda exe, cwd: list(FAKE_COMMANDS))
     # Nor for its agents and output styles (#468).
@@ -284,7 +292,7 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     return {"desktop": desktop, "cowork": cowork, "projects": projects, "spoken": spoken,
             "kept": kept, "about": about, "again": again, "forgotten": forgotten,
             "no_resay": no_resay,
-            "copied": copied, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
+            "copied": copied, "pasted": pasted, "feedback": feedback, "opened": opened, "boxes": boxes, "tmp": root,
             "live": live, "notified": notified, "activated": activated, "mcp": mcp,
             "sounds": sounds, "previews": previews, "sound_stops": sound_stops, "players": players}
 

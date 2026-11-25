@@ -90,6 +90,13 @@ def smoke_test(out_path: str) -> int:
         report["copilot_reader"] = True
         from .providers.copilot_runtime import CopilotChatRuntime  # noqa: F401 - no process on import
         report["copilot_execution"] = True
+        from .muse_account import AccountConnection  # noqa: F401 - no process on import
+        from .muse_signin import check as check_muse  # noqa: F401
+        report["muse_setup"] = True
+        from .providers.muse import MuseProvider  # noqa: F401 - no process on import
+        from .providers.muse_connection import HistoryConnection  # noqa: F401
+        from .providers.muse_input import build_input  # noqa: F401 - imported when attaching
+        report["muse_reader"] = True
     except Exception as exc:  # noqa: BLE001
         problems.append(f"wx/ui: {exc}")
     try:
