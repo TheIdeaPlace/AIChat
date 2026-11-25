@@ -446,6 +446,8 @@ class ReadOnlyCodexConnection:
             category = 'reply' if event.kind in ('text_delta', 'text_completed') else event.kind
             key = (event.thread_id, event.turn_id, event.item_id, category, event.part)
             previous = pending.get(key)
+            if previous is not None and previous.tool:
+                event = replace(event, tool=True)  # completed activity must retain its tool-start sound
             if event.kind in ('text_delta', 'reasoning_delta') and previous is not None:
                 if previous.kind == 'text_completed':
                     return
@@ -457,6 +459,9 @@ class ReadOnlyCodexConnection:
                     cuts.pop(next(iter(cuts)))
                 cuts[(old.thread_id, old.turn_id)] = True
             pending[key] = event
+
+    def _prepare_event(self, event):
+        return event
 
     def _bind_server_request(self, request):
         return request
@@ -648,6 +653,7 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
+                        event = self._prepare_event(event)
                         if getattr(self, 'billing_route', '') == 'api' and event.kind not in ('text_delta', 'reasoning_delta'):
                             from ..billing import scrub
                             event = replace(event, text=scrub(event.text),

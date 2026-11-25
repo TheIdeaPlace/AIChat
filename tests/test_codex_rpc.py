@@ -317,7 +317,7 @@ def test_native_launch_uses_stdio_process_tree_and_cleans_up_attach_failure(tmp_
         assert argv == [str(executable), "app-server", "--listen", "stdio://"]
         assert kwargs == dict(stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, creationflags=123,
-                              env=platform_paths.codex_child_environment())
+                              env=platform_paths.codex_child_environment(), cwd=None)
         return process
 
     monkeypatch.setattr(platform_paths, "ProcessTree", Tree)
@@ -1218,7 +1218,7 @@ def test_steer_goes_into_the_running_turn_and_never_starts_one(server, tmp_path,
         assert not service.snapshot('owned').steering
         # A queued message steered: out of the queue only once accepted.
         assert service.send(record, 'Queued one')
-        assert service.steer(record, 'Queued one', index=0) == 'turn'
+        assert service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0) == 'turn'
         assert not service.snapshot('owned').queued
         # The checks ran again before each steer (account, route), and no
         # turn/start went: two turn/steer requests only.
@@ -1264,7 +1264,7 @@ def test_steer_racing_the_turns_end_is_refused_and_a_queued_one_stays_queued(ser
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexSteerRefused) as refused:
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert refused.value.code in ('not_running', 'refused')
         assert not service.snapshot('owned').problem
         # Back in its queue, it goes as the next turn once the turn has ended,
@@ -1287,7 +1287,7 @@ def test_steer_with_the_connection_lost_is_unknown_and_a_queued_one_comes_back(s
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexConnectionFailure):
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         # Maybe taken: never queued to go again, but back to the reply box.
         assert any(u.unsent == ('Queued one',) for u in updates)
         assert not service.snapshot('owned').queued
@@ -1311,7 +1311,7 @@ def test_a_steer_error_that_isnt_a_refusal_is_unconfirmed(server, scenario, tmp_
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexRpcError, match='did not confirm') as error:
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert not isinstance(error.value, CodexSteerRefused)
         assert not service.snapshot('owned').queued  # never sent again on its own
         assert any(u.unsent == ('Queued one',) for u in updates)

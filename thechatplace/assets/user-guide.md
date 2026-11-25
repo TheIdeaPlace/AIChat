@@ -650,7 +650,7 @@ how to check the work, and use one chat for one job. These sections are what's d
 chat started here. See also OpenAI's [Codex documentation](https://developers.openai.com/codex).
 
 Some of the Claude part doesn't apply: Claude's Run as agent and Output style choices, Claude Code's own commands such
-as `/init` and `/code-review`, restoring files, editing a queued message and Remote Control.
+as `/init` and `/code-review`, restoring files and Remote Control.
 
 ### Codex: agree on the approach first
 
@@ -1596,7 +1596,7 @@ whether the chat was started here:
 | Feature | Claude | Codex | GitHub Copilot CLI |
 |---|---|---|---|
 | Start chats here and reply | yes | yes | yes |
-| Send Now, edit or remove a queued message | yes | no: Stop returns it | no: Stop returns it |
+| Send Now, edit or remove a queued message | yes | yes: Send Now steers into the turn | no: Stop returns it |
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | yes, when idle | Change Model only |
@@ -1670,8 +1670,8 @@ editable.
   reply box attaches a picture on the clipboard, such as a screenshot, or files you copied in
   File Explorer (the Finder on a Mac). Pictures reach Codex as
   images; other files are named for it to read. You can send attachments with an empty reply box,
-  and queued messages keep their image and skill inputs. If a send fails, the recovered draft
-  names its files; attach images again to resend them as images.
+  and queued messages keep their image and skill inputs. Editing, Stop and recovery after a
+  failed send keep images in the attachment list and selected skills with the draft.
 - **Insert Command or Skill** (Ctrl+/) lists enabled skills for the folder and Codex chat
   controls. Type to filter, Down to the list, Enter to choose. A skill inserts `$name` in the
   reply box and sends the skill with your next message. Controls include `/model`, `/reasoning`,
@@ -2271,8 +2271,13 @@ queued message depends on the provider:
 - **Claude:** on a queued message, Ctrl+Enter sends it now, and Claude answers it straight away,
   in the same turn. Its menu can also edit or remove it, and Delete removes it (on a Mac,
   Fn+Delete).
-- **Codex and Copilot:** queued messages go after the reply. They can't be sent early, edited or
-  removed while they wait: Stop the turn to get them back.
+- **Codex:** **Edit Queued Message** brings the selected message back to the message box,
+  keeping its images, skills and full text. **Remove Queued Message** or **Delete** removes
+  just that message. Sending an edited message again puts it after any others still queued.
+  **Send Now** (**Ctrl+Enter** on its row) steers it into the running turn, as **Ctrl+Alt+Enter**
+  does, without interrupting a command. A refused steer stays queued; if delivery is uncertain,
+  it comes back with a warning to check history before sending again.
+- **Copilot:** queued messages go after the reply. Stop returns them for editing.
 
 To change what the AI is doing without stopping it, **steer** instead: type your message and
 press **Ctrl+Alt+Enter** (Cmd+Option+Return on a Mac), or choose Chat, Steer: Send into the
@@ -2346,8 +2351,8 @@ These are for Claude and Codex chats started here:
   copied. The attachments are
   listed under the reply box, and Delete there removes one (on a Mac, Delete or Fn+Delete).
   The provider sees pictures as pictures, and reads other files from where they are. Queued
-  Codex messages keep their image and skill inputs. If a failed send returns a Codex message
-  as a draft, its files are named there; attach images again to resend them as images.
+  Codex messages keep their image and skill inputs. Editing, Stop and recovery after a failed
+  send keep images in the attachment list and selected skills with the draft.
 
 ### Saved prompts
 
@@ -2786,8 +2791,9 @@ approval.
   chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
   with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Auto Approvals**
   (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
-  These are the chat's own requests: what the automatic review decides for a Codex subagent
-  isn't shown yet, though a subagent's requests that need you still come to the chat.
+  A subagent's automatic review decisions are included too, with "Codex subagent" in the
+  details. A subagent's tool calls and successful file changes also use the parent chat's
+  sound settings.
 - The latest 128 decisions for each chat, including those Allow for This Chat made, are kept on
   this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running. Both list them newest first: Chat Permissions under "Recent decisions made for you, by
@@ -2918,21 +2924,25 @@ on or off in the chat itself.
   which stay on while The Chat Place is running. An app is turned on in a copy the same way as a
   server.
 - **Sign In** (Alt+S) reads you the sign-in page's real address and opens it only if you agree;
-  finish in your browser, and you hear when it's done, or press **Refresh**. For an app, it
-  opens the app's page instead. Codex signs in to a server only in a chat that has it on, so for
-  a server that's off, Sign In says so: press **Copy with Tool On** (Alt+O) to make a copy with
-  it on, then sign in from Connected Tools in that copy. **Reconnect** (Alt+R) tries a server
-  again. The Chat Place leaves your Codex settings alone.
+  finish in your browser and keep Connected Tools open to hear the result. It works with a
+  server off and in chats started elsewhere, without making a chat or turning the tool on.
+  Sign-in waits up to three minutes and needs a recent Codex. An app opens its app page instead.
+  **Reconnect** (Alt+R) tries a server again and lets an enabled tool use its new sign-in.
+  The Chat Place leaves your Codex settings alone.
 - If a server the chat uses is later removed from Codex's settings, the chat can't send and says
   why. The server is first in this list, and **Copy with Tool Off** makes a copy without it. Or
   add it back to Codex's `config.toml`.
+- When Codex asks permission to run a connected tool, **Answer** shows the tool's request and
+  arguments. Accept covers this call only. Whether a tool asks depends on Codex's configuration;
+  enabling a tool does not guarantee that every call asks. Its file and service access can extend
+  beyond the chat folder.
 - When a connected tool asks for something, **Answer** (Ctrl+Shift+A) shows its form or the web
   page it wants opened, as for Claude. A request The Chat Place can't show at all is declined
   for you, with a notice.
 
 For a Codex chat started elsewhere, the list shows the servers set up in Codex for its folder,
-without how each is doing, and tools can't be changed for it here. To sign in to one, use Codex
-in a terminal: Sign In says the command, such as `codex mcp login notes`.
+without how each is doing, and tools can't be changed for it here. Sign In still works for
+its configured servers; it leaves the chat's tools as they are.
 
 ## Organizing your chats
 

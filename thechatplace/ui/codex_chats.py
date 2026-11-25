@@ -174,8 +174,27 @@ class CodexChats(SoundHost, CodexExtras):
                 done(result, error)
         self._pool.submit(work)
 
+    def _restore_codex_parts(self, key, texts):
+        from ..providers.codex_input import CodexInput
+        parts = [part for text in texts
+                 for part in (text.items()[1:] if isinstance(text, CodexInput) else getattr(text, 'parts', ()))]
+        if not parts:
+            return
+        attached = getattr(self, '_attachments', {})
+        images = attached.setdefault(key, [])
+        images.extend(p['path'] for p in parts if p['type'] == 'localImage' and p['path'] not in images)
+        self._attachments = attached
+        skills = getattr(self, '_codex_skills', {})
+        skills.setdefault(key, {}).update({p['name']: p['path'] for p in parts if p['type'] == 'skill'})
+        self._codex_skills = skills
+        if self._open is not None and self._open.key == key:
+            show = getattr(self, '_show_attachments', None)
+            if show is not None:
+                show()
+
     def _restore_codex_text(self, key, texts):
-        text = '\n\n'.join(texts)
+        self._restore_codex_parts(key, texts)
+        text = '\n\n'.join(codex_long_messages.expand(text) for text in texts)
         if not text:
             return
         if self._open is not None and self._open.key == key:
@@ -185,6 +204,42 @@ class CodexChats(SoundHost, CodexExtras):
         else:
             current = self._codex_drafts.get(key, '')
             self._codex_drafts[key] = text + ('\n\n' + current if current else '')
+
+    def _take_codex_queued(self, info, *, editing):
+        """Take a selected queued occurrence back without stopping Codex (#526)."""
+        index = self._selected_queued()
+        state = self._codex_states.get(info.key)
+        record = self.store.get(info.cli_session_id, provider=info.provider)
+        if index is None or state is None or record is None or not 0 <= index < len(state.queued):
+            return
+        expected = state.queued[index]
+        if (editing and codex_long_messages.saved_path(expected) is not None
+                and codex_long_messages.original(expected) is None):
+            self._feedback('The original long message is unavailable. It stays queued; no file was deleted.')
+            return
+        def done(text, error):
+            if error:
+                self._feedback(text or 'The queued messages changed. Select the message again.')
+                return
+            if editing:
+                self._restore_codex_text(info.key, (text,))
+            saved, _entry = self._long_message_entry(info.key, text)
+            if saved:
+                self._drop_long_message(info.key, saved)
+            loaded = self._open is not None and self._open.key == info.key
+            if loaded:
+                self._show_attachments()
+                self._rebuild_chat_list()
+                if editing:
+                    self.reply_text.SetFocus()
+            self._update_send_state()
+            if editing:
+                destination = 'message box' if loaded else f'draft for {record.title}'
+                self._feedback(f'Queued message back in the {destination}. Send queues it again, after any others still queued.')
+            else:
+                self._sound(sound_events.QUEUED_DELETED, info.key)
+                self._feedback(f'Queued message removed from {record.title}.')
+        self._codex_work(lambda: self.sessions.owned_action('take_queued', record, index, expected), done)
 
     def _load_codex_rules(self, folder, callback):
         self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
@@ -643,16 +698,14 @@ class CodexChats(SoundHost, CodexExtras):
             return text, None
         prompt = codex_long_messages.prompt_for(text, saved)
         parts = getattr(text, 'parts', ())
-        if parts:
-            # Attached images and skills still go natively, with the prompt.
-            from ..providers.codex_input import CodexInput
-            try:
-                prompt = CodexInput(prompt, parts)
-            except ValueError:
-                # A file gone since it was attached: the text goes as it
-                # was and is refused in plain words, never a stuck send.
-                codex_long_messages.delete_files((saved,))
-                return text, None
+        # Keep the live original with its input, independently of the bounded
+        # history cache: editing or Stop must not return a dead file prompt.
+        from ..providers.codex_input import CodexInput
+        try:
+            prompt = CodexInput(prompt, parts, original=str(text))
+        except ValueError:
+            codex_long_messages.delete_files((saved,))
+            return text, None
         codex_long_messages.remember(saved, str(text), record.cli_session_id)
         key = record.to_info().key
         files = getattr(self, '_long_message_files', None)
@@ -1177,6 +1230,12 @@ class CodexChats(SoundHost, CodexExtras):
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
                 unsent = agent_unsent(provider, state.native_id, unsent)
+        # Return native parts only for messages that stayed with this chat,
+        # after the agent-conversation handoff and API context stripping.
+        def recovered(raw):
+            written = codex_long_messages.expand(raw)
+            return written[len(prefix):] if prefix and written.startswith(prefix) else written
+        self._restore_codex_parts(key, [raw for raw in state.unsent if recovered(raw) in unsent])
         self._restore_codex_text(key, unsent)
         self._long_message_turn_over(key, state)
         record = self.store.get(state.native_id, provider=provider)

@@ -28,6 +28,7 @@ class Window(CodexChats):
         self._chat_tasks = []
         self._task_statuses = None
         self._reader = object()
+        self._attachment_key = lambda info: info.key
         self.reply_text = Text('New draft')
         self._codex_states = {}
         self._codex_drafts = {}
@@ -356,7 +357,7 @@ def test_closing_and_deleting_a_chat_remove_its_files():
     assert not path.exists() and not w._long_message_files
     assert codex_long_messages.expand(sent[0][2]) == 'x' * 40000
     codex_long_messages.forget_chat('owned')
-    assert codex_long_messages.expand(sent[0][2]) == sent[0][2]
+    assert codex_long_messages.expand(str(sent[0][2])) == sent[0][2]
 
 
 def test_saved_message_reads_back_as_written_and_as_yours():
@@ -1504,3 +1505,79 @@ def test_continue_selection_defaults_legacy_billing_and_honors_explicit_route(mo
     assert calls[0][1]['provider'] == ('codex-api' if billing == 'api' else 'codex')
     assert calls[0][1]['source'] is source
     assert calls[0][0][2] == 'My message'
+
+
+def _queue_edit_window(text):
+    w=Window()
+    w._attachments={}
+    w._selected_queued=lambda: 0
+    w._show_attachments=lambda: None
+    w.reply_text.SetFocus=lambda: None
+    w._codex_states[w._open.key]=CodexChatState('owned','working','turn','inProgress',queued=(text,))
+    w.sessions.owned_action=lambda action, record, index, expected: expected
+    return w
+
+
+def test_edit_queue_restores_images_skills_and_preserves_a_new_draft(tmp_path):
+    from thechatplace.providers.codex_input import build_input, input_items
+    image=tmp_path/'sample.png';image.write_bytes(b'\x89PNG\r\n\x1a\n'+b'0'*64)
+    skill=tmp_path/'SKILL.md';skill.write_text('Synthetic skill')
+    original=build_input('Review this',[str(image)],skills=[('review',str(skill))])
+    w=_queue_edit_window(original)
+    w._take_codex_queued(w._open,editing=True);_run(w,0)
+    assert w.reply_text.GetValue().endswith('New draft')
+    resent=w._codex_message(w._open,w.reply_text.GetValue())
+    assert input_items(resent)[1:]==input_items(original)[1:]
+    assert str(resent).count('Attached image:')==1
+    assert 'after any others still queued' in w.said[-1]
+
+
+def test_edit_queue_after_switching_chats_restores_only_its_own_draft():
+    w=_queue_edit_window('Queued request')
+    info=w._open
+    w._take_codex_queued(info,editing=True)
+    w._open=None
+    _run(w,0)
+    assert w.reply_text.GetValue()=='New draft'
+    assert w._codex_drafts[info.key]=='Queued request'
+    assert 'draft for My chat' in w.said[-1]
+
+
+def test_edit_long_queue_keeps_original_after_history_cache_eviction():
+    from thechatplace import codex_long_messages
+    w=Window()
+    original='Full original: '+ 'x'*40000
+    prompt,path=w._codex_sendable(w.record,original)
+    for i in range(22): codex_long_messages.remember(str(i),'other','other')
+    assert codex_long_messages.original(str(prompt)) is None
+    w._attachments={};w._selected_queued=lambda:0;w._show_attachments=lambda:None
+    w.reply_text.SetFocus=lambda:None
+    w._codex_states[w._open.key]=CodexChatState('owned','working','turn','inProgress',queued=(prompt,))
+    w.sessions.owned_action=lambda *a: prompt
+    w._take_codex_queued(w._open,editing=True);_run(w,0)
+    assert w.reply_text.GetValue()==original+'\n\nNew draft'
+    from pathlib import Path
+    assert not Path(path).exists()
+
+
+def test_uncertain_queued_steer_recovers_native_images_and_skills(tmp_path):
+    from thechatplace.providers.codex_input import build_input,input_items
+    image=tmp_path/'sample.png';image.write_bytes(b'\x89PNG\r\n\x1a\n'+b'0'*64)
+    skill=tmp_path/'SKILL.md';skill.write_text('Synthetic skill')
+    original=build_input('Review this',[str(image)],skills=[('review',str(skill))])
+    w=Window()
+    w._on_owned_update('codex',CodexChatState('owned','idle','turn','interrupted',unsent=(original,)))
+    resent=w._codex_message(w._open,w.reply_text.GetValue())
+    assert input_items(resent)[1:]==input_items(original)[1:]
+
+
+def test_failed_long_send_recovers_native_images_and_skills(tmp_path):
+    from thechatplace.providers.codex_input import build_input,input_items
+    image=tmp_path/'sample.png';image.write_bytes(b'\x89PNG\r\n\x1a\n'+b'0'*64)
+    skill=tmp_path/'SKILL.md';skill.write_text('Synthetic skill')
+    original=build_input('x'*40000,[str(image)],skills=[('review',str(skill))],allow_long=True)
+    w=Window();w._send_codex_owned(w.record,original)
+    w.work[0][1]('Synthetic refusal',True)
+    assert w._attachments[w._open.key]==[str(image.resolve())]
+    assert w._codex_skills[w._open.key]=={'review':str(skill.resolve())}
+    assert w.reply_text.GetValue().startswith('x'*40000)

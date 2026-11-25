@@ -465,6 +465,12 @@ STEPS = [
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
     # A GTK message box is read as "alert Warning" and its text, not its title
     # (CI on #634), so the question is checked, and No, the default, focused.
+    Step("Codex tool-call approval", [], trigger="codex-tool-approval",
+         expect=["Message", "Allow project-notes"], refuse=["unlabeled", "unlabelled"]),
+    Step("Codex tool-call approval, Send", ["Tab"], expect=["Send"]),
+    Step("Codex tool-call approval, Decline", ["Tab"], expect=["Decline"]),
+    Step("Codex tool-call approval, Answer Later", ["Tab"], expect=["Answer Later"]),
+    Step("Codex tool-call approval closed", ["Escape"], expect=["Fix the flaky upload test"]),
     Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
          expect=["permanently?", "subagent chats", "No push button"],
          refuse=["unlabeled", "unlabelled"]),
@@ -878,6 +884,7 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-tool-approval": lambda frame, env: _codex_dialog("d_codex_tool_approval", frame, env),
     "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),

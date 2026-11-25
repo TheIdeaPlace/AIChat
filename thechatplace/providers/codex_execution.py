@@ -107,6 +107,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         self._child_routing_lock = threading.RLock()
         self._child_pending = set()
         self._child_files = {}
+        self._child_turn_contexts = {}
         kwargs['receive_events'] = True
         kwargs['receive_requests'] = True
         super().__init__(*args, **kwargs)
@@ -142,31 +143,46 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         with self._runtime_lock:
             return self._oauth_results.pop((thread_id, name, login_id), None)
 
+    def _prepare_event(self, event):
+        # The reader only stamps local context. Ancestry RPCs run later on
+        # the event consumer, so they cannot deadlock the protocol reader.
+        if event.kind in ('activity', 'file_changes', 'auto_review'):
+            with self._runtime_lock:
+                if event.thread_id not in self._runtime_threads:
+                    return replace(event, parent_turns=self._child_turn_contexts.get(
+                        (event.thread_id, event.turn_id), ()))
+        return event
+
+    def child_ancestor(self, child):
+        """Read native ancestry for presentation only; never adopt a child."""
+        ancestor, seen = child, set()
+        for _ in range(32):
+            if ancestor in seen:
+                return None
+            seen.add(ancestor)
+            with self._runtime_lock:
+                proof = self._runtime_threads.get(ancestor)
+            if proof is not None:
+                return proof if self.owns_runtime(proof) else None
+            thread = self.request('thread/read', {'threadId': ancestor, 'includeTurns': False}).get('thread')
+            if (not isinstance(thread, dict) or thread.get('id') != ancestor
+                    or thread.get('modelProvider') != 'openai'):
+                return None
+            ancestor = thread.get('parentThreadId')
+            if not isinstance(ancestor, str) or not ancestor:
+                return None
+        return None
+
     def _route_child_request(self, message, received_turns):
         """Metadata proves ancestry for display routing, never execution ownership."""
         from .codex_requests import decode_request
         try:
             request = decode_request(message['id'], message['method'], message.get('params'))
-            child, ancestor, seen = request.thread_id, request.thread_id, set()
+            child = request.thread_id
             child_turn = request.turn_id or received_turns.get(child)
             if not child_turn:
                 raise ValueError('No active child turn')
-            proof = None
-            for _ in range(32):
-                if ancestor in seen:
-                    break
-                seen.add(ancestor)
-                with self._runtime_lock:
-                    proof = self._runtime_threads.get(ancestor)
-                if proof is not None:
-                    break
-                thread = self.request('thread/read', {'threadId': ancestor, 'includeTurns': False}).get('thread')
-                if (not isinstance(thread, dict) or thread.get('id') != ancestor or
-                        thread.get('modelProvider') != 'openai'):
-                    raise ValueError('Unverified child ancestry')
-                ancestor = thread.get('parentThreadId')
-                if not isinstance(ancestor, str) or not ancestor:
-                    break
+            proof = self.child_ancestor(child)
             if proof is None or not self.owns_runtime(proof):
                 raise ValueError('No owned ancestor')
             parent_turn = received_turns.get(proof.native_id)
@@ -260,6 +276,16 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                 if isinstance(thread, str) and isinstance(turn, str):
                     with self._runtime_lock:
                         if message['method'] == 'turn/started':
+                            if thread not in self._runtime_threads:
+                                key = (thread, turn)
+                                # Bind at the child's start, never at its first
+                                # tool/review: its parent may have moved on by then.
+                                if key not in self._child_turn_contexts:
+                                    if len(self._child_turn_contexts) >= 128:
+                                        self._child_turn_contexts.pop(next(iter(self._child_turn_contexts)))
+                                    self._child_turn_contexts[key] = tuple(
+                                        (native, active) for native, active in self._active_turns.items()
+                                        if native in self._runtime_threads)[:128]
                             if len(self._active_turns) >= 512:
                                 self._active_turns.pop(next(iter(self._active_turns)))
                             self._active_turns[thread] = turn
@@ -438,6 +464,7 @@ class CodexTurnExecutor:
         self._turns = {}
         self._busy = set()
         self._pending_events = {}
+        self._child_event_parents = {}
         self._broken = False
         self._requests = {}
         self._notices = {}
@@ -719,6 +746,51 @@ class CodexTurnExecutor:
                               if request.thread_id != buffer.thread_id}
         return changed
 
+    def _route_child_event(self, event):
+        """Attribute only tools, successful edits and reviews to a proven parent.
+
+        Child replies, usage and lifecycle never become the parent's. The
+        parent's turn is captured at receipt, so a slow lookup cannot move
+        an old child's activity into a later turn. Reviews may finish late.
+        """
+        if not isinstance(event, CodexEvent) or not (
+                event.kind == 'auto_review' or event.kind == 'activity' and event.tool
+                or event.kind == 'file_changes' and event.paths):
+            return event
+        ancestry = getattr(self.connection, 'child_ancestor', None)
+        if ancestry is None:
+            return event
+        with self.connection._runtime_lock:
+            if event.thread_id in self.connection._runtime_threads:
+                return event
+        key = (event.thread_id, event.turn_id)
+        bound = self._child_event_parents.get(key)
+        if bound is None:
+            if not event.parent_turns:
+                return event
+            try:
+                proof = ancestry(event.thread_id)
+            except (ValueError, CodexRpcError):
+                return event  # optional display data must not break other chats
+            parent_turn = dict(event.parent_turns).get(proof.native_id) if proof is not None else None
+            if not parent_turn:
+                return event
+            bound = (proof, parent_turn)
+            if len(self._child_event_parents) >= 128:
+                self._child_event_parents.pop(next(iter(self._child_event_parents)))
+            self._child_event_parents[key] = bound
+        proof, parent_turn = bound
+        if not self.connection.owns_runtime(proof):
+            return event
+        import hashlib
+        identity = hashlib.sha256(repr((event.thread_id, event.turn_id, event.item_id)).encode()).hexdigest()
+        if event.kind == 'auto_review':
+            return replace(event, thread_id=proof.native_id, turn_id=parent_turn,
+                item_id='auto-review:subagent:' + identity, text='Codex subagent: ' + event.text)
+        return replace(event, thread_id=proof.native_id, turn_id=parent_turn,
+            item_id='subagent:' + identity, text='', paths=(),
+            kind='subagent_tool' if event.kind == 'activity' else 'subagent_edit')
+
     def drain(self):
         # Pop and apply as one ordered consumer even if two worker callbacks
         # happen to overlap. Final text must precede its terminal event.
@@ -729,6 +801,7 @@ class CodexTurnExecutor:
         changed = set()
         try:
             while (event := self.connection.pop_event()) is not None:
+                event = self._route_child_event(event)
                 with self._lock:
                     if isinstance(event, CodexRequestDeclined):
                         affected = set(self._pending_events) | {native for native, buffer in self._turns.items()

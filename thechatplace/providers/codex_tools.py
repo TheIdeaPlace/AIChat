@@ -184,3 +184,163 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
     rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
         app_id=identity, display_name=identity) for identity in selected if identity not in known)
     return rows
+
+
+# OAuth has its own connection: no thread, turn, tool execution or ownership
+# is required to sign in to a configured server (#598).
+from .codex_rpc import ReadOnlyCodexConnection, CodexRpcError
+
+
+class CodexToolConnection(ReadOnlyCodexConnection):
+    METHODS = ReadOnlyCodexConnection.METHODS | {'mcpServer/oauth/login'}
+
+    def __init__(self, executable=None, *, cwd=None, **kwargs):
+        import threading
+        from .. import platform_paths
+        self._login_lock = threading.Lock()
+        self._login_results = {}
+        if 'start' not in kwargs:
+            kwargs['start'] = lambda exe: platform_paths.start_codex_server(exe, cwd=cwd)
+        super().__init__(executable, **kwargs)
+
+    def _receive(self, message):
+        if isinstance(message, dict) and message.get('method') == 'mcpServer/oauthLogin/completed':
+            params = message.get('params')
+            if (isinstance(params, dict) and params.get('threadId') is None
+                    and isinstance(params.get('name'), str) and params['name']
+                    and isinstance(params.get('loginId'), str) and params['loginId']
+                    and type(params.get('success')) is bool):
+                with self._login_lock:
+                    if len(self._login_results) >= 16:
+                        self._login_results.pop(next(iter(self._login_results)))
+                    self._login_results[(params['name'], params['loginId'])] = params['success']
+            return
+        return super()._receive(message)
+
+    def login_result(self, name, login_id):
+        with self._login_lock:
+            return self._login_results.pop((name, login_id), None)
+
+
+class CodexToolLogins:
+    """Bounded OAuth-only processes, closed on completion, expiry or app exit."""
+    def __init__(self, executable=None, *, factory=None):
+        import threading
+        self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
+        self._finishing = set()
+        self._closed = False
+        self._attempts = {}
+        self._timers = {}
+        self._cleanup = []
+        self._factory = factory
+        self._executable = executable
+
+    def _finish(self, attempt):
+        with self._lock:
+            row = self._attempts.pop(attempt, None)
+            timer = self._timers.pop(attempt, None)
+            if row is not None:
+                self._finishing.add(row[0])
+        if timer is not None:
+            timer.cancel()
+        if row is not None:
+            try:
+                row[0].close()
+            except Exception:
+                with self._lock:
+                    self._cleanup.append(row[0])
+                raise
+            finally:
+                with self._condition:
+                    self._finishing.discard(row[0])
+                    self._condition.notify_all()
+
+    def _expire(self, attempt):
+        try:
+            self._finish(attempt)
+        except Exception as error:
+            from ..codex_diagnostics import record_failure
+            record_failure(error)
+
+    def start(self, cwd, name):
+        import time
+        import threading
+        from pathlib import Path
+        from .codex_connection import ManagedCodexConnection
+        server_names([name])
+        folder = str(Path(cwd).resolve(strict=True))
+        if not Path(folder).is_dir():
+            raise ValueError('The chat folder is no longer available.')
+        manager = (self._factory(folder) if self._factory else ManagedCodexConnection(
+            self._executable, factory=lambda exe: CodexToolConnection(exe, cwd=folder, initialize=False)))
+        attempt = object()
+        with self._lock:
+            if self._closed or len(self._attempts) >= 8:
+                raise CodexRpcError('Too many sign-ins are waiting, or The Chat Place is closing.')
+            self._attempts[attempt] = (manager, folder, name, None, time.monotonic() + 200, None)
+            timer = threading.Timer(200, self._expire, args=(attempt,))
+            timer.daemon = True
+            self._timers[attempt] = timer
+            timer.start()
+        try:
+            connection = manager._get()
+            config = connection.request('config/read', {'includeLayers': False}).get('config')
+            servers = config.get('mcp_servers') if isinstance(config, dict) else None
+            if not isinstance(servers, dict) or not isinstance(servers.get(name), dict):
+                raise CodexRpcError('This server is no longer configured for the chat folder.')
+            # Never enable a tool, copy a chat, or save a configuration to sign in.
+            result = connection.request('mcpServer/oauth/login', {'name': name, 'timeoutSecs': 180})
+            login_id = result.get('loginId')
+            if not isinstance(login_id, str) or not login_id:
+                raise CodexRpcError('This Codex version cannot confirm a standalone sign-in. Update Codex.')
+            with self._lock:
+                if self._closed or attempt not in self._attempts:
+                    raise CodexRpcError('This sign-in is no longer waiting.')
+                self._attempts[attempt] = (manager, folder, name, login_id, time.monotonic() + 200, connection)
+            return result
+        except Exception:
+            self._finish(attempt)
+            raise
+
+    def result(self, cwd, name, login_id):
+        import time
+        from pathlib import Path
+        folder = str(Path(cwd).resolve())
+        with self._lock:
+            found = next(((key, value) for key, value in self._attempts.items()
+                          if value[1:4] == (folder, name, login_id)), None)
+        if found is None:
+            raise CodexRpcError('This sign-in is no longer waiting. Start Sign In again.')
+        key, (manager, _folder, _name, _login, deadline, connection) = found
+        if connection.closed:
+            self._finish(key)
+            raise CodexRpcError('The sign-in connection closed. Start Sign In again.')
+        result = connection.login_result(name, login_id)
+        if result is not None or time.monotonic() >= deadline:
+            self._finish(key)
+            return result if result is not None else False
+        return None
+
+    def close(self):
+        with self._condition:
+            self._closed = True
+            if not self._condition.wait_for(lambda: not self._finishing, timeout=25):
+                raise CodexRpcError('Codex sign-in cleanup is still running.')
+            managers = [row[0] for row in self._attempts.values()] + self._cleanup
+            self._cleanup = []
+            self._attempts.clear()
+            timers = tuple(self._timers.values())
+            self._timers.clear()
+        for timer in timers:
+            timer.cancel()
+        failures = []
+        for manager in managers:
+            try:
+                manager.close()
+            except Exception:
+                with self._lock:
+                    self._cleanup.append(manager)
+                failures.append(True)
+        if failures:
+            raise CodexRpcError('Codex sign-in cleanup failed.')

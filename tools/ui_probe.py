@@ -1766,6 +1766,43 @@ def d_codex_tools(frame, env):
     return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
 
 
+def s_main_codex_queue_edited(frame, env):
+    from dataclasses import replace
+    from thechatplace.providers.codex_input import CodexInput
+    import wx
+    import fake_env
+    s_main_codex_owned(frame, env)
+    info = frame._open
+    state = frame._codex_states[info.key]
+    queued = CodexInput('Run the unit tests next.')
+    state = replace(state, queued=(queued,))
+    frame._codex_states[info.key] = state
+    runtime = frame.sessions._providers['codex'].runtime
+    def take(record, index, expected):
+        assert index == 0 and expected is queued
+        runtime.snapshot = lambda native: replace(state, queued=())
+        wx.CallAfter(frame._on_owned_update, 'codex', replace(state, queued=()))
+        return expected
+    runtime.take_queued = take
+    frame._rebuild_chat_list()
+    frame.chat_list.SetSelection(len(frame._visible_messages()) - 1)
+    frame.edit_queued()
+    fake_env.pump(lambda: frame.reply_text.GetValue().startswith('Run the unit tests next.'), timeout=10)
+
+
+def d_codex_tool_approval(frame, env):
+    from thechatplace.providers.codex_requests import decode_request, ELICITATION
+    from thechatplace.ui.dialogs import ElicitationDialog
+    request = decode_request('probe-tool-approval', ELICITATION, {
+        'threadId':'probe', 'turnId':'turn', 'serverName':'project-notes', 'mode':'form',
+        'message':'Allow project-notes to run tool "update_note"?',
+        'requestedSchema':{'type':'object','properties':{}},
+        '_meta':{'codex_approval_kind':'mcp_tool_call',
+                 'tool_params':{'note':'build checklist','text':'Run the tests before publishing.'}}})
+    return lambda: frame._modal(ElicitationDialog(frame, 'Codex review', request.elicitation(),
+                                                 feedback=frame._feedback))
+
+
 def d_codex_commands(frame, env):
     from thechatplace.ui.codex_extras import COMMANDS
     from thechatplace.ui.dialogs import CommandPickerDialog
@@ -2703,6 +2740,8 @@ SURFACES = {
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
     "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
+    "codex-tool-approval": ("dialog", d_codex_tool_approval, "Codex tool-call consent with exact arguments and a one-time answer"),
+    "main-codex-queue-edited": ("window", s_main_codex_queue_edited, "A queued Codex message returned to its draft without stopping the turn"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
     "codex-collaboration": ("dialog", d_codex_collaboration, "Choose Codex Plan or Default mode"),
     "codex-rewind": ("dialog", d_codex_rewind, "Codex Retry from Here with files left unchanged"),
@@ -2868,6 +2907,7 @@ DIALOG_CLASSES = {
     "ask-aside": "AskAsideDialog",
     "codex-aside": "AskAsideDialog",
     "codex-tools": "ConnectedToolsDialog",
+    "codex-tool-approval": "ElicitationDialog",
     "codex-commands": "CommandPickerDialog",
     "codex-collaboration": "SingleChoiceDialog",
     "codex-rewind": "RewindDialog",

@@ -839,3 +839,40 @@ def test_change_permission_mode_offers_plan_and_leaves_it_with_a_grant(frame, en
         assert service.ready(saved)
     finally:
         service.close()
+
+
+@pytest.mark.parametrize('editing', [False, True])
+def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,monkeypatch,editing):
+    from thechatplace.providers.codex_input import CodexInput
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from dataclasses import replace
+    record=owned(frame,env)
+    message=CodexInput('Queued request')
+    state=CodexChatState(record.cli_session_id,'working','turn','inProgress',queued=(message,))
+    frame._codex_states[record.to_info().key]=state
+    frame._chat_messages=[]
+    frame._rebuild_chat_list()
+    frame.chat_list.SetSelection(len(frame._visible_messages())-1)
+    frame.reply_text.SetValue('New draft')
+    calls=[]
+    def action(name,saved,index,expected):
+        calls.append((name,saved,index,expected))
+        assert name=='take_queued' and expected is message
+        frame._codex_states[record.to_info().key]=replace(state,queued=())
+        return expected
+    monkeypatch.setattr(frame.sessions,'owned_action',action)
+    _sync_work(frame,monkeypatch)
+    (frame.edit_queued if editing else frame.remove_queued)()
+    assert calls==[('take_queued',record,0,message)]
+    assert frame.reply_text.GetValue()==('Queued request\n\nNew draft' if editing else 'New draft')
+    assert not frame._queued_rows()
+    if editing: assert wx.Window.FindFocus() is frame.reply_text
+
+
+def test_codex_send_now_uses_steering_without_stopping(frame,env,monkeypatch):
+    record=owned(frame,env)
+    calls=[]
+    monkeypatch.setattr(frame,'steer_queued',lambda: calls.append('steer'))
+    monkeypatch.setattr(frame,'_stop_codex_owned',lambda *a: calls.append('stop'))
+    frame.send_queued_now()
+    assert calls==['steer']

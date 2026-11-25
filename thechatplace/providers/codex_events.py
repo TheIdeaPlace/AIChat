@@ -29,6 +29,8 @@ class CodexEvent:
     sequence: int = 0
     #: A tool starting, as against Codex thinking or writing (#250).
     tool: bool = False
+    #: Owned turns observed when a child notification arrived, never server-supplied.
+    parent_turns: tuple = ()
 
 
 def _id(value):
@@ -248,6 +250,8 @@ class CodexTurnBuffer:
         #: Counted for sounds (#250), since a state can reach the window merged with the next.
         self.tools_started = 0
         self.edits_made = 0
+        self._child_tools = set()
+        self._child_edits = set()
 
     @property
     def replies(self):
@@ -288,6 +292,18 @@ class CodexTurnBuffer:
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
                 or self.status != "inProgress"):
             return False
+        if event.kind in ('subagent_tool', 'subagent_edit'):
+            seen = self._child_tools if event.kind == 'subagent_tool' else self._child_edits
+            if event.item_id in seen or len(seen) >= self.MAX_ITEMS:
+                return False
+            seen.add(event.item_id)
+            if event.kind == 'subagent_tool':
+                self.tools_started += 1
+                self.activity = 'A Codex subagent is using a tool.'
+            else:
+                self.edits_made += 1
+                self.activity = 'A Codex subagent changed a file.'
+            return True
         if event.kind in ('reasoning_delta', 'reasoning_completed'):
             if event.item_id in self._reasoning_final:
                 return False

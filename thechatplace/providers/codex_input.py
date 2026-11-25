@@ -10,8 +10,9 @@ from ..attachments import media_type, sniffed_type
 
 
 class CodexInput(str):
-    def __new__(cls, text, parts=()):
+    def __new__(cls, text, parts=(), *, original=None):
         value = super().__new__(cls, text)
+        value.original_text = original
         value._parts = tuple(tuple(sorted(part.items())) for part in parts)
         validate_input(value.items())
         return value
@@ -71,11 +72,14 @@ def build_input(text, paths=(), *, skills=(), allow_long=False):
             raise ValueError('An attachment is not a file.')
         if media_type(str(path)) and sniffed_type(str(path)):
             parts.append({'type': 'localImage', 'path': str(path)})
-            lines.append('Attached image: ' + str(path))
+            line = 'Attached image: ' + str(path)
+            if line not in text.split('\n\n'):
+                lines.append(line)
         else:
             lines.append('Attached file (read this file for the request): ' + str(path))
     for name, path in skills:
-        lines.append('$' + name)
+        if '$' + name not in text.split('\n\n'):
+            lines.append('$' + name)
         parts.append({'type': 'skill', 'name': name, 'path': str(Path(path).resolve(strict=True))})
     joined = '\n\n'.join(lines)
     from .codex_rpc import MAX_MESSAGE_CHARS
