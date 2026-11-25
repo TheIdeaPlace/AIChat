@@ -742,6 +742,13 @@ def s_main_attachments(frame, env):
     frame._show_attachments()
 
 
+def s_main_suggestion(frame, env):
+    """A reply came with a suggested next message (#474)."""
+    _open(frame, "Visual probe")
+    frame._suggestions["own-1"] = "Write the script, and add a --dry-run option"
+    frame._place_suggestion(sound=False)
+
+
 def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
@@ -2590,6 +2597,8 @@ SURFACES = {
                           "An own session mid-turn with a steered message not yet taken in"),
     "main-attachments": ("window", s_main_attachments,
                          "An own session with two files attached to the next message"),
+    "main-suggestion": ("window", s_main_suggestion,
+                        "An own session whose last reply came with a suggested next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
     "main-kept": ("window", s_main_kept,

@@ -47,6 +47,8 @@ TROUBLE = "trouble"
 COMPACTED = "compacted"
 LIMIT = "limit"
 PEER = "peer"
+SUGGESTED = "suggested"
+LIST_END = "list_end"
 #: "Message sent on API credits" (#658). Not in EVENTS yet: every event must
 #: be in app-kit's catalog for this app, with its own sound in each pack, so
 #: it's added there first. Until then the window says "Sent on API credits"
@@ -103,6 +105,16 @@ EVENTS: Tuple[SoundEvent, ...] = (
     SoundEvent(LIMIT, "UsageWarning", "Usage or context warning", "warning"),
     SoundEvent(COMPACTED, "Compacted", "Conversation compacted", "compacted"),
     SoundEvent(PEER, "PeerMessage", "Message from another session", "peer"),
+    # Claude's suggested next prompt put in your message box (#474): the only sign of it, as
+    # nothing is said (Kelly, 2026-11-23). Called Message suggested until River's reading of it
+    # sounded like "message adjusted".
+    SoundEvent(SUGGESTED, "PromptSuggested", "Prompt suggested", "suggested"),
+    # Up or Home at the top of the session or messages list, Down or End at the bottom (#714):
+    # QuickMail's event and sound, the same event in both apps. It answers your key press, so it
+    # plays at once or not at all (AMBIENT): never late, behind another sound, by when you've
+    # moved, and a second press soon after isn't taken for a repeat (#714 review).
+    SoundEvent(LIST_END, "ListEnd", "Reached the end of a list", "edge", AMBIENT,
+               answers_you=True),
 )
 BY_ID: Dict[str, SoundEvent] = {event.id: event for event in EVENTS}
 BY_KEY: Dict[str, SoundEvent] = {event.key: event for event in EVENTS}
@@ -123,7 +135,7 @@ BUILT_IN: Dict[str, str] = {
     "queuedelete": "Withdraw", "stop": "Stop",
     "reply": "Rise", "otherreply": "Low rise", "handon": "Pass", "aside": "Aside", "needsyou": "Call",
     "answer": "Answer", "turnfailed": "Fall", "notsent": "Bump", "asidefailed": "Aside fall", "trouble": "Waver",
-    "warning": "Alert", "compacted": "Settle", "peer": "Knock",
+    "warning": "Alert", "compacted": "Settle", "peer": "Knock", "suggested": "Taps", "edge": "Edge",
 }
 
 #: Built-in sound names that only 0.5 previews used: the first set's, and then "edit", the Double

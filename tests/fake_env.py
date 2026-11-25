@@ -324,8 +324,9 @@ class FakeRunner:
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
                  task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False,
                  billing="subscription", api_key_name="", ledger=None, chat_id="",
-                 purpose="turn", cost_baselines=None):
+                 purpose="turn", cost_baselines=None, suggestions=False):
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
+        self.suggestions = suggestions  # prompt suggestions asked for (#474)
         # How the turn is charged (#658), as the window asked.
         self.billing, self.ledger, self.chat_id, self.purpose = billing, ledger, chat_id, purpose
         self.cost_baselines = cost_baselines

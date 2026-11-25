@@ -44,18 +44,39 @@ def test_the_events_are_app_kits_for_this_app():
 
 def test_one_sound_one_meaning():
     """dev-notes/sound-design.md: every event has its own sound, its own file, and a name of its
-    own in the Sound choice; none is QuickMail's."""
+    own in the Sound choice; none is QuickMail's, apart from the one event that's the same in
+    both apps, Reached the end of a list (#714), which Kelly chose to share."""
     from theideaplace_appkit import soundschemes
     sounds = [e.sound for e in se.EVENTS]
-    assert len(sounds) == len(set(sounds)) == 23
+    assert len(sounds) == len(set(sounds)) == 25
     assert len(set(se.BUILT_IN.values())) == len(se.BUILT_IN)
     quickmail = set(soundschemes.catalog("quickmail").built_in_sounds)
-    assert not quickmail & set(sounds)
+    assert quickmail & set(sounds) == {"edge"}
+    # The same event as QuickMail's, by key and label, not only by sound.
+    quickmail_end = next(e for e in soundschemes.catalog("quickmail").events if e.sound == "edge")
+    ours = se.BY_ID[se.LIST_END]
+    assert (ours.key, ours.label) == (quickmail_end.key, quickmail_end.label)
     for pack in se.PACKS:
         for sound in sounds:
             path = se.built_in_path(sound, pack)
             assert path.is_file(), path
         assert sorted(p.stem for p in se.built_in_path("tool", pack).parent.glob("*.wav")) == sorted(sounds)
+
+
+def test_the_list_end_sound_plays_at_once_or_not_at_all():
+    """#714 review: under app-kit's player policy a second press at the end, half a second after
+    the first, still plays, and a press while another sound plays is skipped, not queued to
+    play late after you've moved on."""
+    from theideaplace_appkit.sounds import SoundPolicy
+    now = [0.0]
+    policy = SoundPolicy(clock=lambda: now[0])
+    event = se.BY_ID[se.LIST_END]
+    assert policy.admit(event.id, event.priority, busy=False, waiting=0)
+    now[0] = 0.5
+    assert policy.admit(event.id, event.priority, busy=False, waiting=0)
+    now[0] = 1.0
+    assert not policy.admit(event.id, event.priority, busy=True, waiting=0)
+    assert not policy.admit(event.id, event.priority, busy=False, waiting=1)
 
 
 def test_a_preview_choice_keeps_its_meaning_under_the_new_names():
@@ -329,9 +350,9 @@ def test_labels(data):
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav (missing)"
     put(data, "glass", "m.wav")
     assert se.row_label(se.PEER, glass) == "Message from another session: Your file, m.wav"
-    assert se.count_label(glass) == "22 of 23 events have a sound"
-    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 23 events have a sound"
-    assert se.count_label(wood) == "23 of 23 events have a sound"
+    assert se.count_label(glass) == "24 of 25 events have a sound"
+    assert se.count_label(se.Scheme(USER, "Mine", False)) == "0 of 25 events have a sound"
+    assert se.count_label(wood) == "25 of 25 events have a sound"
 
 
 def test_what_the_sound_choice_offers(data):
@@ -339,9 +360,9 @@ def test_what_the_sound_choice_offers(data):
     put(data, USER, "n.wav")
     built_in = se.offered(se.built_in_scheme("softbell"))
     assert built_in[0] == "none" and built_in[1] == "builtin:tool" and built_in[-1] == "custom:m.wav"
-    assert len(built_in) == 1 + 23 + 1
+    assert len(built_in) == 1 + 25 + 1
     own = se.offered(se.Scheme(USER, "Mine", False))
-    assert "builtin:softbell/reply" in own and len(own) == 1 + 3 * 23 + 1
+    assert "builtin:softbell/reply" in own and len(own) == 1 + 3 * 25 + 1
     assert own[-1] == "custom:n.wav"
 
 
@@ -676,7 +697,7 @@ def _entry(sid="rain", sha="d" * 64, events=8, description="Soft."):
 
 def test_gallery_rows_say_what_you_have():
     entry = _entry()
-    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 23 events have a sound."
+    assert sound_gallery.row_label(entry, []) == "Rain, by Someone. 8 of 25 events have a sound."
     mine = se.Scheme(USER, "Rain", False, source={"gallery": "rain", "sha256": "d" * 64})
     assert sound_gallery.state(entry, [mine]) == sound_gallery.ADDED
     assert sound_gallery.row_label(entry, [mine]).endswith(" Added.")

@@ -109,23 +109,22 @@ def claude_folder_trusted(folder: str) -> Optional[bool]:
     return False
 
 
-_CHROME_INSTALLED = re.compile(rb'"cachedChromeExtensionInstalled"\s*:\s*(true|false)')
-#: (path, modified time, size) -> the answer last read from it.
-_chrome_installed_cache: dict = {}
+#: (path, key) -> ((modified time, size), the answer last read from it).
+_config_flag_cache: dict = {}
 
 
-def claude_chrome_extension_installed() -> bool:
-    """Whether Claude Code last found the Claude in Chrome extension
-    (``cachedChromeExtensionInstalled`` in ~/.claude.json, #319): what decides
-    whether chats get ``--chrome`` until Settings says otherwise.
+def claude_config_flag(key: str) -> Optional[bool]:
+    """A true/false value Claude Code keeps in ~/.claude.json, by its key
+    (the first place it appears), or None when the file has none.
 
     Asked on every send, on the UI thread. The file runs to megabytes and
     Claude Code rewrites it all the time, so it's read again only when it has
     changed, and searched for the one key rather than parsed. A read that
-    fails (the file mid-replace) keeps the last answer, so one turn isn't
-    told Chrome is off while it's on. False when it has never been read."""
+    fails (the file mid-replace, or half written) keeps the last answer, so
+    one turn isn't told the wrong thing. Only read, never written."""
     path = claude_config_file()
-    last = _chrome_installed_cache.get(str(path), (None, False))
+    pattern = re.compile(rb'"' + re.escape(key.encode()) + rb'"\s*:\s*(true|false)')
+    last = _config_flag_cache.get((str(path), key), (None, None))
     try:
         info = path.stat()
         stamp = (info.st_mtime_ns, info.st_size)
@@ -133,21 +132,39 @@ def claude_chrome_extension_installed() -> bool:
             return last[1]
         data = path.read_bytes()
     except FileNotFoundError:
-        _chrome_installed_cache.pop(str(path), None)
-        return False
+        _config_flag_cache.pop((str(path), key), None)
+        return None
     except OSError:
         return last[1]
-    match = _CHROME_INSTALLED.search(data)
+    match = pattern.search(data)
     if match is None:
-        # Half written, or Claude Code hasn't looked for the extension yet:
-        # only a whole file without the key is remembered as no.
+        # Half written, or not recorded yet: only a whole file without the
+        # key is remembered as having none.
         if not data.rstrip().endswith(b"}"):
             return last[1]
-        value = False
+        value = None
     else:
         value = match.group(1) == b"true"
-    _chrome_installed_cache[str(path)] = (stamp, value)
+    _config_flag_cache[(str(path), key)] = (stamp, value)
     return value
+
+
+def claude_chrome_extension_installed() -> bool:
+    """Whether Claude Code last found the Claude in Chrome extension
+    (``cachedChromeExtensionInstalled``, #319): what decides whether chats
+    get ``--chrome`` until Settings says otherwise. False if not recorded."""
+    return claude_config_flag("cachedChromeExtensionInstalled") is True
+
+
+def claude_offers_prompt_suggestions() -> Optional[bool]:
+    """Whether Claude Code's server-side flag for prompt suggestions is on
+    for this account (#474, #709): ``tengu_prompt_suggestion`` among the
+    feature flags it caches in ~/.claude.json. Without it, ``--prompt-
+    suggestions`` and its variable send nothing: on one PC the flag was true
+    and suggestions came, on another 13 of 13 turns brought none, on two
+    versions of Claude Code. None when it isn't recorded (an older Claude
+    Code, or a file not read yet), which isn't taken as off."""
+    return claude_config_flag("tengu_prompt_suggestion")
 
 
 def projects_dir() -> Path:
