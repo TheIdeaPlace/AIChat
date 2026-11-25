@@ -283,8 +283,9 @@ in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:
 - **To describe a page in words:** "What's on the page you have open? List the headings, links and
   form fields", or "Read me the main article".
 - **What tabs it's using:** "Which tabs have you got open, and what's in each?"
-- **To tell you when it needs you:** "If you get to a sign-in page, a CAPTCHA or a pop-up box, stop
-  and tell me which site." It stops at those anyway; this way its reply says what to do.
+- **To tell you when it needs you:** "Tell me when you need me to go to Chrome and do something,
+  and what." Claude stops at a sign-in page, a CAPTCHA or a pop-up box anyway; this way its reply,
+  which The Chat Place announces as usual, says what to do there.
 - **To save what it sees:** "Take a screenshot and save it in my Documents folder", then open the
   file yourself, or "Record a GIF of what you do".
 - **What size it's working at:** "What size is the page in the tab you're using? Check
