@@ -4,6 +4,7 @@ No account, API key, browser window or paid model request is used. All native
 configuration and chats are disposable. Run --out outside the checkout.
 """
 import json, os, sys, tempfile, threading, subprocess, time, urllib.request, urllib.parse
+from contextlib import contextmanager
 from pathlib import Path
 from textwrap import dedent
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -48,6 +49,23 @@ class Model(BaseHTTPRequestHandler):
   self.send_response(200);self.send_header("Content-Type","text/event-stream");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
 
 
+@contextmanager
+def isolated_storage(home):
+    """Keep native storage overrides local to this disposable probe."""
+    names = ("CODEX_HOME", "CODEX_SQLITE_HOME")
+    previous = {name: os.environ.get(name) for name in names}
+    try:
+        for name in names:
+            os.environ[name] = str(home)
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def run(binary):
     report={'codex':subprocess.check_output([binary,'--version'],text=True).strip(),'platform':sys.platform}
     server=ThreadingHTTPServer(('127.0.0.1',0),Model);threading.Thread(target=server.serve_forever,daemon=True).start()
@@ -67,9 +85,10 @@ def run(binary):
     # The provider belongs at top level, before any tables.
     cfg=(home/'config.toml').read_text().replace('\nmodel_provider="probe"\n','');(home/'config.toml').write_text('model_provider="probe"\n'+cfg+'\n[model_providers.probe]\nname="probe"\nbase_url="http://127.0.0.1:'+str(server.server_port)+'/v1"\nwire_api="responses"\nrequires_openai_auth=false\n')
     with (home/'config.toml').open('a') as f: f.write('\n[mcp_servers.oauth]\nurl="http://127.0.0.1:'+str(server.server_port)+'/mcp"\n')
-    env=dict(os.environ,CODEX_HOME=str(home));env.pop('OPENAI_API_KEY',None);env.pop('CODEX_API_KEY',None)
-    rpc=Rpc(binary,home,work,None,env);rpc.handle=lambda m: None
+    env=dict(os.environ,CODEX_HOME=str(home),CODEX_SQLITE_HOME=str(home));env.pop('OPENAI_API_KEY',None);env.pop('CODEX_API_KEY',None)
+    rpc=Rpc.__new__(Rpc)
     try:
+     rpc.__init__(binary,home,work,None,env);rpc.handle=lambda m: None
      start={'cwd':str(work),'approvalPolicy':'on-request','sandbox':'read-only','config':{'features.apps':False,'mcp_servers.probe.enabled':False}}
      first=rpc.request('thread/start',start);tid=first['thread']['id'];rpc.request('turn/start',{'threadId':tid,'input':[{'type':'text','text':'Synthetic probe'}]})
      while True:
@@ -111,22 +130,25 @@ def run(binary):
      # Exercise TCP's production standalone login connection with the same isolated home.
      sys.path.insert(0,str(Path.cwd()))
      from thechatplace.providers.codex_tools import CodexToolLogins
-     os.environ['CODEX_HOME']=str(home)
-     service=CodexToolLogins(binary)
-     try:
-      result=service.start(str(work),'oauth')
-      urllib.request.urlopen(result['authorizationUrl'],timeout=10).read()
-      for _ in range(600):
-       completed=service.result(str(work),'oauth',result['loginId'])
-       if completed is not None: break
-       time.sleep(.05)
-      assert completed is True
-      assert not service._attempts
-      report['standalone_oauth_completed']=completed
-     finally: service.close()
+     with isolated_storage(home):
+      service=CodexToolLogins(binary)
+      try:
+       result=service.start(str(work),'oauth')
+       urllib.request.urlopen(result['authorizationUrl'],timeout=10).read()
+       for _ in range(600):
+        completed=service.result(str(work),'oauth',result['loginId'])
+        if completed is not None: break
+        time.sleep(.05)
+       assert completed is True
+       assert not service._attempts
+       report['standalone_oauth_completed']=completed
+      finally: service.close()
      report['temporary_folder']=str(root)
     finally:
-     rpc.close();server.shutdown();server.server_close()
+     try:
+      if hasattr(rpc, "process"): rpc.close()
+     finally:
+      server.shutdown();server.server_close()
     
     return report
 

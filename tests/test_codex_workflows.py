@@ -269,3 +269,37 @@ def test_provider_signin_does_not_require_chat_ownership_or_enable_tools(tmp_pat
     CodexProvider.connected_tool_action(provider,info,'notes','login')
     CodexProvider.connected_tool_action(provider,info,'notes','login_status','login-id')
     assert calls==[('login',str(tmp_path),'notes'),('status',str(tmp_path),'notes','login-id')]
+
+
+@pytest.mark.parametrize('status', ['completed', 'failed', 'interrupted', 'unknown'])
+def test_late_child_activity_only_updates_same_successful_parent(status):
+    c, proof, executor = child_executor()
+    buffer = executor._turns['owned']
+    buffer.status = status
+    activity = buffer.activity
+    wire = {'method': 'item/started', 'params': {
+        'threadId': 'child', 'turnId': 'turn',
+        'item': {'id': 'late-tool', 'type': 'commandExecution', 'command': 'echo synthetic'}}}
+    c._receive(wire); c._receive(wire)
+    executor.drain()
+    assert executor.snapshot(proof).tools_started == (1 if status == 'completed' else 0)
+    assert buffer.status == status and buffer.activity == activity
+    executor._turns['owned'] = CodexTurnBuffer('owned', 'later-parent')
+    c._receive(wire); executor.drain()
+    assert executor.snapshot(proof).tools_started == 0
+
+
+def test_native_probe_restores_both_storage_overrides(monkeypatch, tmp_path):
+    import importlib.util
+    from pathlib import Path
+    import os
+    spec = importlib.util.spec_from_file_location('workflow_probe', Path(__file__).parents[1] / 'tools/probe_codex_workflows.py')
+    probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+    monkeypatch.setenv('CODEX_HOME', 'original-home')
+    monkeypatch.delenv('CODEX_SQLITE_HOME', raising=False)
+    with pytest.raises(RuntimeError):
+        with probe.isolated_storage(tmp_path):
+            assert os.environ['CODEX_HOME'] == os.environ['CODEX_SQLITE_HOME'] == str(tmp_path)
+            raise RuntimeError('synthetic failure')
+    assert os.environ['CODEX_HOME'] == 'original-home'
+    assert 'CODEX_SQLITE_HOME' not in os.environ

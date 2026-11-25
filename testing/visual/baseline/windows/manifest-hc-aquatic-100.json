@@ -2106,6 +2106,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An own session whose last reply came with a suggested next message"
+  },
+  "main-codex-queue-edited": {
+   "kind": "window",
+   "png": "main-codex-queue-edited-hc-aquatic-100.png",
+   "json": "main-codex-queue-edited-hc-aquatic-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A queued Codex message returned to its draft without stopping the turn"
+  },
+  "codex-tool-approval": {
+   "kind": "dialog",
+   "png": "codex-tool-approval-hc-aquatic-100.png",
+   "json": "codex-tool-approval-hc-aquatic-100.json",
+   "title": "project-notes asks: Codex review",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex tool-call consent with exact arguments and a one-time answer"
   }
  },
  "seconds": 280.2

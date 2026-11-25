@@ -847,6 +847,7 @@ def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,
     from thechatplace.providers.codex_runtime import CodexChatState
     from dataclasses import replace
     record=owned(frame,env)
+    monkeypatch.setattr(frame,'_can_edit',lambda info: True)
     message=CodexInput('Queued request')
     state=CodexChatState(record.cli_session_id,'working','turn','inProgress',queued=(message,))
     frame._codex_states[record.to_info().key]=state
@@ -871,6 +872,7 @@ def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,
 
 def test_codex_send_now_uses_steering_without_stopping(frame,env,monkeypatch):
     record=owned(frame,env)
+    monkeypatch.setattr(frame,'_can_edit',lambda info: True)
     calls=[]
     monkeypatch.setattr(frame,'steer_queued',lambda: calls.append('steer'))
     monkeypatch.setattr(frame,'_stop_codex_owned',lambda *a: calls.append('stop'))

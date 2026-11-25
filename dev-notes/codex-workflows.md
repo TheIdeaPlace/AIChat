@@ -103,3 +103,13 @@ An independent hostile reviewer found queue identity, late child attribution,
 long-message eviction/native recovery and OAuth cleanup races. Each was fixed
 and covered by a regression; the final code review had no pending findings.
 CI and VM results are recorded in the PR, not assumed here.
+
+
+Final review additions: native probe sets both CODEX_HOME and CODEX_SQLITE_HOME
+to disposable storage, restores process environment even on failure, and closes
+a partially initialized RPC before shutting down the local HTTP server. Late
+child counters can update only their same successfully completed parent turn;
+parent activity/status and completion announcements stay unchanged. Windowed
+Codex feature tests passed in the Windows VM (50 tests). Eight visual surfaces
+were independently inspected; inherited light native-border contrast remains
+documented in testing/visual/descriptions.md.

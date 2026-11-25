@@ -289,8 +289,10 @@ class CodexTurnBuffer:
                 self.review_notices.pop(next(iter(self.review_notices)))
             self.review_notices[event.item_id] = event.text
             return True
+        child_activity = event.kind in ("subagent_tool", "subagent_edit")
         if ((event.thread_id, event.turn_id) != (self.thread_id, self.turn_id)
-                or self.status != "inProgress"):
+                or (self.status != "inProgress"
+                    and not (child_activity and self.status == "completed"))):
             return False
         if event.kind in ('subagent_tool', 'subagent_edit'):
             seen = self._child_tools if event.kind == 'subagent_tool' else self._child_edits
@@ -299,10 +301,12 @@ class CodexTurnBuffer:
             seen.add(event.item_id)
             if event.kind == 'subagent_tool':
                 self.tools_started += 1
-                self.activity = 'A Codex subagent is using a tool.'
+                if self.status == 'inProgress':
+                    self.activity = 'A Codex subagent is using a tool.'
             else:
                 self.edits_made += 1
-                self.activity = 'A Codex subagent changed a file.'
+                if self.status == 'inProgress':
+                    self.activity = 'A Codex subagent changed a file.'
             return True
         if event.kind in ('reasoning_delta', 'reasoning_completed'):
             if event.item_id in self._reasoning_final:
