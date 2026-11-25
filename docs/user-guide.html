@@ -237,14 +237,86 @@ installed and signed in to the same claude.ai account as Claude Code. Then:</p>
 <li>It's on in Claude chats on your subscription, new and old, from their next message.
   <strong>Settings, "Let Claude use Chrome"</strong> turns it off or on. Until you change it, it's on if
   Claude Code has found the extension on your computer.</li>
-<li>Ask for it by name the first time, for example "Using Chrome, what tabs do I have open?" Keep
-  Chrome open while Claude works in it.</li>
-<li>Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
-  example.com". <strong>Allow for This Chat</strong> lets it use that site for the rest of the chat.</li>
+<li>Ask for it by name the first time, for example "Using Chrome, open example.com and tell me
+  what's on it." Keep Chrome open while Claude works in it.</li>
+<li>The first time in a chat, Claude in Chrome asks to "create a browser window and read your
+  tabs", and often to "open a new browser tab". Then each website asks your permission, as
+  "Claude in Chrome wants to navigate on example.com", and again for reading, clicking or typing
+  there. <strong>Allow for This Chat</strong> lets it use that site for the rest of the chat. A local address
+  counts with its port, such as 127.0.0.1:8765. In Auto mode, sites Claude Code judges safe may
+  not ask at all.</li>
 <li>Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
-  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.</li>
+  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
+  Claude often closes its tabs when it's done: ask it to leave a tab open if you want to come
+  back to it. It sees only its own tabs, not the ones you opened.</li>
 <li>It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
   told so, so it says so rather than sending you to a setting.</li>
+</ul>
+<p><strong>What Claude can do in Chrome.</strong> More than open pages and click. Its tools let it:</p>
+<ul>
+<li>Go to pages, go back and forward, and open, switch between and close its own tabs.</li>
+<li>Read a page: its text, its layout as a list of the things on it (links, buttons, fields), or a
+  search of it for something you describe ("the Submit button").</li>
+<li>Click, type, press keys, scroll, drag, and fill in form fields, check boxes and lists.</li>
+<li>Take screenshots, and record what it does as an animated GIF.</li>
+<li>Read the page's console messages and the network requests it made, and run JavaScript in it:
+  useful for checking a web page you're building.</li>
+<li>Upload a file to a page's upload field, up to 10 MB. The file has to be one the chat can read:
+  in its folder, or a folder you've added to the chat. It refuses key and password files, such as
+  <code>.env</code>, <code>.pem</code> and <code>.key</code> files and anything in <code>.ssh</code>.</li>
+<li>Resize the window, and choose between browsers when more than one has the extension.</li>
+<li>Work in sites you're already signed in to, such as Gmail, Google Docs or GitHub, as you.</li>
+</ul>
+<p>Things to ask, for example: "In Chrome, open my calendar and list tomorrow's meetings", "Fill in
+this form from contacts.csv", "Check the console on localhost:3000 for errors", "Copy the prices
+on this page into a CSV file" or "Record a GIF of signing up on my test site".</p>
+<p><strong>Working from here, not in Chrome.</strong> You can stay in The Chat Place and let Claude tell you what's
+in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:</p>
+<ul>
+<li><strong>To describe a page in words:</strong> "What's on the page you have open? List the headings, links and
+  form fields", or "Read me the main article". Claude usually tells you an article in its own
+  words rather than reading it out word for word.</li>
+<li><strong>What tabs it's using:</strong> "Which tabs have you got open, and what's in each?" It knows only the
+  tabs it opened.</li>
+<li><strong>To tell you when it needs you:</strong> "Tell me when you need me to go to Chrome and do something,
+  and what." Claude stops at a sign-in page, a CAPTCHA or a pop-up box anyway; this way its reply,
+  which The Chat Place announces as usual, says what to do there.</li>
+<li><strong>To save what it sees:</strong> "Take a screenshot and save it in my Documents folder", then open the
+  file yourself. Claude may ask to run a command to copy it there. "Record a GIF of what you do"
+  saves the GIF where Chrome saves downloads, usually your Downloads folder.</li>
+<li><strong>What size it's working at:</strong> "What size is the page in the tab you're using? Check
+  window.innerWidth and window.innerHeight." With Chrome maximized it's your screen's width and a little less than its height;
+  something like 400 by 500 means the tab is too small (see "Known problems").</li>
+</ul>
+<p><strong>What it won't do.</strong> It stops and asks you to sign in, type passwords or solve CAPTCHAs yourself.
+It won't trade stocks, enter sensitive information such as card or ID numbers, or follow
+instructions it finds on a page or in an email. It can fill in a signup or checkout form if you
+ask, so check what it's about to do. Adult and pirated-content sites are blocked; banking and
+other financial sites ask your permission first, like any other site. If a page puts up a
+pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
+work counts against your plan's usage, and more than ordinary chat.</p>
+<p><strong>Known problems.</strong> These are Claude in Chrome's, and happen in Claude Code too:</p>
+<ul>
+<li><strong>Maximize Chrome before you ask Claude to browse.</strong> Claude works in its own tabs in the
+  background, and each keeps the size Chrome's window had when Claude opened it. If the window was
+  small then, sites show their phone layout and screenshots are tiny. Resizing and reloading
+  doesn't fix a tab that's already open: maximize Chrome and ask Claude to open a new tab.
+  Windows 11 is adding a setting that does this for you: <strong>Open apps maximized</strong>, in Settings,
+  Accessibility, Visual effects, which maximizes every app's window as it opens. It came to Windows
+  Insiders in August 2026 and to Release Preview in September 2026, so your Windows may not have
+  it yet.</li>
+<li><strong>A tab opened by a link can be left behind.</strong> If a link opens a new tab, Claude may not be able
+  to close it afterwards. The same can happen to a blank tab when Claude closes its other tabs.
+  Close it yourself with Ctrl+W.</li>
+</ul>
+<p>The extension keeps its own list of sites you've always allowed: open the extension, then its
+menu (three dots), <strong>Extension settings</strong>, Permissions. Anthropic describes it all in more detail:</p>
+<ul>
+<li><a href="https://support.claude.com/en/articles/12012173-getting-started-with-claude-in-chrome">Get started with Claude in Chrome</a></li>
+<li><a href="https://code.claude.com/docs/en/chrome">Use Claude Code with Chrome</a>, which is how chats here use it</li>
+<li><a href="https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide">Claude in Chrome permissions guide</a>
+  and <a href="https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely">Use Claude in Chrome safely</a></li>
+<li><a href="https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting">Claude in Chrome troubleshooting</a></li>
 </ul>
 <p>Computer use, which lets Claude use your other apps, isn't available in chats The Chat Place runs.
 Claude is told so, so it says so plainly and uses what it has, such as Chrome or web search,
