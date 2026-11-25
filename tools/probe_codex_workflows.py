@@ -31,7 +31,7 @@ class Model(BaseHTTPRequestHandler):
     return self.send_json({},400)
    target=redirect+'?'+urllib.parse.urlencode({'code':'local-test-code','state':params['state'][0]})
    if '\r' in target or '\n' in target: return self.send_json({},400)
-   self.send_response(302);self.send_header('Location',target);self.end_headers();return
+   self.send_response(302);self.send_header('Location',urllib.parse.quote(target,safe=':/?=&%'));self.end_headers();return
   return self.send_json({},404)
  def do_POST(self):
   if self.path=='/register':
