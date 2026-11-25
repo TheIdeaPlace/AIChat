@@ -292,11 +292,20 @@ cost less than a cent.", and the Total reads "Spent since the total was reset: $
 for running messages: $5.00. Left: $172.66." Release Held stays greyed: nothing held is
 left over from an earlier run.
 
+## new-session-fable-plan: New Session on a Max plan (#722)
+
+680 by 651, the New Session dialog with no API key, signed in to a Max plan: the same rows as
+new-session, with Model showing Fable. The About permissions box is taller and starts with
+"Fable uses your plan's Fable allowance. If a turn would go past it and be charged to usage
+credits, The Chat Place stops the turn as soon as Claude Code says so, and asks each time you
+send whether to use them." before the usual permissions text, all of it showing without a
+scroll. On another plan (new-session), Fable isn't offered and the dialog is as before.
+
 ## new-session-api-credits: New Session with Charge to (#658)
 
 680 by 637, the New Session dialog with a key kept: a "Charge to:" row between Title and
 Model, its dropdown showing "API credits", lined up with the rows above and below. Model
-shows Fable, which is offered only on API credits. The About permissions box starts with
+shows Fable, offered on API credits (and on a Max or Ultra plan, #722). The About permissions box starts with
 "Every message in this chat is charged to your Claude API key, and Fable is offered.
 Claude.ai connectors aren't available on API credits. A chat's charging can't be changed
 once it's made." before the usual permissions text. Without a key (new-session), there's

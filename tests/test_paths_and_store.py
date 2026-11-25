@@ -356,10 +356,11 @@ def test_store_keeps_the_model(tmp_path):
     assert OwnSessionStore(path).get("id-1").model == "opus"
 
 
-@pytest.mark.parametrize("stored", [None, 5, "fable", "sonnet[1m]", "--help", "made-up"])
+@pytest.mark.parametrize("stored", [None, 5, "sonnet[1m]", "--help", "made-up"])
 def test_store_loads_an_unoffered_model_as_the_default(tmp_path, stored):
-    # Older stores have no model; anything the picker doesn't offer (a hand
-    # edit, or a model that bills usage credits) is never passed on.
+    # Older stores have no model; anything the picker can't offer (a hand
+    # edit, or a 1M context model, which bills usage credits) is never
+    # passed on. Fable is kept (#722): test_fable_is_offered_on_api_credits_….
     entry = {"cli_session_id": "id-1", "title": "Old", "cwd": "C:\a"}
     if stored is not None:
         entry["model"] = stored

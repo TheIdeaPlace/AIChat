@@ -2106,6 +2106,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "An own session whose last reply came with a suggested next message"
+  },
+  "new-session-fable-plan": {
+   "kind": "dialog",
+   "png": "new-session-fable-plan-light-100.png",
+   "json": "new-session-fable-plan-light-100.json",
+   "title": "New Chat Place Session",
+   "class": "NewSessionDialog",
+   "size": [
+    680,
+    651
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "New Session on a Max plan, with Fable chosen and its note (#722)"
   }
  },
  "seconds": 278.6
