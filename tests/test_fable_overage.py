@@ -10,7 +10,7 @@ import pytest
 from thechatplace import claude_cli as cli
 
 from test_claude_cli import ev
-from test_live_turn import IDLE, RESULT, RUNNING, live_turn_run
+from test_live_turn import BACKGROUND, IDLE, RESULT, RUNNING, live_turn_run
 
 FABLE = ["claude", "-p", "--model", "fable"]
 FABLE_INIT = ev(type="system", subtype="init", session_id="s1", apiKeySource="none",
@@ -103,6 +103,53 @@ def test_overage_after_the_answer_keeps_the_answer(tmp_path):
     assert done.wait(5)
     assert events[-1].kind == "finished" and not events[-1].is_error
     assert runner.stopped_for_overage and not runner.stopped_mid_turn
+
+
+def test_overage_while_background_work_runs_ends_with_the_reason(tmp_path):
+    """Answered, with background work going: stopping the turn stops that
+    work too, so the ending is the usage-credit reason, not a crash."""
+    runner, _p, _t, events, done = live_turn_run(
+        tmp_path, [RUNNING, FABLE_INIT, BACKGROUND, FABLE_REPLY, RESULT, IDLE, limits(True)],
+        command=FABLE)
+    assert done.wait(5)
+    assert events[-1].kind == "failed" and "usage credits" in events[-1].text
+    assert "exit code" not in events[-1].text
+    assert runner.stopped_for_overage and runner.stopped_mid_turn
+
+
+def test_overage_before_the_message_went_gives_it_back(tmp_path):
+    """Not seen from Claude Code, but a resumed process could report first:
+    the message never goes, and comes back to the reply box."""
+    runner, process, _t, events, done = live_turn_run(
+        tmp_path, [limits(True), RUNNING, FABLE_INIT, FABLE_REPLY, RESULT, IDLE],
+        command=FABLE)
+    assert done.wait(5)
+    assert events[-1].kind == "failed" and runner.stopped_before_answer
+    assert not runner.stopped_mid_turn
+
+
+def test_an_aside_on_fable_stops_at_usage_credits_and_reports_it(tmp_path):
+    from thechatplace.aside import AsideRunner
+    from test_claude_cli import LiveProcess
+    process = LiveProcess([FABLE_INIT, FABLE_REPLY, limits(True), RESULT])
+    events, reported = [], []
+    runner = AsideRunner(["claude", "-p", "--model", "fable"], str(tmp_path), "Why?",
+                         events.append, popen=lambda cmd, **k: process, env={"PATH": "x"},
+                         on_limits=lambda info, model: reported.append((info["isUsingOverage"],
+                                                                        model)))
+    runner.start()
+    runner.join(5)
+    assert events[-1].kind == "failed" and "usage credits" in events[-1].text
+    assert reported == [(True, "claude-fable-5-2")]
+    # Chosen for this question: it runs.
+    process = LiveProcess([FABLE_INIT, FABLE_REPLY, limits(True), RESULT])
+    events = []
+    runner = AsideRunner(["claude", "-p", "--model", "fable"], str(tmp_path), "Why?",
+                         events.append, popen=lambda cmd, **k: process, env={"PATH": "x"},
+                         allow_overage=True)
+    runner.start()
+    runner.join(5)
+    assert events[-1].kind == "done"
 
 
 def test_other_models_are_not_paused_yet(tmp_path):

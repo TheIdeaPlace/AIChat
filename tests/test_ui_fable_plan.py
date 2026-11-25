@@ -74,7 +74,7 @@ def asked(frame, monkeypatch, answer):
     """Stand in for "Use usage credits?"; returns what it was asked."""
     calls = []
     monkeypatch.setattr(frame, "_ask_overage",
-                        lambda title, model: calls.append((title, model)) or answer)
+                        lambda title, model, **k: calls.append((title, model)) or answer)
     return calls
 
 
@@ -253,15 +253,79 @@ def test_other_machines_asks_as_send_does(frame, monkeypatch):
     assert len(calls) == 1 and FakeRunner.instances[-1].allow_overage is True
 
 
-def test_a_turn_allowed_on_usage_credits_asks_again_before_a_steer(frame, monkeypatch):
+def test_more_into_a_running_fable_turn_is_asked_about_each_time(frame, monkeypatch):
+    """A steer, Send Now or a message while it waits on background work:
+    each its own question, whatever the turn's first message was given."""
     signed_in(frame, "max")
     calls = asked(frame, monkeypatch, "cancel")
     frame._fable_limits = overage()
-    runner = SimpleNamespace(allow_overage=True)
-    assert not frame._running_overage_ok("fab-1", runner)
-    assert len(calls) == 1
+    for allowed in (True, False):
+        runner = SimpleNamespace(allow_overage=allowed)
+        assert not frame._running_overage_ok("fab-1", runner)
+    assert len(calls) == 2
+    calls = asked(frame, monkeypatch, "credits")
+    runner = SimpleNamespace(allow_overage=False)
+    assert frame._running_overage_ok("fab-1", runner) and runner.allow_overage is True
+    frame._fable_limits = overage(on=False)
     assert frame._running_overage_ok("fab-1", SimpleNamespace(allow_overage=False))
     assert len(calls) == 1
+
+
+def test_send_now_on_a_queued_message_asks(frame, monkeypatch):
+    signed_in(frame, "max")
+    open_chat(frame, "fab-1")
+    send(frame)                       # the turn starts
+    runner = FakeRunner.instances[-1]
+    send(frame, "Queued behind it")   # queued, not asked: it goes later
+    assert frame._queued["fab-1"] == ["Queued behind it"]
+    calls = asked(frame, monkeypatch, "cancel")
+    frame._fable_limits = overage()
+    sent = []
+    runner.send_now = lambda text: sent.append(text) or True
+    runner.waiting_on_background = False
+    monkeypatch.setattr(frame, "_selected_queued", lambda: 0)
+    frame.send_queued_now()
+    assert len(calls) == 1 and sent == []
+    assert frame._queued["fab-1"] == ["Queued behind it"]
+
+
+def test_a_live_change_to_fable_goes_through_its_checks(frame, monkeypatch):
+    """Change Model on a running Opus turn to Fable: on a plan without it,
+    from the next turn only (which checks again), never into the turn."""
+    signed_in(frame, "pro")
+    shown = boxes(monkeypatch)
+    open_chat(frame, "opus-1")
+    send(frame)
+    runner = FakeRunner.instances[-1]
+    live = []
+    monkeypatch.setattr(frame, "_live_change", lambda *a, **k: live.append(a))
+    monkeypatch.setattr(frame, "_change_setting", lambda *a, **k: "fable")
+    frame.on_change_model(frame.store.get("opus-1").to_info())
+    assert frame.store.get("opus-1").model == "fable"
+    assert live == [] and "doesn't include Fable" in shown[-1]
+    assert runner.allow_overage is False
+
+
+def test_change_model_from_a_new_chats_first_message_finds_the_chat(frame, monkeypatch):
+    """A chat just made isn't in the list's snapshot yet: Change Model
+    still opens for it."""
+    changed = []
+    monkeypatch.setattr(frame, "on_change_model", lambda info=None: changed.append(info))
+    monkeypatch.setattr(frame, "_current_info", lambda key: None)
+    frame._change_model_of("fab-1")
+    assert changed and changed[0].cli_session_id == "fab-1"
+
+
+def test_a_new_chats_first_message_asks_and_its_yes_goes_to_that_turn(frame, monkeypatch):
+    signed_in(frame, "max")
+    calls = asked(frame, monkeypatch, "credits")
+    frame._fable_limits = overage()
+    held, allow = frame._first_message_held(frame.store.get("fab-1"), "First")
+    assert (held, allow) == (False, True) and len(calls) == 1
+    calls = asked(frame, monkeypatch, "cancel")
+    held, allow = frame._first_message_held(frame.store.get("fab-1"), "First")
+    assert (held, allow) == (True, False)
+    assert frame.reply_text.GetValue() == "First" or frame._drafts.get("fab-1") == "First"
 
 
 def test_a_stopped_turn_doesnt_pop_up_a_question(frame, monkeypatch):
@@ -287,14 +351,46 @@ def test_the_answers_map_and_escape_cancels():
         assert MainFrame._overage_answer(other) == "cancel"
 
 
-def test_ask_aside_on_a_fable_chat_asks_first(frame, monkeypatch):
-    signed_in(frame, "max")
-    calls = asked(frame, monkeypatch, "cancel")
-    frame._fable_limits = overage()
-    opened = []
+def test_ask_aside_asks_about_each_question(frame, monkeypatch):
+    """The plan is checked as Ask Aside opens; usage credits for each
+    question asked, so a yes is one question's alone."""
     from thechatplace.ui import claude_extras
-    monkeypatch.setattr(claude_extras, "AskAsideDialog",
-                        lambda *a, **k: opened.append(a) or pytest.fail("opened"))
+    signed_in(frame, "max")
+    opened = []
+
+    class Dialog:
+        def __init__(self, parent, title, ask, **k):
+            opened.append(ask)
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(claude_extras, "AskAsideDialog", Dialog)
+    started = []
+    monkeypatch.setattr(claude_extras, "_AsideAtFinishedTurn",
+                        lambda *a, **k: SimpleNamespace(begin=lambda submit: started.append(a)
+                                                        or "started"))
     open_chat(frame, "fab-1")
     frame.on_ask_aside()
-    assert calls == [("On Fable", "fable")] and opened == []
+    ask = opened[0]
+    calls = asked(frame, monkeypatch, "cancel")
+    assert ask("Why?", lambda e: None) == "started" and calls == []   # inside the allowance
+    frame._fable_limits = overage()
+    assert ask("Why?", lambda e: None) == "Not asked." and len(calls) == 1
+    assert len(started) == 1
+    calls = asked(frame, monkeypatch, "credits")
+    assert ask("And?", lambda e: None) == "started" and len(calls) == 1
+    assert ask("Again?", lambda e: None) == "started" and len(calls) == 2
+
+
+def test_ask_aside_on_a_plan_without_fable_doesnt_open(frame, monkeypatch):
+    from thechatplace.ui import claude_extras
+    signed_in(frame, "pro")
+    shown = boxes(monkeypatch)
+    monkeypatch.setattr(claude_extras, "AskAsideDialog",
+                        lambda *a, **k: pytest.fail("opened"))
+    open_chat(frame, "fab-1")
+    frame.on_ask_aside()
+    assert "doesn't include Fable" in shown[-1]

@@ -2717,10 +2717,13 @@ class TurnRunner:
                                 self.stopped_before_answer = True
                             self._kill()
                             if (not unsent and final is not None and not final.is_error
-                                    and not carrying_on):
+                                    and not carrying_on and not self.background_tasks
+                                    and not said_while_waiting):
                                 # Answered already, and only a later request
                                 # (a suggestion, say) went over: the answer
-                                # stands, and the next Send asks.
+                                # stands, and the next Send asks. With
+                                # background work going, that work was
+                                # stopped too, so the reason is the ending.
                                 stop_reading = True
                                 break
                             self.stopped_mid_turn = not unsent

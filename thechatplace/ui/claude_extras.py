@@ -216,14 +216,12 @@ class ClaudeExtras:
             return
         model = own.model if own is not None else ""
         # An aside on a Fable chat runs on Fable (#722): only on a plan that
-        # includes it, and on usage credits only if you say so. An aside is
-        # one request, so asking first is the only way to stop it.
-        problem, _allow = self._fable_send_problem(own)
-        if problem is not None:
-            if problem:
-                wx.MessageBox(problem, "Ask Aside", wx.OK | wx.ICON_WARNING, self)
-            else:
-                self._feedback("Not asked.")
+        # includes it, said before the dialog opens. Usage credits are asked
+        # about for each question (``ask`` below): an aside is often one
+        # request, so asking first is the way to stop it.
+        problem, _allow = self._fable_send_problem(own, plan_only=True)
+        if problem:
+            wx.MessageBox(problem, "Ask Aside", wx.OK | wx.ICON_WARNING, self)
             return
         cowork_ids = self._snapshot.cowork_cli_ids
         allowed_dirs = own.allowed_dirs if own is not None else ()
@@ -263,6 +261,14 @@ class ClaudeExtras:
         notice_key = f"aside:{own.cli_session_id}" if api else ""
 
         def ask(question, on_event):
+            # Each question is asked about on its own (#722): Fable's plan,
+            # and usage credits once a Fable turn said they're in use.
+            problem, allow = self._fable_send_problem(self.store.get(own.cli_session_id)
+                                                      if own is not None else None,
+                                                      aside=True)
+            if problem is not None:
+                return problem or "Not asked."
+
             def arrived(event):
                 if event.kind == "sent":
                     # The question really went on API credits (#663):
@@ -280,9 +286,12 @@ class ClaudeExtras:
                         speaker.forget(notice_key)
 
             def start(at):
-                return main_frame.AsideRunner(at, cwd, question,
-                                              lambda event: wx.CallAfter(arrived, event),
-                                              **billing)
+                return main_frame.AsideRunner(
+                    at, cwd, question, lambda event: wx.CallAfter(arrived, event),
+                    allow_overage=allow,
+                    on_limits=lambda data, model: wx.CallAfter(
+                        self._note_limits, info.cli_session_id, data, model),
+                    **billing)
 
             def begin(at):
                 runner = start(at)
