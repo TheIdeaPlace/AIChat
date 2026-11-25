@@ -226,7 +226,7 @@ class ClaudeExtras:
         cowork_ids = self._snapshot.cowork_cli_ids
         allowed_dirs = own.allowed_dirs if own is not None else ()
 
-        def command_at(cut=""):
+        def command_at(cut="", model=model):
             return build_aside_command(lookup.path, info.cli_session_id, model,
                                        cowork_ids=cowork_ids, allowed_dirs=allowed_dirs,
                                        resume_at=cut)
@@ -263,11 +263,17 @@ class ClaudeExtras:
         def ask(question, on_event):
             # Each question is asked about on its own (#722): Fable's plan,
             # and usage credits once a Fable turn said they're in use.
-            problem, allow = self._fable_send_problem(self.store.get(own.cli_session_id)
-                                                      if own is not None else None,
-                                                      aside=True)
+            # The chat is read now, and its model then is the one the
+            # question runs on, so what's checked is what runs: Change Model
+            # chosen here, with the dialog still open, applies.
+            now = self.store.get(own.cli_session_id) if own is not None else None
+            problem, allow = self._fable_send_problem(now, aside=True)
             if problem is not None:
                 return problem or "Not asked."
+            model_now = now.model if now is not None else model
+
+            def command_now(cut=""):
+                return command_at(cut, model_now)
 
             def arrived(event):
                 if event.kind == "sent":
@@ -302,7 +308,7 @@ class ClaudeExtras:
             # running, since a stopped turn leaves the same unfinished end and
             # one just sent may not be written yet.
             try:
-                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_at, begin,
+                return _AsideAtFinishedTurn(lambda: _finished_cut(info), command_now, begin,
                                             on_event).begin(self._pool.submit)
             except RuntimeError:  # the pool is shut down: the window is closing
                 return "The Chat Place is closing, so Claude can't be asked now."

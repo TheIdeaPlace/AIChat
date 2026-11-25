@@ -2352,8 +2352,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         message while it waits on background work), asked as Send asks
         (#722): each message is its own question, whatever was answered for
         the turn's first. A yes lets the running turn go on on usage credits
-        with what it was given."""
-        problem, allow = self._fable_send_problem(self.store.get(session_id))
+        with what it was given. It goes by the model the turn is on, too: a
+        Change Model the turn couldn't take leaves it on Fable meanwhile."""
+        own = self.store.get(session_id)
+        turn_model = getattr(runner, "_turn_model", None)
+        running_on = turn_model() if callable(turn_model) else ""
+        if own is not None and overage_paused(running_on) and not overage_paused(own.model):
+            own = dataclasses.replace(own, model=running_on)
+        problem, allow = self._fable_send_problem(own)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
         elif problem == "":

@@ -269,6 +269,12 @@ def test_more_into_a_running_fable_turn_is_asked_about_each_time(frame, monkeypa
     frame._fable_limits = overage(on=False)
     assert frame._running_overage_ok("fab-1", SimpleNamespace(allow_overage=False))
     assert len(calls) == 1
+    # A chat changed to Opus whose running turn is still on Fable is asked
+    # about by the turn's model.
+    frame._fable_limits = overage()
+    still_fable = SimpleNamespace(allow_overage=True, _turn_model=lambda: "claude-fable-5-2")
+    assert frame._running_overage_ok("opus-1", still_fable)
+    assert len(calls) == 2
 
 
 def test_send_now_on_a_queued_message_asks(frame, monkeypatch):
@@ -386,6 +392,14 @@ def test_ask_aside_asks_about_each_question(frame, monkeypatch):
     calls = asked(frame, monkeypatch, "credits")
     assert ask("And?", lambda e: None) == "started" and len(calls) == 1
     assert ask("Again?", lambda e: None) == "started" and len(calls) == 2
+    command = started[-1][1]()
+    assert command[command.index("--model") + 1] == "fable"
+    # Change Model to Opus with the dialog still open: the next question
+    # runs on Opus, the model it was checked for, and isn't asked about.
+    frame.store.update("fab-1", model="opus")
+    assert ask("Now?", lambda e: None) == "started" and len(calls) == 2
+    command = started[-1][1]()
+    assert command[command.index("--model") + 1] == "opus"
 
 
 def test_ask_aside_on_a_plan_without_fable_doesnt_open(frame, monkeypatch):
