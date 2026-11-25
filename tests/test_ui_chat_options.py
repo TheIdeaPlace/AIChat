@@ -952,7 +952,7 @@ def test_branch_from_here_has_an_access_key_and_stop_background_task_follows_sto
 class FakeAside:
     instances = []
 
-    def __init__(self, command, cwd, question, on_event):
+    def __init__(self, command, cwd, question, on_event, **kwargs):
         self.command, self.cwd, self.question, self.on_event = command, cwd, question, on_event
         self.cancelled = False
         FakeAside.instances.append(self)

@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from thechatplace.providers.codex_events import CodexEvent
-from thechatplace.providers.codex_execution import CodexExecutionConnection, CodexTurnExecutor
+from thechatplace.providers.codex_execution import CodexExecutionConnection, CodexTurnExecutor, instruction_context
 from thechatplace.providers.codex_owned import CodexOwnedThread
 from thechatplace.providers.codex_rpc import CodexRpcError, CodexTurnRejected, CodexApprovalNotSent
 
@@ -51,7 +51,8 @@ def test_verified_text_turn_pins_model_policy_and_refuses_second_active_turn():
     assert turn.thread_id == 'one' and turn.turn_id == 'turn-1'
     assert c.calls[0] == ('turn/start', {'threadId': 'one', 'cwd': '/workspace',
         'model': 'model', 'approvalPolicy': 'on-request', 'approvalsReviewer': 'user',
-        'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}]})
+        'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}],
+        'additionalContext': instruction_context(proof)})
     with pytest.raises(CodexRpcError, match='in progress'):
         executor.start(proof, 'Duplicate')
     assert len(c.calls) == 1
@@ -159,7 +160,8 @@ def runtime_connection():
             'dotCodexFolder': str(Path(__file__).resolve().parent / '__empty_codex_layer__')}}]})
     params = {'threadId': 'owned', 'cwd': '/workspace', 'model': 'model',
         'approvalPolicy': 'on-request', 'approvalsReviewer': 'user',
-        'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}]}
+        'sandboxPolicy': {'type': 'readOnly'}, 'input': [{'type': 'text', 'text': 'Hello'}],
+        'additionalContext': instruction_context(proof)}
     return c, proof, params
 
 

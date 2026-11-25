@@ -326,8 +326,9 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             expected['serviceTier'] = 'default'
         if proof.effort is not None:
             expected['effort'] = proof.effort
-        if proof.instructions is not None:
-            expected['additionalContext'] = instruction_context(proof)
+        context = instruction_context(proof)
+        if context:
+            expected['additionalContext'] = context
         if proof.collaboration is not None:
             expected['collaborationMode'] = collaboration_options(proof)
         if set(params) != set(expected) | {'input'} or any(params[k] != v for k, v in expected.items()):
@@ -378,8 +379,34 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 INVALID_REQUEST = -32600
 
 
+# Every turn, including resumed chats and copies, needs the host's actual
+# capabilities (#524). Desktop skills can otherwise send users to settings
+# that don't exist here. Keep this separate from editable chat instructions.
+UNAVAILABLE_NOTE = (
+    "While The Chat Place is running this chat through Codex app-server, the "
+    "desktop app's built-in browser, its browser extension "
+    "for controlling the user's real browser, native computer use, and Codex Cloud "
+    "aren't available in this chat, even if a skill describes them or the user's "
+    "desktop settings turn them on. No setting in The Chat Place enables them; "
+    "don't tell the user to enable them here. The 'Let Claude use Chrome' setting "
+    "applies only to Claude chats. This limitation applies to both ChatGPT subscription "
+    "and API-credit Codex chats. If a task needs an unavailable feature, say plainly "
+    "that it isn't available in The Chat Place. Use only tools actually available "
+    "in this chat, such as web search or explicitly enabled MCP browser or computer "
+    "tools; these are separate from the desktop features. Otherwise ask the user "
+    "to check in their own browser or use a supported desktop app. If a later "
+    "message comes from another app, these limits may not apply."
+)
+
+
 def instruction_context(proof):
-    return {'tcp_chat_instructions': {'kind': 'application', 'value': proof.instructions}}
+    # The tiny paid key test needs no host guidance; Ask Aside still does.
+    if proof.ephemeral and getattr(proof.connection, '_purpose', None) == 'test':
+        return {}
+    context = {'tcp_capabilities': {'kind': 'application', 'value': UNAVAILABLE_NOTE}}
+    if proof.instructions is not None:
+        context['tcp_chat_instructions'] = {'kind': 'application', 'value': proof.instructions}
+    return context
 
 
 def collaboration_options(proof):
@@ -467,8 +494,9 @@ class CodexTurnExecutor:
                 params['serviceTier'] = 'default'
             if proof.effort is not None:
                 params['effort'] = proof.effort
-            if proof.instructions is not None:
-                params['additionalContext'] = instruction_context(proof)
+            context = instruction_context(proof)
+            if context:
+                params['additionalContext'] = context
             if proof.collaboration is not None:
                 params['collaborationMode'] = collaboration_options(proof)
             verify_frame_size('turn/start', params)

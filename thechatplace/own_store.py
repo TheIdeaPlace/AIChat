@@ -358,9 +358,11 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             values["provider_options"] = {**values.get("provider_options", {}), **kept_extras}
     # Charged one way or the other (#658); an unknown value is the subscription.
     values["billing"] = normalize_route(values.get("billing"))
-    # Only a model the picker offers for how the chat is charged: anything
-    # else (a hand edit, or a model that bills usage credits on the
-    # subscription, as Fable can) would fail or cost extra on every turn.
+    # Only a model the picker can offer: anything else (a hand edit, or a
+    # 1M context model, which bills usage credits on every subscription)
+    # would fail or cost extra on every turn. Fable is kept on the
+    # subscription (#722): the plan decides whether it's offered, and its
+    # turns stop at usage credits.
     if not model_allowed(values.get("model", ""), values["billing"]):
         values["model"] = ""
     if values.get("effort") not in EFFORT_LABELS:

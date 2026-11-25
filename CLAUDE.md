@@ -246,3 +246,10 @@ Kelly can't see the screen, so how the app looks is checked by the visual probe,
 - Research and design notes written while working on an issue go in `dev-notes/` (listed in its
   README), not in `docs/`: GitHub Pages publishes everything in `docs/`. Hand-testing guides go in
   `testing/`.
+- **Every sound's design is written down when it's made or changed** (Kelly, 2026-11-24). A new
+  sound event, or a changed sound, adds or updates its row in `dev-notes/sound-design.md`: what it
+  means, its family, its notes and level, why it has that shape, and anything it was changed to
+  avoid (another sound app-kit's design test found too alike). Do it in the same PR, alongside
+  app-kit's `generate.py` comment and its `sounds/README.md` table, and the voiced schemes in
+  TheIdeaPlace/soundgallery (the public one) get the event's clip. Let Kelly hear new sounds before
+  they're final: offer him candidates in all three packs.

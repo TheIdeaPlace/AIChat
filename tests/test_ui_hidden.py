@@ -16,7 +16,7 @@ from thechatplace.ui_text import key_name
 
 wx = pytest.importorskip("wx")
 
-from thechatplace import hub, platform_paths, speech  # noqa: E402
+from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
@@ -17519,3 +17519,409 @@ def test_f5_names_only_providers_whose_discovery_failed(frame, monkeypatch, snap
         assert "discovery unavailable" not in told[-1]
     else:
         assert told[-1].endswith(said)
+
+
+# -- prompt suggestions (#474) ---------------------------------------------------------------
+
+
+def _suggested(frame, fake_runner, text="write the script"):
+    """A turn on Hub probe that ends with a suggestion, as Claude Code sends
+    one: after the result, before the turn's end."""
+    runner = _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text=text))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    return runner
+
+
+def test_turns_ask_for_suggestions_only_when_settings_say(frame, fake_runner):
+    assert _start(frame, fake_runner).suggestions is False
+    frame._runners.clear()
+    frame.speech.prompt_suggestions = True
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    assert fake_runner.instances[-1].suggestions is True
+
+
+def test_a_suggestion_goes_in_the_empty_box_selected_with_its_sound(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    # Selected, so typing replaces it.
+    # All of it: a Windows rich edit box's select-all takes in its closing
+    # paragraph mark too, so the end can be one past the text.
+    start, end = frame.reply_text.GetSelection()
+    assert start == 0 and end >= frame.reply_text.GetLastPosition()
+    assert env["sounds"][-1] == "suggested"
+    # Nothing is said about it: the reply only (Kelly, 2026-11-23).
+    assert env["spoken"][-1] == "Hub probe replied. Done."
+    assert not any("write the script" in s for s in env["feedback"])
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_with_sounds_off_a_suggestion_is_said_by_its_event_name(frame, env, fake_runner):
+    """Kelly, 0.6.3 review: no sound to tell you, so its words, never the
+    suggestion itself (#550 will settle this for every event)."""
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+def test_muted_sounds_say_the_suggestion_too(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    frame.speech.sounds_muted = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_a_scheme_without_the_sound_says_the_suggestion(frame, env, fake_runner, explicit_none):
+    """A scheme of your own from before Prompt suggested (no entry), or with
+    None chosen for it: no sound will tell you, so its words do."""
+    from thechatplace import sound_events as se
+    sid = "user-" + "e" * 32
+    events = {e.key: se.built_in_ref(e.sound, "wood") for e in se.EVENTS if e.id != se.SUGGESTED}
+    if explicit_none:
+        events["PromptSuggested"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine", "events": events}}
+    frame.speech.sound_scheme = sid
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_during_a_presentation_the_suggestion_is_said(frame, env, fake_runner, monkeypatch):
+    """Its sound holds back in a presentation or full-screen program, as
+    sounds that just happen do; the reply is still said, so this is too."""
+    from thechatplace.ui import sound_host
+    monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_silent_announcements_say_nothing_but_fill_the_box(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    frame.speech.announce = speech.ANNOUNCE_SILENT
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_coming_back_with_sounds_off_stays_quiet(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    said = list(env["feedback"])
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["feedback"] == said
+
+
+def test_a_box_with_text_in_it_is_never_touched(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("my own draft")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="other"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame.reply_text.GetValue() == "my own draft"
+    assert "suggested" not in env["sounds"]
+
+
+def test_no_suggestion_nothing_in_the_box(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_a_failed_turn_offers_nothing(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="retry"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    # Your own message may come back to the box, as it always has; the
+    # suggestion doesn't.
+    assert "retry" not in frame.reply_text.GetValue()
+    assert "own-1" not in frame._suggestions
+
+
+def test_more_work_after_a_suggestion_drops_it(frame, fake_runner):
+    # A reply with a suggestion, then a steered message taken in and answered:
+    # the suggestion was for the first reply, not the turn's last.
+    _start(frame, fake_runner)
+    for event in (TurnEvent("suggestion", text="old idea"), TurnEvent("steer_taken", data={}),
+                  TurnEvent("finished", text="Done.")):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", event)
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_nothing_offered_after_background_work(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("finished", data={"after_background": True}))
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_an_api_chat_never_takes_one(frame, fake_runner):
+    # How a chat is charged is fixed when it's made (#658).
+    frame.store.add(OwnSession("api-1", "On credits", frame.store.get("own-1").cwd,
+                               billing="api"))
+    frame._runners["api-1"] = fake_runner([], "", "", None)
+    frame._on_turn_event({"id": "api-1"}, "On credits", TurnEvent("suggestion", text="go on"))
+    assert "api-1" not in frame._suggestion_due
+
+
+def test_slash_commands_dont_ask(frame, fake_runner):
+    frame.speech.prompt_suggestions = True
+    assert _start(frame, fake_runner, text="/compact").suggestions is False
+
+
+def test_sending_the_suggestion_as_it_is_clears_it(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.on_send()
+    assert fake_runner.instances[-1].prompt == "write the script"
+    assert frame._suggestions == {} and frame.reply_text.GetValue() == ""
+
+
+def test_an_untouched_suggestion_isnt_your_draft_and_comes_back(frame, env, fake_runner):
+    _suggested(frame, fake_runner)
+    frame._save_draft()  # as leaving the chat does
+    assert frame._drafts["own-1"] == ""
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion()
+    assert frame.reply_text.GetValue() == "write the script"
+
+
+def test_a_changed_suggestion_is_your_draft_and_isnt_put_back(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("write the script, with tests")
+    frame._save_draft()
+    assert frame._drafts["own-1"] == "write the script, with tests"
+    assert "own-1" not in frame._suggestions
+
+
+def test_a_cleared_suggestion_is_gone(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("")
+    frame._save_draft()
+    assert "own-1" not in frame._suggestions
+
+
+def test_another_chats_suggestion_waits_for_it(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._open = None  # the user went elsewhere
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame._suggestions == {"own-1": "go on"}
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert frame.reply_text.GetValue() == "go on"
+
+
+def test_turning_the_setting_off_takes_it_out_of_the_box(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.drop_all_suggestions()
+    assert frame.reply_text.GetValue() == "" and frame._suggestions == {}
+
+
+def test_the_whole_suggestion_goes_in_line_breaks_and_all(frame, fake_runner):
+    _suggested(frame, fake_runner, text="write it\nthen test it")
+    assert frame.reply_text.GetValue() == "write it\nthen test it"
+
+
+def test_settings_has_the_suggestions_box(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.suggestions
+        assert " ".join(box.GetLabel().split()).startswith("Suggest what to send next")
+        assert not box.GetValue() and dialog.get_settings().prompt_suggestions is False
+        box.SetValue(True)
+        assert dialog.get_settings().prompt_suggestions is True
+    finally:
+        dialog.Destroy()
+
+
+def test_said_once_when_claude_code_isnt_offering_them(frame, env, fake_runner, monkeypatch):
+    # #709: with the account's flag off, none ever come; say so once a run.
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    frame.speech.prompt_suggestions = True
+    for text in ("first", "second"):
+        _start(frame, fake_runner, text=text)
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert env["feedback"].count(announce.SUGGESTIONS_NOT_OFFERED) == 1
+
+
+def test_not_said_when_the_flag_is_on_or_unknown(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    frame.speech.prompt_suggestions = True
+    for flag in (True, None):
+        monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda f=flag: f)
+        _start(frame, fake_runner, text=f"try {flag}")
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_not_said_when_the_setting_is_off(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_settings_says_when_claude_code_isnt_offering_them(frame, monkeypatch):
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        label = " ".join(dialog.suggestions.GetLabel().split())
+        assert "isn't offering suggestions to your account yet" in label
+    finally:
+        dialog.Destroy()
+
+
+def test_a_message_given_back_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: it went in front of the suggestion, which then went with it.
+    _suggested(frame, fake_runner)
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message"
+    assert "own-1" not in frame._suggestions
+
+
+def test_a_message_given_back_still_goes_before_your_own_text(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("typed since")
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message\n\ntyped since"
+
+
+def test_a_command_put_in_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: "/compact write the script".
+    _suggested(frame, fake_runner)
+    frame._insert_command("compact")
+    assert frame.reply_text.GetValue().strip() == "/compact"
+    assert "own-1" not in frame._suggestions
+
+
+def test_going_back_to_a_chat_puts_it_back_quietly(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    before = env["sounds"].count("suggested")
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["sounds"].count("suggested") == before
+
+
+# -- the end of a list (#714) ----------------------------------------------------------------
+
+
+def _edge_key(code, **mods):
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(code)
+    for name, down in mods.items():
+        getattr(event, f"Set{name}Down")(down)
+    return event
+
+
+def test_the_edge_sound_at_the_top_and_bottom_of_the_session_list(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._list_end_held = None  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_HOME), wx.WXK_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4
+
+
+def test_no_edge_sound_away_from_the_ends_or_with_a_modifier(frame, env):
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(1)  # a middle row: Up and Down move
+    for code in (wx.WXK_UP, wx.WXK_DOWN):
+        frame._list_end_cue(_edge_key(code), code, listing)
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP, Shift=True), wx.WXK_UP, listing)
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)  # Down at the top moves
+    # Not in the message box either.
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.reply_text)
+    assert env["sounds"] == []
+
+
+def test_a_held_key_plays_the_edge_once(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    for _repeat in range(4):  # Up held: the key repeats
+        frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._on_list_key_up(wx.KeyEvent(wx.wxEVT_KEY_UP))  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END] * 2
+
+
+def test_the_edge_sound_in_the_messages_list_and_not_in_an_empty_one(frame, env, fake_runner):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    frame.chat_list.Clear()
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.chat_list)
+    assert env["sounds"] == []  # empty: it says so already
+    frame.chat_list.Append("one")
+    frame.chat_list.Append("two")
+    frame.chat_list.SetSelection(1)
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, frame.chat_list)
+    assert env["sounds"] == [se.LIST_END]
+
+
+def test_the_edge_sound_through_the_real_key_path(frame, env, monkeypatch):
+    """The window's char hook plays it, and a real key-up on the list lets the
+    next press play it again (#714 review): not just the helper called directly."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: listing))
+    for _repeat in range(3):
+        frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END]
+    up = wx.KeyEvent(wx.wxEVT_KEY_UP)
+    up.SetEventObject(listing)
+    listing.GetEventHandler().ProcessEvent(up)
+    frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END] * 2
+    assert listing.GetSelection() == 0
+
+
+def test_the_numpad_arrows_play_the_edge_sound_too(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_UP), wx.WXK_NUMPAD_UP, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_HOME), wx.WXK_NUMPAD_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_DOWN), wx.WXK_NUMPAD_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_END), wx.WXK_NUMPAD_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4

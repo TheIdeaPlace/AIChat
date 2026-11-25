@@ -111,7 +111,7 @@ class RewindChats:
         # A branch is charged as the chat it comes from (#658): a branch of
         # an API chat is an API chat, its sends asked and said like any
         # other's, and keeps Fable; anything else is on the subscription,
-        # where a model it can't have (Fable) is never carried.
+        # where Fable is kept too (#722): each send checks the plan for it.
         billing = source.billing if source is not None and source.provider == "claude" \
             else "subscription"
         if not model_allowed(model, billing):

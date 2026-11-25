@@ -742,6 +742,13 @@ def s_main_attachments(frame, env):
     frame._show_attachments()
 
 
+def s_main_suggestion(frame, env):
+    """A reply came with a suggested next message (#474)."""
+    _open(frame, "Visual probe")
+    frame._suggestions["own-1"] = "Write the script, and add a --dry-run option"
+    frame._place_suggestion(sound=False)
+
+
 def s_main_desktop(frame, env):
     _open(frame, "Fix the flaky upload test")
 
@@ -1442,6 +1449,19 @@ def d_new_session_api_credits(frame, env):
     dialog = NewSessionDialog(frame, env["folders"]["Scratch"], api_key=True)
     dialog.charge.SetSelection(1)
     dialog._on_charge()
+    dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
+    return lambda: frame._modal(dialog)
+
+
+def d_new_session_fable_plan(frame, env):
+    """New Session signed in to a Max plan (#722): the subscription offers
+    Fable, which is chosen, and the note says what happens past its allowance."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    before, frame.claude_plan = frame.claude_plan, "max"
+    try:
+        dialog = NewSessionDialog(frame, env["folders"]["Scratch"])
+    finally:
+        frame.claude_plan = before  # the dialog keeps what it read
     dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
     return lambda: frame._modal(dialog)
 
@@ -2743,6 +2763,8 @@ SURFACES = {
                           "An own session mid-turn with a steered message not yet taken in"),
     "main-attachments": ("window", s_main_attachments,
                          "An own session with two files attached to the next message"),
+    "main-suggestion": ("window", s_main_suggestion,
+                        "An own session whose last reply came with a suggested next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
     "main-kept": ("window", s_main_kept,
@@ -2809,6 +2831,9 @@ SURFACES = {
     "new-session-api-credits": ("dialog", d_new_session_api_credits,
                                 "New Session once a Claude API key is added, with Charge to "
                                 "on API credits and Fable chosen (#658)"),
+    "new-session-fable-plan": ("dialog", d_new_session_fable_plan,
+                               "New Session on a Max plan, with Fable chosen and its note "
+                               "(#722)"),
     'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
     'new-session-unpriced': ('dialog', d_new_session_unpriced, 'New Session offers a model with price unknown'),
     'openai-unpriced-confirm': ('dialog', d_openai_unpriced, 'Mandatory price-unknown warning, Cancel default'),
@@ -2990,6 +3015,7 @@ DIALOG_CLASSES = {
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "new-session-api-credits": "NewSessionDialog",
+    "new-session-fable-plan": "NewSessionDialog",
     'new-session-openai': 'NewSessionDialog',
     'new-session-unpriced': 'NewSessionDialog',
     'openai-unpriced-confirm': 'UnpricedApiDialog',

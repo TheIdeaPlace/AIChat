@@ -331,19 +331,100 @@ installed and signed in to the same claude.ai account as Claude Code. Then:</p>
 <li>It's on in Claude chats on your subscription, new and old, from their next message.
   <strong>Settings, "Let Claude use Chrome"</strong> turns it off or on. Until you change it, it's on if
   Claude Code has found the extension on your computer.</li>
-<li>Ask for it by name the first time, for example "Using Chrome, what tabs do I have open?" Keep
-  Chrome open while Claude works in it.</li>
-<li>Each website asks your permission the first time, as "Claude in Chrome wants to navigate on
-  example.com". <strong>Allow for This Chat</strong> lets it use that site for the rest of the chat.</li>
+<li>Ask for it by name the first time, for example "Using Chrome, open example.com and tell me
+  what's on it." Keep Chrome open while Claude works in it.</li>
+<li>The first time in a chat, Claude in Chrome asks to "create a browser window and read your
+  tabs", and often to "open a new browser tab". Then each website asks your permission, as
+  "Claude in Chrome wants to navigate on example.com", and again for reading, clicking or typing
+  there. <strong>Allow for This Chat</strong> lets it use that site for the rest of the chat. A local address
+  counts with its port, such as 127.0.0.1:8765. In Auto mode, sites Claude Code judges safe may
+  not ask at all.</li>
 <li>Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
-  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.</li>
+  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
+  Claude often closes its tabs when it's done: ask it to leave a tab open if you want to come
+  back to it. It sees only its own tabs, not the ones you opened.</li>
 <li>It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
   told so, so it says so rather than sending you to a setting.</li>
+</ul>
+<p><strong>What Claude can do in Chrome.</strong> More than open pages and click. Its tools let it:</p>
+<ul>
+<li>Go to pages, go back and forward, and open, switch between and close its own tabs.</li>
+<li>Read a page: its text, its layout as a list of the things on it (links, buttons, fields), or a
+  search of it for something you describe ("the Submit button").</li>
+<li>Click, type, press keys, scroll, drag, and fill in form fields, check boxes and lists.</li>
+<li>Take screenshots, and record what it does as an animated GIF.</li>
+<li>Read the page's console messages and the network requests it made, and run JavaScript in it:
+  useful for checking a web page you're building.</li>
+<li>Upload a file to a page's upload field, up to 10 MB. The file has to be one the chat can read:
+  in its folder, or a folder you've added to the chat. It refuses key and password files, such as
+  <code>.env</code>, <code>.pem</code> and <code>.key</code> files and anything in <code>.ssh</code>.</li>
+<li>Resize the window, and choose between browsers when more than one has the extension.</li>
+<li>Work in sites you're already signed in to, such as Gmail, Google Docs or GitHub, as you.</li>
+</ul>
+<p>Things to ask, for example: "In Chrome, open my calendar and list tomorrow's meetings", "Fill in
+this form from contacts.csv", "Check the console on localhost:3000 for errors", "Copy the prices
+on this page into a CSV file" or "Record a GIF of signing up on my test site".</p>
+<p><strong>Working from here, not in Chrome.</strong> You can stay in The Chat Place and let Claude tell you what's
+in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:</p>
+<ul>
+<li><strong>To describe a page in words:</strong> "What's on the page you have open? List the headings, links and
+  form fields", or "Read me the main article". Claude usually tells you an article in its own
+  words rather than reading it out word for word.</li>
+<li><strong>What tabs it's using:</strong> "Which tabs have you got open, and what's in each?" It knows only the
+  tabs it opened.</li>
+<li><strong>To tell you when it needs you:</strong> "Tell me when you need me to go to Chrome and do something,
+  and what." Claude stops at a sign-in page, a CAPTCHA or a pop-up box anyway; this way its reply,
+  which The Chat Place announces as usual, says what to do there.</li>
+<li><strong>To save what it sees:</strong> "Take a screenshot and save it in my Documents folder", then open the
+  file yourself. Claude may ask to run a command to copy it there. "Record a GIF of what you do"
+  saves the GIF where Chrome saves downloads, usually your Downloads folder.</li>
+<li><strong>What size it's working at:</strong> "What size is the page in the tab you're using? Check
+  window.innerWidth and window.innerHeight." With Chrome maximized it's your screen's width and a little less than its height;
+  something like 400 by 500 means the tab is too small (see "Known problems").</li>
+</ul>
+<p><strong>What it won't do.</strong> It stops and asks you to sign in, type passwords or solve CAPTCHAs yourself.
+It won't trade stocks, enter sensitive information such as card or ID numbers, or follow
+instructions it finds on a page or in an email. It can fill in a signup or checkout form if you
+ask, so check what it's about to do. Adult and pirated-content sites are blocked; banking and
+other financial sites ask your permission first, like any other site. If a page puts up a
+pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
+work counts against your plan's usage, and more than ordinary chat.</p>
+<p><strong>Known problems.</strong> These are Claude in Chrome's, and happen in Claude Code too:</p>
+<ul>
+<li><strong>Maximize Chrome before you ask Claude to browse.</strong> Claude works in its own tabs in the
+  background, and each keeps the size Chrome's window had when Claude opened it. If the window was
+  small then, sites show their phone layout and screenshots are tiny. Resizing and reloading
+  doesn't fix a tab that's already open: maximize Chrome and ask Claude to open a new tab.
+  Windows 11 is adding a setting that does this for you: <strong>Open apps maximized</strong>, in Settings,
+  Accessibility, Visual effects, which maximizes every app's window as it opens. It came to Windows
+  Insiders in August 2026 and to Release Preview in September 2026, so your Windows may not have
+  it yet.</li>
+<li><strong>A tab opened by a link can be left behind.</strong> If a link opens a new tab, Claude may not be able
+  to close it afterwards. The same can happen to a blank tab when Claude closes its other tabs.
+  Close it yourself with Ctrl+W.</li>
+</ul>
+<p>The extension keeps its own list of sites you've always allowed: open the extension, then its
+menu (three dots), <strong>Extension settings</strong>, Permissions. Anthropic describes it all in more detail:</p>
+<ul>
+<li><a href="https://support.claude.com/en/articles/12012173-getting-started-with-claude-in-chrome">Get started with Claude in Chrome</a></li>
+<li><a href="https://code.claude.com/docs/en/chrome">Use Claude Code with Chrome</a>, which is how chats here use it</li>
+<li><a href="https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide">Claude in Chrome permissions guide</a>
+  and <a href="https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely">Use Claude in Chrome safely</a></li>
+<li><a href="https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting">Claude in Chrome troubleshooting</a></li>
 </ul>
 <p>Computer use, which lets Claude use your other apps, isn't available in chats The Chat Place runs.
 Claude is told so, so it says so plainly and uses what it has, such as Chrome or web search,
 rather than asking you to turn it on. Computer use is a preview in the desktop app, off until you
 turn it on, and not on every plan.</p>
+<h3>You want Codex to use your browser</h3>
+<p>Codex chats run here cannot use the Codex or ChatGPT desktop app's built-in browser,
+browser extension, native computer use or Codex Cloud. This applies to subscription and
+API-credit chats. No setting here turns these features on for Codex; <strong>Let Claude use Chrome</strong>
+applies only to Claude. Codex is told these limits in each chat, including reopened chats
+and copies, so it can explain them instead of sending you to a setting.</p>
+<p>An MCP browser server you have configured and explicitly enabled through
+<strong>View, Connected Tools</strong> is a separate tool. Codex can use tools actually available in that chat, or ask you to
+check a page in your own browser.</p>
 <h3>You're asked too often, or you want more control</h3>
 <ul>
 <li><strong>Asked too often:</strong> <strong>Auto</strong>, the default for a new chat, has a separate check review each action.
@@ -949,6 +1030,33 @@ last reported states after a turn finishes, fails or is stopped, or a later mess
 update. In Claude chats started here, Claude keeps a list only because The Chat Place asks it to,
 as the desktop app does. <strong>Settings, "Let Claude keep a task list"</strong> (Alt+K) turns that off from
 the next turn. That setting applies only to Claude.</p>
+<h3>Suggested messages</h3>
+<p>After a reply, Claude can suggest what you might send next, such as "write the script" after it
+has proposed one. Turn it on with <strong>Settings, "Suggest what to send next after each reply"</strong>. It's
+off at first.</p>
+<ul>
+<li><strong>When a reply comes with a suggestion,</strong> it's put in your message box, selected, and the
+  <strong>Prompt suggested</strong> sound plays. The suggestion itself isn't read aloud. With sounds off or
+  muted, or when the sound is held back during a presentation, you hear "Prompt suggested"
+  instead (unless announcements are set to Silent), and the status bar says a suggested message
+  is in your message box. Not every reply has one: Claude suggests something only when there's a
+  likely next step.</li>
+<li><strong>Type to replace it.</strong> Because it's selected, whatever you type takes its place. An arrow key
+  keeps it and moves the cursor, so you can change it. <strong>Ctrl+Enter</strong> sends it as it stands, with
+  anything you've attached.</li>
+<li><strong>Only into an empty box.</strong> If you've typed something, or the chat has a draft waiting, your text
+  is left alone and the suggestion isn't put in.</li>
+<li><strong>It isn't your draft.</strong> Leave the chat with the suggestion untouched and it's offered again
+  when you come back. Change it and it's your draft like anything you typed; delete it and it's
+  gone.</li>
+<li>Your next message clears it, and each chat keeps its own.</li>
+<li>It works in Claude chats started here on your subscription. Chats on API credits don't ask for
+  suggestions, because each one is an extra request that the reply's cost wouldn't include. Codex
+  and Copilot chats don't have them: neither offers suggestions to other apps yet.</li>
+<li><strong>It needs a recent Claude Code:</strong> 2.1.326 sends suggestions, 2.1.286 doesn't. In a terminal,
+  <code>claude update</code> brings yours up to date. If Claude Code's own record says suggestions aren't on
+  for your account, the setting says so, and a chat tells you once, after a reply.</li>
+</ul>
 <h2 id="sounds">Sounds</h2>
 <p>Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.</p>
 <p>This is a first version, and we'd like to hear which sounds help, which annoy, and what's missing. <strong>Report a Bug</strong> on the Help menu reaches us.</p>
@@ -1064,6 +1172,14 @@ the next turn. That setting applies only to Claude.</p>
 <tr>
 <td>Message from another session</td>
 <td>Knock: two knocks, then a lower note answering, when another Claude Code session sends a message into this chat (shown as "From another session")</td>
+</tr>
+<tr>
+<td>Prompt suggested</td>
+<td>Taps: two light high taps, when Claude's suggested next prompt is put in your message box (see "Suggested messages")</td>
+</tr>
+<tr>
+<td>Reached the end of a list</td>
+<td>Edge: one soft, short note, when Up or Home on the first row of the session list or the messages list, or Down or End on the last, has nowhere to go. The same sound as QuickMail's</td>
 </tr>
 </tbody>
 </table>
@@ -2083,9 +2199,11 @@ Chat can send a reply into it.</p>
 <li><strong>Title:</strong> optional; without one, it's made from the first words of your message.</li>
 <li><strong>Model:</strong><ul>
 <li>Claude: Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
-  kind. Change Model (Chat, Chat Settings) changes it later, from the next turn. Fable isn't offered, because
-  on some plans it bills to usage credits without asking; if a turn would run on Fable anyway,
-  The Chat Place stops it before anything is sent, and says why.</li>
+  kind, and Fable on a Max or Ultra plan. Change Model (Chat, Chat Settings) changes it later,
+  from the next turn. On Pro, or a plan The Chat Place doesn't recognize, Fable isn't offered,
+  because every Fable message would be charged to usage credits. See "Fable and usage
+  credits". If a turn would run on a Fable you didn't choose, The Chat Place stops it before
+  anything is sent, and says why.</li>
 <li>Codex: <strong>Codex's default</strong> (your Codex settings), or one of the models Codex offers. A chat
   on Codex's default uses whatever that is at each turn, so it moves with it if it changes. The
   list loads in the background; if it can't be loaded, Codex's default is still there.
@@ -3112,6 +3230,9 @@ setting moves straight to it.</p>
 - <strong>Let Claude use Chrome</strong> (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
   subscription, from each chat's next message. On at first if Claude Code has found the Claude in
   Chrome extension (see "You want Claude to use your browser").
+- <strong>Suggest what to send next after each reply</strong> (no access key; Tab to it): suggested messages in
+  Claude chats started here on your subscription, from each chat's next message. Off at first
+  (see "Suggested messages").
 - <strong>Include Codex chats (restart required)</strong> (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - <strong>Include GitHub Copilot CLI chats (preview; restart required)</strong> (Alt+I): shown only once
@@ -3568,7 +3689,23 @@ The Chat Place uses. Run <code>claude update</code> in a terminal, then send aga
 with Fable, which the chat didn't choose: its default model, or a fallback from the model you
 chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
 your message is sent, and puts your message back in the message box. Choose another model with
-Chat, Chat Settings, Change Model, then send again.</p>
+Chat, Chat Settings, Change Model, then send again. To use Fable on purpose, choose it with
+Change Model; it's offered on Max and Ultra plans.</p>
+<p><strong>Fable and usage credits.</strong> Max and Ultra plans include a weekly Fable allowance. Past it,
+Fable stops working, or, if usage credits are turned on for your account, Claude Code charges
+Fable turns to them without asking. So The Chat Place stops a Fable turn as soon as Claude Code
+says it's being charged to usage credits, and says so. The request that went past the allowance,
+and any already under way, may be charged.</p>
+<p>From then on, each time you send to a chat on Fable (Send, Steer, Other Machines, Ask Aside, or
+a new chat's first message), it asks <strong>Use usage credits?</strong>:
+- <strong>Use Usage Credits</strong> sends it on usage credits, for that one turn.
+- <strong>Change Model</strong> opens Change Model for that chat.
+- <strong>Cancel</strong> (the default, and Escape) sends nothing; your message stays in the message box.</p>
+<p>It asks every time and never remembers your answer. A queued message, or an agent
+conversation's message, isn't sent on usage credits: it comes back with the reason.</p>
+<p>A chat on Fable isn't sent at all while Claude Code isn't signed in to a plan that includes
+Fable: on Pro, Team or Enterprise, or before The Chat Place has checked your plan. Choose another
+model with Change Model, or check the sign-in with Tools, Sign In, Claude Code.</p>
 <p><strong>Claude doesn't use one of my connectors or MCP servers.</strong> Choose Tools, Connected Tools (MCP)
 with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and
 says why in Details; one turned off for the chat has Turn On for This Chat. A tool that isn't

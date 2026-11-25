@@ -224,6 +224,26 @@ def test_store_drops_an_unknown_chrome_note(tmp_path):
     assert [store.get(i).prompt_note for i in "abc"] == ["", "", ""]
 
 
+def test_whether_claude_code_offers_suggestions_comes_from_its_flag(tmp_path, monkeypatch):
+    # #709: suggestions came on a PC whose cached flags had this true, and
+    # never on one whose didn't.
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    offered = platform_paths.claude_offers_prompt_suggestions
+    assert offered() is None  # no file: not known, not "off"
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"other": True}}), encoding="utf-8")
+    os.utime(config, (1_700_000_001, 1_700_000_001))
+    assert offered() is None
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": False}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_002, 1_700_000_002))
+    assert offered() is False
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": True}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_003, 1_700_000_003))
+    assert offered() is True
+
+
 def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
     config = tmp_path / ".claude.json"
     monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
@@ -336,10 +356,11 @@ def test_store_keeps_the_model(tmp_path):
     assert OwnSessionStore(path).get("id-1").model == "opus"
 
 
-@pytest.mark.parametrize("stored", [None, 5, "fable", "sonnet[1m]", "--help", "made-up"])
+@pytest.mark.parametrize("stored", [None, 5, "sonnet[1m]", "--help", "made-up"])
 def test_store_loads_an_unoffered_model_as_the_default(tmp_path, stored):
-    # Older stores have no model; anything the picker doesn't offer (a hand
-    # edit, or a model that bills usage credits) is never passed on.
+    # Older stores have no model; anything the picker can't offer (a hand
+    # edit, or a 1M context model, which bills usage credits) is never
+    # passed on. Fable is kept (#722): test_fable_is_offered_on_api_credits_….
     entry = {"cli_session_id": "id-1", "title": "Old", "cwd": "C:\a"}
     if stored is not None:
         entry["model"] = stored

@@ -114,6 +114,14 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
+    # Prompt suggestions (#474): the reply came with one, put in the empty
+    # message box and selected. Tab there reads it. Then the box is emptied
+    # and the focus put back on that message, so the steps after this one
+    # start where they always have.
+    Step("a suggestion, then Tab to the message box", ["Tab"], trigger="suggestion",
+         after_trigger=True, expect=["Your message", "Write the script"]),
+    Step("back to the message", [], trigger="suggestion-done",
+         expect=["Make the uploader flush before it signals"]),
     # Retry from Here (#468, #596) on that message of yours: it opens on the
     # chosen option of What Goes Back, Tab reads What Happens, Shift+Tab goes
     # back to the option, Escape comes back. The option is checked after
@@ -256,8 +264,8 @@ STEPS = [
          expect_dbus=["No Muse Code conversations were found"], refuse=["No session selected"]),
     Step("Muse Code history restored", [], trigger="muse-restore",
          expect=["Messages in Visual probe", "What changed"]),
-    # New Session with Muse Code selected: model and effort are its own, so
-    # those controls read as unavailable. Escape closes it unchanged.
+    # New Session with Muse Code selected: Model, Effort and Permission mode
+    # list what Muse Code offers (#701). Escape closes it unchanged.
     Step("Muse New Session", [], trigger="muse-new",
          expect=["New Chat Place Session", "Muse Code"],
          refuse=["unlabeled", "unlabelled"]),
@@ -948,13 +956,12 @@ def muse_empty(frame, env) -> None:
 
 
 def muse_new(frame, env) -> None:
-    """New Session with Muse Code selected: model and effort are Muse Code's
-    own, so those controls are shown disabled with nothing to choose."""
+    """New Session with Muse Code selected, its models, efforts and
+    permission profiles listed from synthetic choices, as the visual probe
+    shows it (#701)."""
     import wx
-    from thechatplace.ui.dialogs import NewSessionDialog
-    dialog = NewSessionDialog(frame, str(env["folders"]["Scratch"]),
-                              providers=("claude", "muse"), provider="muse")
-    wx.CallAfter(frame._modal, dialog)
+    import ui_probe
+    wx.CallAfter(ui_probe.d_muse_new(frame, env))
 
 
 def muse_approval(frame, env) -> None:
@@ -1033,6 +1040,20 @@ def muse_question(frame, env) -> None:
     wx.CallAfter(frame._modal, dialog)
 
 
+def suggestion(frame) -> None:
+    """The open chat's last reply came with a suggested next message (#474)."""
+    frame._suggestions[frame._open_claude_id()] = "Write the script"
+    frame._place_suggestion(sound=False)
+
+
+def suggestion_done(frame) -> None:
+    """Put things back as they were before ``suggestion``: no draft, no
+    suggestion, and the focus on the message it started from."""
+    frame._suggestions.clear()
+    frame.reply_text.ChangeValue("")
+    frame.chat_list.SetFocus()
+
+
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
     "muse-real-notice": muse_real_notice,
@@ -1047,6 +1068,8 @@ TRIGGERS = {
     "muse-permissions": muse_permissions,
     "muse-mode-auto-review": muse_mode_warning(":auto-review"),
     "muse-mode-unrestricted": muse_mode_warning(":unrestricted"),
+    "suggestion": lambda frame, env: suggestion(frame),
+    "suggestion-done": lambda frame, env: suggestion_done(frame),
     'local-file-links': lambda frame, env: _codex_dialog('d_local_file_links', frame, env),
     'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
     "question": lambda frame, env: ask_question(frame),

@@ -212,6 +212,9 @@ class SpeechSettings:
     #: False as Settings chose, None to follow whether Claude Code has found
     #: the extension (``chrome_on``).
     claude_in_chrome: Optional[bool] = None
+    #: Suggested next messages after each reply in Claude chats (#474). Off
+    #: until turned on: it adds a list and an announcement after replies.
+    prompt_suggestions: bool = False
     #: The session list's columns, in the order each row reads them (View,
     #: Session List Columns, #134): ids from ``sessions.FIELD_IDS``.
     session_fields: List[str] = field(default_factory=_default_fields)
@@ -337,6 +340,7 @@ class SpeechSettings:
         settings.task_list = raw.get("task_list") is not False
         chrome = raw.get("claude_in_chrome")
         settings.claude_in_chrome = chrome if type(chrome) is bool else None
+        settings.prompt_suggestions = raw.get("prompt_suggestions") is True
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.copilot_enabled = raw.get("copilot_enabled") is True

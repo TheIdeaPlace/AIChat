@@ -15,7 +15,7 @@ from theideaplace_appkit import difftext
 
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
-                          PERMISSION_MODES, models_for)
+                          PERMISSION_MODES, fable_in_plan, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
                         provider_label, WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
@@ -35,6 +35,14 @@ from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIF
 #: stock label is "&Cancel" on a Mac and Linux), so it's reached with Tab.
 CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscription (needs "
                         "the Claude in Chrome extension; from the next turn)")
+#: Settings' prompt suggestions check box (#474). No access key, for the
+#: same reason as the Chrome one: every letter in it is taken.
+SUGGESTIONS_SETTING_LABEL = ("Suggest what to send next after each reply in Claude chats on "
+                             "your subscription (from the next turn)")
+#: Added to it when Claude Code's own flag says it isn't offering them to
+#: this account (platform_paths.claude_offers_prompt_suggestions, #709).
+SUGGESTIONS_NOT_OFFERED = (". Claude Code isn't offering suggestions to your account yet, so "
+                           "none will appear until Anthropic turns them on for it")
 
 
 class UnpricedApiDialog(wx.Dialog):
@@ -112,6 +120,10 @@ CHARGE_CHOICES = [("subscription", "Claude subscription"), ("api", "API credits"
 API_CREDITS_NOTE = ("Every message in this chat is charged to your Claude API key, and "
                     "Fable is offered. Claude.ai connectors aren't available on API "
                     "credits. A chat's charging can't be changed once it's made.")
+#: Said in New Session on a plan whose limits include Fable (#722).
+FABLE_PLAN_NOTE = ("Fable uses your plan's Fable allowance. If a turn would go past it and "
+                   "be charged to usage credits, The Chat Place stops the turn as soon as "
+                   "Claude Code says so, and asks each time you send whether to use them.")
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -295,6 +307,9 @@ class NewSessionDialog(wx.Dialog):
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
+        #: The Claude plan (#722), from the window: whether Fable is offered.
+        plan = getattr(parent, "claude_plan", "")
+        self._claude_plan = plan if isinstance(plan, str) else ""
         self._load_api_models = load_api_models
         self._api_models = ()
         self._api_models_requested = False
@@ -458,7 +473,8 @@ class NewSessionDialog(wx.Dialog):
 
         self.model_label = wx.StaticText(self, label="Mo&del:")
         grid.Add(self.model_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.model = wx.Choice(self, choices=[label for _v, label in MODELS])
+        self.model = wx.Choice(self, choices=[
+            label for _v, label in models_for("subscription", self._claude_plan)])
         set_accessible_name(self.model, "Model")
         self.model.SetSelection(0)  # Claude Code's own default
         self.model.Bind(wx.EVT_CHOICE, self._on_codex_model)
@@ -504,8 +520,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
         note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-                           value=(CONTINUE_NOTE + "\n\n" + permission_note()) if continue_from
-                           else permission_note())
+                           # Fable's note too, on a plan with it (#722).
+                           value=self._claude_note())
         set_accessible_name(note, about)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -1073,7 +1089,7 @@ class NewSessionDialog(wx.Dialog):
         mode = PERMISSION_MODES[index][0] if 0 <= index < len(PERMISSION_MODES) \
             else DEFAULT_PERMISSION_MODE
         index = self.model.GetSelection()
-        models = models_for(self.billing())  # Fable too on API credits (#658)
+        models = self._claude_models()  # Fable on API credits (#658) or the plan (#722)
         model = models[index][0] if 0 <= index < len(models) else ""
         if self.provider() in ('codex', 'codex-api'):
             mode = DEFAULT_PERMISSION_MODE
@@ -1245,11 +1261,18 @@ class NewSessionDialog(wx.Dialog):
             else permission_note()
         if self.billing() == "api":
             note = API_CREDITS_NOTE + "\n\n" + note
+        elif fable_in_plan(self._claude_plan):
+            note = FABLE_PLAN_NOTE + "\n\n" + note
         return note
 
+    def _claude_models(self) -> list:
+        """The Claude models offered: Fable on API credits (#658), and on a
+        subscription whose plan includes it (#722)."""
+        return models_for(self.billing(), self._claude_plan)
+
     def _on_charge(self):
-        """API credits offer Fable; the subscription doesn't (#658). The
-        model chosen stays chosen if it's on both lists."""
+        """API credits offer Fable; the subscription does on a plan with it
+        (#658, #722). The model chosen stays chosen if it's on both lists."""
         if self.provider() in ('codex', 'codex-api'):
             old_models, old_paid = getattr(self, '_display_codex_models', ((), False))
             old_index = self.model.GetSelection() - (0 if old_paid else 1)
@@ -1266,7 +1289,7 @@ class NewSessionDialog(wx.Dialog):
             if models and models[selected].model != old:
                 self._feedback('Model changed to ' + models[selected].label + '.')
             return
-        models = models_for(self.billing())
+        models = self._claude_models()
         index = self.model.GetSelection()
         before = self.model.GetString(index) if 0 <= index < self.model.GetCount() else ""
         labels = [label for _v, label in models]
@@ -1371,7 +1394,7 @@ class NewSessionDialog(wx.Dialog):
                     self.note.SetValue('The first message sends a text copy of the earlier conversation.\n\n' + self.note.GetValue())
         else:
             for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
-                    ([label for value, label in models_for(self.billing())],
+                    ([label for value, label in self._claude_models()],
                      [label for value, label in EFFORTS],
                      [label for value, label in PERMISSION_MODES]), self._claude_choices or (0, 0, 0)):
                 control.Set(choices)
@@ -1888,6 +1911,15 @@ class SettingsDialog(wx.Dialog):
         self.chrome.SetValue(self._initial_chrome)
         outer.Add(self.chrome, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Prompt suggestions (#474), off until turned on. Its label says
+        # when Claude Code isn't offering them to this account (#709).
+        offered = platform_paths.claude_offers_prompt_suggestions()
+        self.suggestions = wx.CheckBox(body, label=_wrapped(
+            self, SUGGESTIONS_SETTING_LABEL + (SUGGESTIONS_NOT_OFFERED if offered is False else ""),
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.suggestions.SetValue(speech.prompt_suggestions)
+        outer.Add(self.suggestions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         codex_label = "Include Code&x chats (restart required)"
         if not platform_paths.find_codex():
             codex_label += (". Codex isn't installed on this computer; "
@@ -2043,7 +2075,8 @@ class SettingsDialog(wx.Dialog):
         if height + chrome > screen_area(self).height:
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
-            for box in (self.remote_control, self.task_list, self.chrome, self.codex_enabled,
+            for box in (self.remote_control, self.task_list, self.chrome, self.suggestions,
+                        self.codex_enabled,
                         self.copilot_enabled, self.agent_auto):
                 if box is None:
                     continue
@@ -2076,6 +2109,7 @@ class SettingsDialog(wx.Dialog):
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
                                    task_list=self.task_list.GetValue(),
+                                   prompt_suggestions=self.suggestions.GetValue(),
                                    claude_in_chrome=(
                                        self.chrome.GetValue()
                                        if self.chrome.GetValue() != self._initial_chrome
