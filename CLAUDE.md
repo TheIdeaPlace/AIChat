@@ -198,6 +198,13 @@ WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachment
   Orca audit. A change to a keyboard path (focus, menus, dialogs, Escape) adds or updates a step in
   `STEPS` in `tools/orca_speech.py`. To run it on the Ubuntu VM, use the `tcptest` user (Orca runs
   one copy per user). DEVELOPING.md's "How it's been tested" has the details.
+- **Kelly is not the manual tester.** On a Mac, `tests/test_mac_voiceover.py` focuses every
+  control on every probe surface, and each Go to command and F6 stop, and asks macOS what VoiceOver
+  lands on (`mac_a11y.focused_element`): it fails on the bare window or an unnamed element (#726).
+  It also copies from a real WebKit formatted page (#725). wx's `FindFocus` isn't enough: it said
+  the status bar while VoiceOver stayed put. The windows come to the front, so the app must be
+  able to become active (not on a locked screen). When the in-app answer is in doubt, check from
+  another process through the AX API, as VoiceOver reads it, without blocking the app's main thread.
 
 ## Visual check (#155)
 

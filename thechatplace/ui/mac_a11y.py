@@ -170,6 +170,30 @@ def set_label(window, label: str) -> bool:
         return False
 
 
+def set_static_text(window, text: str) -> bool:
+    """Make `window`, a view wx draws itself, text VoiceOver can land on and
+    read: its words as its value, as for an AppKit label. True if applied.
+
+    A plain ``wxNSView`` is no accessibility element at all, so when one had
+    the focus VoiceOver found nothing focused and stayed where it was: Go to
+    Status Bar (Command+9) seemed to do nothing (#726). Called again with new
+    words whenever they change."""
+    if not IS_MACOS:
+        return False
+    try:
+        view = _target_view(window)
+        if view is None or not _responds(view, "setAccessibilityValue:"):
+            return False
+        _send(view, "setAccessibilityElement:", True, argtypes=(ctypes.c_bool,))
+        _send(view, "setAccessibilityRole:", ctypes.c_void_p(_nsstring("AXStaticText")),
+              argtypes=(ctypes.c_void_p,))
+        _send(view, "setAccessibilityValue:", ctypes.c_void_p(_nsstring(text)),
+              argtypes=(ctypes.c_void_p,))
+        return True
+    except Exception:  # noqa: BLE001 - never break the window over a name
+        return False
+
+
 def activate_app() -> bool:
     """Make The Chat Place the active app. True if it was asked to.
 
@@ -619,5 +643,49 @@ def get_label(window) -> str | None:
         if view is None or not _responds(view, "accessibilityLabel"):
             return None
         return _to_str(_send(view, "accessibilityLabel"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _string_attribute(element, selector: str) -> str | None:
+    """``[element selector]`` when it's a string; a check box's value is a number."""
+    if not _responds(element, selector):
+        return None
+    value = _send(element, selector)
+    if not value:
+        return None
+    string_class = _runtime().objc_getClass(b"NSString")
+    if not _send(ctypes.c_void_p(value), "isKindOfClass:", ctypes.c_void_p(string_class),
+                 restype=ctypes.c_bool, argtypes=(ctypes.c_void_p,)):
+        return None
+    return _to_str(ctypes.c_void_p(value))
+
+
+def focused_element() -> dict | None:
+    """What VoiceOver lands on now: the app's focused accessibility element,
+    with its role and the words it would read (label, title or value). For
+    tests (#726): wx's FindFocus says where the keyboard is, and this says
+    whether VoiceOver can follow it. None off macOS."""
+    if _runtime() is None:
+        return None
+    try:
+        app = _send(_runtime().objc_getClass(b"NSApplication"), "sharedApplication")
+        element = _send(ctypes.c_void_p(app), "accessibilityFocusedUIElement")
+        if not element:
+            return {"role": None, "name": None, "class": None, "id": None}
+        element = ctypes.c_void_p(element)
+        role = _string_attribute(element, "accessibilityRole")
+        name = (_string_attribute(element, "accessibilityLabel")
+                or _string_attribute(element, "accessibilityTitle")
+                or _string_attribute(element, "accessibilityValue"))
+        if not name and _responds(element, "controlView"):
+            # A text box's focus is its cell, which AppKit names from its
+            # control: VoiceOver reads the field's label (checked from
+            # outside the app, through the AX API, as VoiceOver reads it).
+            control = _send(element, "controlView")
+            if control:
+                name = _string_attribute(ctypes.c_void_p(control), "accessibilityLabel")
+        cls = _to_str(_send(element, "className"))
+        return {"role": role, "name": name, "class": cls, "id": element.value}
     except Exception:  # noqa: BLE001
         return None
