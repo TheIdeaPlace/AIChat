@@ -158,7 +158,8 @@ a plan than finished work. For a small, obvious change, skip it.</p>
 <li>For a new chat, choose <strong>Plan</strong> under <strong>Permission mode</strong> in New Session (Ctrl+N). For one you've
   started, press <strong>Ctrl+Shift+O</strong> (Chat, Chat Settings, Change Permission Mode).</li>
 <li>When the plan is ready, you hear that the chat needs you. Press <strong>Ctrl+Shift+A</strong> to read it, then
-  <strong>Approve</strong>, or <strong>Keep Planning</strong> with what to change.</li>
+  <strong>Approve</strong>, <strong>Approve, Don't Start</strong> (the plan is right, but build it another day), or
+  <strong>Keep Planning</strong> with what to change.</li>
 </ul>
 <h3>You keep telling Claude the same things</h3>
 <p>Each new chat starts knowing only what's written down, so anything you find yourself repeating
@@ -2649,8 +2650,8 @@ first.</p>
 Ctrl+Shift+A brings the same request back.</p>
 <p>Once you've answered and nothing else is waiting in the chat, the messages list says the chat is
 working again as soon as you're back in it.</p>
-<p><strong>Shift+Enter never sends an answer.</strong> In your own answer to a question, what to change in a
-plan, or a reason for Deny, it starts a new line. In a one-line box, such as a secret answer or
+<p><strong>Shift+Enter never sends an answer.</strong> In your own answer to a question, a plan's note, or a
+reason for Deny, it starts a new line. In a one-line box, such as a secret answer or
 a connected tool's text field, it does nothing but beep. Enter (or Ctrl+Enter) still presses
 the default button: Send Answers, Keep Planning or Deny.</p>
 <p>What each provider offers:</p>
@@ -2666,7 +2667,10 @@ the default button: Send Answers, Keep Planning or Deny.</p>
   single Tab stop, on your choice, or on its first choice until you've made one (the arrow keys
   move between choices); in a question with several answers, each choice is a stop.</li>
 <li><strong>Claude, a plan:</strong> read it (Read Formatted shows it as a page, by heading), then <strong>Approve</strong>,
-  choosing how Claude carries on, or <strong>Keep Planning</strong>, the default, with what to change.</li>
+  choosing how Claude carries on; <strong>Approve, Don't Start</strong> (Alt+D), when the plan is right but
+  you'll build it another day, so Claude stays in plan mode, makes no changes and stops; or
+  <strong>Keep Planning</strong>, the default, with what to change. The Note box goes with Keep Planning or
+  Approve, Don't Start, for something like "file it as an issue".</li>
 <li><strong>Codex, a permission:</strong> the request shows the command, its folder and Codex's reason, and a
   "This also needs" list when Codex names extra access, such as writing to another folder or
   using the network. When it names none, the dialog says the command may run outside the chat's

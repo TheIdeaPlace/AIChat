@@ -934,6 +934,17 @@ def test_plan_approval_switches_mode_and_deny_carries_the_reason():
     assert cli.deny_response("  ")["message"]  # never empty
 
 
+def test_approve_dont_start_denies_with_the_fixed_message_and_the_note():
+    """#738: ExitPlanMode has only allow and deny, and allow starts the work,
+    so the plan's approval without starting is a deny with no mode change."""
+    held = cli.plan_held_response()
+    assert held == {"behavior": "deny", "message": cli.PLAN_HELD_MESSAGE}
+    assert "updatedPermissions" not in held
+    assert cli.PLAN_HELD_MESSAGE.startswith("Plan approved, but don't start implementing it.")
+    noted = cli.plan_held_response("  File it as an issue.\n")
+    assert noted["message"] == cli.PLAN_HELD_MESSAGE + "\n\nFile it as an issue."
+
+
 def test_questions_answered_through_updated_input():
     questions = [{"question": "Which color?", "header": "Color", "multiSelect": False,
                   "options": [{"label": "Red", "description": "Warm"},
