@@ -1010,13 +1010,6 @@ def plan_held_response(note: str = "") -> dict:
     return deny_response(f"{PLAN_HELD_MESSAGE}\n\n{note}" if note else PLAN_HELD_MESSAGE)
 
 
-def is_plan_held(response: dict) -> bool:
-    """Whether ``response`` is :func:`plan_held_response`'s: a deny that
-    isn't a refusal, so an agent conversation pauses for the right reason."""
-    return (response.get("behavior") == "deny"
-            and str(response.get("message", "")).startswith(PLAN_HELD_MESSAGE))
-
-
 def answer_questions_response(request: PermissionRequest, answers: Dict[str, str]) -> dict:
     """Claude's questions answered: the tool runs with the answers added."""
     return allow_response(request, updated_input={**request.input, "answers": answers})

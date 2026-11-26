@@ -3728,10 +3728,12 @@ class PlanDialog(wx.Dialog):
 
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        grid.Add(wx.StaticText(self, label="If approved, carry on &in:"), 0,
+        # "Approve", not "If approved": Approve, Don't Start leaves the mode
+        # alone (#738).
+        grid.Add(wx.StaticText(self, label="With Approve, carry on &in:"), 0,
                  wx.ALIGN_CENTER_VERTICAL)
         self.mode = wx.Choice(self, choices=[label for _v, label in self._modes])
-        set_accessible_name(self.mode, "If approved, carry on in")
+        set_accessible_name(self.mode, "With Approve, carry on in")
         values = [v for v, _l in self._modes]
         self.mode.SetSelection(values.index(default_mode) if default_mode in values else 0)
         grid.Add(self.mode, 1, wx.EXPAND)

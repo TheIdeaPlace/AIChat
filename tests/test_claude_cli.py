@@ -943,11 +943,6 @@ def test_approve_dont_start_denies_with_the_fixed_message_and_the_note():
     assert cli.PLAN_HELD_MESSAGE.startswith("Plan approved, but don't start implementing it.")
     noted = cli.plan_held_response("  File it as an issue.\n")
     assert noted["message"] == cli.PLAN_HELD_MESSAGE + "\n\nFile it as an issue."
-    assert cli.is_plan_held(held) and cli.is_plan_held(noted)
-    # Keep Planning's answer and a refusal aren't.
-    assert not cli.is_plan_held(cli.deny_response("Keep planning: the plan isn't approved yet."))
-    assert not cli.is_plan_held(cli.deny_response())
-    assert not cli.is_plan_held({"behavior": "allow", "message": cli.PLAN_HELD_MESSAGE})
 
 
 def test_questions_answered_through_updated_input():

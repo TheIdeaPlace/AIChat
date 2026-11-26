@@ -65,7 +65,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           TurnRunner, allow_response, answer_questions_response,
                           build_fork_command, build_new_command, build_resume_command,
                           SESSION_INJECTED_PREFIXES, STRIPPED_VARS, child_environment,
-                          deny_response, is_plan_held, plan_held_response,
+                          deny_response, plan_held_response,
                           fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
@@ -148,6 +148,9 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, PLAN_HOLD, AboutYouDi
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
+#: Said for Approve, Don't Start (#738), and how _apply_answer knows that
+#: button was pressed: its answer is a deny, like Keep Planning's.
+PLAN_HELD_SAID = "Plan approved. Claude won't start on it."
 #: An API chat with no key kept (#658): the message stays in the reply box.
 NO_API_KEY = ("This chat is charged to API credits, but there's no Claude API key. Add one "
               "with Tools, API Keys.")
@@ -5418,8 +5421,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if dialog.result == PLAN_HOLD:
                     # Approve, Don't Start (#738): a deny, since allow starts
                     # the work, and no mode change, so it stays in plan mode.
-                    return (plan_held_response(note),
-                            "Plan approved. Claude won't start on it.", {})
+                    return plan_held_response(note), PLAN_HELD_SAID, {}
                 return (deny_response(note or "Keep planning: the plan isn't approved yet."),
                         "Claude will keep planning.", {})
             finally:
@@ -5514,7 +5516,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         else:
             # Keeping a plan going isn't a refusal, but it isn't approved;
             # a plan approved but not to be started (#738) isn't either.
-            held = request.is_plan and is_plan_held(response)
+            # Told apart by what _ask said for the button you pressed, never
+            # by the message, which carries your note.
+            held = request.is_plan and said == PLAN_HELD_SAID
             self._agent_member_answered("claude", session_id, False,
                                         planning=request.is_plan, held=held)
         if changes:
