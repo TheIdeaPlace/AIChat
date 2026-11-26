@@ -31,8 +31,11 @@ LIMIT_WARNING = 0.9
 
 _WINDOW_NAMES = {"five_hour": "5-hour limit", "seven_day": "weekly limit",
                  "seven_day_opus": "weekly Opus limit", "seven_day_sonnet": "weekly Sonnet limit",
-                 "seven_day_overage_included": "weekly limit with extra usage",
-                 "overage": "extra usage"}
+                 # Claude Code's own names for these (2.1.331): Fable's
+                 # weekly allowance, reported only by Fable turns (#722),
+                 # and usage credits.
+                 "seven_day_overage_included": "weekly Fable limit",
+                 "overage": "usage credit limit"}
 _LIMIT_REACHED = re.compile(r"usage limit reached\|(\d{9,})", re.IGNORECASE)
 
 
@@ -92,10 +95,41 @@ def _windows(info: dict):
     return found
 
 
+#: The window only Fable turns report (#722): Fable's weekly allowance.
+FABLE_WINDOW = "seven_day_overage_included"
+
+
+def _past(resets, now: float) -> bool:
+    return type(resets) in (int, float) and resets < now
+
+
+def with_fable_window(info: Optional[dict], fable_info: Optional[dict],
+                      now: Optional[float] = None) -> Optional[dict]:
+    """``info`` with what the latest Fable turn's report (``fable_info``)
+    said about Fable when ``info`` doesn't (#722): its weekly limit, which
+    other models' turns don't report, and that Fable turns are charged to
+    usage credits. Nothing is carried once the time it gave has passed: the
+    limit has reset since, and a figure from before would be wrong."""
+    if not isinstance(info, dict) or not isinstance(fable_info, dict):
+        return info
+    now = time.time() if now is None else now
+    merged = info
+    fable = (fable_info.get("unifiedWindows") or {}).get(FABLE_WINDOW)
+    windows = info.get("unifiedWindows")
+    windows = windows if isinstance(windows, dict) else {}
+    if (isinstance(fable, dict) and FABLE_WINDOW not in windows
+            and "resetsAt" in fable and not _past(fable.get("resetsAt"), now)):
+        merged = {**merged, "unifiedWindows": {**windows, FABLE_WINDOW: fable}}
+    if (fable_info.get("isUsingOverage") is True and not info.get("isUsingOverage")
+            and not _past(fable_info.get("resetsAt"), now)):
+        merged = {**merged, "isUsingOverage": True}
+    return merged
+
+
 def limit_lines(info: Optional[dict], now: Optional[float] = None) -> List[str]:
     """Each usage limit as its own line (#130): "5-hour limit 8% used,
     resets at 7:00 AM.", "Weekly limit 34% used, resets on Friday at 3:00
-    PM.", and a limit reached or extra usage as lines of their own. Never
+    PM.", and a limit reached or usage credits as lines of their own. Never
     empty: when nothing is known, that is the line."""
     if not isinstance(info, dict) or not info:
         return ["Usage limits: not known until a Chat Place session runs a turn."]
@@ -110,7 +144,7 @@ def limit_lines(info: Optional[dict], now: Optional[float] = None) -> List[str]:
         lines.insert(0, "You've reached a usage limit" + (
             f"; it resets {when(float(reset), now)}." if reset else "."))
     if info.get("isUsingOverage"):
-        lines.append("Turns are now billed as extra usage.")
+        lines.append("Turns are now charged to usage credits.")
     return lines or ["Usage limits: Claude Code didn't say."]
 
 
