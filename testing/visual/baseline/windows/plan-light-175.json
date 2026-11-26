@@ -57,15 +57,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "If approved, carry on &in:",
+   "label": "With Approve, carry on &in:",
    "rect": [
     8,
     695,
-    221,
+    243,
     31
    ],
    "best": [
-    221,
+    243,
     31
    ],
    "depth": 0,
@@ -75,12 +75,12 @@
   },
   {
    "class": "Choice",
-   "name": "If approved, carry on in",
+   "name": "With Approve, carry on in",
    "label": "",
    "rect": [
-    354,
+    382,
     692,
-    944,
+    916,
     38
    ],
    "best": [
@@ -96,15 +96,15 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "&What to change (for Keep Planning):",
+   "label": "&Note (for Keep Planning or Don't Start):",
    "rect": [
     8,
     738,
-    338,
+    366,
     31
    ],
    "best": [
-    338,
+    366,
     31
    ],
    "depth": 0,
@@ -114,12 +114,12 @@
   },
   {
    "class": "TextCtrl",
-   "name": "What to change (for Keep Planning)",
+   "name": "Note (for Keep Planning or Don't Start)",
    "label": "",
    "rect": [
-    356,
+    384,
     740,
-    944,
+    916,
     88
    ],
    "best": [
@@ -137,7 +137,7 @@
    "name": "button",
    "label": "Read &Formatted...",
    "rect": [
-    611,
+    380,
     842,
     199,
     42
@@ -156,13 +156,32 @@
    "name": "button",
    "label": "&Approve",
    "rect": [
-    828,
+    597,
     842,
     133,
     42
    ],
    "best": [
     133,
+    42
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Approve, &Don't Start",
+   "rect": [
+    736,
+    842,
+    225,
+    42
+   ],
+   "best": [
+    225,
     42
    ],
    "depth": 0,
