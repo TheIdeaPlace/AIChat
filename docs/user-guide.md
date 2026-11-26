@@ -162,8 +162,8 @@ a plan than finished work. For a small, obvious change, skip it.
 - For a new chat, choose **Plan** under **Permission mode** in New Session (Ctrl+N). For one you've
   started, press **Ctrl+Shift+O** (Chat, Chat Settings, Change Permission Mode).
 - When the plan is ready, you hear that the chat needs you. Press **Ctrl+Shift+A** to read it, then
-  **Approve**, **Approve, Don't Start** (the plan is right, but build it another day), or **Keep
-  Planning** with what to change.
+  **Approve**, **Approve, Don't Start** (the plan is right, but build it another day), or
+  **Keep Planning** with what to change.
 
 ### You keep telling Claude the same things
 
