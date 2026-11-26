@@ -7059,7 +7059,7 @@ class ChatOptionsDialog(wx.Dialog):
                  billing: str = "subscription"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
-                         else "Chat Options", size=dialog_size(parent, 620, 600),
+                         else "Chat Options", size=dialog_size(parent, 620, 670),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._provider = provider
         self._folder = folder
@@ -7085,6 +7085,13 @@ class ChatOptionsDialog(wx.Dialog):
         self.agent = wx.Choice(self)
         set_accessible_name(self.agent, "Run as agent")
         grid.Add(self.agent, 1, wx.EXPAND)
+        # The chosen agent's whole description, to read by line: the list
+        # names the agent only, as a description cut to fit it stopped
+        # mid-word ("searching for c…").
+        grid.Add(wx.StaticText(self, label="Agent descri&ption:"), 0, wx.ALIGN_TOP)
+        self.agent_about = _read_only_text(self, "", "Agent description", min_height=60)
+        grid.Add(self.agent_about, 1, wx.EXPAND)
+        self.agent.Bind(wx.EVT_CHOICE, lambda e: self._show_agent_about())
         grid.Add(wx.StaticText(self, label="Output &style:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.style = wx.Choice(self)
         set_accessible_name(self.style, "Output style")
@@ -7189,6 +7196,24 @@ class ChatOptionsDialog(wx.Dialog):
                           else style)
         self.style.Set(labels)
         self.style.SetSelection(self._style_values.index(style))
+        self._show_agent_about()
+
+    def _show_agent_about(self):
+        """The Agent Description box, for the agent chosen."""
+        from ..chat_options import AGENT_LOADING_ABOUT, AGENT_NONE_ABOUT, AGENT_UNKNOWN_ABOUT
+        name = self._agent_values[max(0, self.agent.GetSelection())]
+        agents = self._choices.agents if self._choices is not None else ()
+        agent = next((a for a in agents if a.name == name), None)
+        if not name:
+            text = AGENT_NONE_ABOUT
+        elif agent is not None:
+            text = agent.about()
+        elif self._choices is None:
+            text = AGENT_LOADING_ABOUT
+        else:
+            text = AGENT_UNKNOWN_ABOUT
+        self.agent_about.ChangeValue(text)
+        self.agent_about.SetInsertionPoint(0)
 
     def _choices_loaded(self, choices):
         if not self or self.IsBeingDeleted():
