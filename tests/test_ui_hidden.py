@@ -11610,6 +11610,17 @@ def refuse_codex_creation(frame, monkeypatch):
     return stores
 
 
+def wait_for_loaded(frame, env, title):
+    """Wait until the opened chat's history has arrived and "Loaded <title>"
+    has been said. Opening a chat sets ``_open`` at once but reads its history
+    on the pool, and that read ends with a feedback line of its own. A test
+    that then waits for the last feedback line to be something else races it:
+    on a busy runner both land in the same batch of pending events, "Loaded"
+    second, and the line waited for is never last (#736)."""
+    assert pump(lambda: frame._open is not None and frame._open.title == title
+                and any(text.startswith(f'Loaded {title}') for text in env["feedback"]))
+
+
 @pytest.mark.parametrize('source', [None, 'continue'])
 def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(frame, env, monkeypatch, source):
     from thechatplace.sessions import SessionInfo
@@ -11635,7 +11646,7 @@ def test_refused_new_codex_chat_while_a_desktop_chat_is_open_copies_the_first_me
     settle(frame)
     select(frame, "Quiet one")
     frame.on_open_session()
-    assert pump(lambda: frame._open is not None and frame._open.title == "Quiet one")
+    wait_for_loaded(frame, env, "Quiet one")
     refuse_codex_creation(frame, monkeypatch)
     frame._create_codex_owned('/workspace', 'Refused', 'My first message', sandbox='workspace-write')
     assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
@@ -11647,7 +11658,8 @@ def test_refused_new_codex_chat_puts_the_first_message_in_the_open_chat_and_name
     settle(frame)
     select(frame, "Hub probe")
     frame.on_open_session()
-    assert pump(lambda: frame._open is not None and frame._open.cli_session_id == 'own-1')
+    wait_for_loaded(frame, env, "Hub probe")
+    assert frame._open.cli_session_id == 'own-1'
     assert frame.own_reply.IsShown()
     frame.reply_text.SetValue('Typed since')
     refuse_codex_creation(frame, monkeypatch)
