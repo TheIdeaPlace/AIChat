@@ -553,7 +553,16 @@ def rows(sessions: Sequence[SessionInfo], conversations: Sequence[AgentConversat
         activity = max([conversation.last_activity_ms or conversation.created_ms]
                        + [s.last_activity_ms for s in found if s is not None])
         first = next((s for s in found if s is not None), None)
+        # Express's latest reply (#737): the member that replied last, named,
+        # as the conversation names it.
+        replied = [(s.last_activity_ms, m.name, s.last_reply)
+                   for m, s in zip(conversation.members, found) if s is not None and s.last_reply]
+        last_reply = ""
+        if replied:
+            _when, name, text = max(replied, key=lambda r: r[0])
+            last_reply = f"{name}: {text}"
         result.append(SessionInfo(
+            last_reply=last_reply,
             source=AGENTS, key=conversation.key, title=conversation.title,
             cwd=first.cwd if first is not None else "",
             cli_session_id=conversation.conversation_id,

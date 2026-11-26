@@ -178,6 +178,21 @@ SHORTCUTS = [
         ("Ctrl+F", "Show only sessions whose title, folder or what they need contains some "
                    "text; Escape in the list shows them all again"),
     ]),
+    # Express (#737): off until turned on.
+    ("Express", [
+        ("Alt+V, X", "Express on or off: one row at the top of the session list that lists "
+                     "the latest reply from each chat the list is showing, newest first "
+                     "(Settings sets how many)"),
+        ("Enter on the Express row", "Open Express in the messages, on the newest chat"),
+        ("Up, Down, Home and End in Express", "Move between the chats, each read with its "
+                                              "latest reply"),
+        ("Enter in Express", "Open that chat"),
+        ("Shift+Enter in Express", "Read that chat's whole latest reply"),
+        ("R in Express", "Reply to that chat, in a box named for it: Enter sends, Shift+Enter "
+                         "starts a new line, and you stay in Express"),
+        ("Ctrl+C in Express", "Copy that chat's latest reply"),
+        ("Escape in Express", "Back to the session list, on the Express row"),
+    ]),
     ("Messages", [
         ("Enter, or Applications key / Shift+F10 then Read Full Message",
          "Read the whole message as a formatted page (move by heading, table, list and "
@@ -351,6 +366,10 @@ def _tables_as_text(text: str) -> str:
 #: About how long the session list's Last message column is (#146): enough
 #: to hear where a conversation ended, short enough to arrow past.
 LAST_MESSAGE_LIMIT = 150
+#: How much of a chat's latest reply Express keeps (#737): its row shows
+#: ``LAST_MESSAGE_LIMIT`` of it, and a screen reader can read this much of it
+#: on the row; Shift+Enter reads the whole reply from the chat itself.
+REPLY_LIMIT = 1000
 
 
 def choose_access_key(label: str, taken: set) -> str:
@@ -417,6 +436,12 @@ def last_message_line(label: str, text: str) -> str:
     when there's nothing to read."""
     plain = one_line(text)
     return f"{label}: {plain}" if plain else ""
+
+
+def reply_line(text: str) -> str:
+    """A chat's latest reply as Express keeps it (#737): one plain line, up
+    to ``REPLY_LIMIT``, without a label (the row's Provider column says whose)."""
+    return one_line(text, REPLY_LIMIT) if text else ""
 
 
 #: A key named in the shortcuts list's key column: modifiers, then an F key,

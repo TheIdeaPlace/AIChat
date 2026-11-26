@@ -397,6 +397,7 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/openai_billing.py`, `thechatplace/openai_prices.py` | OpenAI's named system secret and one dated table for estimated standard text-token costs (#661) |
 | `thechatplace/providers/codex_api.py`, `codex_billing.py` | The isolated API-credit Codex backend: ephemeral login, route checks and pins, send events, provider-specific reservations, token settlement and bounded Stop (#661) |
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
+| `thechatplace/express.py`, `thechatplace/ui/express.py` | Express (#737): which chats it lists and in what order, its rows' words, and the window's side: the pinned row, the list in the messages, its keys, and R's reply through the reply box's own sends |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
 | `thechatplace/commands.py` | Every menu command once (#575): its id, label, access key, key, and which menu it's in. `MainFrame._build_menu` builds the menu bar from it, and `_command_handlers` says what each id does. Ids are kept once released: customizable keys (#635) store them |

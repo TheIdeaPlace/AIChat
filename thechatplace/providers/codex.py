@@ -14,8 +14,9 @@ from typing import Protocol
 
 from .. import codex_long_messages
 from ..sessions import IDLE, NEEDS_YOU, WORKING, STATUS_UNAVAILABLE, TERMINAL, SessionInfo
-from ..transcript import ASSISTANT, ERROR, PLAN, TOOL, TOOL_RESULT, USER, THINKING, AgentCall, ChatMessage, Transcript
-from ..ui_text import last_message_line
+from ..transcript import (ASSISTANT, ERROR, PLAN, REPLY_KINDS, TOOL, TOOL_RESULT, USER, THINKING,
+                          AgentCall, ChatMessage, Transcript)
+from ..ui_text import last_message_line, reply_line
 from ..changes import FileEdit, Hunk, parse_unified_diff
 from .base import Snapshot
 from .codex_connection import ManagedCodexConnection
@@ -571,8 +572,15 @@ class CodexProvider:
             cache = dict(self._last_messages)
         for info in sessions:
             self._check(info)
-            cached = cache.get(info.identity)
-            info.last_message = cached[2] if cached and cached[0] == info.last_activity_ms else ""
+            self._from_cache(info, cache.get(info.identity))
+
+    @staticmethod
+    def _from_cache(info, cached):
+        """A row's Last message and latest reply (Express, #737) from what's
+        remembered for it, or nothing if it's been active since."""
+        fresh = cached and cached[0] == info.last_activity_ms
+        info.last_message = cached[2] if fresh else ""
+        info.last_reply = cached[4] if fresh else ""
 
     def fill_last_messages(self, sessions):
         """Warm the optional column fairly, without reading every history at once.
@@ -593,8 +601,7 @@ class CodexProvider:
             generation = self._last_generation
         for info in rows:
             self._check(info)
-            cached = cache.get(info.identity)
-            info.last_message = cached[2] if cached and cached[0] == info.last_activity_ms else ""
+            self._from_cache(info, cache.get(info.identity))
         reads = 0
         for offset in range(len(rows)):
             index = (start + offset) % len(rows)
@@ -613,13 +620,19 @@ class CodexProvider:
                     # A long message sent as a file reads as written (#625).
                     message = codex_long_messages.expand_messages([message])[0]
                 line = last_message_line(message.label, message.text) if message else ""
+                # Express's latest reply (#737): one plain line, not the
+                # history; never your own message.
+                reply = next((m for m in reversed(reader.transcript.messages)
+                              if m.kind in REPLY_KINDS and m.text.strip()), None)
+                reply_text = reply_line(reply.text) if reply is not None else ""
             except Exception:  # noqa: BLE001 - optional history cannot erase the catalog
-                line, failed = "", True
+                line, reply_text, failed = "", "", True
             with self._last_lock:
                 if self._last_closed or generation != self._last_generation:
                     return  # a hidden column/closed owner cannot regain old reads
-                info.last_message = line
-                self._last_messages[info.identity] = (info.last_activity_ms, now, line, failed)
+                info.last_message, info.last_reply = line, reply_text
+                self._last_messages[info.identity] = (info.last_activity_ms, now, line, failed,
+                                                      reply_text)
                 self._last_messages.move_to_end(info.identity)
                 while len(self._last_messages) > self.MAX_LAST_MESSAGES:
                     self._last_messages.popitem(last=False)

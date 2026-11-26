@@ -577,6 +577,12 @@ class CodexChats(SoundHost, CodexExtras):
         info = self._open
         if info is None or self._codex_preparing.get(info.key) != generation:
             return
+        self._prepare_runtime_chat(info)
+
+    def _prepare_runtime_chat(self, info):
+        """Get ``info`` ready to take a message, on a worker: the open chat,
+        or one Express is replying to (#737), which isn't open. A message
+        waiting for it (``_relay_waiting``) goes once it's ready."""
         # A runtime chat's key starts with its provider ("codex:<id>"); some
         # callers pass a bare object with only a key and an id.
         provider = getattr(info, 'provider', '') or info.key.split(':', 1)[0]
