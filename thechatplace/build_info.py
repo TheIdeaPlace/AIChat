@@ -12,6 +12,7 @@ A source run has no ``_build.py`` and reads the commit from ``.git``.
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -41,7 +42,13 @@ class BuildInfo:
         return f"{__version__}-{self.label}" if self.label else __version__
 
 
-def _from_build() -> Optional[BuildInfo]:
+def _from_build(frozen: Optional[bool] = None) -> Optional[BuildInfo]:
+    """The build's own record, only in a built copy: a source checkout keeps
+    the last local build's _build.py (it's never removed), which says
+    nothing about what a source run is on now."""
+    frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    if not frozen:
+        return None
     try:
         from . import _build  # written by tools/write_build_info.py
     except ImportError:

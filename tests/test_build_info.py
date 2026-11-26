@@ -76,10 +76,25 @@ def test_the_build_file_is_read_and_a_bad_label_is_ignored(monkeypatch):
     monkeypatch.setitem(sys.modules, "thechatplace._build", fake)
     import thechatplace
     monkeypatch.setattr(thechatplace, "_build", fake, raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
     assert build_info.current() == BuildInfo("bld05", "e" * 40, "main", "2026-11-26")
     assert build_info.packed_version() == f"{__version__}-bld05"
     fake.LABEL = "BLD 05; rm"
     assert build_info.current().label == ""
+    # A source run ignores a _build.py a local build left behind: it says
+    # "from source", with what git says it's on now.
+    monkeypatch.delattr(sys, "frozen")
+    fake.LABEL = "bld05"
+    now = build_info.current()
+    assert now.source and now.label == "" and now.commit != "e" * 40
+    assert build_info.packed_version() == __version__
+
+
+def test_no_test_sees_a_build_label():
+    """A labelled build runs the whole suite with TCP_BUILD_LABEL set;
+    conftest clears it, or the release-tag checks would refuse it."""
+    import os
+    assert "TCP_BUILD_LABEL" not in os.environ
 
 
 def test_a_test_build_sorts_before_its_release():
