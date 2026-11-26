@@ -16,7 +16,8 @@ The page is built to be inert:
 * Images aren't loaded: the image syntax is switched off, so it reads as a
   link instead.
 * A Content-Security-Policy allows nothing but the page's own styles, so
-  nothing remote is fetched and no script in the page can run.
+  nothing remote is fetched and no script in the page can run. A page read
+  in the app also allows eval, for the viewer's own scripts (#725).
 * Links keep only web, email and session targets. In-app reading additionally
   links local files (#253); the viewer intercepts them and checks safety and
   existence before opening. Exported HTML has no local file actions.
@@ -190,10 +191,17 @@ def html_page(title: str, body_html: str, *, landmark: bool = False) -> str:
     for the pages published on the web, where it sits among other pages."""
     name = html.escape(title, quote=True)
     body = f"<main>{body_html}</main>" if landmark else body_html
+    # A page with no landmark is read in the app's own viewer. On a Mac and on
+    # Linux, wx's Copy, Select All and Can Copy are scripts it runs through
+    # eval, which default-src 'none' refused: Command+C copied nothing and
+    # showed "Error running JavaScript" (#725). Allowing eval lets no script
+    # in the page run (inline scripts, handlers and javascript: links are
+    # still refused); only scripts already running, the viewer's, can use it.
+    scripts = "" if landmark else "; script-src 'unsafe-eval'"
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<meta http-equiv=\"Content-Security-Policy\" "
-            "content=\"default-src 'none'; style-src 'unsafe-inline'\">"
+            f"content=\"default-src 'none'; style-src 'unsafe-inline'{scripts}\">"
             f"<title>{name}</title><style>{_STYLE}</style></head>"
             f"<body>{body}</body></html>")
 

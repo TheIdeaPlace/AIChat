@@ -139,6 +139,14 @@ the release workflow signs and notarizes it. The Linux build (AppImages for x64 
 preview. It has been tested with Orca 51 on an MNT Pocket Reform, with Orca 48 on Debian 13
 (arm64) in a virtual machine, and on Ubuntu 26.04 (arm64) in a virtual machine.
 
+**What VoiceOver lands on is tested, not tried by hand.** `tests/test_mac_voiceover.py` runs on
+a Mac (CI's macOS job included): it focuses each control on every surface the visual probe
+opens, and runs each Go to command and F6 stop, and asks macOS for the app's focused
+accessibility element, the one VoiceOver reads. It fails if that is the window or has no
+name. It also selects and copies on a real formatted page in WebKit. Both of 0.6.3's Mac
+reports (#725, #726) were found and fixed this way; how VoiceOver sounds is still heard by a
+person. The windows come to the front, so run it with the screen unlocked and the Mac left alone.
+
 **API credits are checked against the real API before a build reaches anyone.**
 `tests/test_live_api.py` runs Test Key, a new chat and its second message, and Stop through
 the app's own code, on a real key, for about a cent on Haiku:

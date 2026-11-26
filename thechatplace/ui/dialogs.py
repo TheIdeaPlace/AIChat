@@ -1711,12 +1711,8 @@ class SettingsDialog(wx.Dialog):
                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         self.recent_limit = wx.SpinCtrl(body, min=0, max=workplaces.RECENT_MAX,
                                         initial=speech.recent_folder_limit)
+        # On a Mac its text box and stepper are named too (set_accessible_name).
         set_accessible_name(self.recent_limit, "Recent folders New Session offers")
-        # On a Mac it's a text box and arrows of wx's own: VoiceOver reads
-        # the text box, so that's named too. Windows' has no such children.
-        for part in self.recent_limit.GetChildren():
-            if isinstance(part, wx.TextCtrl):
-                set_accessible_name(part, "Recent folders New Session offers")
         recent_row.Add(self.recent_limit, 0, wx.RIGHT, 8)
         self.clear_recent_btn = None
         if clear_recent is not None:

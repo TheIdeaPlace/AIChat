@@ -57,6 +57,13 @@ def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = Fa
     mac_a11y.set_label(control, label)
     gtk_a11y.set_label(control, label)
     _tie_label_before(control, label)
+    if mac_a11y.IS_MACOS and isinstance(control, wx.SpinCtrl):
+        # On a Mac a number box is a text box and a stepper of wx's own, and
+        # Tab stops on each: VoiceOver reads the part, so both are named.
+        # The stepper was read as just "stepper" (#726). Windows' has no parts.
+        for part in control.GetChildren():
+            if isinstance(part, (wx.TextCtrl, wx.SpinButton)):
+                set_accessible_name(part, label)
     if isinstance(control, wx.ListBox):
         if wx.Platform == "__WXMSW__":
             _list_accessible(control)
