@@ -68,28 +68,7 @@ jobs:
           .venv/bin/python -m pip install -r requirements-dev.txt
       - name: Test (Linux)
         if: runner.os == 'Linux'
-        # THROWAWAY (#736): the refused-Codex tests many times under CPU load,
-        # main's version first (to see the race), then the fix.
-        run: |
-          git fetch --depth=1 origin main
-          git show FETCH_HEAD:tests/test_ui_hidden.py > tests/test_ui_hidden_before736.py
-          Xvfb :99 -screen 0 1920x1080x24 & sleep 3
-          export DISPLAY=:99
-          for n in $(seq $(nproc)); do nice -n 19 sh -c 'while :; do :; done' & done
-          K="refused_new_codex_chat_puts or refused_new_codex_chat_while"
-          for i in $(seq 40); do
-            .venv/bin/python -m pytest -q -rfE -p no:cacheprovider tests/test_ui_hidden_before736.py -k "$K" >> before.txt 2>&1 || true
-          done
-          for i in $(seq 40); do
-            .venv/bin/python -m pytest -q -rfE -p no:cacheprovider tests/test_ui_hidden.py -k "$K" >> after.txt 2>&1 || true
-          done
-          kill $(jobs -p) || true
-          for f in before.txt after.txt; do
-            echo "== $f: $(grep -c ' passed' $f) runs reported"
-            grep -E '^(FAILED|ERROR) ' $f | cut -c1-200 | sort | uniq -c
-          done
-          echo "== the fix's failures:"; grep -v -E 'Gtk-|GLib-|xkbcomp|Warning: |^> ' after.txt | grep -A40 -E '^_+ (ERROR at|test_)' | head -300 || true
-          ! grep -qE '^(FAILED|ERROR) ' after.txt
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" .venv/bin/python -m pytest -v tests
 
   # What Orca says and reaches, with real Orca in a desktop of its own
   # (tools/linux_a11y_session.sh): no person, sound or VM needed (#230).
