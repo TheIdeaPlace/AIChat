@@ -183,6 +183,8 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
         seen.add(cursor)
     else:
         raise CodexRpcError('Codex app list is too large')
+    # Keep usable account apps ahead of a potentially large public catalog.
+    rows.sort(key=lambda row: row.status != 'available')
     known = {r.app_id for r in rows}
     rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
         app_id=identity, display_name=identity) for identity in selected if identity not in known)

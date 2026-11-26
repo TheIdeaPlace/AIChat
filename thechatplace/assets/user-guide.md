@@ -2931,6 +2931,8 @@ To use an available connection in a ChatGPT-subscription Codex chat:
 5. Check the service's actual result. To remove the connection from the conversation, use
    **Copy with Tool Off** and continue in that copy.
 
+Apps Codex marks accessible appear before the larger catalog of apps needing setup.
+They still start off for this chat until you use **Copy with Tool On**.
 Listing account apps can take up to a minute per page while Codex fetches its catalog.
 The lookup runs in the background; you can close the dialog while it is waiting.
 

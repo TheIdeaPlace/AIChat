@@ -267,3 +267,19 @@ def test_app_pagination_refetches_catalog_only_on_the_first_page():
     assert app_inventory(Connection(), INFO) == []
     assert calls == [{"limit": 100, "forceRefetch": True},
                      {"limit": 100, "forceRefetch": False, "cursor": "page-two"}]
+
+
+def test_accessible_apps_precede_the_installable_catalog_without_losing_entries():
+    from thechatplace.providers.codex_tools import app_inventory
+    class Connection:
+        def request(self, method, params):
+            return {"data": [
+                {"id": "unconnected-one", "name": "First catalog app", "isAccessible": False},
+                {"id": "available-one", "name": "First usable app", "isAccessible": True},
+                {"id": "unconnected-two", "name": "Second catalog app", "isAccessible": False},
+                {"id": "available-two", "name": "Second usable app", "isAccessible": True},
+            ]}
+    rows = app_inventory(Connection(), INFO)
+    assert [row.app_id for row in rows] == [
+        "available-one", "available-two", "unconnected-one", "unconnected-two"]
+    assert all(row.off_for_chat for row in rows)
