@@ -2135,8 +2135,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._update_status_context()
         self.own_reply.Hide()
         self.desktop_reply.Hide()
-        if not getattr(self, "_express_open", False) and hasattr(self, "express_reply"):
-            self.express_reply.Hide()  # (#737) open_express shows it after unloading
+        if not getattr(self, "_express_open", False) and hasattr(self, "express_note_panel"):
+            self.express_note_panel.Hide()  # (#737) open_express shows it after unloading
         self.session_view.Layout()
 
     def focus_sessions(self):

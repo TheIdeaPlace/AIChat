@@ -271,9 +271,13 @@ class RelayChats:
                 return result
             if where is None:
                 # What follows the command goes in front of what was
-                # already in the reply box, as a message put back does.
+                # already in the reply box, as a message put back does,
+                # and a picker opens while you're still in this chat
+                # (_codex_may_open).
                 kept = self.reply_text.GetValue().strip()
                 text = command + '\n' + '\n\n'.join(p for p in (rest.strip(), kept) if p)
+                where = SimpleNamespace(box=self.reply_text, over=None, skills=None,
+                                        chat=info.key)
             self._handle_codex_command(info, text, where)
             return result
         try:

@@ -11,7 +11,7 @@ from __future__ import annotations
 from ..imported_store import ImportedStore
 from ..sessions import IDLE, SessionInfo
 from ..transcript import Transcript
-from ..ui_text import one_line
+from ..ui_text import one_line, reply_line
 from .base import SessionCapabilities, Snapshot
 
 IMPORTED = "imported"
@@ -69,7 +69,9 @@ class ImportedChats:
             # The index keeps only the last reply's first line, so it's both
             # (Express, #737), as one plain line: a heading's #s go, and it
             # ends with a stop (#744).
-            info.last_message = info.last_reply = one_line(self._indexed_reply(info))
+            line = self._indexed_reply(info)
+            # Express keeps a reply as long as the others' (REPLY_LIMIT).
+            info.last_message, info.last_reply = one_line(line), reply_line(line)
 
     def _indexed_reply(self, session: SessionInfo) -> str:
         try:

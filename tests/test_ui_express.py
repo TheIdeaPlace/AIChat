@@ -117,7 +117,8 @@ def test_enter_opens_the_list_on_the_newest_chat(frame, env):
                                      if frame._express_rows[k].title == "Quiet one")]
     assert quiet.last_reply == "Tidied."  # the reply, not "Thanks"
     assert not frame.own_reply.IsShown() and not frame.desktop_reply.IsShown()
-    assert frame.express_reply.IsShown()
+    assert frame.express_note_panel.IsShown()
+    assert callable(frame.express_reply)  # R's handler, never hidden by a control's name
     assert frame.express_note.GetValue() == "Press R to reply to the chat you're on."
     # Alt+M still reaches the list (it's "Messages in ...", as a chat's is).
     assert frame.messages_label.GetLabel() == "&Messages in Express, 3 chats:"
@@ -152,7 +153,7 @@ def test_the_note_on_replying_is_one_line_named_and_go_to_reply_box_lands_on_it(
     # One line high: no taller than the reply box's one-line neighbours.
     assert note.GetSize().height < frame.FromDIP(60)
     # The messages list has the room the reply area had.
-    assert frame.chat_list.GetSize().height > frame.express_reply.GetSize().height * 4
+    assert frame.chat_list.GetSize().height > frame.express_note_panel.GetSize().height * 4
     focused = []
     monkeypatch.setattr(note, "SetFocus", lambda: focused.append(note))
     frame.focus_reply()
@@ -161,7 +162,7 @@ def test_the_note_on_replying_is_one_line_named_and_go_to_reply_box_lands_on_it(
     # Opening a chat puts the reply area back, and the note goes.
     row_of(frame, "Hub probe")
     frame.express_open_chat()
-    assert not frame.express_reply.IsShown() and frame.own_reply.IsShown()
+    assert not frame.express_note_panel.IsShown() and frame.own_reply.IsShown()
 
 
 def test_enter_on_a_row_opens_that_chat(frame, env):

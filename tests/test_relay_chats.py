@@ -529,6 +529,73 @@ def test_a_codex_chat_control_for_a_chat_getting_ready_waits_in_its_reply_box(di
                           "It's in that chat's reply box.")
 
 
+def _skills_picker(monkeypatch, w, skill):
+    """/skills answered with one skill, chosen in the picker."""
+    import wx
+    from thechatplace.ui import codex_extras
+
+    class Picker:
+        def __init__(self, parent, rows):
+            self.chosen = dict(rows[0])
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_extras, 'CommandPickerDialog', Picker)
+    w.sessions.skills = lambda info: [{'name': 'review', 'path': str(skill), 'description': ''}]
+
+
+def test_skills_sent_on_opens_its_picker_wherever_focus_settles(dialog, monkeypatch, tmp_path):
+    """Focus goes back where Windows puts it once the dialog has closed, so
+    the picker opens while the chat is still the open one and its reply box
+    is as it was, not only if focus stayed put."""
+    import wx
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('x', encoding='utf-8')
+    focus = {'window': object()}
+    monkeypatch.setattr(wx.Window, 'FindFocus', staticmethod(lambda: focus['window']))
+    monkeypatch.setattr(wx, 'GetTopLevelWindows', lambda: [])
+    w = Window()
+    _skills_picker(monkeypatch, w, skill)
+    dialog.choose = lambda text: (0, '/skills\nthe upload code')
+    w.on_send_reply_to()
+    assert w.reply_text.value == 'the upload code'
+    focus['window'] = object()  # it moved after the command went
+    action, loaded = w.work.pop()
+    loaded(action(), False)
+    assert w.reply_text.value == '$review the upload code'
+    # Picked in Reviewer's reply box, so it goes with that box's next message.
+    assert w._codex_skills == {'codex:codex-1': {'review': str(skill)}}
+
+
+def test_skills_sent_on_doesnt_open_once_youve_gone_to_another_chat(dialog, monkeypatch, tmp_path):
+    import wx
+    monkeypatch.setattr(wx.Window, 'FindFocus', staticmethod(lambda: None))
+    monkeypatch.setattr(wx, 'GetTopLevelWindows', lambda: [])
+    w = Window()
+    _skills_picker(monkeypatch, w, tmp_path / 'SKILL.md')
+    dialog.choose = lambda text: (0, '/skills')
+    w.on_send_reply_to()
+    w._drafts['claude-2'] = 'Second draft'
+    w.open_session(w.other)
+    action, loaded = w.work.pop()
+    loaded(action(), False)
+    # Nothing opened over the other chat's reply box, as from the reply box.
+    assert w.reply_text.value == 'Second draft'
+    assert getattr(w, '_codex_skills', {}) == {}
+    # And had the reply box changed while still in that chat, it says why.
+    w = Window()
+    _skills_picker(monkeypatch, w, tmp_path / 'SKILL.md')
+    w.on_send_reply_to()
+    w.reply_text.SetValue('typed meanwhile')
+    action, loaded = w.work.pop()
+    loaded(action(), False)
+    assert w.said[-1].startswith("The Codex commands are ready, but you've moved on")
+    assert w.reply_text.value == 'typed meanwhile'
+
+
 def test_a_relayed_message_takes_none_of_the_chats_own_skills_or_files(dialog, tmp_path):
     w = Window()
     skill = tmp_path / 'SKILL.md'

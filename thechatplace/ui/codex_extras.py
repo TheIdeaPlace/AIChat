@@ -175,7 +175,11 @@ class CodexExtras:
         doesn't count, so ``still_on()`` says instead whether that dialog is
         still on what you asked for: another row is having moved on (#468).
         A command typed in a dialog (Express's reply, #742) opens over it,
-        while it's still open and its box is as it was."""
+        while it's still open and its box is as it was. One sent to a chat
+        from Send Reply to Another Chat (``where.chat``) opens while that
+        chat is still the open one and its reply box is as it was: focus
+        settles where Windows puts it back after that dialog closes, so
+        where it was when the command went says nothing."""
         focus, text, where = mark
         box = self._codex_box(where)
         typed_over = getattr(where, 'over', None)
@@ -184,8 +188,12 @@ class CodexExtras:
             over = None if gone else (over if over is not None else typed_over)
         else:
             gone = False
-        if (not gone and bool(box)
-                and (over is not None or wx.Window.FindFocus() is focus)
+        chat = getattr(where, 'chat', None)
+        if chat is not None:
+            stayed = self._open is not None and self._open.key == chat
+        else:
+            stayed = over is not None or wx.Window.FindFocus() is focus
+        if (not gone and bool(box) and stayed
                 and (still_on is None or still_on())
                 and box.GetValue() == text
                 and not any(isinstance(window, wx.Dialog) and window.IsModal()
@@ -194,6 +202,13 @@ class CodexExtras:
         self._feedback(f"{what} ready, but you've moved on, so nothing opened. Choose it again "
                        'when you want it.')
         return False
+
+    def _codex_parent(self, mark):
+        """What a dialog a command opens goes over: the dialog the command
+        was typed in (Express's reply, #742), so closing it returns there,
+        or the window."""
+        over = getattr(mark[2], 'over', None)
+        return over if over else self
 
     def _codex_ask_aside(self, info):
         if not self._require_capability('aside', info) or self._other_provider_said(info):
@@ -436,7 +451,7 @@ class CodexExtras:
                 return
             if error:
                 self._feedback("Could not get this folder's Codex skills, so only the chat controls are listed.")
-            dialog = CommandPickerDialog(getattr(where, 'over', None) or self, rows)
+            dialog = CommandPickerDialog(self._codex_parent(mark), rows)
             try:
                 if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
                     return
@@ -506,7 +521,8 @@ class CodexExtras:
                     self._feedback("Codex returned a goal The Chat Place can't read.")
                 else:
                     if self._codex_may_open(mark, "This chat's Codex goal is"):
-                        self._modal(LinesDialog(self, 'Codex Goal', 'Goal', lines, self._copy_text))
+                        self._modal(LinesDialog(self._codex_parent(mark), 'Codex Goal', 'Goal',
+                                                lines, self._copy_text))
             elif command == '/background':
                 self._codex_background(record, result, mark)
             elif command == '/compact':
@@ -540,7 +556,8 @@ class CodexExtras:
         command = command if len(command) <= 200 else command[:199] + '…'
         if wx.MessageBox(f'Stop {command}? The turn and other '
                 'background tasks carry on.',
-                'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+                'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                self._codex_parent(mark)) != wx.YES:
             return
         self._feedback('Stopping the background task.')
         self._codex_work(lambda: self.sessions.owned_action('feature', record,

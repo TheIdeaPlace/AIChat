@@ -58,17 +58,17 @@ class ExpressView:
         not a label, so Tab and F6 stop on it and a screen reader reads it,
         as the desktop chats' note; one line, as that's all it says, so the
         list keeps the room (#737)."""
-        self.express_reply = wx.Panel(parent)
+        self.express_note_panel = wx.Panel(parent)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        row.Add(wx.StaticText(self.express_reply, label="About replying:"), 0,
+        row.Add(wx.StaticText(self.express_note_panel, label="About replying:"), 0,
                 wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.express_note = wx.TextCtrl(self.express_reply, value=express.REPLY_NOTE,
+        self.express_note = wx.TextCtrl(self.express_note_panel, value=express.REPLY_NOTE,
                                         style=wx.TE_READONLY)
         set_accessible_name(self.express_note, "About replying")
         row.Add(self.express_note, 1, wx.ALIGN_CENTER_VERTICAL)
-        self.express_reply.SetSizer(row)
-        sizer.Add(self.express_reply, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
-        self.express_reply.Hide()
+        self.express_note_panel.SetSizer(row)
+        sizer.Add(self.express_note_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.express_note_panel.Hide()
 
     # -- the session list's row -----------------------------------------------
 
@@ -112,7 +112,7 @@ class ExpressView:
         self._express_steady = {}
         self.own_reply.Hide()
         self.desktop_reply.Hide()
-        self.express_reply.Show()
+        self.express_note_panel.Show()
         self.session_heading.set_text("Express: the latest reply from each chat. "
                                       "Enter opens a chat, R replies to it.")
         self.SetTitle(f"Express — {self._app_name()}")
@@ -138,7 +138,7 @@ class ExpressView:
         self._express_keys = []
         self._express_rows = {}
         self._express_steady = {}
-        self.express_reply.Hide()  # the chat opening lays the window out
+        self.express_note_panel.Hide()  # the chat opening lays the window out
         if show_nothing:
             self.SetTitle(self._app_name())
             self._show_no_session()

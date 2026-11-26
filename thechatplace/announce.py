@@ -41,7 +41,7 @@ def _cut_at_word(text: str, limit: int) -> str:
 
 
 #: A heading on the first line with anything in it (#744).
-_LEADING_HEADING = re.compile(r"\A\s*?[ \t]{0,3}#{1,6}[ \t]+[^\n]*(?:\n|\Z)")
+_LEADING_HEADING = re.compile(r"\A(?:[ \t]*\r?\n)*[ \t]{0,3}#{1,6}[ \t]+[^\n]*(?:\n|\Z)")
 
 
 def _words(text: str) -> str:

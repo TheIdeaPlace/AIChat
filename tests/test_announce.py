@@ -94,5 +94,9 @@ def test_first_sentence_with_a_heading():
     # No room for the next sentence: the heading alone, then cut if too long.
     assert first_sentence('## What changed\nThe upload test.', limit=30) == 'What changed.'
     assert first_sentence('## ' + 'word ' * 60, limit=40).endswith('…')
-    # Not a heading: as before.
+    # Not a heading: as before. Indented four spaces is code, not a heading.
     assert first_sentence('#744 is fixed. More.') == '#744 is fixed.'
+    assert first_sentence('     # comment\nrest of it.') == '# comment rest of it.'
+    # Windows line ends, and a heading in bold.
+    assert first_sentence('\r\n## Title ##\r\nBody text.') == 'Title. Body text.'
+    assert first_sentence('## **Bold**\nx') == '**Bold.** x'  # speech drops the marks

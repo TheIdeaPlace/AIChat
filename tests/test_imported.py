@@ -255,6 +255,18 @@ def test_a_reply_starting_with_a_heading_lists_as_a_line_and_reads_whole(tmp_pat
     assert provider.last_reply(info) == "## What changed"
 
 
+def test_express_keeps_an_imported_reply_as_long_as_the_others(tmp_path):
+    from thechatplace.ui_text import LAST_MESSAGE_LIMIT
+    store = ImportedStore(tmp_path / "imported")
+    long = " ".join(["word"] * 50)  # 249 characters: past the column's 150
+    store.save(chat(), Transcript(messages=[ChatMessage(ASSISTANT, long, turn=1)]))
+    provider = ImportedChats(store)
+    [info] = provider.collect().sessions
+    provider.fill_last_messages([info])
+    assert info.last_reply == long
+    assert info.last_message.endswith("…") and len(info.last_message) <= LAST_MESSAGE_LIMIT + 1
+
+
 def test_a_missing_or_damaged_chat_file_is_replaced_on_restore(tmp_path):
     store = ImportedStore(tmp_path / "imported")
     store.save(chat(), transcript())

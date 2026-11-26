@@ -271,6 +271,12 @@ def test_one_plain_line(markdown, plain):
     ("#744 is fixed\nnow", "#744 is fixed now"),
     ("A line with ## in it\nmore", "A line with ## in it more"),
     ("    ## indented code\nmore", "## indented code more"),
+    # Windows line ends: closing #s still go.
+    ("## Title ##\r\nBody", "Title. Body"),
+    ("## What changed\r\nThe test.", "What changed. The test."),
+    # A "# comment" in a code block isn't a heading: no stop is added.
+    ("```bash\n# install deps\npip install x\n```\nAfter.", "install deps pip install x After."),
+    ("~~~\n# not a heading\n~~~\n## Is one\nYes.", "not a heading Is one. Yes."),
 ])
 def test_a_heading_ends_with_a_stop(markdown, plain):
     """#744: flattened to one line, a heading ran into the text after it

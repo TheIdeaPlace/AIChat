@@ -314,7 +314,9 @@ _EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1")
 _CODE = re.compile(r"`([^`]+)`")
 #: A Markdown heading line, up to three spaces in, with any closing #s
 #: (which need a space before them, so "C#" keeps its #).
-_HEADING_LINE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$", re.M)
+_HEADING_LINE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*(\r?)$")
+#: A code fence's opening or closing line: what's between isn't Markdown.
+_FENCE_LINE = re.compile(r"^[ \t]{0,3}(```|~~~)")
 #: What a heading may already end with, so it isn't given a second stop.
 _ENDS_SENTENCE = (".", "?", "!", ":", "…")
 
@@ -324,17 +326,31 @@ def headings_as_sentences(text: str) -> str:
     changed" is "What changed." (#744). Flattened to one line, a heading
     otherwise runs into the text after it ("What changed The upload test…"),
     and a screen reader reads the two as one sentence. A heading already
-    ending in a stop, a question mark or a colon is left as it is. Lines
-    keep their places, so what reads by line still does."""
+    ending in a stop, a question mark or a colon is left as it is, and a
+    "# comment" in a code block isn't a heading. Lines keep their places,
+    so what reads by line still does."""
     def sentence(match: "re.Match[str]") -> str:
-        words = match.group(1).rstrip()
-        # Its emphasis marks, if it's all bold, go first: the stop goes
-        # after the words, not after "**".
+        words, end = match.group(1).rstrip(), match.group(2)
+        # A heading that's all bold: the stop goes inside the marks
+        # ("**What changed.**"), so taking the marks off leaves it.
         plain = words.rstrip("*_`").rstrip()
         if not plain or plain.endswith(_ENDS_SENTENCE):
-            return words
-        return words + "."
-    return _HEADING_LINE.sub(sentence, text)
+            return words + end
+        return plain + "." + words[len(plain):] + end
+
+    lines = text.split("\n")
+    fence = None
+    for i, line in enumerate(lines):
+        opened = _FENCE_LINE.match(line)
+        if fence is not None:
+            if opened and opened.group(1) == fence:
+                fence = None
+            continue
+        if opened:
+            fence = opened.group(1)
+            continue
+        lines[i] = _HEADING_LINE.sub(sentence, line)
+    return "\n".join(lines)
 
 
 def markdown_as_text(text: str) -> str:
