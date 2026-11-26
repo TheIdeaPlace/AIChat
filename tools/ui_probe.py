@@ -1779,6 +1779,27 @@ def d_codex_tools(frame, env):
     return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
 
 
+def d_codex_tools_apps_unavailable(frame, env):
+    """Codex couldn't list apps (#729): the "Apps unavailable" row after the
+    configured servers, selected, so its neutral button and its words in
+    Details show."""
+    from thechatplace.providers.codex_tools import CodexTool, apps_unavailable
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    s_main_codex_owned(frame, env)
+    host = CodexConnectedTools(frame, frame._open)
+    rows = [CodexTool('project-notes', 'connected', ('find_notes',), False),
+            CodexTool('reference-search', 'off', (), True),
+            apps_unavailable('Codex timed out while listing apps.')]
+    host.load = lambda done: done(rows, '')
+
+    def opener():
+        dialog = ConnectedToolsDialog(frame, 'Codex review', host)
+        dialog._fill(rows, select=len(rows) - 1)
+        return frame._modal(dialog)
+    return opener
+
+
 def s_main_codex_queue_edited(frame, env):
     from dataclasses import replace
     from thechatplace.providers.codex_input import CodexInput
@@ -2756,6 +2777,8 @@ SURFACES = {
     "ask-aside": ("dialog", d_ask_aside, "Ask Aside: questions about a chat, one answered"),
     "codex-aside": ("dialog", d_codex_aside, "Codex Ask Aside using the shared question history"),
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
+    "codex-tools-apps-unavailable": ("dialog", d_codex_tools_apps_unavailable,
+                                     "Codex Connected Tools when Codex couldn't list apps"),
     "codex-tool-approval": ("dialog", d_codex_tool_approval, "Codex tool-call consent with exact arguments and a one-time answer"),
     "main-codex-queue-edited": ("window", s_main_codex_queue_edited, "A queued Codex message returned to its draft without stopping the turn"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
@@ -2924,6 +2947,7 @@ DIALOG_CLASSES = {
     "ask-aside": "AskAsideDialog",
     "codex-aside": "AskAsideDialog",
     "codex-tools": "ConnectedToolsDialog",
+    "codex-tools-apps-unavailable": "ConnectedToolsDialog",
     "codex-tool-approval": "ElicitationDialog",
     "codex-commands": "CommandPickerDialog",
     "codex-collaboration": "SingleChoiceDialog",
