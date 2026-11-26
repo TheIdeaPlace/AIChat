@@ -22,7 +22,7 @@ from typing import Callable, List, Optional
 import wx
 import wx.siplib
 
-from . import gtk_a11y
+from . import gtk_a11y, mac_a11y
 
 
 class _TextAccessible(wx.Accessible):
@@ -83,6 +83,8 @@ class StatusText(wx.Control):
         # so Orca said "panel". It's a label, named by its words.
         gtk_a11y.set_role(self, "label")
         gtk_a11y.set_label(self, empty_text)
+        # Mac: text VoiceOver can land on, or Command+9 seems to go nowhere (#726).
+        mac_a11y.set_static_text(self, empty_text)
 
     def AcceptsFocus(self):
         return True
@@ -94,6 +96,7 @@ class StatusText(wx.Control):
         if label != self.GetLabel():
             super().SetLabel(label)
             gtk_a11y.set_label(self, label or self.empty_text)
+            mac_a11y.set_static_text(self, label or self.empty_text)
             self.Refresh()
 
     def show_text(self, text: str) -> None:

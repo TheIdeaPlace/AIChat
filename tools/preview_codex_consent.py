@@ -40,7 +40,7 @@ def main():
     from thechatplace.ui import mac_keys
     app = wx.App(False)
     mac_keys.install(app)
-    dialog = ElicitationDialog(None, "Practice only", preview_request(args.kind))
+    dialog = ElicitationDialog(None, "Practice only", preview_request(args.kind), feedback=print)
     try:
         dialog.ShowModal()
         print("Practice answer:", dialog.action or "answer later")

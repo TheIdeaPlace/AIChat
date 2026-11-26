@@ -1597,8 +1597,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   reply (the percentage only once the window's size is known: Claude Code reports it for a model
   when one of The Chat Place's sessions runs a turn on it, and a session past 200,000 tokens has the
   1,000,000 window), and the limits are as the latest turn reported them ("5-hour limit 8% used,
-  resets at 10:00 AM.", then "Weekly limit 34% used, resets on Friday at 9:00 AM.").
-  It's said once, unasked, when the loaded session's context passes 80%, when a limit passes
+  resets at 10:00 AM.", then "Weekly limit 34% used, resets on Friday at 9:00 AM."). Once a Fable
+  turn has run, "Weekly Fable limit" is listed too, from the latest Fable turn, since turns on
+  other models don't report it. It's said once, unasked, when the loaded session's context passes 80%, when a limit passes
   90% or is reached, and when Claude Code compacts a conversation (the messages list shows
   "Conversation compacted" too). A turn that fails on a usage limit says so in plain words,
   with when it resets. For a Claude chat started here, lines after the context line say what
@@ -2033,7 +2034,9 @@ AppImage, and your data is in `~/.config/TheChatPlace`. The updater refuses to r
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data
 folder.
 
-The version is in Help, About.
+The version is in Help, About, with which build it is: for example "0.6.4, build bld05 (commit
+487a6d67 on build/bld05, built 2026-11-26)" for a test build, or the version and commit for a
+release. Bug reports include the same line.
 
 ## Keyboard shortcuts
 

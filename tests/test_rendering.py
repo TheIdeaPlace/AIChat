@@ -1,9 +1,10 @@
 """Messages as formatted pages (#190): structure kept, nothing unsafe let in."""
+import re
 import sys
 
 import pytest
 
-from thechatplace.rendering import describe_code_block, markdown_to_html, message_page
+from thechatplace.rendering import describe_code_block, html_page, markdown_to_html, message_page
 from thechatplace.speech import SpeechSettings
 
 
@@ -48,6 +49,15 @@ def test_page_allows_nothing_remote():
     assert "default-src 'none'" in page
     assert "<title>Claude &quot;says&quot;</title>" in page
     assert "<body><p>Hello</p></body>" in page
+
+
+def test_page_in_the_app_allows_eval_but_no_script_of_its_own():
+    """wx copies and selects in a Mac or Linux web view through eval (#725)."""
+    policy = re.search(r'Content-Security-Policy" content="([^"]*)"', message_page("t", "Hi")).group(1)
+    assert policy == "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-eval'"
+    # Exported and published pages have no viewer, so no eval.
+    published = html_page("t", "<p>Hi</p>", landmark=True)
+    assert "script-src" not in published and "unsafe-eval" not in published
 
 
 def test_page_in_the_app_has_no_landmark():

@@ -70,6 +70,10 @@ in packaged builds. It checks the following with JAWS/NVDA, VoiceOver, or Orca:
 - Long approval: hear the shortened arguments, the number of characters not shown, and
   "Your answer covers this call only."
 
+The preview writes navigation feedback (for example, Enter in Message telling you to Tab)
+to its terminal; it does not use the running app's speech settings or announcement routing.
+Check those spoken navigation hints in the real app.
+
 These previews prove no service behavior. The existing native probe
 `tools/probe_codex_workflows.py --out <path-outside-checkout>` exercises real Codex consent,
 reload and local OAuth against disposable synthetic services without an account or paid

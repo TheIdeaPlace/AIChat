@@ -15,6 +15,23 @@ def pytest_sessionfinish(session, exitstatus):
     with nothing in the log to say why. Exiting normally cancels this."""
     import faulthandler
     faulthandler.dump_traceback_later(90, exit=False)
+    session.config._tcp_exit_status = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """On macOS CI, leave as soon as pytest has said its last word (#711).
+    The hang above was the main thread alone in native code after Python
+    had finished, wx's Cocoa teardown at exit, and it took a passing run past
+    the job's limit (#731, twice). Nothing is left to report by now, so the
+    process ends with pytest's own status rather than wait on it. Elsewhere,
+    and on a Mac outside CI, it exits as usual."""
+    import os
+    status = getattr(config, "_tcp_exit_status", None)
+    if status is not None and sys.platform == "darwin" and os.environ.get("CI"):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(status)
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +99,14 @@ def app():
     from thechatplace.ui import mac_keys
     mac_keys.install(instance)
     yield instance
+
+
+@pytest.fixture(autouse=True)
+def _no_build_label(monkeypatch):
+    """A labelled test build runs the suite with TCP_BUILD_LABEL set (build_info):
+    no test may see it, or the release-tag checks refuse the label."""
+    monkeypatch.delenv("TCP_BUILD_LABEL", raising=False)
+    monkeypatch.delenv("TCP_BUILD_COMMIT", raising=False)
 
 
 @pytest.fixture(autouse=True)

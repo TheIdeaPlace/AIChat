@@ -4,6 +4,7 @@ No window appears on screen: the frame is created hidden and destroyed at the
 end, and speech is replaced by a recorder. The real look and sound with JAWS
 and NVDA is checked by hand (see DEVELOPING.md).
 """
+import ctypes
 import dataclasses
 import json
 import os
@@ -5906,6 +5907,20 @@ def test_voiceover_reads_the_main_window_labels(frame):
     assert mac_a11y.get_label(frame.desktop_note) == "About replying"
     assert mac_a11y.get_label(frame.session_list)
     assert _unlabelled(frame) == []
+
+
+@voiceover
+def test_voiceover_can_land_on_the_status_bar_text(frame):
+    # A plain wx view is no accessibility element: on Command+9 VoiceOver
+    # found nothing focused and stayed where it was (#726).
+    from thechatplace.ui import mac_a11y
+    part = frame.status_parts.get("message")
+    view = mac_a11y._target_view(part)
+    assert mac_a11y._send(view, "isAccessibilityElement", restype=ctypes.c_bool)
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityRole")) == "AXStaticText"
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityValue")) == part.GetLabel()
+    part.SetLabel("Message copied.")
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityValue")) == "Message copied."
 
 
 @voiceover

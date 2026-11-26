@@ -66,8 +66,11 @@ powershell -File tools\ui_probe_vm.ps1 [-Variant light-100] [-Surface settings] 
 
 ## Releasing
 
-The version lives in one place: `__version__` in `thechatplace/__init__.py`. To release, bump it and
-add `release-notes/v<version>.md` in the same commit, then push the tag `v<version>`. The release
+The version lives in one place: `__version__` in `thechatplace/__init__.py`, and it's always the
+version being worked on (Kelly, 2026-11-26). **Right after a release is published**, bump it to the
+next patch version and start that version's notes file, in one PR, before any other work merges.
+To release, finish the notes and push the tag `v<version>`; nothing needs bumping then. A minor
+version instead is Kelly's call. The release
 workflow fails if the tag and `__version__` disagree, or if the notes file is missing. It builds
 Windows, macOS and Linux (x64 and arm64) in parallel jobs, and a `publish` job makes the release only
 if Windows and macOS succeed (the Windows installer, portable zip and `windows` feed; the notarized
@@ -77,6 +80,16 @@ over a release without its platform's feed (`updater.latest_published_version`).
 Versions below 1.0 publish as pre-releases. Every platform updates through Velopack
 (`updater.CHANNEL`: `windows`, `osx`, `linux-x64`, `linux-arm64`). Velopack calls every Mac app portable, so the portable check is Windows-only
 (`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
+
+**Test builds for Kelly say which build they are** (2026-11-26). Make one with a hand run of the
+release workflow, unsigned, with `build_label` set to the folder it goes in (`bld05` for
+`testing\tcp\<version>\bld05`; the next number, never reused):
+`gh workflow run "Release The Chat Place" --ref <branch> -f sign=false -f build_label=bld05`.
+It's packed as `<version>-bld05` (sorted before the release, so an installed one still updates)
+and Help, About says "0.6.4, build bld05 (commit … on <branch>, built <date>)". To build work not
+yet on main, merge it with main on a `build/bldNN` branch and run from that; delete the branch once
+the work merges or is dropped. `thechatplace/build_info.py` and `tools/write_build_info.py` hold the
+details; every build path writes `thechatplace/_build.py` (never committed) before PyInstaller.
 
 Only Kelly can release or sign: tags are admin-only by ruleset, and every
 signing run (a tag, a hand run with "sign", a `sign-build` pull request) waits for his approval of
@@ -100,8 +113,8 @@ a release can take a file added after publishing; releases published in that win
 **Release notes and the user guide, with every user-visible change** (the QuickMail process):
 - The **open** notes file is the highest `release-notes/vX.Y.Z.md` with no matching tag. Add an
   entry there with each PR, citing it (`(#90)`); if none is open, start the next patch version's
-  file. Internal changes (tests, CI, refactors) need no entry. `__version__` is bumped only in
-  the release commit, so the notes file can wait on main ahead of it.
+  file. Internal changes (tests, CI, refactors) need no entry. The open file's version is
+  `__version__`, bumped right after the last release (above).
 - The order: a short intro (what it updates, pre-release or not, that it offers itself as an
   update), then **Added**, **Changed** and **Fixed** as needed (what's new is what most people
   came to read), then the footers, copied from the last release: **Reporting Issues**, **Downloads**,
@@ -176,7 +189,8 @@ menu item goes there, with its handler in `MainFrame._command_handlers`, never s
 `_build_menu`. `ui_text.py` holds UI text that can be tested without wx
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
-**Other modules:** `updater.py` (Velopack updates for installed copies only, which refuse to run
+**Other modules:** `build_info.py` (which build this is, for About, bug reports and the smoke
+test), `updater.py` (Velopack updates for installed copies only, which refuse to run
 if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
 WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachments.py`, `export.py`,
 `bugreport.py`, `signin.py`, `sound_events.py` (which sound for which event; `ui/sound_host.py` and
@@ -198,6 +212,13 @@ WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachment
   Orca audit. A change to a keyboard path (focus, menus, dialogs, Escape) adds or updates a step in
   `STEPS` in `tools/orca_speech.py`. To run it on the Ubuntu VM, use the `tcptest` user (Orca runs
   one copy per user). DEVELOPING.md's "How it's been tested" has the details.
+- **Kelly is not the manual tester.** On a Mac, `tests/test_mac_voiceover.py` focuses every
+  control on every probe surface, and each Go to command and F6 stop, and asks macOS what VoiceOver
+  lands on (`mac_a11y.focused_element`): it fails on the bare window or an unnamed element (#726).
+  It also copies from a real WebKit formatted page (#725). wx's `FindFocus` isn't enough: it said
+  the status bar while VoiceOver stayed put. The windows come to the front, so the app must be
+  able to become active (not on a locked screen). When the in-app answer is in doubt, check from
+  another process through the AX API, as VoiceOver reads it, without blocking the app's main thread.
 
 ## Visual check (#155)
 

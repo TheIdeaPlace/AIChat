@@ -162,6 +162,11 @@ else
 fi
 
 VERSION=$("$PY" tools/check_version.py) || fail "tools/check_version.py"
+# The version to pack as: with TCP_BUILD_LABEL (a test build, as in bld05),
+# 0.6.4-bld05, which Velopack sorts before the 0.6.4 release.
+PACK_VERSION=$("$PY" tools/check_version.py --pack) || fail "tools/check_version.py --pack"
+# Which build this is, for the About box (thechatplace/build_info.py).
+"$PY" tools/write_build_info.py || fail "tools/write_build_info.py"
 echo ""
 echo "The Chat Place $VERSION ($CHANNEL)"
 
@@ -204,7 +209,7 @@ if [ "${TCP_KEEP_RELEASES:-0}" != "1" ]; then
     rm -rf "$RELEASES"
 fi
 mkdir -p "$RELEASES"
-VPK_ARGS=(pack --packId TheChatPlace --packVersion "$VERSION" --packDir "$APP"
+VPK_ARGS=(pack --packId TheChatPlace --packVersion "$PACK_VERSION" --packDir "$APP"
           --mainExe TheChatPlace --packTitle "The Chat Place" --packAuthors "Kelly Ford"
           --icon thechatplace/assets/app.png --categories "Utility;Development"
           --channel "$CHANNEL" --runtime "linux-$ARCH" --outputDir "$RELEASES")
@@ -214,8 +219,11 @@ VPK_ARGS=(pack --packId TheChatPlace --packVersion "$VERSION" --packDir "$APP"
 chmod +x "$APPIMAGE"
 
 smoke_test "$PWD/$APPIMAGE" packed
-grep -q "\"updater\": \"$VERSION\"" smoke-local.json \
+grep -q "\"updater\": \"$PACK_VERSION\"" smoke-local.json \
     || { cat smoke-local.json; fail "Velopack doesn't see the AppImage as updatable."; }
+# The About box's build line made it into the app (build_info, _build.py).
+grep -q "\"build\": \"[^\"]*commit" smoke-local.json \
+    || { cat smoke-local.json; fail "the app doesn't know which build it is (_build.py)."; }
 window_test "$PWD/$APPIMAGE"
 
 if [ -n "$OUTPUT_DIR" ]; then
@@ -224,7 +232,7 @@ fi
 
 echo ""
 echo "========================================================================"
-echo "BUILD SUCCESSFUL: The Chat Place $VERSION ($CHANNEL)"
+echo "BUILD SUCCESSFUL: The Chat Place $PACK_VERSION ($CHANNEL)"
 echo "========================================================================"
 echo "  AppImage:    $APPIMAGE"
 echo "  Update feed: $RELEASES/releases.$CHANNEL.json and the packages beside it"
