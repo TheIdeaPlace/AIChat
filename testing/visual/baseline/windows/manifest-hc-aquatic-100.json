@@ -1597,11 +1597,11 @@
    "class": "ChatOptionsDialog",
    "size": [
     620,
-    600
+    670
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Options: a Claude chat's agent, instructions, style and folders"
+   "about": "Chat, Chat Settings, Chat Options: a Claude chat's agent, instructions, style and folders"
   },
   "elicitation-form": {
    "kind": "dialog",
