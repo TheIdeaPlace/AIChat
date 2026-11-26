@@ -347,7 +347,7 @@ applies only to Claude. Codex is told these limits in each chat, including reope
 and copies, so it can explain them instead of sending you to a setting.
 
 An MCP browser server you have configured and explicitly enabled through
-**View, Connected Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
+**Tools, Connected Tools (MCP)** is a separate tool. Codex can use tools actually available in that chat, or ask you to
 check a page in your own browser.
 
 ### You're asked too often, or you want more control
@@ -2920,7 +2920,7 @@ reports; it does not currently offer a service directory or an Add Server form.
 
 To use an available connection in a ChatGPT-subscription Codex chat:
 
-1. Open **Tools, Connected Tools**, select the service, and read **Details**.
+1. Open **Tools, Connected Tools (MCP)**, select the service, and read **Details**.
 2. If it needs account access, choose **Sign In** and complete the service's steps in your
    browser. Being signed in and being on for this chat are separate states.
 3. If it is off for this chat, choose **Copy with Tool On** and confirm the copy. Continue in
@@ -2931,17 +2931,20 @@ To use an available connection in a ChatGPT-subscription Codex chat:
 5. Check the service's actual result. To remove the connection from the conversation, use
    **Copy with Tool Off** and continue in that copy.
 
-Apps Codex marks accessible appear before the larger catalog of apps needing setup.
-They still start off for this chat until you use **Copy with Tool On**.
-Listing account apps can take up to a minute per page while Codex fetches its catalog.
-The lookup runs in the background; you can close the dialog while it is waiting.
+Apps that are on for the chat come first, including one that needs you to sign in again, then
+other apps your account can use, then the larger catalog of apps that need setting up. Apps
+start off for a chat until you use **Copy with Tool On**. Listing account apps can take up to a
+minute per page while Codex fetches its catalog. The lookup runs in the background: opening
+other chats doesn't wait for it, and you can close the dialog while it is waiting. Opening
+Connected Tools again for the same chat waits for that lookup rather than starting another.
 
 An empty list can mean no services have been configured. **Apps unavailable** means the app
 inventory could not be retrieved; it does not establish that your account has no apps. That
-entry is information, not a server to sign into. Its message distinguishes a timeout or an
-unsupported Codex method when known. **Refresh** retries the lookup, and any configured servers
-listed alongside it remain usable. Codex's ordinary file and command tools are separate from
-this list.
+entry is information, not a server to sign into: with it selected, the button after Reconnect
+reads **Change Tool**, and it, Sign In and Reconnect only say the message again. Its message
+distinguishes a timeout or an unsupported Codex method when known. **Refresh** retries the
+lookup, and any configured servers listed alongside it remain usable. Codex's ordinary file and
+command tools are separate from this list.
 
 Select or load a Codex chat started here, then choose **Tools, Connected Tools (MCP)**. It lists
 the servers set up in Codex for the chat's folder, with how each is doing. **Details** (Alt+D)
