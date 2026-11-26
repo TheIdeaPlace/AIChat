@@ -40,7 +40,7 @@ Messages:
   Enter, or Applications key / Shift+F10 then Read Full Message: Read the whole message as a formatted page (move by heading, table, list and code block); Alt+P reads it as plain text instead; Escape comes back to it
   Ctrl+C: Copy the whole message
   Ctrl+Shift+C: Copy the message's last code block
-  Ctrl+Enter on a queued message: Send it now (Claude chats): Claude stops what it's doing and answers it
+  Ctrl+Enter on a queued message: Send it now: Claude interrupts to answer it; Codex steers it into the running turn without interruption
   Ctrl+Alt+Enter on a queued message: Steer it: into the running turn now, without stopping it
   Ctrl+Shift+Z on one of your messages: Retry from Here (Claude and Codex chats): start a new chat just before it, with your message ready to change and send. Claude can also restore files changed with its edit tools in chats started here; Codex doesn't. The new chat keeps the original's settings, and the original chat is kept. Branch from Here (Alt+C, F, or on a message's menu) starts a new chat from that point; in Codex it includes the whole turn containing that message
   Ctrl+Shift+B, or Applications key / Shift+F10 then Code Blocks: Lists, on Code Blocks for this message: read and copy each code block

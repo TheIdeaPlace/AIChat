@@ -241,7 +241,7 @@ def child_transport():
     del c._accept_server_request
     c._runtime_lock = threading.Lock()
     c._child_routing_lock = threading.RLock()
-    c._child_pending = set(); c._child_files = {}; c._oauth_results = {}
+    c._child_pending = set(); c._child_files = {}; c._oauth_results = {}; c._child_turn_contexts = {}
     c._child_workers = threading.BoundedSemaphore(8)
     proof = CodexOwnedThread('owned', '/workspace', 'model', 'Parent', 0, c)
     c._runtime_threads = {'owned': proof}

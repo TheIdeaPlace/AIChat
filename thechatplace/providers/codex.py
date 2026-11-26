@@ -506,6 +506,8 @@ class CodexProvider:
                  execution=False, on_update=lambda state: None, runtime=None, session_tools=False):
         self.connection = (connection if connection is not None
                            else ManagedCodexConnection(executable))
+        from .codex_tools import CodexToolLogins
+        self._tool_logins = CodexToolLogins(executable) if self.provider_id == 'codex' else None
         self._last_messages = OrderedDict()
         self._last_lock = threading.Lock()
         self._last_cursor = 0
@@ -547,7 +549,7 @@ class CodexProvider:
             self._last_closed = True
         self.forget_last_messages()
         failures = []
-        for owner in (self.connection, self.runtime):
+        for owner in (self.connection, self.runtime, self._tool_logins):
             close = getattr(owner, "close", None)
             if close is not None:
                 try:
@@ -778,16 +780,17 @@ class CodexProvider:
 
     def connected_tool_action(self, session, name, action, login_id=None):
         self._check(session)
+        if self.provider_id != 'codex':
+            raise ValueError('Connected tools are not available for this provider.')
+        if action == 'login':
+            return self._tool_logins.start(session.cwd, name)
+        if action == 'login_status':
+            return self._tool_logins.result(session.cwd, name, login_id)
         if not session.is_own or self.runtime is None:
             raise ValueError('Open a Codex chat started here first')
         connection, allowed = self.runtime.tools_context(session.cli_session_id)
         if name not in allowed:
             raise ValueError('Enable this connected tool in a copy first')
-        if action == 'login':
-            return connection.request('mcpServer/oauth/login', {
-                'name': name, 'threadId': session.cli_session_id, 'timeoutSecs': 180})
-        if action == 'login_status':
-            return connection.oauth_result(session.cli_session_id, name, login_id)
         if action == 'reconnect':
             connection.request('config/mcpServer/reload', {})
             return self.connected_tools(session)
@@ -821,6 +824,9 @@ class CodexProvider:
 
     def steer_owned(self, record, text):
         return self.runtime.steer(record, text)
+
+    def take_queued_owned(self, record, index, expected):
+        return self.runtime.take_queued(record, index, expected)
 
     def steer_queued_owned(self, record, index, text):
         return self.runtime.steer(record, text, index=index)

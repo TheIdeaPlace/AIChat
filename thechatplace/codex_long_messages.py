@@ -169,6 +169,9 @@ def forget_chat(chat):
 def original(text):
     """The message as written, for a prompt of ours whose original is
     remembered; None otherwise."""
+    live = getattr(text, 'original_text', None)
+    if isinstance(live, str):
+        return live
     path = saved_path(text)
     if path is None:
         return None

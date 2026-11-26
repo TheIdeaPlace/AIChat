@@ -839,3 +839,81 @@ def test_change_permission_mode_offers_plan_and_leaves_it_with_a_grant(frame, en
         assert service.ready(saved)
     finally:
         service.close()
+
+
+@pytest.mark.parametrize('editing', [False, True])
+def test_codex_queue_actions_use_the_selected_occurrence_without_stop(frame,env,monkeypatch,editing):
+    from thechatplace.providers.codex_input import CodexInput
+    from thechatplace.providers.codex_runtime import CodexChatState
+    from dataclasses import replace
+    record=owned(frame,env)
+    monkeypatch.setattr(frame,'_can_edit',lambda info: True)
+    message=CodexInput('Queued request')
+    state=CodexChatState(record.cli_session_id,'working','turn','inProgress',queued=(message,))
+    frame._codex_states[record.to_info().key]=state
+    frame._chat_messages=[]
+    frame._rebuild_chat_list()
+    frame.chat_list.SetSelection(len(frame._visible_messages())-1)
+    frame.reply_text.SetValue('New draft')
+    calls=[]
+    focused=[]
+    set_focus=frame.reply_text.SetFocus
+    def focus_reply():
+        focused.append('reply')
+        set_focus()
+    # A hidden Cocoa window cannot own global focus. Check the requested
+    # destination here; shown-window keyboard/focus checks run in the VM.
+    monkeypatch.setattr(frame.reply_text,'SetFocus',focus_reply)
+    def action(name,saved,index,expected):
+        calls.append((name,saved,index,expected))
+        assert name=='take_queued' and expected is message
+        frame._codex_states[record.to_info().key]=replace(state,queued=())
+        return expected
+    monkeypatch.setattr(frame.sessions,'owned_action',action)
+    _sync_work(frame,monkeypatch)
+    (frame.edit_queued if editing else frame.remove_queued)()
+    assert calls==[('take_queued',record,0,message)]
+    assert frame.reply_text.GetValue()==('Queued request\n\nNew draft' if editing else 'New draft')
+    assert not frame._queued_rows()
+    assert focused==(['reply'] if editing else [])
+
+
+def test_codex_send_now_uses_steering_without_stopping(frame,env,monkeypatch):
+    record=owned(frame,env)
+    monkeypatch.setattr(frame,'_can_edit',lambda info: True)
+    calls=[]
+    monkeypatch.setattr(frame,'steer_queued',lambda: calls.append('steer'))
+    monkeypatch.setattr(frame,'_stop_codex_owned',lambda *a: calls.append('stop'))
+    frame.send_queued_now()
+    assert calls==['steer']
+
+
+def test_edited_queue_attachments_can_be_removed_without_sending_internal_lines(frame, env, monkeypatch):
+    from thechatplace.providers.codex_input import build_input, input_items
+    from thechatplace.providers.codex_runtime import CodexChatState
+    image = env['tmp'] / 'queued.png'; image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 64)
+    skill = env['tmp'] / 'SKILL.md'; skill.write_text('Synthetic skill')
+    record = owned(frame, env)
+    monkeypatch.setattr(frame, '_can_edit', lambda info: True)
+    monkeypatch.setattr(frame, '_require_capability', lambda *a: True)
+    message = build_input('Review this', [str(image)], skills=[('review', str(skill))])
+    state = CodexChatState(record.cli_session_id, 'working', 'turn', 'inProgress', queued=(message,))
+    frame._codex_states[record.to_info().key] = state
+    frame._chat_messages = []
+    frame._rebuild_chat_list()
+    frame.chat_list.SetSelection(len(frame._visible_messages()) - 1)
+    frame.reply_text.SetValue('')
+    def action(*args):
+        frame._codex_states[record.to_info().key] = replace(state, queued=())
+        return message
+    monkeypatch.setattr(frame.sessions, 'owned_action', action)
+    _sync_work(frame, monkeypatch)
+    frame.edit_queued()
+    assert frame.reply_text.GetValue() == 'Review this'
+    assert frame.attach_list.GetStrings() == ['queued.png', 'SKILL.md']
+    for _ in range(2):
+        frame.attach_list.SetSelection(0)
+        event = wx.KeyEvent(wx.wxEVT_KEY_DOWN); event.SetKeyCode(wx.WXK_DELETE)
+        frame._on_attach_key(event)
+    resent = frame._codex_message(frame._open, frame.reply_text.GetValue())
+    assert input_items(resent) == [{'type': 'text', 'text': 'Review this'}]

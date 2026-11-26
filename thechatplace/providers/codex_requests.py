@@ -481,6 +481,19 @@ def decode_request(request_id, method, params):
             raise ValueError('Unsupported connected tool form')
         body = {key: params[key] for key in ('mode', 'message', 'requestedSchema', 'url', 'elicitationId') if key in params}
         _text(body.get('message'))
+        metadata = params.get('_meta')
+        if isinstance(metadata, dict) and metadata.get('codex_approval_kind') == 'mcp_tool_call':
+            # Native MCP call consent arrives as an empty form (#536). Its
+            # arguments live in metadata, not in the form's editable fields.
+            # Show them before asking; accepting never persists a grant.
+            arguments = metadata.get('tool_params')
+            if body['mode'] != 'form' or not isinstance(arguments, dict):
+                raise ValueError('Unsupported connected tool approval')
+            detail = json.dumps(arguments, ensure_ascii=False, indent=2, allow_nan=False)
+            if len(detail) > 4096:
+                omitted = len(detail) - 4096
+                detail = detail[:4096] + f'\n({omitted} more characters not shown)'
+            body['message'] += '\n\nTool arguments:\n' + detail + '\n\nYour answer covers this call only.'
         if body['mode'] == 'form' and not isinstance(body.get('requestedSchema'), dict):
             raise ValueError('Invalid connected tool form')
         if body['mode'] == 'url':

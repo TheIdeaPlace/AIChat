@@ -2120,6 +2120,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Session on a Max plan, with Fable chosen and its note (#722)"
+  },
+  "main-codex-queue-edited": {
+   "kind": "window",
+   "png": "main-codex-queue-edited-light-100.png",
+   "json": "main-codex-queue-edited-light-100.json",
+   "title": "Codex history preview — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "A queued Codex message returned to its draft without stopping the turn"
+  },
+  "codex-tool-approval": {
+   "kind": "dialog",
+   "png": "codex-tool-approval-light-100.png",
+   "json": "codex-tool-approval-light-100.json",
+   "title": "project-notes asks: Codex review",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex tool-call consent with exact arguments and a one-time answer"
   }
  },
  "seconds": 278.6

@@ -126,7 +126,7 @@ def test_the_codex_note_says_first_that_a_change_is_a_new_copy():
         for word in ("MCP", "sandbox", "Plugin", "read-only", "Configured", "CLI"):
             assert word not in note
         assert "codex mcp add" in note
-    assert "codex mcp login" in elsewhere
+    assert "Sign In connects your account without changing this chat's tools" in elsewhere
 
 
 @pytest.mark.parametrize("platform,key", [("win32", " (Alt+O)"), ("linux", " (Alt+O)"), ("darwin", "")])
@@ -136,35 +136,18 @@ def test_delete_and_sign_in_name_the_button_and_its_key_where_it_has_one(platfor
     assert host.delete_text(on, platform) == (
         f"In a Codex chat, a tool changes only in a new copy: press Copy with Tool On{key} to make one.")
     assert host.delete_text(off, platform).endswith(f"press Copy with Tool Off{key} to make one.")
-    assert host.sign_in_text(on, platform) == (
-        f"Sign In works only in a chat with this tool on. Press Copy with Tool On{key} to make a "
-        "copy with it on, then sign in from Connected Tools in that copy.")
 
 
-def test_sign_in_for_a_chat_from_elsewhere_gives_the_codex_command():
-    host = _host(False)
-    assert host.sign_in_text(CodexTool("notes", "needs-auth", read_only=True)) == (
-        "This chat wasn't started in The Chat Place. To sign in to this tool, use Codex in a "
-        "terminal: codex mcp login notes.")
-
-
-@pytest.mark.parametrize("name,platform,said", [
-    # Every character codex mcp add allows (codex-cli 0.163) goes as it is.
-    ("my-notes_2", "win32", "codex mcp login my-notes_2"),
-    ("team/notes.v2", "linux", "codex mcp login team/notes.v2"),
-    ("me@work:notes", "darwin", "codex mcp login me@work:notes"),
-    # PowerShell would take a leading @ as splatting.
-    ("@work", "win32", "codex mcp login '@work'"),
-    # Hand-written in config.toml: single quotes, a quote inside as each shell needs.
-    ("my notes", "win32", "codex mcp login 'my notes'"),
-    ("Kelly's notes", "win32", "codex mcp login 'Kelly''s notes'"),
-    ("Kelly's notes", "darwin", "codex mcp login 'Kelly'\\''s notes'"),
-    ("$(rm -rf ~)", "linux", "codex mcp login '$(rm -rf ~)'"),
-])
-def test_the_login_command_is_safe_to_paste_in_each_systems_terminal(name, platform, said):
-    pytest.importorskip("wx")
-    from thechatplace.ui.codex_tools_host import _login_command
-    assert _login_command(name, platform) == said
+@pytest.mark.parametrize('own', [False, True])
+def test_signin_can_start_for_an_off_server_without_a_chat(own):
+    host=_host(own)
+    work=[];calls=[]
+    host.frame._codex_work=lambda action,done: work.append(action)
+    host.frame.sessions=SimpleNamespace(connected_tool_action=lambda *a: calls.append(a))
+    host.sign_in(CodexTool('notes','off',off_for_chat=True),lambda *a: None)
+    assert len(work)==1
+    work[0]()
+    assert calls==[(host.info,'notes','login')]
 
 
 def test_every_copy_question_says_make_a_new_copy(monkeypatch):
