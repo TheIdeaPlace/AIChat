@@ -25,7 +25,7 @@ def test_limits_in_words():
     reached = usage.limits_text(_info(five=1.0, status="rejected"), NOW)
     assert reached.startswith("You've reached a usage limit; it resets at 10:00 AM.")
     assert usage.limits_text(_info(isUsingOverage=True), NOW).endswith(
-        "Turns are now billed as extra usage.")
+        "Turns are now charged to usage credits.")
 
 
 def test_warnings_only_when_close_or_reached():
@@ -72,7 +72,7 @@ def test_usage_lines_one_per_limit():
     assert lines[0] == "Quiet one: Context: not known until Claude's next reply."
     assert lines[1] == "You've reached a usage limit; it resets at 10:00 AM."
     assert "Weekly Opus limit 50% used." in lines
-    assert lines[-1] == "Turns are now billed as extra usage."
+    assert lines[-1] == "Turns are now charged to usage credits."
     assert len(lines) == 6
     # The spoken text (a limit reached, said unasked) is the same lines run together.
     assert usage.limits_text(info, NOW) == " ".join(lines[1:])
@@ -114,3 +114,24 @@ def test_transcript_tracks_context_and_compaction():
                                compactMetadata={"trigger": "auto"})])
     assert added[0].text == "Conversation compacted (the context was full)."
     assert parser.transcript.context_tokens == 0 and parser.transcript.compactions == 1
+
+
+def test_the_weekly_fable_limit_is_named_and_kept_after_other_turns():
+    """Fable turns report seven_day_overage_included, which Claude Code calls
+    the Fable limit (#722); other models' turns don't, so Usage keeps the
+    last Fable report's."""
+    fable = _info()
+    fable["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.25}
+    assert "Weekly Fable limit 25% used." in usage.limit_lines(fable, NOW)
+    opus = _info(seven=0.4)
+    merged = usage.with_fable_window(opus, fable)
+    lines = usage.limit_lines(merged, NOW)
+    assert "Weekly Fable limit 25% used." in lines
+    assert "Weekly limit 40% used, resets on Friday at 9:00 AM." in lines
+    assert "seven_day_overage_included" not in opus["unifiedWindows"]  # not changed
+    # A newer report of its own wins; nothing to add, nothing added.
+    fresh = _info()
+    fresh["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.5}
+    assert usage.with_fable_window(fresh, fable) is fresh
+    assert usage.with_fable_window(opus, None) is opus
+    assert usage.with_fable_window(None, fable) is None

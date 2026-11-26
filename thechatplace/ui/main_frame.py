@@ -4343,7 +4343,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         context = None
         if self._open is not None:
             context = (self._open.title, *self._context(self._open))
-        lines = usage.usage_lines(context, self._limits)
+        # The weekly Fable limit stays listed after other models' turns (#722).
+        limits = usage.with_fable_window(self._limits, self._fable_limits)
+        lines = usage.usage_lines(context, limits)
         # What fills it, after the context line (#468).
         lines[1:1] = self._context_breakdown(self._open)
         if self._is_api_chat(self._open):
@@ -4355,7 +4357,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # On the subscription, the plan's limits stay last, where End
             # finds them: API credits get one line before them.
             summary = self._api_usage_lines(summary=True)
-            plan = len(usage.limit_lines(self._limits))
+            plan = len(usage.limit_lines(limits))
             lines[len(lines) - plan:len(lines) - plan] = summary
         self._modal(UsageDialog(self, lines, self._copy_usage))
 

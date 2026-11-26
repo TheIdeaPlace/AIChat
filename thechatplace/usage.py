@@ -31,8 +31,11 @@ LIMIT_WARNING = 0.9
 
 _WINDOW_NAMES = {"five_hour": "5-hour limit", "seven_day": "weekly limit",
                  "seven_day_opus": "weekly Opus limit", "seven_day_sonnet": "weekly Sonnet limit",
-                 "seven_day_overage_included": "weekly limit with extra usage",
-                 "overage": "extra usage"}
+                 # Claude Code's own names for these (2.1.331): Fable's
+                 # weekly allowance, reported only by Fable turns (#722),
+                 # and usage credits.
+                 "seven_day_overage_included": "weekly Fable limit",
+                 "overage": "usage credit limit"}
 _LIMIT_REACHED = re.compile(r"usage limit reached\|(\d{9,})", re.IGNORECASE)
 
 
@@ -92,6 +95,26 @@ def _windows(info: dict):
     return found
 
 
+#: The window only Fable turns report (#722): Fable's weekly allowance.
+FABLE_WINDOW = "seven_day_overage_included"
+
+
+def with_fable_window(info: Optional[dict], fable_info: Optional[dict]) -> Optional[dict]:
+    """``info`` with the weekly Fable limit from the latest Fable turn's
+    report (``fable_info``) when ``info`` hasn't one: other models' turns
+    don't report it, and the latest report would otherwise drop it."""
+    fable = ((fable_info or {}).get("unifiedWindows") or {}).get(FABLE_WINDOW) \
+        if isinstance(fable_info, dict) else None
+    if not isinstance(fable, dict) or not isinstance(info, dict):
+        return info
+    windows = info.get("unifiedWindows")
+    windows = dict(windows) if isinstance(windows, dict) else {}
+    if FABLE_WINDOW in windows:
+        return info
+    windows[FABLE_WINDOW] = fable
+    return {**info, "unifiedWindows": windows}
+
+
 def limit_lines(info: Optional[dict], now: Optional[float] = None) -> List[str]:
     """Each usage limit as its own line (#130): "5-hour limit 8% used,
     resets at 7:00 AM.", "Weekly limit 34% used, resets on Friday at 3:00
@@ -110,7 +133,7 @@ def limit_lines(info: Optional[dict], now: Optional[float] = None) -> List[str]:
         lines.insert(0, "You've reached a usage limit" + (
             f"; it resets {when(float(reset), now)}." if reset else "."))
     if info.get("isUsingOverage"):
-        lines.append("Turns are now billed as extra usage.")
+        lines.append("Turns are now charged to usage credits.")
     return lines or ["Usage limits: Claude Code didn't say."]
 
 
