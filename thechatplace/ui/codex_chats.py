@@ -639,6 +639,12 @@ class CodexChats(SoundHost, CodexExtras):
         info = self._open
         if info is None or self._codex_preparing.get(info.key) != generation:
             return
+        self._prepare_runtime_chat(info)
+
+    def _prepare_runtime_chat(self, info):
+        """Get ``info`` ready to take a message, on a worker: the open chat,
+        or one Express is replying to (#737), which isn't open. A message
+        waiting for it (``_relay_waiting``) goes once it's ready."""
         # A runtime chat's key starts with its provider ("codex:<id>"); some
         # callers pass a bare object with only a key and an id.
         provider = getattr(info, 'provider', '') or info.key.split(':', 1)[0]
@@ -812,12 +818,19 @@ class CodexChats(SoundHost, CodexExtras):
         return (' It was too long to send directly, so '
                 f'{provider_name(record.provider)} was given it as a file to read.')
 
-    def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
+    def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None,
+                          refused=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
-        says what was sent, and keeps the text if it fails (``on_result``)."""
+        says what was sent, and keeps the text if it fails (``on_result``).
+        ``refused(problem)``: told instead, before anything goes, when API
+        credits stop it (no key, a limit, Cancel at the question); the caller
+        keeps the text (Express's reply box, #737). False is returned then."""
         key = record.to_info().key
         if record.provider == 'codex-api':
             problem = self._api_send_problem(key)
+            if problem is not None and refused is not None:
+                refused(problem)
+                return False
             if problem is not None:
                 if restore:
                     self._restore_codex_text(key, (text,))

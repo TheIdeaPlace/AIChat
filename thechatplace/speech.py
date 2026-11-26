@@ -175,6 +175,17 @@ def _default_fields() -> List[str]:
     return list(DEFAULT_FIELDS)
 
 
+def _default_express_fields() -> List[str]:
+    from .sessions import DEFAULT_EXPRESS_FIELDS
+    return list(DEFAULT_EXPRESS_FIELDS)
+
+
+#: Express (#737): how many chats it shows at most, and the range Settings allows.
+EXPRESS_COUNT_DEFAULT = 10
+EXPRESS_COUNT_MIN = 1
+EXPRESS_COUNT_MAX = 50
+
+
 @dataclass
 class SpeechSettings:
     """What the user chose. Persisted as one small JSON file."""
@@ -278,6 +289,13 @@ class SpeechSettings:
     api_confirm_first: bool = True
     #: Say what each reply on API credits cost ("Reply finished, 6 cents").
     api_say_cost: bool = True
+    #: Express (#737): one row at the top of the session list that opens a
+    #: list of the latest reply from each chat. Off until turned on.
+    express_enabled: bool = False
+    #: How many chats Express shows at most, newest first.
+    express_count: int = EXPRESS_COUNT_DEFAULT
+    #: Express's own columns, ids from ``sessions.EXPRESS_FIELD_IDS``.
+    express_fields: List[str] = field(default_factory=_default_express_fields)
 
     def includes_codex(self) -> bool:
         """Only a found native CLI enables discovery, even with an explicit on."""
@@ -411,6 +429,14 @@ class SpeechSettings:
         settings.api_send_notice = notice if notice in API_NOTICES else API_NOTICE_SPEECH
         settings.api_confirm_first = raw.get("api_confirm_first") is not False
         settings.api_say_cost = raw.get("api_say_cost") is not False
+        # Express (#737): off unless turned on; a count out of range is the default.
+        settings.express_enabled = raw.get("express_enabled") is True
+        count = raw.get("express_count", EXPRESS_COUNT_DEFAULT)
+        settings.express_count = (count if type(count) is int
+                                  and EXPRESS_COUNT_MIN <= count <= EXPRESS_COUNT_MAX
+                                  else EXPRESS_COUNT_DEFAULT)
+        from .sessions import clean_express_fields
+        settings.express_fields = clean_express_fields(raw.get("express_fields"))
         return settings
 
     #: True when settings.json was there but couldn't be read, so these are

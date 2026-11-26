@@ -79,6 +79,10 @@ EVENT = "event"
 COMPACTION = "compaction"
 COMMAND_OUTPUT = "command_output"
 COMMAND_ERROR = "command_error"
+#: What counts as a chat's latest reply: anything from the AI's side, never
+#: your own message (``Transcript.last_reply``, and Express's Last reply,
+#: #737, so the row and its whole text agree).
+REPLY_KINDS = (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT, COMMAND_ERROR)
 #: An agent conversation's own line (#248): the relay passing a reply on, the
 #: setup it sent, or why it stopped. Never from a transcript.
 RELAY = "relay"
@@ -332,7 +336,7 @@ class Transcript:
 
     def last_reply(self) -> Optional[ChatMessage]:
         for message in reversed(self.messages):
-            if message.kind in (ASSISTANT, QUESTION, PLAN, ERROR, COMMAND_OUTPUT, COMMAND_ERROR):
+            if message.kind in REPLY_KINDS:
                 return message
         return None
 
@@ -1192,6 +1196,17 @@ def last_message_from_tail(path: Path, steps: Tuple[int, ...] = TAIL_STEPS
 
 
 def _last_message(handle, size: int, steps: Tuple[int, ...]) -> Optional[ChatMessage]:
+    return _tail_messages(handle, size, steps)[0]
+
+
+def _tail_messages(handle, size: int, steps: Tuple[int, ...], replies: bool = True
+                   ) -> Tuple[Optional[ChatMessage], Optional[ChatMessage]]:
+    """(the last message, the last reply) in the file's end, either None
+    when the end read has none. One read serves both: the reply is usually
+    the last message, or just before it. ``replies`` off (Express is off,
+    #737): the reply isn't looked for, so no more is read for it."""
+    wanted = 2 if replies else 1
+    found: Dict[str, Optional[ChatMessage]] = {}
     for number, limit in enumerate(steps):
         last_step = number == len(steps) - 1
         start = max(0, size - limit)
@@ -1212,58 +1227,72 @@ def _last_message(handle, size: int, steps: Tuple[int, ...]) -> Optional[ChatMes
         parser = TranscriptParser()
         parser.feed(split_jsonl(data))
         messages = parser.transcript.messages
-        for index in range(len(messages) - 1, -1, -1):
-            message = messages[index]
-            if message.kind not in LAST_MESSAGE_KINDS or not message.text.strip():
+        for name, kinds in (("message", LAST_MESSAGE_KINDS), ("reply", REPLY_KINDS))[:wanted]:
+            if name in found:
                 continue
-            if index == 0 and start > 0 and message.kind == ASSISTANT and not last_step:
-                break  # may have begun before this step: read more
-            return message
-        if start == 0:
-            return None
-    return None
+            for index in range(len(messages) - 1, -1, -1):
+                message = messages[index]
+                if message.kind not in kinds or not message.text.strip():
+                    continue
+                if index == 0 and start > 0 and message.kind == ASSISTANT and not last_step:
+                    break  # may have begun before this step: read more
+                found[name] = message
+                break
+        if len(found) == wanted or start == 0:
+            break
+    return found.get("message"), found.get("reply")
 
 
 class LastMessages:
     """``last_message_from_tail`` remembered by file size and modification
     time, so a refresh reads only transcripts that changed. Safe to use from
-    the background thread that gathers the session list."""
+    the background thread that gathers the session list. The last reply
+    (Express, #737) comes from the same read, and is remembered with it."""
 
     def __init__(self, steps: Tuple[int, ...] = TAIL_STEPS) -> None:
         self._steps = steps
         self._lock = threading.Lock()
-        self._entries: Dict[str, Tuple[Tuple[int, int], Optional[ChatMessage]]] = {}
+        #: path -> (stamp, message, reply, whether the reply was looked for).
+        self._entries: Dict[str, Tuple[Tuple[int, int], Optional[ChatMessage],
+                                       Optional[ChatMessage], bool]] = {}
         #: How many files were read (not answered from memory); for tests.
         self.reads = 0
 
     def get(self, path: Optional[Path]) -> Optional[ChatMessage]:
+        return self.get_both(path, replies=False)[0]
+
+    def get_both(self, path: Optional[Path], replies: bool = True
+                 ) -> Tuple[Optional[ChatMessage], Optional[ChatMessage]]:
+        """(the last message, the last reply), each None when there's none.
+        ``replies`` off: the reply isn't looked for (it's None)."""
         if path is None:
-            return None
+            return None, None
         name = str(path)
         with self._lock:
             entry = self._entries.get(name)
         try:
             # A stat, not an open, when nothing changed: most refreshes.
             info = os.stat(path)
-            if entry is not None and entry[0] == (info.st_size, info.st_mtime_ns):
-                return entry[1]
+            if (entry is not None and entry[0] == (info.st_size, info.st_mtime_ns)
+                    and (entry[3] or not replies)):
+                return entry[1], entry[2] if replies else None
             with open(path, "rb") as handle:
                 # The stamp of what is read, from the handle it's read from.
                 info = os.fstat(handle.fileno())
                 stamp = (info.st_size, info.st_mtime_ns)
-                message = _last_message(handle, info.st_size, self._steps)
+                message, reply = _tail_messages(handle, info.st_size, self._steps, replies)
         except FileNotFoundError:
             with self._lock:
                 self._entries.pop(name, None)
-            return None
+            return None, None
         except OSError:
             # Busy for a moment (being replaced, scanned): keep what it said,
             # so the row doesn't lose its message and get it back again.
-            return entry[1] if entry is not None else None
+            return (entry[1], entry[2] if replies else None) if entry is not None else (None, None)
         with self._lock:
-            self._entries[name] = (stamp, message)
+            self._entries[name] = (stamp, message, reply, replies)
             self.reads += 1
-        return message
+        return message, reply
 
     def keep_only(self, paths: Iterable[Path]) -> None:
         """Forget files not in ``paths``: sessions gone from the list."""

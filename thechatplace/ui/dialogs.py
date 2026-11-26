@@ -16,9 +16,10 @@ from theideaplace_appkit import difftext
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, fable_in_plan, models_for)
-from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
+from ..sessions import (DEFAULT_FIELDS, FIELDS, clean_fields, field_short_name,
                         WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
+                      EXPRESS_COUNT_MAX, EXPRESS_COUNT_MIN,
                       NOTIFY_LABELS, NOTIFY_LEVELS, RATE_PRESET_LABELS, SpeechSettings)
 from ..prompts import MAX_NAME as PROMPT_NAME_MAX
 from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key_name, your_key,
@@ -1722,6 +1723,21 @@ class SettingsDialog(wx.Dialog):
             recent_row.Add(self.clear_recent_btn, 0)
         outer.Add(recent_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # Express (#737), off until turned on, and how many chats it shows.
+        # One row, so Settings keeps its height. No access keys: the letters
+        # of both are taken here.
+        express_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.express = wx.CheckBox(body, label="Show Express at the top of the session list")
+        self.express.SetValue(speech.express_enabled)
+        express_row.Add(self.express, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 16)
+        express_row.Add(wx.StaticText(body, label="Chats Express shows at most:"), 0,
+                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.express_count = wx.SpinCtrl(body, min=EXPRESS_COUNT_MIN, max=EXPRESS_COUNT_MAX,
+                                         initial=speech.express_count)
+        set_accessible_name(self.express_count, "Chats Express shows at most")
+        express_row.Add(self.express_count, 0)
+        outer.Add(express_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # The label wraps onto several lines: as one it ran past the dialog's
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
@@ -1966,6 +1982,9 @@ class SettingsDialog(wx.Dialog):
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue(),
+                                   express_enabled=self.express.GetValue(),
+                                   express_count=min(max(self.express_count.GetValue(),
+                                                         EXPRESS_COUNT_MIN), EXPRESS_COUNT_MAX),
                                    # API credits (#658)
                                    api_send_notice=(
                                        API_NOTICES[max(self.api_notice.GetSelection(), 0)]
@@ -4384,16 +4403,27 @@ class SessionColumnsDialog(wx.Dialog):
     Alt+Up and Alt+Down do. Every action is said (``say``), and focus stays
     on the column it moved, so arrowing on reads its new neighbours."""
 
-    def __init__(self, parent, fields, sample, say):
+    def __init__(self, parent, fields, sample, say, columns=None, defaults=None, clean=None,
+                 title="Session List Columns", intro=None,
+                 preview_label="&Preview of the selected session's line:", line=None):
         """``fields``: the shown column ids, in order. ``sample``: the
-        session whose row the preview shows. ``say(text)`` speaks."""
-        super().__init__(parent, title="Session List Columns", size=dialog_size(parent, 640, 560),
+        session whose row the preview shows. ``say(text)`` speaks.
+        Another list's columns (Express's, #737): ``columns`` its (id, name)
+        pairs, ``defaults`` and ``clean`` its default and clean-up,
+        ``line(sample, fields)`` its row, and its own ``title``, ``intro``
+        and ``preview_label``."""
+        super().__init__(parent, title=title, size=dialog_size(parent, 640, 560),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._shown = clean_fields(list(fields))
+        self._columns = list(columns) if columns is not None else list(FIELDS)
+        self._names = dict(self._columns)
+        self._ids = [field_id for field_id, _name in self._columns]
+        self._defaults = list(defaults) if defaults is not None else list(DEFAULT_FIELDS)
+        self._shown = (clean or clean_fields)(list(fields))
         self._sample = sample
         self._say = say
+        self._line = line or (lambda info, shown: info.list_line(fields=shown))
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(WrappingText(self, (
+        sizer.Add(WrappingText(self, intro or (
             "Each session in the list is read as one line. Choose what it says, and in "
             "what order: put Status first to hear what each session is doing before "
             "its title.")), 0, wx.EXPAND | wx.LEFT | wx.TOP | wx.RIGHT, 8)
@@ -4415,7 +4445,7 @@ class SessionColumnsDialog(wx.Dialog):
         # included: a list box has no sideways scroll bar, so a longer name
         # was cut off at its edge (#289: "Kind (desktop app, Cowork,
         # terminal or The Chat Place)").
-        widest = max(self.shown.GetTextExtent(name).width for name in FIELD_NAMES.values())
+        widest = max(self.shown.GetTextExtent(name).width for name in self._names.values())
         room = (widest + wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
                 + dip_width(self, 16))
         for box in (self.available, self.shown):
@@ -4435,9 +4465,8 @@ class SessionColumnsDialog(wx.Dialog):
                        self.top_btn, self.bottom_btn, self.reset_btn):
             row.Add(button, 0, wx.RIGHT | wx.BOTTOM, 6)
         sizer.Add(row, 0, wx.LEFT | wx.RIGHT, 8)
-        sizer.Add(wx.StaticText(self, label="&Preview of the selected session's line:"),
-                  0, wx.LEFT | wx.TOP, 8)
-        self.preview = _read_only_text(self, "", "Preview of the selected session's line",
+        sizer.Add(wx.StaticText(self, label=preview_label), 0, wx.LEFT | wx.TOP, 8)
+        self.preview = _read_only_text(self, "", preview_label.replace("&", "").rstrip(":"),
                                        min_height=60)
         sizer.Add(self.preview, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         buttons = wx.StdDialogButtonSizer()
@@ -4474,10 +4503,10 @@ class SessionColumnsDialog(wx.Dialog):
         return list(self._shown)
 
     def _not_shown(self):
-        return [f for f in FIELD_IDS if f not in self._shown]
+        return [f for f in self._ids if f not in self._shown]
 
     def _show_preview(self):
-        line = self._sample.list_line(fields=self._shown) if self._sample is not None else ""
+        line = self._line(self._sample, self._shown) if self._sample is not None else ""
         self.preview.ChangeValue(line)
         self.preview.SetInsertionPoint(0)
 
@@ -4488,12 +4517,12 @@ class SessionColumnsDialog(wx.Dialog):
             shown_index = self.shown.GetSelection()
         if available_index is None:
             available_index = self.available.GetSelection()
-        self.shown.Set([FIELD_NAMES[f] for f in self._shown])
+        self.shown.Set([self._names[f] for f in self._shown])
         if self._shown:
             self.shown.SetSelection(min(max(shown_index, 0), len(self._shown) - 1))
         rest = self._not_shown()
         # An empty list reads as nothing at all to a screen reader.
-        self.available.Set([FIELD_NAMES[f] for f in rest] or ["Every column is shown."])
+        self.available.Set([self._names[f] for f in rest] or ["Every column is shown."])
         self.available.SetSelection(min(max(available_index, 0), max(len(rest), 1) - 1))
         self._show_preview()
 
@@ -4521,7 +4550,7 @@ class SessionColumnsDialog(wx.Dialog):
         field = rest[index]
         self._shown.append(field)
         self._fill(shown_index=len(self._shown) - 1, available_index=index)
-        self._say(f"{field_short_name(field)} added, {self._position(len(self._shown) - 1)}.")
+        self._say(f"{field_short_name(field, self._columns)} added, {self._position(len(self._shown) - 1)}.")
         (self.available if len(rest) > 1 else self.shown).SetFocus()
 
     def remove(self):
@@ -4536,7 +4565,7 @@ class SessionColumnsDialog(wx.Dialog):
         field = self._shown.pop(index)
         self._fill(shown_index=index)
         count = len(self._shown)
-        self._say(f"{field_short_name(field)} removed. {count} column"
+        self._say(f"{field_short_name(field, self._columns)} removed. {count} column"
                   f"{'s' if count != 1 else ''} shown.")
 
     def move(self, step):
@@ -4557,7 +4586,7 @@ class SessionColumnsDialog(wx.Dialog):
         self._move_to(index, 0 if top else len(self._shown) - 1, f"to {where}", where)
 
     def _move_to(self, index, target, how, end):
-        name = field_short_name(self._shown[index])
+        name = field_short_name(self._shown[index], self._columns)
         self.shown.SetFocus()
         if index == target or not 0 <= target < len(self._shown):
             self._say(f"{name} is already at the {end}.")
@@ -4568,16 +4597,17 @@ class SessionColumnsDialog(wx.Dialog):
         # hasn't changed at all.
         low, high = min(index, target), max(index, target)
         for row in range(low, high + 1):
-            self.shown.SetString(row, FIELD_NAMES[self._shown[row]])
+            self.shown.SetString(row, self._names[self._shown[row]])
         self.shown.SetSelection(target)
         self._show_preview()
         self._say(f"{name} moved {how}, {self._position(target)}.")
 
     def reset(self):
-        self._shown = list(DEFAULT_FIELDS)
+        self._shown = list(self._defaults)
         self._fill(shown_index=0, available_index=0)
         self.shown.SetFocus()
-        self._say(f"Columns reset to the default: {len(self._shown)} shown, title first.")
+        first = field_short_name(self._shown[0], self._columns).lower()
+        self._say(f"Columns reset to the default: {len(self._shown)} shown, {first} first.")
 
     def _on_char_hook(self, event):
         key = event.GetKeyCode()
@@ -4649,6 +4679,69 @@ class PromptEditDialog(wx.Dialog):
 
     def values(self):
         return self.name.GetValue(), self.text.GetValue()
+
+
+class ExpressReplyDialog(wx.Dialog):
+    """Express's reply box (#737): R on a chat in Express. Its title and its
+    box's label name the chat it goes to ("Reply to Release notes (Claude)"),
+    so you always know where the text is going. Enter sends, as in the
+    Answer dialog's boxes, and Shift+Enter starts a new line; Escape or
+    Cancel leaves it.
+
+    ``send(text)`` sends it and says so; True closes the dialog, False keeps
+    the text here (why it didn't go has been said), so it's never lost.
+    ``say(text)`` speaks."""
+
+    def __init__(self, parent, title: str, send, say=None, text: str = ""):
+        super().__init__(parent, title=title, size=dialog_size(parent, 560, 320),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._send = send
+        self._say = say
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        # The chat's name may have an "&" in it: shown as written, not taken
+        # for an access key (#539).
+        sizer.Add(wx.StaticText(self, label=wx.Control.EscapeMnemonics(title) + ":"), 0,
+                  wx.LEFT | wx.TOP | wx.RIGHT, 8)
+        # TE_RICH2, as the reply box: a RichEdit takes its name from the label.
+        self.text = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_RICH2)
+        set_accessible_name(self.text, title)
+        self.text.SetMinSize(dip(self, -1, 120))
+        sizer.Add(self.text, 1, wx.EXPAND | wx.ALL, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.send_btn = wx.Button(self, wx.ID_OK, "&Send")
+        self.send_btn.SetDefault()
+        row.Add(self.send_btn, 0, wx.RIGHT, 6)
+        row.Add(wx.Button(self, wx.ID_CANCEL, "Cancel"), 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        self.SetSizer(sizer)
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.send_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_send())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        self.CentreOnParent()
+        wx.CallAfter(self._start)
+
+    def _start(self):
+        self.text.SetFocus()
+        self.text.SetInsertionPointEnd()
+
+    def _on_key(self, event):
+        if answer_box_key(event, (self.text,), self.send_btn):
+            return
+        if press_focused_button_on_a_mac(event):
+            return
+        event.Skip()
+
+    def on_send(self):
+        text = self.text.GetValue().strip()
+        if not text:
+            if self._say is not None:
+                self._say("Type a message first.")
+            self.text.SetFocus()
+            return
+        if self._send(text):
+            self.EndModal(wx.ID_OK)
+            return
+        self.text.SetFocus()  # not sent: still here, to change or send again
 
 
 def plain_enter(event) -> bool:

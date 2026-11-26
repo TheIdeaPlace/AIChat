@@ -65,7 +65,8 @@ class ImportedChats:
         """The Last message column (discovery asks on every refresh while it's
         shown): from the index, never by reading each history (#449 review)."""
         for info in sessions:
-            info.last_message = self.last_reply(info)
+            # The index keeps only the last reply, so it's both (Express, #737).
+            info.last_message = info.last_reply = self.last_reply(info)
 
     def last_reply(self, session: SessionInfo) -> str:
         try:

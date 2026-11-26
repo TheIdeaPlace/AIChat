@@ -1083,6 +1083,33 @@ def s_main_last_message(frame, env):
     _pump(0.5)
 
 
+def s_main_express(frame, env):
+    """Express (#737): its row first in the session list, and its list of
+    each chat's latest reply in the messages list, the reply box's place
+    saying R replies."""
+    import fake_env
+    frame._express_set(True, say=False)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None, timeout=10)
+    frame.session_list.SetSelection(0)
+    frame.on_open_session()
+    if not frame._express_open:
+        raise RuntimeError("Express didn't open")
+    _pump(0.5)
+
+
+def d_express_reply(frame, env):
+    """R in Express: the reply box for the probe's own chat, named for it."""
+    s_main_express(frame, env)
+    for index, key in enumerate(frame._express_keys):
+        if frame._express_rows[key].title == "Visual probe":
+            frame.chat_list.SetSelection(index)
+            break
+    else:
+        raise RuntimeError("Visual probe isn't in Express")
+    frame.chat_list.SetFocus()
+    return frame.express_reply
+
+
 def s_main_status_bar(frame, env):
     _open(frame, "Visual probe")
     frame.status_parts.set("context", "Context 42% full")
@@ -2682,6 +2709,8 @@ SURFACES = {
     "main-activity": ("window", s_main_activity, "Show tool activity turned on"),
     "main-last-message": ("window", s_main_last_message,
                           "The session list with the Last message column (#146)"),
+    "main-express": ("window", s_main_express,
+                     "Express (#737): its row first, and each chat's latest reply"),
     "main-status-bar": ("window", s_main_status_bar,
                         "The status bar with every button showing: context, needs you, update"),
     "main-narrow": ("window", s_main_narrow, "An own session in a 640 by 480 window"),
@@ -2839,6 +2868,7 @@ SURFACES = {
     'openai-properties': ('dialog', d_openai_properties, 'Codex API Properties with unknown spending'),
     'openai-usage': ('dialog', d_openai_usage, 'OpenAI Usage with estimated maximum and unknown spending'),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
+    "express-reply": ("dialog", d_express_reply, "Express's reply box (R), named for its chat"),
     "rewind": ("dialog", d_rewind, "Retry from Here on your first message: Conversation only chosen"),
     "rewind-files": ("dialog", d_rewind_files,
                      "Retry from Here with Conversation and files chosen: the warning in What Happens"),
@@ -2989,6 +3019,7 @@ DIALOG_CLASSES = {
     'openai-properties': 'PropertiesDialog',
     'openai-usage': 'UsageDialog',
     "relay": "RelayDialog",
+    "express-reply": "ExpressReplyDialog",
     "rewind": "RewindDialog",
     "rewind-files": "RewindDialog",
     "rewind-files-only": "RewindDialog",

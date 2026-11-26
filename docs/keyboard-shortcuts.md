@@ -42,6 +42,19 @@ This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl, Option 
 | Shift+Delete | Delete a Claude or Codex chat started here permanently, conversation and all, after you confirm, or The Chat Place's copy of a restored or kept chat (other chats can only be hidden); on an agent conversation, delete the conversation and keep its chats |
 | Ctrl+F | Show only sessions whose title, folder or what they need contains some text; Escape in the list shows them all again |
 
+## Express
+
+| Keys | What it does |
+| --- | --- |
+| Alt+V, X | Express on or off: one row at the top of the session list that lists the latest reply from each chat the list is showing, newest first (Settings sets how many) |
+| Enter on the Express row | Open Express in the messages, on the newest chat |
+| Up, Down, Home and End in Express | Move between the chats, each read with its latest reply |
+| Enter in Express | Open that chat |
+| Shift+Enter in Express | Read that chat's whole latest reply |
+| R in Express | Reply to that chat, in a box named for it: Enter sends, Shift+Enter starts a new line, and you stay in Express |
+| Ctrl+C in Express | Copy that chat's latest reply |
+| Escape in Express | Back to the session list, on the Express row |
+
 ## Messages
 
 | Keys | What it does |

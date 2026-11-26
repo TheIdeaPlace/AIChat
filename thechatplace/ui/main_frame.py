@@ -119,6 +119,8 @@ from . import rewind_chats
 from .. import rewind
 from .session_tools_host import SessionToolsHost
 from .agent_chats import AgentChats
+from .express import ExpressView
+from ..express import EXPRESS_KEY, heading as express_heading
 from .subagent_host import SubagentsHost
 from .keys_dialog import KeyboardShortcutsDialog
 from .live_turns import LiveTurns
@@ -282,7 +284,7 @@ _RETRY = find_command("retry_from_here")
 
 
 class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHost, SubagentsHost,
-                LiveTurns, ClaudeExtras, SoundHost, wx.Frame):
+                LiveTurns, ClaudeExtras, SoundHost, ExpressView, wx.Frame):
     def __init__(self, store: Optional[OwnSessionStore] = None,
                  updates: Optional[UpdateService] = None,
                  check_updates_at_start: bool = True,
@@ -326,6 +328,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Codex chat to be ready.
         self._relay_partners: Dict[str, str] = {}
         self._relay_waiting: Dict[str, str] = {}
+        self._express_init()  # Express (#737)
         if sessions is None:
             # Chats restored from a backup (#436): their own read-only backend.
             self._imported = ImportedChats()
@@ -699,6 +702,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.activity_item = items["show_tool_activity"]
         self.mute_item = items["mute_all_sounds"]
         self.mute_item.Check(self.speech.sounds_muted)
+        items["express_toggle"].Check(self.speech.express_enabled)  # #737
         self.stop_background_item = items["stop_background_task"]
         self.stop_background_item.Enable(False)
         # Its label says the version running, or the update a check found (#141).
@@ -824,6 +828,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "go_to_reply": lambda e: self.focus_reply(),
             "go_to_status_bar": lambda e: self.focus_status(),
             "session_list_columns": lambda e: self.on_session_columns(),
+            "express_toggle": self.on_express_toggle,
             "read_full_message": lambda e: self.on_read_message(),
             "read_whole_chat": lambda e: self.on_read_whole_chat(),
             "find": lambda e: self.on_find(),
@@ -1077,7 +1082,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _update_status_session(self):
         """The loaded session's part: its name and what it's doing."""
         info = self._open
-        if info is None:
+        if info is None and getattr(self, "_express_open", False):
+            text = express_heading(len(self._express_keys))  # "Express, 7 chats" (#737)
+        elif info is None:
             text = ""
         elif info.is_own and info.provider == "claude" and info.cli_session_id in self._runners:
             text = f"{info.title}: {self.turn_status.GetLabelText()}"
@@ -1217,7 +1224,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _selected_session(self) -> Optional[SessionInfo]:
         """The session a command means: the highlighted one in the sessions
         list while that has focus (or nothing is loaded), otherwise the
-        loaded one."""
+        loaded one. In Express, away from the session list, the chat on the
+        Express row you're on (#737)."""
+        if self._express_open and wx.Window.FindFocus() is not self.session_list:
+            return self._express_selected()
         if self._open is not None and wx.Window.FindFocus() is not self.session_list:
             return self._current_info(self._open.key) or self._open
         index = self.session_list.GetSelection()
@@ -1283,14 +1293,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                       if getattr(runner, "waiting_on_background", False)}
         waiting = self._waiting()
         order = self.speech.session_order
-        # Each transcript's end is read only while the column is shown (#146).
-        last_messages = FIELD_LAST_MESSAGE in self.speech.session_fields
+        # Each transcript's end is read only while the column is shown (#146),
+        # or Express, which shows each chat's latest reply (#737).
+        last_messages = (FIELD_LAST_MESSAGE in self.speech.session_fields
+                         or self.speech.express_enabled)
+        # Claude's latest replies only for Express: looking for one can mean
+        # reading further back than the last message needs.
+        express_replies = self.speech.express_enabled
 
         def work():
             try:
                 snap = self.sessions.collect(
                     lambda: collect(own, running, waiting=waiting, order=order,
-                                    last_messages=last_messages, background=background),
+                                    last_messages=last_messages, background=background,
+                                    replies=express_replies),
                     order, owned=owned, last_messages=last_messages)
                 # The Cost column (#692): off this thread, and the ledgers
                 # are read again only when they've changed.
@@ -1462,6 +1478,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _update_session_list(self, sessions: List[SessionInfo], keep_order: bool = False,
                              rewrite: bool = False):
+        """The rows for ``sessions``, with Express's first when it's on
+        (#737), whatever the sort, view or filter; and Express's own list,
+        if it's open, from the same sessions."""
+        rows = self._with_express_row(sessions)
+        if keep_order and rows and rows[0].key == EXPRESS_KEY and (
+                EXPRESS_KEY not in self._list_keys[:1]):
+            # Express has just been turned on: its row goes first, not at
+            # the end with the new ones.
+            keep_order = False
+        self._write_session_rows(rows, keep_order=keep_order, rewrite=rewrite)
+        if self._express_open:
+            self._express_fill()
+
+    def _write_session_rows(self, sessions: List[SessionInfo], keep_order: bool = False,
+                            rewrite: bool = False):
         """Rewrite only what changed, keeping the selection on the same session.
 
         With ``keep_order`` the rows stay where they are (new sessions are
@@ -1910,6 +1941,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_open_session(self, _event=None):
         index = self.session_list.GetSelection()
+        if 0 <= index < len(self._list_keys) and self._list_keys[index] == EXPRESS_KEY:
+            self.open_express()  # #737
+            return
         info = (self._current_info(self._list_keys[index])
                 if index != wx.NOT_FOUND and index < len(self._list_keys) else None)
         if info is None:
@@ -1967,6 +2001,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return False
 
     def open_session(self, info: SessionInfo):
+        self._express_close()  # a chat takes Express's place (#737)
         self._save_draft()
         self._drop_waiting_relay(going_to=info)
         self._clear_activity()  # another session's tool calls aren't news here
@@ -2014,16 +2049,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.own_reply.Show(editable)
         self.desktop_reply.Show(not editable)
         if not editable:
-            self.desktop_note.SetValue(
-                "This Codex API chat is read-only here. Use Continue Here to make an owned API copy."
-                if info.provider == "codex-api" else
-                f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
-                f"reads its local history. Reply in {home_app(info.provider)}."
-                if info.provider in LISTED_PROVIDERS else
-                _IMPORTED_NOTE if info.provider == IMPORTED else
-                _KEPT_NOTE if info.source == "kept" else
-                _COWORK_NOTE if info.cowork else
-                                       _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
+            self.desktop_note.SetValue(self._read_only_note(info))
             self.continue_btn.Show(self.sessions.capabilities(info).fork)
             # Only the desktop app's sessions can be opened in it.
             self.reply_claude_btn.Show(info.can_open_in_claude)
@@ -2043,6 +2069,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.chat_list.SetFocus()
         self._refresh_chat()
         self._chat_timer.Start(CHAT_REFRESH_MS)
+
+    @staticmethod
+    def _read_only_note(info: SessionInfo) -> str:
+        """Why a chat can't be replied to here, and where to reply instead:
+        the note where its reply box would be, and what Express's R says
+        (#737)."""
+        return ("This Codex API chat is read-only here. Use Continue Here to make an owned API copy."
+                if info.provider == "codex-api" else
+                f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
+                f"reads its local history. Reply in {home_app(info.provider)}."
+                if info.provider in LISTED_PROVIDERS else
+                _IMPORTED_NOTE if info.provider == IMPORTED else
+                _KEPT_NOTE if info.source == "kept" else
+                _COWORK_NOTE if info.cowork else
+                _TERMINAL_NOTE if info.is_terminal else _DESKTOP_NOTE)
 
     def unload_session(self):
         """Nothing loaded (the loaded session was forgotten)."""
@@ -2074,7 +2115,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _sync_no_session_line(self):
         """The line above, kept right as sessions come and go."""
-        if self._open is None and self.chat_list.GetCount() == 1:
+        if self._open is None and not self._express_open and self.chat_list.GetCount() == 1:
             line = self._no_session_line()
             if self.chat_list.GetString(0) != line:
                 self.chat_list.SetString(0, line)
@@ -2103,7 +2144,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.chat_list.SetFocus()
 
     def focus_reply(self):
-        if self._open is None:
+        if self._open is None and self._express_open:
+            self.desktop_note.SetFocus()  # "Press R to reply to the chat you're on." (#737)
+        elif self._open is None:
             self._feedback("No session loaded.")
             self.session_list.SetFocus()
         elif self._can_edit(self._open):
@@ -3091,6 +3134,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         the same message. ``keep_key`` asks for that message (or the nearest
         one still visible) to be selected after a full rebuild.
         """
+        if self._express_open:
+            return  # the list is Express's (#737); no chat is loaded
         visible = self._visible_messages()
         lines = [m.list_line() for m in visible] or ["No messages yet."]
         keys = [m.key for m in visible]
@@ -3161,6 +3206,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         (#11): the whole message, as words, with who said it. None (the row's
         own text) when the setting is off, or for a row that isn't a message
         ("Loading messages…", "No session loaded…")."""
+        if self._express_open:
+            return self._express_item_text(index)  # #737
         if not self.speech.full_messages_in_list:
             return None
         if not (0 <= index < len(self._chat_keys)):
@@ -3198,6 +3245,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def on_read_message(self):
         """The selected message's full text, in a read-only box to read by
         line, word and character. Closing it returns to the same message."""
+        if self._express_open:
+            self.express_read_reply()  # the chat's whole latest reply (#737)
+            return
         message = self._selected_message()
         if message is None:
             self._feedback("No message selected.")
@@ -3205,10 +3255,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._read_whole_message(message)
         self.chat_list.SetFocus()
 
-    def _read_whole_message(self, message: ChatMessage, parent=None):
+    def _read_whole_message(self, message: ChatMessage, parent=None, cwd: Optional[str] = None):
         """One message in full, formatted or as text, over ``parent`` (a
-        subagent's conversation, #468) or the window."""
-        if self.speech.formatted_messages and self._show_formatted(message, parent):
+        subagent's conversation, #468) or the window. ``cwd``: the chat's
+        folder, for its file links, when it isn't the open chat's (Express,
+        #737)."""
+        if self.speech.formatted_messages and self._show_formatted(message, parent, cwd):
             return
         dialog = MessageDialog(parent or self, message.label, message.whole)
         try:
@@ -3216,7 +3268,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         finally:
             dialog.Destroy()
 
-    def _show_formatted(self, message: ChatMessage, parent=None) -> bool:
+    def _show_formatted(self, message: ChatMessage, parent=None,
+                        cwd: Optional[str] = None) -> bool:
         """The message as a formatted page (#190). False when that can't be
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
@@ -3227,7 +3280,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        cwd = self._open.cwd if self._open is not None else ''
+        if cwd is None:
+            cwd = self._open.cwd if self._open is not None else ''
         return self._show_page(title, message_page(title, text, heading=message.label, cwd=cwd), parent)
 
     def on_user_guide(self, _event=None):
@@ -5918,12 +5972,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         finally:
             wx.TheClipboard.Close()
 
-    def on_continue_here(self, _event=None, remote_control: str = ""):
+    def on_continue_here(self, _event=None, remote_control: str = "",
+                         source: Optional[SessionInfo] = None):
         """Carry on a desktop app or terminal session (#158) in The Chat Place,
         as a copy (#189).
         ``remote_control`` "on" puts the copy on Remote Control from its
-        first turn (#96)."""
-        info = self._selected_session()
+        first turn (#96). ``source``: the chat to copy, when it isn't the
+        selected one (Express's R, #737)."""
+        info = source if source is not None else self._selected_session()
         if (info is not None and (info.provider != "claude" or info.source == "kept")
                 and not self._require_capability("fork", info)):
             return
@@ -8152,7 +8208,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def on_session_columns(self):
         """View, Session List Columns (#134): choose which parts each session
         row reads and in what order; OK saves the choice and rewrites the rows
-        at once, on the same session."""
+        at once, on the same session. While Express is open, Express's own
+        columns (#737)."""
+        if self._express_open:
+            self.on_express_columns()
+            return
         selected = self._selected_session()
         sample = selected or _sample_session()
         if selected is not None and FIELD_LAST_MESSAGE not in self.speech.session_fields:
@@ -8184,8 +8244,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # The transcripts' ends aren't read while the column is off:
             # read them now, so the rows say their last messages at once.
             self.refresh_sessions()
-        elif FIELD_LAST_MESSAGE not in fields:
-            forget_last_messages()  # nothing to keep them for
+        elif FIELD_LAST_MESSAGE not in fields and not self.speech.express_enabled:
+            forget_last_messages()  # nothing to keep them for (Express does, #737)
         names = ", ".join(field_short_name(f) for f in fields)
         try:
             self.speech.save()
@@ -8685,6 +8745,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_settings(self, _event=None):
         previous_providers = (self.speech.includes_codex(), self.speech.copilot_enabled)
+        before = self.speech
         options = self._speech_options or default_options()
         dialog = SettingsDialog(self, self.speech, options,
                                 clear_recent=self._clear_recent_folders, say=self._feedback)
@@ -8711,6 +8772,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             " Restart The Chat Place to change which chats are listed."
             if previous_providers != (self.speech.includes_codex(), self.speech.copilot_enabled)
             else ""))
+        self._express_settings_changed(before)  # Express on, off, or its count (#737)
         # The Remote Control default shows in rows and the heading (#96).
         self.refresh_sessions()
         self._update_heading()
@@ -9609,6 +9671,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._is_in_session_view(focus)
         # Before anything else, and without taking the key: it goes on as usual.
         self._list_end_cue(event, key, focus)
+        if (self._express_open and focus is self.chat_list
+                and self._express_key(event, key, ctrl)):
+            return  # Enter, Shift+Enter, R, Escape and Ctrl+C in Express (#737)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             if ctrl and event.AltDown() and not event.ShiftDown():
@@ -9739,7 +9804,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _panes(self) -> List[int]:
         panes = [self.PANE_SESSIONS, self.PANE_MESSAGES]
-        if self._open is not None:
+        if self._open is not None or self._express_open:
             panes.append(self.PANE_REPLY)
         panes.append(self.PANE_STATUS)
         return panes

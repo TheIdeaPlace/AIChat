@@ -167,6 +167,8 @@ MENU_BAR: Tuple[Menu, ...] = (
         Menu("S&how Sessions", id="show_sessions"),
         # What each row says, and in what order (#134).
         Command("session_list_columns", "Session List &Columns..."),
+        # A row at the top of the list with every chat's latest reply (#737).
+        Command("express_toggle", "E&xpress", check=True),
         Command("show_tool_activity", "Show &Tool Activity", "Ctrl+T", check=True),
         Command("refresh", "Re&fresh", "F5"),
         SEPARATOR,

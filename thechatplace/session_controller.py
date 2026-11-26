@@ -76,7 +76,7 @@ class SessionController:
                             forget()
                         for info in snapshot.sessions:
                             if info.provider == provider_id:
-                                info.last_message = ""
+                                info.last_message = info.last_reply = ""
                 if self._closed:
                     raise ValueError("Session controller closed")
                 snapshot.sessions = sort_sessions(snapshot.sessions, order)
