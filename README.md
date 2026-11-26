@@ -2343,7 +2343,8 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   one didn't, and Claude quoted the reason it was given; an approved plan carried on in accept
   edits without asking again. Approve, Don't Start (#738), added later, denies the plan too,
   since allowing it starts the work, with a message saying the plan is approved and not to be
-  started, then your note; the mode stays plan.
+  started, then your note; the mode stays plan. Checked the same way with Claude Code 2.1.331: Claude
+  said the plan was approved, changed nothing and stopped, and answered the note.
 - **Refusals still happen without asking** where Claude Code's own rules say so (a write outside
   the session's folder, say, or auto mode's safety check). The Chat Place adds those to the
   announcement ("1 tool was refused: ..."), marks the session "needs you", and the chat shows a
