@@ -1990,7 +1990,9 @@ AppImage, and your data is in `~/.config/TheChatPlace`. The updater refuses to r
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data
 folder.
 
-The version is in Help, About.
+The version is in Help, About, with which build it is: for example "0.6.4, build bld05 (commit
+487a6d67 on build/bld05, built 2026-11-26)" for a test build, or the version and commit for a
+release. Bug reports include the same line.
 
 ## Keyboard shortcuts
 

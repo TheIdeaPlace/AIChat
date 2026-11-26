@@ -22,3 +22,6 @@ desktop.ini
 coverage.json
 coverage-html/
 htmlcov/
+
+# Which build this is, written by tools/write_build_info.py (never committed).
+thechatplace/_build.py

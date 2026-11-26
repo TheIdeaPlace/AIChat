@@ -49,6 +49,17 @@ on:
         description: 'Sign and check the signatures too (nothing is published either way)'
         type: boolean
         default: false
+      build_label:
+        description: 'Test build label, matching its folder under testing/tcp (bld05): packed as <version>-<label> and shown in About'
+        type: string
+        default: ''
+
+# A test build's label (thechatplace/build_info.py), only ever from a hand run: a tag or a
+# pull request builds without one. tools/check_version.py refuses a label on a tag.
+env:
+  TCP_BUILD_LABEL: ${{ github.event_name == 'workflow_dispatch' && inputs.build_label || '' }}
+  # A pull request is built from GitHub's merge commit; the About box names the branch's own.
+  TCP_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
 permissions:
   contents: write   # create the release (tag runs only)
@@ -109,9 +120,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $notes = "release-notes/v$version.md"
           if (-not (Test-Path $notes)) { throw "Write $notes before releasing $version." }
+          $pack = python tools/check_version.py --pack
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           "VERSION=$version" | Out-File $env:GITHUB_ENV -Append
+          "PACK_VERSION=$pack" | Out-File $env:GITHUB_ENV -Append
           "NOTES=$notes" | Out-File $env:GITHUB_ENV -Append
-          Write-Host "The Chat Place $version"
+          Write-Host "The Chat Place $pack"
 
       # --onedir, not --onefile: Velopack swaps an app folder in place, and a onefile exe would
       # unpack itself on every start. velopack is imported lazily, so it is named explicitly; the
@@ -122,6 +136,7 @@ jobs:
       - name: Build
         run: |
           python tools/make_version_info.py
+          python tools/write_build_info.py
           python -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace `
             --version-file build/version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_api --hidden-import thechatplace.openai_billing --hidden-import thechatplace.openai_prices --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx --collect-data theideaplace_appkit `
             --icon thechatplace/assets/app.ico `
@@ -137,6 +152,12 @@ jobs:
           $p = Start-Process dist\TheChatPlace\TheChatPlace.exe -ArgumentList '--smoke-test', 'smoke.json' -Wait -PassThru
           Get-Content smoke.json
           if ($p.ExitCode -ne 0) { throw "The built app's smoke test failed (exit $($p.ExitCode))." }
+          # The About box's build line made it into the app (build_info, _build.py).
+          $build = (Get-Content smoke.json -Raw | ConvertFrom-Json).build
+          if ($build -notmatch 'commit') { throw "The app doesn't know which build it is: '$build'." }
+          if ($env:TCP_BUILD_LABEL -and $build -notmatch "build $env:TCP_BUILD_LABEL ") {
+            throw "The app's build line doesn't name $env:TCP_BUILD_LABEL`: '$build'."
+          }
 
       - name: Azure login (code signing)
         if: env.SIGN == 'true'
@@ -197,7 +218,7 @@ jobs:
         run: |
           $sign = @()
           if ($env:SIGN -eq 'true') { $sign = @('--azureTrustedSignFile', "$env:GITHUB_WORKSPACE\signing-metadata.json") }
-          vpk pack --packId TheChatPlace --packVersion $env:VERSION `
+          vpk pack --packId TheChatPlace --packVersion $env:PACK_VERSION `
             --packDir dist/TheChatPlace --mainExe TheChatPlace.exe `
             --packTitle "The Chat Place" --packAuthors "Kelly Ford" `
             --icon thechatplace/assets/app.ico `
@@ -216,7 +237,7 @@ jobs:
           $files = @(Get-ChildItem releases\*.exe)
           Expand-Archive "releases\TheChatPlace-$env:CHANNEL-Portable.zip" "$check\portable" -Force
           $files += Get-ChildItem "$check\portable" -Recurse -Filter *.exe
-          foreach ($pkg in Get-ChildItem "releases\TheChatPlace-$env:VERSION-$env:CHANNEL-full.nupkg") {
+          foreach ($pkg in Get-ChildItem "releases\TheChatPlace-$env:PACK_VERSION-$env:CHANNEL-full.nupkg") {
             Copy-Item $pkg.FullName "$check\full.zip"
             Expand-Archive "$check\full.zip" "$check\full" -Force
             $files += Get-ChildItem "$check\full\lib\app" -Filter *.exe
@@ -233,7 +254,7 @@ jobs:
       - name: Keep the build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: thechatplace-windows-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
+          name: thechatplace-windows-${{ env.PACK_VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           path: |
             releases/*
           if-no-files-found: error
@@ -277,6 +298,7 @@ jobs:
         run: |
           if [ "$PUBLISH" = "true" ]; then python tools/check_version.py "$GITHUB_REF_NAME"; fi
           echo "VERSION=$(python tools/check_version.py)" >> "$GITHUB_ENV"
+          echo "PACK_VERSION=$(python tools/check_version.py --pack)" >> "$GITHUB_ENV"
 
       # The certificate goes into a throwaway keychain in RUNNER_TEMP, never the login keychain,
       # and is deleted at the end whatever happens (as in Image Description Toolkit).
@@ -372,7 +394,7 @@ jobs:
       - name: Keep the build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: thechatplace-macos-${{ env.VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
+          name: thechatplace-macos-${{ env.PACK_VERSION }}-${{ env.SIGN == 'true' && 'signed' || 'unsigned' }}
           # The .pkg and portable zip vpk also makes aren't published: the .pkg would need a
           # Developer ID Installer certificate, and the .dmg holds the same self-updating app.
           path: |
@@ -433,6 +455,7 @@ jobs:
         run: |
           if [ "$PUBLISH" = "true" ]; then /usr/bin/python3 tools/check_version.py "$GITHUB_REF_NAME"; fi
           echo "VERSION=$(/usr/bin/python3 tools/check_version.py)" >> "$GITHUB_ENV"
+          echo "PACK_VERSION=$(/usr/bin/python3 tools/check_version.py --pack)" >> "$GITHUB_ENV"
 
       # setup-dotnet v6.0.0, for vpk (net10.0), as on the Mac.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
@@ -468,7 +491,7 @@ jobs:
       - name: Keep the build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: thechatplace-linux-${{ matrix.arch }}-${{ env.VERSION }}
+          name: thechatplace-linux-${{ matrix.arch }}-${{ env.PACK_VERSION }}
           path: |
             releases/TheChatPlace-linux-${{ matrix.arch }}.AppImage
             releases/TheChatPlace-*-linux-${{ matrix.arch }}-*.nupkg

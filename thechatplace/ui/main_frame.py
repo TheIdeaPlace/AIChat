@@ -54,7 +54,7 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, backup, bugreport,
+from .. import (__version__, about_you, announce, attachments, backup, build_info, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..commands import (MENU_BAR, Menu, command as find_command, menu_label,
@@ -296,7 +296,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.titles = TitleStore()  # names given to desktop app sessions (#93)
         # Folders taken off New Session's recent list (#215).
         self.recent_removed = workplaces.RemovedFolders()
-        self.updates = updates or UpdateService(__version__)
+        # As packed: a test build ("0.6.4-bld05") is offered the real 0.6.4.
+        self.updates = updates or UpdateService(build_info.packed_version())
         self._update_busy = False
         # The newer version the last check found, "" if none (#141): Help's
         # update item says it.
@@ -9525,7 +9526,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_about(self, _event=None):
         wx.MessageBox(
-            f"{APP_NAME} version {__version__}\n\nA home for your AI chats: keyboard and "
+            # Which build too ("0.6.4, build bld05 (commit 487a6d67 on …)"),
+            # so one test build is never taken for another.
+            f"{APP_NAME} version {build_info.describe()}\n\nA home for your AI chats: keyboard and "
             "screen reader friendly, with Claude, Codex and GitHub Copilot in one session list. "
             "Replies use your sign-in with the selected provider.\n\n"
             "An independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by "
