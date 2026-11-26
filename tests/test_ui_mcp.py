@@ -242,9 +242,11 @@ def test_a_list_that_comes_back_as_nothing_doesnt_stick_on_reading(frame):
 
 def _codex_frame(record=None, work=None):
     from types import SimpleNamespace
+    work = work or (lambda action, done: done(action(), False))
     return SimpleNamespace(store=SimpleNamespace(get=lambda *a, **k: record),
                            sessions=SimpleNamespace(connected_tools=lambda info: []),
-                           _codex_work=work or (lambda action, done: done(action(), False)))
+                           _codex_work=work,
+                           _codex_tools_load=lambda key, action, done: work(action, done))
 
 
 def _codex_info(is_own=False):
@@ -1386,6 +1388,8 @@ def test_unavailable_apps_row_never_performs_a_tool_action(frame, env, action):
     dialog = ConnectedToolsDialog(frame, "Chat", host)
     try:
         assert dialog._list_name() == "Connected tools, 0"
+        # Not "Copy with Tool On": the row isn't a tool (#729's review).
+        assert dialog.toggle_btn.GetLabel() == "Change T&ool"
         getattr(dialog, action)()
         assert env["boxes"][-1] == notice.text()
         assert dialog.details.GetValue().startswith(notice.text())

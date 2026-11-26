@@ -401,7 +401,8 @@ def tools_summary(rows) -> str:
         parts.append(f"{failed} failed")
     if off:
         parts.append(f"{off} off for this chat")
-    return " ".join([", ".join(parts), *notices])
+    # A notice is a sentence of its own, not part of the count (#729's review).
+    return ". ".join([", ".join(parts), " ".join(notices)]) if notices else ", ".join(parts)
 
 
 #: Addresses plain http may go to: nothing on the way can read or change them.

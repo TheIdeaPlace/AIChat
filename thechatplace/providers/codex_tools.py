@@ -61,6 +61,16 @@ class CodexTool:
         return f'{self.name}: {state}, configured Codex MCP server{said}'
 
 
+def apps_unavailable(reason):
+    """The row that says the app list couldn't be read: information, never a
+    selectable tool, so it's neither on nor off for the chat (#729's review).
+    ``reason`` is the app's own words, never Codex's message."""
+    return CodexTool('Apps unavailable',
+        reason + ' This does not mean your account has no apps. Press Refresh to try again. '
+        'Configured servers, if listed, can still be used.',
+        off_for_chat=False, read_only=True, display_name='Apps unavailable', informational=True)
+
+
 def inventory(connection, info, allowed=(), *, read_only=False, status_optional=False):
     """The configured servers. ``read_only``: a chat started elsewhere, which
     this connection hasn't loaded. Codex 0.163 fails mcpServerStatus/list for
@@ -183,8 +193,11 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
         seen.add(cursor)
     else:
         raise CodexRpcError('Codex app list is too large')
-    # Keep usable account apps ahead of a potentially large public catalog.
-    rows.sort(key=lambda row: row.status != 'available')
+    # Apps on for this chat first, even one that now needs sign-in: it's the
+    # row someone opening the list to fix it is looking for. Then usable
+    # account apps that are off, ahead of a potentially large public catalog
+    # (#729).
+    rows.sort(key=lambda row: (row.off_for_chat, row.status != 'available'))
     known = {r.app_id for r in rows}
     rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
         app_id=identity, display_name=identity) for identity in selected if identity not in known)

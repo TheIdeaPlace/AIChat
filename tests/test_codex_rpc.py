@@ -1365,7 +1365,9 @@ def test_a_failed_turn_doesnt_lock_the_chat(server, scenario, tmp_path, monkeypa
 def test_slow_app_inventory_keeps_its_wait_without_extending_history_timeout(server):
     start, _ = server
     queued = threading.Event()
-    with ReadOnlyCodexConnection(start=start, timeout=1) as connection, ThreadPoolExecutor(2) as pool:
+    with ReadOnlyCodexConnection(start=start) as connection, ThreadPoolExecutor(2) as pool:
+        # After the handshake, so a busy CI runner's Python startup isn't timed.
+        connection._timeout = 1
         apps = pool.submit(connection.request, "app/list", {"mode": "hang"}, on_sent=queued.set)
         assert queued.wait(5)
         app_id = connection._next_id

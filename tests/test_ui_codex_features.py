@@ -756,6 +756,7 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
     monkeypatch.setattr(wx, 'MessageBox', lambda text, *a, **k: boxes.append(text) or wx.YES)
     jobs = []
     monkeypatch.setattr(frame, '_codex_work', lambda action, done: jobs.append((action, done)))
+    monkeypatch.setattr(frame, '_codex_tools_load', lambda key, action, done: jobs.append((action, done)))
     host = CodexConnectedTools(frame, record.to_info())
     host.load(lambda rows, error: None)
     action, done = jobs.pop()
@@ -767,6 +768,56 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
     assert env['feedback'][-1] == 'Creating the Codex copy.'
     jobs.pop()[0]()
     assert copied == [['kept']]
+
+
+def test_a_slow_app_catalog_never_holds_up_opening_a_chat(frame, env, monkeypatch):
+    """Codex's app list can take a minute a page, and closing Connected Tools
+    doesn't stop it. On the window's three shared workers, closing and
+    reopening the dialog a few times held every one, and no chat could open
+    (#729's review). The list is read on a thread of its own, and a reopened
+    dialog joins the read already running for that chat."""
+    import threading
+    from fake_env import add_transcript
+    from records import user_text
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    record = owned(frame, env)
+    others = [OwnSession(f'native-other-{n}', f'Codex other {n}', str(env['tmp']), provider='codex')
+              for n in range(3)]
+    for other in others:
+        frame.store.add(other)
+    release, calls, results = threading.Event(), [], []
+
+    def held(info, **kwargs):
+        calls.append(info.cli_session_id)
+        release.wait(30)
+        return []
+    monkeypatch.setattr(frame.sessions, 'connected_tools', held)
+    add_transcript(env, 'C:\\G\\Scratch', 'own-1', [user_text('Still opens')])
+    try:
+        # The same chat's dialog opened and closed, more times than the pool
+        # has workers, then left open; and three other chats' lists besides.
+        for _ in range(4):
+            host = CodexConnectedTools(frame, record.to_info())
+            host.load(lambda rows, error: results.append((rows, error)))
+            host.close()
+        last = CodexConnectedTools(frame, record.to_info())
+        last.load(lambda rows, error: results.append((rows, error)))
+        for other in others:
+            CodexConnectedTools(frame, other.to_info()).load(lambda rows, error: None)
+        assert pump(lambda: len(calls) == 4)
+        assert calls.count(record.cli_session_id) == 1  # joined, not read again
+        # Every read is still waiting, and a chat still opens.
+        frame.open_session(frame.store.get('own-1').to_info())
+        assert pump(lambda: frame._chat_loaded and not frame._reader_busy)
+        assert [m.text for m in frame._chat_messages] == ['Still opens']
+        assert frame._pool.submit(lambda: 'free').result(timeout=5) == 'free'
+        assert not results
+    finally:
+        release.set()
+    # Only the dialog still open hears the answer; the closed ones say nothing.
+    assert pump(lambda: results)
+    assert pump(lambda: not frame.__dict__.get('_codex_tool_loads'))
+    assert results == [([], '')]
 
 
 def test_read_status_on_a_removed_server_says_what_is_wrong(frame, env, monkeypatch):

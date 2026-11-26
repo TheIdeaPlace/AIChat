@@ -75,6 +75,11 @@ class CodexConnectedTools:
         return NOTE if self.can_turn_off else NOTE_READ_ONLY
 
     def toggle_label(self, server):
+        if server is not None and server.informational:
+            # The "Apps unavailable" row isn't a tool: "Copy with Tool On"
+            # there named a change it can't make (#729's review). Pressing it
+            # says the row's notice. &O still, as the other labels have it.
+            return 'Change T&ool'
         if not self.can_turn_off:
             return 'Turn &Off for This Chat'  # says why not when pressed
         return 'Copy with Tool &On' if server and server.off_for_chat else 'Copy with Tool &Off'
@@ -96,7 +101,14 @@ class CodexConnectedTools:
         record, info = self.record, self.info
         selected = {} if record is None else {'selected': tuple(record.provider_options.get('mcp_servers', ())),
                                                'apps': tuple(record.provider_options.get('apps', ()))}
-        self.frame._codex_work(lambda: self.frame.sessions.connected_tools(info, **selected), finished)
+        # Not _codex_work: the app catalog can take a minute a page, which on
+        # the window's shared pool held up opening chats (#729's review). A
+        # dialog reopened while this chat's list is still being read joins
+        # that read; ``finished`` above does nothing for a closed one.
+        key = ('connected-tools', getattr(info, 'key', None) or info.cli_session_id,
+               tuple(sorted(selected.items())))
+        self.frame._codex_tools_load(key, lambda: self.frame.sessions.connected_tools(info, **selected),
+                                     finished)
 
     def sign_in(self, server, done):
         if server.app_id:

@@ -757,7 +757,7 @@ class CodexProvider:
     def connected_tools(self, session, selected=None, apps=()):
         self._check(session)
         from .codex_features import CodexFeatureError
-        from .codex_tools import inventory, app_inventory, CodexTool
+        from .codex_tools import inventory, app_inventory, apps_unavailable
         from .codex_rpc import CodexRpcError, CodexRequestTimeout
         connection, allowed = self.connection, tuple(selected or ())
         optional = False
@@ -778,10 +778,7 @@ class CodexProvider:
             reason = ('Codex timed out while listing apps.' if isinstance(exc, CodexRequestTimeout)
                       else 'This Codex version does not support listing apps.' if getattr(exc, 'unknown_method', False)
                       else 'Codex could not list apps.')
-            rows.append(CodexTool('Apps unavailable',
-                reason + ' This does not mean your account has no apps. Press Refresh to try again. '
-                'Configured servers, if listed, can still be used.',
-                read_only=True, display_name='Apps unavailable', informational=True))
+            rows.append(apps_unavailable(reason))
         return rows
 
     def connected_tool_action(self, session, name, action, login_id=None):

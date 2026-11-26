@@ -179,6 +179,40 @@ class CodexChats(SoundHost, CodexExtras):
                 done(result, error)
         self._pool.submit(work)
 
+    def _codex_tools_load(self, key, action, done):
+        """Run a Connected Tools list read off the shared pool (#729's review).
+
+        Codex's app catalog can take a minute a page, and closing the dialog
+        doesn't stop the read. On ``_pool``'s three workers, a slow catalog
+        with the dialog closed and reopened a few times held every worker, so
+        no chat of any provider could open and the list stopped refreshing.
+        Each read gets a daemon thread of its own instead (one never holds up
+        quitting), and a dialog reopened while a read for the same chat is
+        still running waits for that one rather than starting another, so the
+        threads are bounded by the chats whose lists are being read. ``done``
+        is called as ``_codex_work`` calls it, on the UI thread."""
+        import threading
+        loads = self.__dict__.setdefault('_codex_tool_loads', {})
+        waiting = loads.get(key)
+        if waiting is not None:
+            waiting.append(done)
+            return
+        loads[key] = [done]
+        def work():
+            try:
+                result, error = action(), False
+            except Exception as exc:
+                record_failure(exc)
+                result, error = safe_reason(exc) or None, True
+            wx.CallAfter(finish, result, error)
+        def finish(result, error):
+            callers = loads.pop(key, ())
+            if self._gone():
+                return
+            for call in callers:
+                call(result, error)
+        threading.Thread(target=work, name='codex-tools', daemon=True).start()
+
     def _restore_codex_parts(self, key, texts):
         from ..providers.codex_input import CodexInput
         parts = [part for text in texts

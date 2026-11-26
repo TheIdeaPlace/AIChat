@@ -138,6 +138,21 @@ def test_delete_and_sign_in_name_the_button_and_its_key_where_it_has_one(platfor
     assert host.delete_text(off, platform).endswith(f"press Copy with Tool Off{key} to make one.")
 
 
+@pytest.mark.parametrize("own", [True, False])
+@pytest.mark.parametrize("off", [True, False])
+def test_the_apps_unavailable_row_has_a_neutral_toggle_label(own, off):
+    """It isn't a tool, so the button names no copy with it on or off (#729's
+    review), however the row was made."""
+    host = _host(own)
+    notice = CodexTool("Apps unavailable", "Press Refresh to try again.",
+                       off_for_chat=off, informational=True)
+    assert host.toggle_label(notice) == "Change T&ool"
+    assert "Copy with Tool" not in host.toggle_label(notice)
+    # A real tool's label is unchanged.
+    assert host.toggle_label(CodexTool("notes", "off")) == (
+        "Copy with Tool &On" if own else "Turn &Off for This Chat")
+
+
 @pytest.mark.parametrize('own', [False, True])
 def test_signin_can_start_for_an_off_server_without_a_chat(own):
     host=_host(own)
@@ -252,7 +267,9 @@ def test_app_inventory_failure_is_information_not_a_configured_server(failure, e
     assert "configured Codex MCP server" not in notice.text()
     assert "does not mean your account has no apps" in notice.text()
     summary = tools_summary(rows)
-    assert "2 connected tools" in summary and notice.text() in summary
+    # The notice is its own sentence after the count (#729's review).
+    assert summary == "2 connected tools. " + notice.text()
+    assert not notice.off_for_chat
     assert tools_summary([notice]).startswith("No configured tools listed.")
 
 
@@ -283,3 +300,11 @@ def test_accessible_apps_precede_the_installable_catalog_without_losing_entries(
     assert [row.app_id for row in rows] == [
         "available-one", "available-two", "unconnected-one", "unconnected-two"]
     assert all(row.off_for_chat for row in rows)
+    # An app on for the chat that now needs sign-in stays with the chat's
+    # apps, ahead of usable apps that are off: it's the row someone opened
+    # the list to fix (#729's review). Then usable apps, then the catalog.
+    rows = app_inventory(Connection(), INFO, selected=("unconnected-two", "available-two"))
+    assert [row.app_id for row in rows] == [
+        "available-two", "unconnected-two", "available-one", "unconnected-one"]
+    assert [row.off_for_chat for row in rows] == [False, False, True, True]
+    assert len(rows) == 4
