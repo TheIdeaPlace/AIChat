@@ -162,7 +162,8 @@ a plan than finished work. For a small, obvious change, skip it.
 - For a new chat, choose **Plan** under **Permission mode** in New Session (Ctrl+N). For one you've
   started, press **Ctrl+Shift+O** (Chat, Chat Settings, Change Permission Mode).
 - When the plan is ready, you hear that the chat needs you. Press **Ctrl+Shift+A** to read it, then
-  **Approve**, or **Keep Planning** with what to change.
+  **Approve**, **Approve, Don't Start** (the plan is right, but build it another day), or **Keep
+  Planning** with what to change.
 
 ### You keep telling Claude the same things
 
@@ -2626,8 +2627,8 @@ Ctrl+Shift+A brings the same request back.
 Once you've answered and nothing else is waiting in the chat, the messages list says the chat is
 working again as soon as you're back in it.
 
-**Shift+Enter never sends an answer.** In your own answer to a question, what to change in a
-plan, or a reason for Deny, it starts a new line. In a one-line box, such as a secret answer or
+**Shift+Enter never sends an answer.** In your own answer to a question, a plan's note, or a
+reason for Deny, it starts a new line. In a one-line box, such as a secret answer or
 a connected tool's text field, it does nothing but beep. Enter (or Ctrl+Enter) still presses
 the default button: Send Answers, Keep Planning or Deny.
 
@@ -2644,7 +2645,10 @@ What each provider offers:
   single Tab stop, on your choice, or on its first choice until you've made one (the arrow keys
   move between choices); in a question with several answers, each choice is a stop.
 - **Claude, a plan:** read it (Read Formatted shows it as a page, by heading), then **Approve**,
-  choosing how Claude carries on, or **Keep Planning**, the default, with what to change.
+  choosing how Claude carries on; **Approve, Don't Start** (Alt+D), when the plan is right but
+  you'll build it another day, so Claude stays in plan mode, makes no changes and stops; or
+  **Keep Planning**, the default, with what to change. The Note box goes with Keep Planning or
+  Approve, Don't Start, for something like "file it as an issue".
 - **Codex, a permission:** the request shows the command, its folder and Codex's reason, and a
   "This also needs" list when Codex names extra access, such as writing to another folder or
   using the network. When it names none, the dialog says the command may run outside the chat's

@@ -994,6 +994,29 @@ def deny_response(message: str = "") -> dict:
                                            "without asking."}
 
 
+#: What Claude reads when a plan is approved but not to be started (#738).
+#: ExitPlanMode only has allow and deny, and allow starts the work, so this
+#: is a deny with a message saying the plan is right. The session stays in
+#: plan mode, so the next turn can't start editing by accident.
+PLAN_HELD_MESSAGE = ("Plan approved, but don't start implementing it. Stay in plan mode and "
+                     "make no changes. If the user asked for an issue or a written plan, say so "
+                     "and stop; they'll say when to start.")
+
+
+def plan_held_response(note: str = "") -> dict:
+    """The answer for Approve, Don't Start (#738): the fixed message, then
+    anything you typed in the note box (\"file it as an issue\")."""
+    note = (note or "").strip()
+    return deny_response(f"{PLAN_HELD_MESSAGE}\n\n{note}" if note else PLAN_HELD_MESSAGE)
+
+
+def is_plan_held(response: dict) -> bool:
+    """Whether ``response`` is :func:`plan_held_response`'s: a deny that
+    isn't a refusal, so an agent conversation pauses for the right reason."""
+    return (response.get("behavior") == "deny"
+            and str(response.get("message", "")).startswith(PLAN_HELD_MESSAGE))
+
+
 def answer_questions_response(request: PermissionRequest, answers: Dict[str, str]) -> dict:
     """Claude's questions answered: the tool runs with the answers added."""
     return allow_response(request, updated_input={**request.input, "answers": answers})

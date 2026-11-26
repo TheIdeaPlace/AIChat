@@ -2420,7 +2420,7 @@ def test_plan_approval_keeps_the_new_mode(frame, env, monkeypatch):
         def ShowModal(self):
             assert self.plan_text.GetValue() == "# Plan\n1. Go"
             assert self.mode.GetStringSelection().startswith("Accept edits")
-            self.approved = True
+            self.result = dialogs.PLAN_APPROVE
             return wx.ID_OK
     monkeypatch.setattr("thechatplace.ui.main_frame.PlanDialog", Approves)
     frame.on_answer()
@@ -2428,6 +2428,41 @@ def test_plan_approval_keeps_the_new_mode(frame, env, monkeypatch):
         {"type": "setMode", "mode": "acceptEdits", "destination": "session"}]
     assert frame.store.get("own-1").permission_mode == "acceptEdits"
     assert env["feedback"][-1] == "Plan approved. Claude is carrying on in accept edits mode."
+
+
+def test_approve_dont_start_approves_the_plan_and_stays_in_plan_mode(frame, env, monkeypatch):
+    """#738: the button sends ExitPlanMode's deny with the fixed message and
+    the note, and the chat's mode stays plan, so nothing starts by accident."""
+    from thechatplace import claude_cli
+    from thechatplace.ui import dialogs
+    frame.store.update("own-1", permission_mode="plan")
+    runner = _waiting_turn(frame, _request("p1", "ExitPlanMode", {"plan": "# Plan\n1. Go"}))
+
+    class HoldsIt(dialogs.PlanDialog):
+        def EndModal(self, code):
+            self.ended = code
+
+        def ShowModal(self):
+            # Between Approve and Keep Planning, and Keep Planning is still
+            # the default, so Enter never approves anything.
+            buttons = [c for c in self.GetChildren() if isinstance(c, wx.Button)]
+            assert [b.GetLabel() for b in buttons][-4:] == [
+                "&Approve", "Approve, &Don't Start", "&Keep Planning", "Answer &Later"]
+            assert self.GetDefaultItem() is self.keep_button
+            self.note.SetValue("File it as an issue.")
+            event = wx.CommandEvent(wx.wxEVT_BUTTON, self.hold_button.GetId())
+            event.SetEventObject(self.hold_button)
+            self.hold_button.ProcessWindowEvent(event)
+            assert self.ended == wx.ID_OK and self.result == dialogs.PLAN_HOLD
+            assert not self.approved
+            return wx.ID_OK
+    monkeypatch.setattr("thechatplace.ui.main_frame.PlanDialog", HoldsIt)
+    frame.on_answer()
+    sent = runner.responses[0][1]
+    assert sent == {"behavior": "deny",
+                    "message": claude_cli.PLAN_HELD_MESSAGE + "\n\nFile it as an issue."}
+    assert frame.store.get("own-1").permission_mode == "plan"
+    assert env["feedback"][-1] == "Plan approved. Claude won't start on it."
 
 
 def test_question_answers_go_back_to_claude(frame, env, monkeypatch):
@@ -5642,7 +5677,7 @@ def test_shift_enter_starts_a_new_line_in_a_plan_s_note(frame, monkeypatch):
     try:
         note = dialog.note
         assert note.IsMultiLine() and not note.HasFlag(wx.TE_PROCESS_TAB)
-        assert note.GetName() == "What to change (for Keep Planning)"
+        assert note.GetName() == "Note (for Keep Planning or Don't Start)"
         assert dialog.GetDefaultItem() is dialog.keep_button
         press, closed = _enter_presser(dialog, monkeypatch)
         assert not press(note, shift=True) and not closed  # the box's own new line

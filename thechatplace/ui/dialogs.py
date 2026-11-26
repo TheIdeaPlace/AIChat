@@ -3702,16 +3702,24 @@ class QuestionDialog(wx.Dialog):
                 in zip(self._controls, self._questions)}
 
 
+#: PlanDialog's answers (#738): carry on in the chosen mode, the plan is
+#: right but don't start on it, or keep planning.
+PLAN_APPROVE, PLAN_HOLD, PLAN_KEEP = "approve", "hold", "keep"
+ID_PLAN_HOLD = wx.NewIdRef()
+
+
 class PlanDialog(wx.Dialog):
     """Claude's plan, to read, then Approve (choosing the permission mode to
-    carry on in) or Keep Planning with a note. Keep Planning is the default
-    button: approving starts real changes, so it needs a deliberate press."""
+    carry on in), Approve, Don't Start (the plan is right, but Claude stays in
+    plan mode, #738), or Keep Planning with a note. Keep Planning is the
+    default button: approving starts real changes, so it needs a deliberate
+    press, and Enter never approves anything."""
 
     def __init__(self, parent, session_title: str, request, modes, default_mode: str):
         super().__init__(parent, title=f"Claude's plan: {session_title}", size=dialog_size(parent, 760, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._modes = list(modes)  # (value, label)
-        self.approved = False
+        self.result = PLAN_KEEP
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Plan:"), 0, wx.LEFT | wx.TOP, 8)
         self.plan_text = _read_only_text(self, request.plan() or "(Claude sent no plan text.)",
@@ -3727,13 +3735,15 @@ class PlanDialog(wx.Dialog):
         values = [v for v, _l in self._modes]
         self.mode.SetSelection(values.index(default_mode) if default_mode in values else 0)
         grid.Add(self.mode, 1, wx.EXPAND)
-        grid.Add(wx.StaticText(self, label="&What to change (for Keep Planning):"), 0,
+        # Sent with Keep Planning, or after the fixed message with Approve,
+        # Don't Start ("file it as an issue", #738).
+        grid.Add(wx.StaticText(self, label="&Note (for Keep Planning or Don't Start):"), 0,
                  wx.ALIGN_TOP)
         # A few lines: Shift+Enter starts a new one, Enter still presses
         # Keep Planning (answer_box_key).
         self.note = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
         self.note.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
-        set_accessible_name(self.note, "What to change (for Keep Planning)")
+        set_accessible_name(self.note, "Note (for Keep Planning or Don't Start)")
         grid.Add(self.note, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -3746,6 +3756,8 @@ class PlanDialog(wx.Dialog):
             self.formatted_button.Bind(wx.EVT_BUTTON, lambda e: self._read_formatted(request))
         approve = wx.Button(self, ID_ALLOW, "&Approve")
         row.Add(approve, 0, wx.RIGHT, 6)
+        hold = wx.Button(self, ID_PLAN_HOLD, "Approve, &Don't Start")
+        row.Add(hold, 0, wx.RIGHT, 6)
         keep = wx.Button(self, ID_DENY, "&Keep Planning")
         keep.SetDefault()
         row.Add(keep, 0, wx.RIGHT, 6)
@@ -3753,9 +3765,10 @@ class PlanDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        approve.Bind(wx.EVT_BUTTON, lambda e: self._finish(True))
-        keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(False))
-        self.keep_button = keep
+        approve.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_APPROVE))
+        hold.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_HOLD))
+        keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_KEEP))
+        self.approve_button, self.hold_button, self.keep_button = approve, hold, keep
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         wx.CallAfter(self.plan_text.SetFocus)
 
@@ -3763,8 +3776,13 @@ class PlanDialog(wx.Dialog):
         if not answer_box_key(event, [self.note], self.keep_button):
             event.Skip()
 
-    def _finish(self, approved: bool):
-        self.approved = approved
+    @property
+    def approved(self) -> bool:
+        """Approved to carry on in the chosen mode (not Don't Start)."""
+        return self.result == PLAN_APPROVE
+
+    def _finish(self, result: str):
+        self.result = result
         self.EndModal(wx.ID_OK)
 
     def _read_formatted(self, request):

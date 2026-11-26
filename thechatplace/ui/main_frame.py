@@ -65,7 +65,8 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           TurnRunner, allow_response, answer_questions_response,
                           build_fork_command, build_new_command, build_resume_command,
                           SESSION_INJECTED_PREFIXES, STRIPPED_VARS, child_environment,
-                          deny_response, fetch_chat_choices, fetch_commands, usable_commands,
+                          deny_response, is_plan_held, plan_held_response,
+                          fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
                           normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON,
@@ -133,7 +134,7 @@ from ..rendering import html_page, message_page
 from ..ui_text import (markdown_as_text, set_your_keys, shortcuts_html, update_item_label,
                        your_key,
                        update_item_spoken, key_name)
-from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, BackupScheduleDialog,
+from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, PLAN_HOLD, AboutYouDialog, BackupScheduleDialog,
                       ConnectedToolsDialog, ElicitationDialog,
                       ExportChatsDialog, RestoreChooserDialog,
                       ChatPermissionsDialog,
@@ -391,6 +392,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: the next message it's sent; and what the last one carried.
         self._agent_unseen: Dict[tuple, list] = {}
         self._agent_planning: set = set()
+        #: Of those, plans approved but not to be started (#738).
+        self._agent_plan_held: set = set()
         self._speech_options = None
         threading.Thread(target=self._probe_speech, daemon=True).start()
         # A screen reader that's running but can't be reached is reported, not
@@ -5412,6 +5415,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             f"Plan approved. Claude is carrying on in {name} mode.",
                             {"permission_mode": mode})
                 note = dialog.note_text()
+                if dialog.result == PLAN_HOLD:
+                    # Approve, Don't Start (#738): a deny, since allow starts
+                    # the work, and no mode change, so it stays in plan mode.
+                    return (plan_held_response(note),
+                            "Plan approved. Claude won't start on it.", {})
                 return (deny_response(note or "Keep planning: the plan isn't approved yet."),
                         "Claude will keep planning.", {})
             finally:
@@ -5504,9 +5512,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if not queue:
                 self._agent_member_answered("claude", session_id, True)
         else:
-            # Keeping a plan going isn't a refusal, but it isn't approved.
+            # Keeping a plan going isn't a refusal, but it isn't approved;
+            # a plan approved but not to be started (#738) isn't either.
+            held = request.is_plan and is_plan_held(response)
             self._agent_member_answered("claude", session_id, False,
-                                        planning=request.is_plan)
+                                        planning=request.is_plan, held=held)
         if changes:
             self._store_write(self.store.update, session_id, **changes)
             self._update_heading()
