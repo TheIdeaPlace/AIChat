@@ -210,7 +210,11 @@ class CodexChats(SoundHost, CodexExtras):
             if self._gone():
                 return
             for call in callers:
-                call(result, error)
+                # One dialog's failure mustn't leave another on "Reading".
+                try:
+                    call(result, error)
+                except Exception as exc:
+                    record_failure(exc)
         threading.Thread(target=work, name='codex-tools', daemon=True).start()
 
     def _restore_codex_parts(self, key, texts):

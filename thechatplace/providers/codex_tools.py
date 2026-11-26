@@ -196,11 +196,12 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
     # Apps on for this chat first, even one that now needs sign-in: it's the
     # row someone opening the list to fix it is looking for. Then usable
     # account apps that are off, ahead of a potentially large public catalog
-    # (#729).
-    rows.sort(key=lambda row: (row.off_for_chat, row.status != 'available'))
+    # (#729). A selected app Codex no longer lists is on for the chat too, so
+    # it's added before sorting and comes first with the others.
     known = {r.app_id for r in rows}
     rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
         app_id=identity, display_name=identity) for identity in selected if identity not in known)
+    rows.sort(key=lambda row: (row.off_for_chat, row.status != 'available'))
     return rows
 
 

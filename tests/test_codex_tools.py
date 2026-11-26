@@ -308,3 +308,9 @@ def test_accessible_apps_precede_the_installable_catalog_without_losing_entries(
         "available-two", "unconnected-two", "available-one", "unconnected-one"]
     assert [row.off_for_chat for row in rows] == [False, False, True, True]
     assert len(rows) == 4
+    # One on for the chat that Codex no longer lists is with the chat's apps
+    # too, not after the whole catalog.
+    rows = app_inventory(Connection(), INFO, selected=("gone-app", "available-two"))
+    assert [row.app_id for row in rows] == [
+        "available-two", "gone-app", "available-one", "unconnected-one", "unconnected-two"]
+    assert rows[1].missing and not rows[1].off_for_chat

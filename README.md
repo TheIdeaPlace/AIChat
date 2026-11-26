@@ -1151,7 +1151,7 @@ Codex chats here cannot use the desktop app's built-in browser, browser extensio
 computer use or Codex Cloud, on either subscriptions or API credits. No setting here enables
 these for Codex; **Let Claude use Chrome** applies only to Claude. Codex is told these limits
 in each chat, including reopened chats and copies. An explicitly enabled MCP browser
-server in **Connected Tools** is a separate tool.
+server in **Tools, Connected Tools (MCP)** is a separate tool.
 
 Codex keeps your own saved command rules in effect, including user rules such
 as `~/.codex/rules/default.rules` and system rules installed for your computer.
