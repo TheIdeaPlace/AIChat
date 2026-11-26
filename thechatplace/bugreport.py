@@ -28,7 +28,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-from . import __version__, platform_paths
+from . import __version__, build_info, platform_paths
 
 #: Where issues are filed. One place to change when the app moves.
 REPO = "TheIdeaPlace/AIChat"
@@ -281,7 +281,8 @@ def environment(speech, counts: Dict[str, Dict[str, int]],
     sign_ins = sign_ins or {}
     install = install or ("installed build" if frozen else "run from source")
     facts = [
-        ("The Chat Place", f"{__version__} ({install})"),
+        # Which build, too: its label and commit (build_info).
+        ("The Chat Place", f"{build_info.describe()} ({install})"),
         (_system_name(), platform_paths.os_name()),
         ("Python", platform.python_version()),
         ("wxPython", wx_version),

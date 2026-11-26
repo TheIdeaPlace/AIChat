@@ -102,6 +102,14 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _no_build_label(monkeypatch):
+    """A labelled test build runs the suite with TCP_BUILD_LABEL set (build_info):
+    no test may see it, or the release-tag checks refuse the label."""
+    monkeypatch.delenv("TCP_BUILD_LABEL", raising=False)
+    monkeypatch.delenv("TCP_BUILD_COMMIT", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_keys_left_from_another_test():
     """What's said names the default keys, whatever a window before set (#635)."""
     from thechatplace.ui_text import set_your_keys

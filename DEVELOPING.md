@@ -93,11 +93,26 @@ disk image's README.txt says how to open it (System Settings, Privacy & Security
 
 ## Releasing
 
-The version lives in one place, `__version__` in `thechatplace/__init__.py`. To release:
+The version lives in one place, `__version__` in `thechatplace/__init__.py`. It's always the
+version being worked on, not the one last released:
 
-1. Set `__version__`, and write `release-notes/v<version>.md` (what it is, what's new, downloads,
-   requirements), in one commit on main.
-2. Tag it `v<version>` and push the tag.
+1. **Right after a release,** the next commit on main sets `__version__` to the next patch
+   version and starts its `release-notes/v<version>.md` (the intro and the footers, copied from
+   the release just made). Every PR after that adds its entry there. Kelly can choose a minor
+   version instead at any point, by renaming the file and changing `__version__`.
+2. **To release,** finish the notes (what it is, what's new, downloads, requirements) on main,
+   then tag `v<version>` and push the tag. No version change is needed then.
+
+**Which build is which.** Every build writes `thechatplace/_build.py` (never committed) with
+`tools/write_build_info.py` before PyInstaller runs: the commit, the branch, the date, and
+`TCP_BUILD_LABEL` if one is set. Help, About, bug reports and the smoke test say it, through
+`thechatplace/build_info.py`; a source run reads the commit from `.git`. A test build for Kelly is
+a hand run of the release workflow with **build label** set to its folder's name (`bld05` for
+`testing\tcp\<version>\bld05`). It's packed as `<version>-<label>` (`tools/check_version.py
+--pack`), a pre-release that Velopack and `updater._version_key` sort before `<version>`, so an
+installed test build still updates to the real release. The Windows file version and the Mac
+bundle version stay `<version>`, as both need plain numbers. A tag never takes a label: the
+version check refuses one.
 
 `.github/workflows/release-thechatplace.yml` then builds every platform side by side, and
 publishes one GitHub release (a pre-release before 1.0) only if Windows and macOS succeed. For
@@ -400,9 +415,11 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/session_tools.py`, `thechatplace/session_tools_mcp.py` | The session tools Claude turns get (`/wrap` and the like, #165): the tools' answers, the connection to the window, and the MCP server (`--session-tools-mcp`), whose stdio the built app's smoke test checks |
 | `thechatplace/ui/` | The wxPython window and dialogs |
 | `tests/` | pytest tests, built on made-up records shaped like the real ones |
+| `thechatplace/build_info.py` | Which build this is, for Help, About, bug reports and the smoke test |
 | `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
-| `tools/check_version.py` | Prints the version; checks a release tag against it |
+| `tools/check_version.py` | Prints the version (`--pack`: with a test build's label); checks a release tag against it |
 | `tools/make_version_info.py` | The Windows version resource for the built exe |
+| `tools/write_build_info.py` | Writes `thechatplace/_build.py`: which build this is (label, commit, branch, date) |
 | `tools/coverage_check.py`, `testing/coverage/baseline.json`, `.coveragerc` | The weekly coverage check, its baseline and its settings |
 | `winsetup.bat`, `macsetup.sh` (`.command`), `linuxsetup.sh` | Set up `.venv` on Windows, a Mac or Linux |
 | `BuildAndRelease/WinBuilds/build_windows.cmd` | Build on Windows (unsigned) |

@@ -10,7 +10,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-from . import __version__, platform_paths
+from . import __version__, build_info, platform_paths
 from .ui_text import key_name
 
 APP_TITLE = "The Chat Place"
@@ -27,7 +27,7 @@ def log_exception(exc_type, exc, tb, where: str = "", path: Optional[Path] = Non
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
             stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            handle.write(f"--- {stamp} The Chat Place {__version__} {where}\n")
+            handle.write(f"--- {stamp} The Chat Place {build_info.describe()} {where}\n")
             handle.write("".join(traceback.format_exception(exc_type, exc, tb)))
     except Exception:  # noqa: BLE001
         pass
@@ -66,7 +66,9 @@ def smoke_test(out_path: str) -> int:
 
     from . import speech, updater
 
-    report = {"version": __version__, "frozen": bool(getattr(sys, "frozen", False))}
+    # "build": which build this is, so a smoke report names its commit.
+    report = {"version": __version__, "build": build_info.describe(),
+              "frozen": bool(getattr(sys, "frozen", False))}
     problems = []
     try:
         import wx

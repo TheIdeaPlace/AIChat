@@ -327,13 +327,18 @@ def latest_published_version(fetch: Optional[Callable[[str], bytes]] = None,
 
 
 def _version_key(version: str):
+    """Sorts versions as Velopack does for ours: a test build's pre-release
+    ("0.6.4-bld05") comes before its release ("0.6.4"), so an installed
+    test build is offered the real release (build_info)."""
+    number, _dash, pre = version.partition("-")
     parts = []
-    for piece in version.split("-", 1)[0].split("."):
+    for piece in number.split("."):
         try:
             parts.append(int(piece))
         except ValueError:
             parts.append(0)
-    return parts
+    parts += [0] * (3 - len(parts))
+    return (parts, 0 if pre else 1, pre)
 
 
 def _ssl_context() -> ssl.SSLContext:
