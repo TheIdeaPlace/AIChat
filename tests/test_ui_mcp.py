@@ -1370,3 +1370,24 @@ def test_a_read_only_boxs_text_is_not_parsed_for_a_shortcut(frame, env):
         assert not isinstance(city, type(box.GetAccessible()))
     finally:
         dialog.Destroy()
+
+
+@pytest.mark.parametrize("action", ["on_sign_in", "on_reconnect", "on_toggle"])
+def test_unavailable_apps_row_never_performs_a_tool_action(frame, env, action):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    notice = CodexTool("Apps unavailable", "Press Refresh to try again.", informational=True)
+    host.load = lambda done: done([notice], "")
+    def unexpected(*args, **kwargs):
+        pytest.fail("An informational row must not perform a tool action")
+    host.sign_in = host.reconnect = host.set_off = unexpected
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog._list_name() == "Connected tools, 0"
+        getattr(dialog, action)()
+        assert env["boxes"][-1] == notice.text()
+        assert dialog.details.GetValue().startswith(notice.text())
+    finally:
+        dialog.Destroy()

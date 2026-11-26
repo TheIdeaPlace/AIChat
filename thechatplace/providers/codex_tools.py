@@ -28,6 +28,7 @@ class CodexTool:
     app_id: str = ''
     display_name: str = ''
     install_url: str = ''
+    informational: bool = False
 
     @property
     def can_be_denied(self):
@@ -38,6 +39,8 @@ class CodexTool:
         return self.display_name or self.name
 
     def text(self):
+        if self.informational:
+            return f"{self.label}: {self.status}"
         if self.is_session_tools:
             return 'The Chat Place session tools: available while this app is running'
         if self.app_id:

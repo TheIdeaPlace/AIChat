@@ -231,3 +231,26 @@ def test_a_tools_copy_finished_after_the_dialog_closed_still_says_it(monkeypatch
     done(action(), None)
     assert said[-1] == "Saved Chat (tools copy). No prompt was sent. " + copy_note(short=True)
     assert opened == []
+
+
+@pytest.mark.parametrize("failure,expected", [
+    ("timeout", "timed out"), ("unsupported", "does not support"), ("other", "could not list"),
+])
+def test_app_inventory_failure_is_information_not_a_configured_server(failure, expected):
+    from thechatplace.providers.codex_rpc import CodexRequestTimeout
+    class Connection(FakeConnection):
+        def request(self, method, params):
+            if method == "app/list":
+                error = CodexRequestTimeout() if failure == "timeout" else CodexRpcError("private payload")
+                error.unknown_method = failure == "unsupported"
+                raise error
+            return super().request(method, params)
+    rows = codex.CodexProvider.connected_tools(_provider(Connection()), INFO)
+    notice = rows[-1]
+    assert notice.informational and expected in notice.text()
+    assert "private payload" not in notice.text()
+    assert "configured Codex MCP server" not in notice.text()
+    assert "does not mean your account has no apps" in notice.text()
+    summary = tools_summary(rows)
+    assert "2 connected tools" in summary and notice.text() in summary
+    assert tools_summary([notice]).startswith("No configured tools listed.")

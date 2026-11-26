@@ -758,7 +758,7 @@ class CodexProvider:
         self._check(session)
         from .codex_features import CodexFeatureError
         from .codex_tools import inventory, app_inventory, CodexTool
-        from .codex_rpc import CodexRpcError
+        from .codex_rpc import CodexRpcError, CodexRequestTimeout
         connection, allowed = self.connection, tuple(selected or ())
         optional = False
         if session.is_own and self.runtime is not None:
@@ -772,10 +772,16 @@ class CodexProvider:
         rows = inventory(connection, session, allowed, read_only=not session.is_own, status_optional=optional)
         try:
             rows.extend(app_inventory(self.connection, session, apps, read_only=not session.is_own))
-        except CodexRpcError:
-            # Older servers can still show and operate configured MCP tools.
-            rows.append(CodexTool('Apps unavailable', 'Codex could not list apps',
-                read_only=True, display_name='Apps unavailable'))
+        except CodexRpcError as exc:
+            # An unavailable inventory is information, never a selectable server.
+            # Keep server-provided messages out of the UI.
+            reason = ('Codex timed out while listing apps.' if isinstance(exc, CodexRequestTimeout)
+                      else 'This Codex version does not support listing apps.' if getattr(exc, 'unknown_method', False)
+                      else 'Codex could not list apps.')
+            rows.append(CodexTool('Apps unavailable',
+                reason + ' This does not mean your account has no apps. Press Refresh to try again. '
+                'Configured servers, if listed, can still be used.',
+                read_only=True, display_name='Apps unavailable', informational=True))
         return rows
 
     def connected_tool_action(self, session, name, action, login_id=None):

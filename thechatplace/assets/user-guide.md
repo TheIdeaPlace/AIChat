@@ -2908,6 +2908,36 @@ Place runs, and a tool turned off for the chat or for new chats isn't mentioned.
 
 ### Codex's connected tools
 
+Connected tools add access to services beyond Codex's normal file and command tools. For
+example, a notes service could let you ask "Find my notes about the conference" or "Create a
+note titled Packing list". What you can ask depends on the tools that service supplies;
+enabling a connection does not give Codex every feature of the service.
+
+Signing into Codex does not itself configure an external server. Add the service using its
+Codex setup instructions, or install/connect an account app available to you. Servers set up
+for Claude are not automatically configured for Codex. This dialog uses the connections Codex
+reports; it does not currently offer a service directory or an Add Server form.
+
+To use an available connection in a ChatGPT-subscription Codex chat:
+
+1. Open **Tools, Connected Tools**, select the service, and read **Details**.
+2. If it needs account access, choose **Sign In** and complete the service's steps in your
+   browser. Being signed in and being on for this chat are separate states.
+3. If it is off for this chat, choose **Copy with Tool On** and confirm the copy. Continue in
+   that new chat. **Reconnect** refreshes an enabled server; it does not turn an off tool on.
+4. Ask for a specific task in your message, naming the service if helpful. If Codex asks for
+   approval, open **Answer** (Ctrl+Shift+A), read the arguments, and Send or Decline. A request
+   to create a note needs a tool that can create notes; a search-only connection cannot do it.
+5. Check the service's actual result. To remove the connection from the conversation, use
+   **Copy with Tool Off** and continue in that copy.
+
+An empty list can mean no services have been configured. **Apps unavailable** means the app
+inventory could not be retrieved; it does not establish that your account has no apps. That
+entry is information, not a server to sign into. Its message distinguishes a timeout or an
+unsupported Codex method when known. **Refresh** retries the lookup, and any configured servers
+listed alongside it remain usable. Codex's ordinary file and command tools are separate from
+this list.
+
 Select or load a Codex chat started here, then choose **Tools, Connected Tools (MCP)**. It lists
 the servers set up in Codex for the chat's folder, with how each is doing. **Details** (Alt+D)
 says more about the selected one. The dialog's note starts by saying that a tool can't be turned

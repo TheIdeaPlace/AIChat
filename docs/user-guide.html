@@ -2912,6 +2912,33 @@ stop hearing this, use Tools, Connected Tools." It's on the status bar, and spok
 announcement level without cutting anything off. Each tool is mentioned once each time The Chat
 Place runs, and a tool turned off for the chat or for new chats isn't mentioned.</p>
 <h3>Codex's connected tools</h3>
+<p>Connected tools add access to services beyond Codex's normal file and command tools. For
+example, a notes service could let you ask "Find my notes about the conference" or "Create a
+note titled Packing list". What you can ask depends on the tools that service supplies;
+enabling a connection does not give Codex every feature of the service.</p>
+<p>Signing into Codex does not itself configure an external server. Add the service using its
+Codex setup instructions, or install/connect an account app available to you. Servers set up
+for Claude are not automatically configured for Codex. This dialog uses the connections Codex
+reports; it does not currently offer a service directory or an Add Server form.</p>
+<p>To use an available connection in a ChatGPT-subscription Codex chat:</p>
+<ol>
+<li>Open <strong>Tools, Connected Tools</strong>, select the service, and read <strong>Details</strong>.</li>
+<li>If it needs account access, choose <strong>Sign In</strong> and complete the service's steps in your
+   browser. Being signed in and being on for this chat are separate states.</li>
+<li>If it is off for this chat, choose <strong>Copy with Tool On</strong> and confirm the copy. Continue in
+   that new chat. <strong>Reconnect</strong> refreshes an enabled server; it does not turn an off tool on.</li>
+<li>Ask for a specific task in your message, naming the service if helpful. If Codex asks for
+   approval, open <strong>Answer</strong> (Ctrl+Shift+A), read the arguments, and Send or Decline. A request
+   to create a note needs a tool that can create notes; a search-only connection cannot do it.</li>
+<li>Check the service's actual result. To remove the connection from the conversation, use
+   <strong>Copy with Tool Off</strong> and continue in that copy.</li>
+</ol>
+<p>An empty list can mean no services have been configured. <strong>Apps unavailable</strong> means the app
+inventory could not be retrieved; it does not establish that your account has no apps. That
+entry is information, not a server to sign into. Its message distinguishes a timeout or an
+unsupported Codex method when known. <strong>Refresh</strong> retries the lookup, and any configured servers
+listed alongside it remain usable. Codex's ordinary file and command tools are separate from
+this list.</p>
 <p>Select or load a Codex chat started here, then choose <strong>Tools, Connected Tools (MCP)</strong>. It lists
 the servers set up in Codex for the chat's folder, with how each is doing. <strong>Details</strong> (Alt+D)
 says more about the selected one. The dialog's note starts by saying that a tool can't be turned
