@@ -1199,11 +1199,13 @@ def _last_message(handle, size: int, steps: Tuple[int, ...]) -> Optional[ChatMes
     return _tail_messages(handle, size, steps)[0]
 
 
-def _tail_messages(handle, size: int, steps: Tuple[int, ...]
+def _tail_messages(handle, size: int, steps: Tuple[int, ...], replies: bool = True
                    ) -> Tuple[Optional[ChatMessage], Optional[ChatMessage]]:
     """(the last message, the last reply) in the file's end, either None
     when the end read has none. One read serves both: the reply is usually
-    the last message, or just before it."""
+    the last message, or just before it. ``replies`` off (Express is off,
+    #737): the reply isn't looked for, so no more is read for it."""
+    wanted = 2 if replies else 1
     found: Dict[str, Optional[ChatMessage]] = {}
     for number, limit in enumerate(steps):
         last_step = number == len(steps) - 1
@@ -1225,7 +1227,7 @@ def _tail_messages(handle, size: int, steps: Tuple[int, ...]
         parser = TranscriptParser()
         parser.feed(split_jsonl(data))
         messages = parser.transcript.messages
-        for name, kinds in (("message", LAST_MESSAGE_KINDS), ("reply", REPLY_KINDS)):
+        for name, kinds in (("message", LAST_MESSAGE_KINDS), ("reply", REPLY_KINDS))[:wanted]:
             if name in found:
                 continue
             for index in range(len(messages) - 1, -1, -1):
@@ -1236,7 +1238,7 @@ def _tail_messages(handle, size: int, steps: Tuple[int, ...]
                     break  # may have begun before this step: read more
                 found[name] = message
                 break
-        if len(found) == 2 or start == 0:
+        if len(found) == wanted or start == 0:
             break
     return found.get("message"), found.get("reply")
 
@@ -1250,17 +1252,19 @@ class LastMessages:
     def __init__(self, steps: Tuple[int, ...] = TAIL_STEPS) -> None:
         self._steps = steps
         self._lock = threading.Lock()
+        #: path -> (stamp, message, reply, whether the reply was looked for).
         self._entries: Dict[str, Tuple[Tuple[int, int], Optional[ChatMessage],
-                                       Optional[ChatMessage]]] = {}
+                                       Optional[ChatMessage], bool]] = {}
         #: How many files were read (not answered from memory); for tests.
         self.reads = 0
 
     def get(self, path: Optional[Path]) -> Optional[ChatMessage]:
-        return self.get_both(path)[0]
+        return self.get_both(path, replies=False)[0]
 
-    def get_both(self, path: Optional[Path]
+    def get_both(self, path: Optional[Path], replies: bool = True
                  ) -> Tuple[Optional[ChatMessage], Optional[ChatMessage]]:
-        """(the last message, the last reply), each None when there's none."""
+        """(the last message, the last reply), each None when there's none.
+        ``replies`` off: the reply isn't looked for (it's None)."""
         if path is None:
             return None, None
         name = str(path)
@@ -1269,13 +1273,14 @@ class LastMessages:
         try:
             # A stat, not an open, when nothing changed: most refreshes.
             info = os.stat(path)
-            if entry is not None and entry[0] == (info.st_size, info.st_mtime_ns):
-                return entry[1], entry[2]
+            if (entry is not None and entry[0] == (info.st_size, info.st_mtime_ns)
+                    and (entry[3] or not replies)):
+                return entry[1], entry[2] if replies else None
             with open(path, "rb") as handle:
                 # The stamp of what is read, from the handle it's read from.
                 info = os.fstat(handle.fileno())
                 stamp = (info.st_size, info.st_mtime_ns)
-                message, reply = _tail_messages(handle, info.st_size, self._steps)
+                message, reply = _tail_messages(handle, info.st_size, self._steps, replies)
         except FileNotFoundError:
             with self._lock:
                 self._entries.pop(name, None)
@@ -1283,9 +1288,9 @@ class LastMessages:
         except OSError:
             # Busy for a moment (being replaced, scanned): keep what it said,
             # so the row doesn't lose its message and get it back again.
-            return (entry[1], entry[2]) if entry is not None else (None, None)
+            return (entry[1], entry[2] if replies else None) if entry is not None else (None, None)
         with self._lock:
-            self._entries[name] = (stamp, message, reply)
+            self._entries[name] = (stamp, message, reply, replies)
             self.reads += 1
         return message, reply
 

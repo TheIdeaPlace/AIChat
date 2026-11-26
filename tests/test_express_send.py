@@ -37,6 +37,11 @@ class ExpressWindow(Window, ExpressView):
     def _sound(self, *args, **kwargs):
         pass
 
+    api_problem = None
+
+    def _api_send_problem(self, key, ask=True):
+        return self.api_problem
+
 
 def test_a_claude_chat_is_sent_to_without_being_opened():
     w = ExpressWindow()
@@ -58,6 +63,26 @@ def test_a_ready_codex_chat_is_sent_to_on_a_worker():
     assert len(w.work) == 1 and w.opened == []
     w.work[0][1](False, False)
     assert w.said[-1] == 'Sent to Reviewer: Check the tests.'
+
+
+@pytest.mark.parametrize('problem, said', [
+    ('Add an OpenAI key in Tools, API Keys before sending on API credits.',
+     'Add an OpenAI key in Tools, API Keys before sending on API credits.'),
+    ('', 'Not sent.'),  # Cancel at "Send on API credits?"
+])
+def test_an_api_credit_refusal_keeps_the_text_in_the_dialog(problem, said):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.sessions import OWN, SessionInfo
+    w = ExpressWindow()
+    w.ready = True
+    w.api_problem = problem
+    api = SessionInfo(source=OWN, key='codex-api:api-1', title='Priced', cwd='/work',
+                      cli_session_id='api-1', provider='codex-api')
+    w._snapshot.sessions.append(api)
+    w.records['api-1'] = OwnSession('api-1', 'Priced', '/work', provider='codex-api')
+    assert w._express_send(api.key, 'Check it') is False
+    assert w.work == [] and api.key not in w._codex_drafts
+    assert w.said[-1] == said
 
 
 def test_a_codex_send_that_fails_later_goes_in_the_chats_reply_box():

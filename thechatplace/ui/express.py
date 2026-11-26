@@ -25,7 +25,8 @@ import wx
 from .. import express
 from ..express import EXPRESS_KEY, ExpressRow
 from ..sessions import (EXPRESS_FIELD_IDS, EXPRESS_FIELDS, DEFAULT_EXPRESS_FIELDS,
-                        FIELD_ACTIVITY, RUNTIME_PROVIDERS, SessionInfo, clean_express_fields,
+                        FIELD_ACTIVITY, RUNTIME_PROVIDERS, WORKING, SessionInfo,
+                        clean_express_fields,
                         field_short_name)
 from ..transcript import ASSISTANT, ChatMessage
 from .a11y import refresh_list_item
@@ -56,8 +57,9 @@ class ExpressView:
     def _express_listed(self, shown) -> List[SessionInfo]:
         """Every chat Express could show, newest first, Last reply held while
         it's working; the first ``express_count`` are the list."""
-        listed = express.chats(shown, len(shown))
-        return express.keep_replies(listed, self._express_memo)
+        held = express.keep_replies([s for s in shown if s.key != EXPRESS_KEY],
+                                    self._express_memo)
+        return express.chats(held, len(held))
 
     def _with_express_row(self, sessions):
         """``sessions`` with the Express row first, when Express is on."""
@@ -192,7 +194,8 @@ class ExpressView:
         self._express_keys = keys
         self._express_rows = {r.key: r for r in rows}
         self._express_steady = steady
-        label = express.heading(len(keys))
+        # "Messages in", as a chat's list is named, so Alt+M still reaches it.
+        label = f"Messages in {express.heading(len(keys))}"
         if (self.chat_list.HasFocus() and not select_first
                 and self.messages_label.GetLabel() != self._messages_label_text(label)):
             # Said on leaving, not over the row you're on (_update_messages_label).
@@ -253,7 +256,7 @@ class ExpressView:
 
     def _express_copy(self):
         info = self._express_selected()
-        if info is None or not info.last_reply:
+        if info is None or not self._express_reply_kept(info):
             self._feedback("No reply to copy." if info is not None else "No chat selected.")
             return
         # The whole reply, read from the chat off this thread.
@@ -268,24 +271,34 @@ class ExpressView:
         if info is None:
             self._feedback("No chat selected.")
             return
-        if not info.last_reply:
+        if not self._express_reply_kept(info):
             self._feedback(f"{info.title} has no reply yet.")
             return
 
         def show(text):
             message = ChatMessage(kind=ASSISTANT, text=text,
                                   speaker=f"Latest reply in {info.title}")
-            self._read_whole_message(message)
+            self._read_whole_message(message, cwd=info.cwd or "")
             if self._express_open:
                 self.chat_list.SetFocus()
         self._express_whole_reply(info, show)
+
+    def _express_reply_kept(self, info) -> str:
+        """The reply ``info``'s row shows (held while it's working)."""
+        row = self._express_rows.get(info.key)
+        return row.last_reply if row is not None else info.last_reply
 
     def _express_whole_reply(self, info, then):
         """``then(text)`` with ``info``'s whole latest reply, or what Express
         kept of it when the chat can't say (an agent conversation, a read
         that failed), once it's read, if Express is still on the same row."""
-        kept = info.last_reply
         key = info.key
+        kept = self._express_reply_kept(info)
+        if info.state == WORKING:
+            # Its row holds the reply from before this turn; the chat's own
+            # latest is a step on the way. What you read is what the row says.
+            then(kept)
+            return
 
         def work():
             try:
@@ -390,7 +403,14 @@ class ExpressView:
         except Exception:  # noqa: BLE001 - not known to be ready
             ready = False
         if ready and info.key not in self._codex_preparation_running:
-            self._send_codex_owned(record, text)
+            # On API credits, a refusal before anything goes (no key, a
+            # limit, Cancel at "Send on API credits?") keeps the text here,
+            # in the reply dialog, as a Claude chat's does.
+            refusals = []
+            self._send_codex_owned(record, text, refused=refusals.append)
+            if refusals:
+                self._feedback(refusals[0] or "Not sent.")
+                return False
             return True
         if info.key in self._relay_waiting:
             self._feedback(f"A message is already waiting for {info.title} to get ready. "

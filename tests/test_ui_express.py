@@ -118,9 +118,23 @@ def test_enter_opens_the_list_on_the_newest_chat(frame, env):
     assert quiet.last_reply == "Tidied."  # the reply, not "Thanks"
     assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
     assert frame.desktop_note.GetValue() == "Press R to reply to the chat you're on."
-    assert frame.messages_label.GetLabel() == "&Express, 3 chats:"
+    # Alt+M still reaches the list (it's "Messages in ...", as a chat's is).
+    assert frame.messages_label.GetLabel() == "&Messages in Express, 3 chats:"
     assert status_field(frame.GetStatusBar(), 1) == "Express, 3 chats"
     assert frame._open is None
+
+
+def test_commands_in_express_act_on_the_row_you_are_on(frame, env):
+    """F2, Properties, Export and the rest mean the Express row's chat, not
+    whatever the session list has highlighted."""
+    replies(env)
+    turn_on(frame)
+    open_express(frame)
+    frame.session_list.SetSelection(frame._list_keys.index(
+        next(k for k in frame._list_keys if k != EXPRESS_KEY)))
+    row_of(frame, "Blocked one")
+    frame.chat_list.SetFocus()
+    assert frame._selected_session().title == "Blocked one"
 
 
 def test_enter_on_a_row_opens_that_chat(frame, env):
@@ -247,7 +261,7 @@ def test_shift_enter_reads_the_whole_reply(frame, env, monkeypatch):
     open_express(frame)
     row_of(frame, "Blocked one")
     read = []
-    monkeypatch.setattr(frame, "_read_whole_message", lambda message: read.append(message))
+    monkeypatch.setattr(frame, "_read_whole_message", lambda message, cwd=None: read.append(message))
     frame.express_read_reply()
     assert pump(lambda: read)
     assert read[0].text == "Which name?" and read[0].label == "Latest reply in Blocked one"

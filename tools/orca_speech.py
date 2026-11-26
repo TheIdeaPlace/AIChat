@@ -492,7 +492,7 @@ STEPS = [
     Step("Express on, back to the session list", ["ctrl+1"], trigger="express-on",
          after_trigger=True, expect=["Session list"]),
     Step("Home, the Express row", ["Home"], expect=["Express", "chats"]),
-    Step("Enter opens Express", ["Return"], expect=["Express"],
+    Step("Enter opens Express", ["Return"], expect=["Messages in Express"],
          refuse=["No session loaded"]),
     Step("Down, the next chat", ["Down"], expect=["active"]),
     Step("R, the reply box for that chat", ["r"], expect=["Reply to"],

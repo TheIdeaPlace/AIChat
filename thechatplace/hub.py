@@ -55,7 +55,7 @@ def collect(own: Iterable[OwnSession], running_own_ids: Set[str],
             waiting: Optional[Dict[str, str]] = None,
             started=platform_paths.process_start,
             order: str = SORT_STATUS,
-            last_messages: bool = False,
+            last_messages: bool = False, replies: bool = False,
             background: Optional[Set[str]] = None) -> Snapshot:
     """``waiting`` maps a running own session to what Claude is waiting for
     (a permission request, question or plan): it needs you, not working.
@@ -71,13 +71,13 @@ def collect(own: Iterable[OwnSession], running_own_ids: Set[str],
         load_live_status=load_live_status)
     snapshot = provider.collect()
     if last_messages:
-        fill_last_messages(snapshot.sessions)
+        fill_last_messages(snapshot.sessions, replies=replies)
     snapshot.sessions = sort_sessions(snapshot.sessions, order)
     return snapshot
 
 
 def fill_last_messages(sessions: Iterable[SessionInfo],
-                       cache: Optional[LastMessages] = None) -> None:
+                       cache: Optional[LastMessages] = None, replies: bool = True) -> None:
     """Each session's ``last_message``: the end of its transcript, read
     through ``cache`` (only files that changed since the last pass). One with
     no transcript, or none that can be read, says nothing."""
@@ -101,23 +101,23 @@ def fill_last_messages(sessions: Iterable[SessionInfo],
             info.last_message = info.last_reply = ""
             continue
         seen.append(path)
-        info.last_message, info.last_reply = fill_last_lines(info, path, cache)
+        info.last_message, info.last_reply = fill_last_lines(info, path, cache, replies)
     cache.keep_only(seen)
 
 
 def fill_last_message(info: SessionInfo, path: Optional[Path] = None,
                       cache: Optional[LastMessages] = None) -> str:
     """One session's Last message column text ("" when there's none)."""
-    return fill_last_lines(info, path, cache)[0]
+    return fill_last_lines(info, path, cache, replies=False)[0]
 
 
 def fill_last_lines(info: SessionInfo, path: Optional[Path] = None,
-                    cache: Optional[LastMessages] = None) -> Tuple[str, str]:
+                    cache: Optional[LastMessages] = None, replies: bool = True) -> Tuple[str, str]:
     """One session's Last message column text and its latest reply, for
     Express (#737), each "" when there's none."""
     cache = cache if cache is not None else LAST_MESSAGES
     path = path if path is not None else info.transcript_path()
-    message, reply = cache.get_both(path) if path is not None else (None, None)
+    message, reply = cache.get_both(path, replies) if path is not None else (None, None)
     return (last_message_line(message.label, message.text) if message else "",
             reply_line(reply.text) if reply else "")
 

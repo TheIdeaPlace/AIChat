@@ -13,6 +13,7 @@ import wx
 
 from .. import session_tools, updater
 from ..sessions import WORKING, SessionInfo
+from ..express import EXPRESS_KEY
 
 
 class SessionToolsHost:
@@ -159,7 +160,7 @@ class SessionToolsHost:
                 elif selected is not None:
                     self.session_list.SetSelection(min(gone, len(self._list_keys) - 1))
             # The sessions listed, not Express's row (#737).
-            self._update_list_label(sum(1 for key in self._list_keys if key != "express"))
+            self._update_list_label(sum(1 for key in self._list_keys if key != EXPRESS_KEY))
             self._announce_if_list_emptied()  # it took the last one, under you (#649)
         self.refresh_sessions()
         self._status(f"Hid {info.title}, archived by a session tool. Session, Bring Back "

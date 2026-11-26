@@ -1218,7 +1218,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _selected_session(self) -> Optional[SessionInfo]:
         """The session a command means: the highlighted one in the sessions
         list while that has focus (or nothing is loaded), otherwise the
-        loaded one."""
+        loaded one. In Express, away from the session list, the chat on the
+        Express row you're on (#737)."""
+        if self._express_open and wx.Window.FindFocus() is not self.session_list:
+            return self._express_selected()
         if self._open is not None and wx.Window.FindFocus() is not self.session_list:
             return self._current_info(self._open.key) or self._open
         index = self.session_list.GetSelection()
@@ -1288,12 +1291,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # or Express, which shows each chat's latest reply (#737).
         last_messages = (FIELD_LAST_MESSAGE in self.speech.session_fields
                          or self.speech.express_enabled)
+        # Claude's latest replies only for Express: looking for one can mean
+        # reading further back than the last message needs.
+        replies = self.speech.express_enabled
 
         def work():
             try:
                 snap = self.sessions.collect(
                     lambda: collect(own, running, waiting=waiting, order=order,
-                                    last_messages=last_messages, background=background),
+                                    last_messages=last_messages, background=background,
+                                    replies=replies),
                     order, owned=owned, last_messages=last_messages)
                 # The Cost column (#692): off this thread, and the ledgers
                 # are read again only when they've changed.
@@ -3242,10 +3249,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._read_whole_message(message)
         self.chat_list.SetFocus()
 
-    def _read_whole_message(self, message: ChatMessage, parent=None):
+    def _read_whole_message(self, message: ChatMessage, parent=None, cwd: Optional[str] = None):
         """One message in full, formatted or as text, over ``parent`` (a
-        subagent's conversation, #468) or the window."""
-        if self.speech.formatted_messages and self._show_formatted(message, parent):
+        subagent's conversation, #468) or the window. ``cwd``: the chat's
+        folder, for its file links, when it isn't the open chat's (Express,
+        #737)."""
+        if self.speech.formatted_messages and self._show_formatted(message, parent, cwd):
             return
         dialog = MessageDialog(parent or self, message.label, message.whole)
         try:
@@ -3253,7 +3262,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         finally:
             dialog.Destroy()
 
-    def _show_formatted(self, message: ChatMessage, parent=None) -> bool:
+    def _show_formatted(self, message: ChatMessage, parent=None,
+                        cwd: Optional[str] = None) -> bool:
         """The message as a formatted page (#190). False when that can't be
         shown, or Kelly chose Read as Plain Text: the caller opens the text
         box instead."""
@@ -3264,7 +3274,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        cwd = self._open.cwd if self._open is not None else ''
+        if cwd is None:
+            cwd = self._open.cwd if self._open is not None else ''
         return self._show_page(title, message_page(title, text, heading=message.label, cwd=cwd), parent)
 
     def on_user_guide(self, _event=None):

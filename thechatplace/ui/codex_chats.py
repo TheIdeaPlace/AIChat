@@ -756,12 +756,19 @@ class CodexChats(SoundHost, CodexExtras):
         return (' It was too long to send directly, so '
                 f'{provider_name(record.provider)} was given it as a file to read.')
 
-    def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None):
+    def _send_codex_owned(self, record, text, announce_send=True, restore=True, on_result=None,
+                          refused=None):
         """``announce_send`` and ``restore`` off: an agent conversation (#248)
-        says what was sent, and keeps the text if it fails (``on_result``)."""
+        says what was sent, and keeps the text if it fails (``on_result``).
+        ``refused(problem)``: told instead, before anything goes, when API
+        credits stop it (no key, a limit, Cancel at the question); the caller
+        keeps the text (Express's reply box, #737). False is returned then."""
         key = record.to_info().key
         if record.provider == 'codex-api':
             problem = self._api_send_problem(key)
+            if problem is not None and refused is not None:
+                refused(problem)
+                return False
             if problem is not None:
                 if restore:
                     self._restore_codex_text(key, (text,))

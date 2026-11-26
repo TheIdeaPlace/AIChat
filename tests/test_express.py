@@ -11,7 +11,7 @@ from thechatplace.commands import MENU_BAR, command, menu_path
 from thechatplace.express import EXPRESS_KEY, ExpressRow
 from thechatplace.sessions import (DEFAULT_EXPRESS_FIELDS, EXPRESS_FIELD_IDS, FIELD_ACTIVITY,
                                    FIELD_IDS, FIELD_LAST_REPLY, FIELD_PROVIDER, FIELD_STATUS,
-                                   FIELD_TITLE, IDLE, NEEDS_YOU, OWN, WORKING, SessionInfo,
+                                   FIELD_TITLE, IDLE, OWN, WORKING, SessionInfo,
                                    clean_express_fields, in_view)
 from thechatplace.speech import (EXPRESS_COUNT_DEFAULT, EXPRESS_COUNT_MAX, SpeechSettings)
 from thechatplace.transcript import ASSISTANT, LastMessages
@@ -64,6 +64,18 @@ def test_a_working_chat_keeps_its_previous_reply():
     # A chat working before Express ever saw it idle shows what it has.
     fresh = express.keep_replies([chat("b", 1, "Starting", state=WORKING)], memo)
     assert fresh[0].last_reply == "Starting"
+
+
+def test_a_chat_not_read_again_yet_keeps_its_reply_and_its_place():
+    """Codex reads a few histories a pass and forgets a chat's line once it's
+    active: until it's read again the chat keeps the reply it had, rather
+    than drop out of Express (the window holds replies before choosing)."""
+    memo = {}
+    express.keep_replies([chat("codex", 1, "Tests pass.", provider="codex")], memo)
+    blank = chat("codex", 2, provider="codex")  # active since, not read yet
+    held = express.keep_replies([blank], memo)
+    assert held[0].last_reply == "Tests pass."
+    assert [r.key for r in express.chats(held, 10)] == ["codex"]
 
 
 def test_frozen_order_keeps_your_row_and_adds_new_chats_at_the_end():

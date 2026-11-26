@@ -54,12 +54,16 @@ def chats(shown: Iterable[SessionInfo], count: int) -> List[SessionInfo]:
 
 def keep_replies(rows: Sequence[SessionInfo], memo: Dict[str, str]) -> List[SessionInfo]:
     """While a chat is working its Last reply stays the one it had (a turn
-    writes "Let me check the tests" on its way to the answer): copies of
-    ``rows`` with that reply put back, and ``memo`` (key -> the last reply
-    seen while it wasn't working) brought up to date."""
+    writes "Let me check the tests" on its way to the answer), and while a
+    provider hasn't read it again yet (Codex reads a few histories a pass,
+    and forgets a chat's line as soon as it's active) it keeps the one it
+    had, rather than drop out of Express: copies of ``rows`` with that reply
+    put back, and ``memo`` (key -> the last reply seen while it wasn't
+    working) brought up to date. Run before ``chats``, which leaves out
+    chats with nothing in them."""
     kept = []
     for info in rows:
-        if info.state == WORKING and memo.get(info.key):
+        if (info.state == WORKING or not info.last_reply) and memo.get(info.key):
             if info.last_reply != memo[info.key]:
                 info = dataclasses.replace(info, last_reply=memo[info.key])
         elif info.last_reply:
@@ -127,6 +131,7 @@ def row_text(info: SessionInfo, fields: Sequence[str], now_ms: Optional[int] = N
 def reply_title(info: SessionInfo) -> str:
     """The reply dialog's title and its box's label, naming where the text
     goes: "Reply to Release notes (Claude)"."""
-    provider = info.provider_label or (
-        "Codex" if info.provider == "codex-api" else info.provider.capitalize())
+    from .agents import provider_name
+    # An agent conversation names its members' providers ("Claude + Codex").
+    provider = info.provider_label or provider_name(info.provider)
     return f"Reply to {info.title or 'Untitled session'} ({provider})"
