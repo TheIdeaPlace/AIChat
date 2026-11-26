@@ -1380,7 +1380,9 @@ def test_slow_app_inventory_keeps_its_wait_without_extending_history_timeout(ser
 
 def test_app_inventory_still_has_a_bounded_wait(server):
     start, _ = server
-    with ReadOnlyCodexConnection(start=start, timeout=0.1) as connection:
+    with ReadOnlyCodexConnection(start=start) as connection:
+        # Do not constrain Python startup time on a busy CI runner.
+        connection._timeout = 0.1
         with pytest.raises(CodexRpcError, match="timed out"):
             connection.request("app/list", {"mode": "hang"})
         assert not connection.closed
