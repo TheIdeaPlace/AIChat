@@ -900,7 +900,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   is left out of the next turn. Codex uses its own agents and styles, so Claude's Agent and
   Output Style choices aren't shown.
 - **Tools, Subagents** lists the work Codex handed to subagents, including ones another subagent
-  started and ones Codex has archived. Read Conversation opens one to read; it doesn't become a
+  started and ones Codex has archived. Their tool calls and successful file changes also
+  contribute to the parent chat's sounds, with the same sound settings. Read Conversation opens one to read; it doesn't become a
   chat you can reply to. A subagent's requests come to the chat that started it while that chat
   is running, and say which subagent is asking; its commands can be allowed only once at a time,
   and a file change that doesn't come with the subagent's own changes to read can't be allowed.
@@ -916,8 +917,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
 - **Attach Files** (Ctrl+Shift+F) and pasting a copied image work as for Claude. Images are
   sent as images; other files are named for Codex to read using its file tools.
   You can send attachments with an empty reply box. Queued messages keep their image and skill
-  inputs. If a send fails, the recovered draft names its files; attach images again to resend
-  them as image inputs.
+  inputs. Editing a queued message, Stop, and recovery after a failed send keep its images
+  in the attachment list and its selected skills with the draft.
 - **Long messages.** Codex takes at most 32,000 characters in a message. A longer one, such as
   a pasted build log, is saved to a file in your temporary folder, and Codex is sent a short
   message asking it to read that file as yours; attached pictures and skills still go with it.
@@ -926,6 +927,15 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   reads as you wrote it, labeled "You, sent as a file". To show it that way, The Chat Place
   keeps a copy of your most recent long messages in its own data folder (up to 20, about 2 MB
   in all), and deletes a chat's copies when you delete the chat permanently.
+- **Change a queued message without stopping Codex.** On its row, choose **Edit Queued Message**
+  from the message menu to bring it back to the message box, or **Remove Queued Message**
+  (**Delete**) to discard it. Editing keeps images, skills and long messages. Your text comes
+  back without generated file or skill lines; the restored files and skills appear in Attachments,
+  where Delete removes one. Any skill token you typed stays in your text. Sending it again
+  puts it after any messages still queued. **Send Now** (**Ctrl+Enter** on the row) steers it
+  into Codex's running turn, as **Ctrl+Alt+Enter** does: Codex takes it at its next step,
+  without interrupting the command it is running. A message Codex refuses stays queued;
+  if delivery is uncertain, it comes back with a warning to check history before sending again.
 - **Change Model** and **Change Effort** (Chat, Chat Settings) change an idle chat from its next turn. Choices
   come from Codex. Change Model's first choice is **Codex's default**, naming the model that is,
   such as "Codex's default (GPT-5.5)": the chat goes on Codex's default and its default effort,
@@ -1063,8 +1073,44 @@ by automatic review or Allow for This Chat, are announced and shown in the chat 
 Tool Activity** on (Ctrl+T), like tool calls; Lists, **Auto Approvals** (Ctrl+Shift+I, then Ctrl+8 on Windows)
 always lists them, those Allow for This Chat answered as "You allowed it for this chat", and Turn Status counts this turn's. The most recent 128 decisions are kept
 locally for that chat and can be read again in Lists and Chat Permissions, newest first in both,
-including after restarting. Chat Permissions lists them under "Recent decisions made for you, by
+including after restarting. Verified subagents' decisions are included, with "Codex subagent"
+in their details. Chat Permissions lists them under "Recent decisions made for you, by
 automatic review and by Allow for This Chat (newest first):".
+
+Connected tools add access to services beyond Codex's normal file and command tools. For
+example, a notes service could let you ask "Find my notes about the conference" or "Create a
+note titled Packing list". What you can ask depends on the tools that service supplies;
+enabling a connection does not give Codex every feature of the service.
+
+Signing into Codex does not itself configure an external server. Add the service using its
+Codex setup instructions, or install/connect an account app available to you. Servers set up
+for Claude are not automatically configured for Codex. This dialog uses the connections Codex
+reports; it does not currently offer a service directory or an Add Server form.
+
+To use an available connection in a ChatGPT-subscription Codex chat:
+
+1. Open **Tools, Connected Tools**, select the service, and read **Details**.
+2. If it needs account access, choose **Sign In** and complete the service's steps in your
+   browser. Being signed in and being on for this chat are separate states.
+3. If it is off for this chat, choose **Copy with Tool On** and confirm the copy. Continue in
+   that new chat. **Reconnect** refreshes an enabled server; it does not turn an off tool on.
+4. Ask for a specific task in your message, naming the service if helpful. If Codex asks for
+   approval, open **Answer** (Ctrl+Shift+A), read the arguments, and Send or Decline. A request
+   to create a note needs a tool that can create notes; a search-only connection cannot do it.
+5. Check the service's actual result. To remove the connection from the conversation, use
+   **Copy with Tool Off** and continue in that copy.
+
+Apps Codex marks accessible appear before the larger catalog of apps needing setup.
+They still start off for this chat until you use **Copy with Tool On**.
+Listing account apps can take up to a minute per page while Codex fetches its catalog.
+The lookup runs in the background; you can close the dialog while it is waiting.
+
+An empty list can mean no services have been configured. **Apps unavailable** means the app
+inventory could not be retrieved; it does not establish that your account has no apps. That
+entry is information, not a server to sign into. Its message distinguishes a timeout or an
+unsupported Codex method when known. **Refresh** retries the lookup, and any configured servers
+listed alongside it remain usable. Codex's ordinary file and command tools are separate from
+this list.
 
 Connected tools start off in Codex chats started here. Tools, **Connected Tools (MCP)** lists
 the servers set up in Codex for the chat's folder, and apps from ChatGPT. Its note starts: "In
@@ -1088,14 +1134,17 @@ mcp add`).
 browser. When Codex says which sign-in it is, keep the dialog open to hear its result;
 otherwise press **Refresh** when finished. **Reconnect** tries the servers again.
 For apps, Sign In opens the app page Codex gives and Refresh reads whether it's available now.
-Codex signs in to a server only for a chat that has it on, so for a server that's off in this
-chat, Sign In says "Sign In works only in a chat with this tool on. Press Copy with Tool On
-(Alt+O) to make a copy with it on, then sign in from Connected Tools in that copy." If a server a chat uses
-is later removed from Codex's settings, turns are refused and say why; the list shows it
-first, and **Copy with Tool Off** makes a copy without it, or you can add it back. For a Codex chat
-started elsewhere the list can't be changed, and Sign In says to use Codex in a terminal, with
-the command: "This chat wasn't started in The Chat Place. To sign in to this tool, use Codex in
-a terminal: codex mcp login notes." **Answer** (Ctrl+Shift+A) shows a tool's forms or a web
+**Sign In works with a server off, and in chats started elsewhere.** It uses the servers configured
+for the chat's folder, without making a chat or turning the tool on. Keep Connected Tools open
+until the result is announced; an enabled tool may need **Reconnect** to use the sign-in.
+Sign-in waits up to three minutes. It needs a recent Codex; unsupported sign-ins say they failed.
+If a server a chat uses is later removed from Codex's settings, turns are refused and say why;
+the list shows it first, and **Copy with Tool Off** makes a copy without it, or you can add it back.
+A chat started elsewhere still has its tools left as they are. When Codex asks permission
+for a tool call, Answer shows its arguments and your answer covers only that call. Long arguments
+show a preview and the number of characters not shown. Whether
+Codex asks depends on its configuration; enabling a tool does not guarantee a question before
+every call. **Answer** (Ctrl+Shift+A) shows a tool's forms or a web
 address to open. Escape leaves the question waiting; Decline refuses it. A request The Chat
 Place can't show at all is declined with a notice.
 

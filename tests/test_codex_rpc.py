@@ -317,7 +317,7 @@ def test_native_launch_uses_stdio_process_tree_and_cleans_up_attach_failure(tmp_
         assert argv == [str(executable), "app-server", "--listen", "stdio://"]
         assert kwargs == dict(stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, creationflags=123,
-                              env=platform_paths.codex_child_environment())
+                              env=platform_paths.codex_child_environment(), cwd=None)
         return process
 
     monkeypatch.setattr(platform_paths, "ProcessTree", Tree)
@@ -1218,7 +1218,7 @@ def test_steer_goes_into_the_running_turn_and_never_starts_one(server, tmp_path,
         assert not service.snapshot('owned').steering
         # A queued message steered: out of the queue only once accepted.
         assert service.send(record, 'Queued one')
-        assert service.steer(record, 'Queued one', index=0) == 'turn'
+        assert service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0) == 'turn'
         assert not service.snapshot('owned').queued
         # The checks ran again before each steer (account, route), and no
         # turn/start went: two turn/steer requests only.
@@ -1264,7 +1264,7 @@ def test_steer_racing_the_turns_end_is_refused_and_a_queued_one_stays_queued(ser
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexSteerRefused) as refused:
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert refused.value.code in ('not_running', 'refused')
         assert not service.snapshot('owned').problem
         # Back in its queue, it goes as the next turn once the turn has ended,
@@ -1287,7 +1287,7 @@ def test_steer_with_the_connection_lost_is_unknown_and_a_queued_one_comes_back(s
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexConnectionFailure):
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         # Maybe taken: never queued to go again, but back to the reply box.
         assert any(u.unsent == ('Queued one',) for u in updates)
         assert not service.snapshot('owned').queued
@@ -1311,7 +1311,7 @@ def test_a_steer_error_that_isnt_a_refusal_is_unconfirmed(server, scenario, tmp_
         _wait(lambda: service.snapshot('owned').outcome == 'inProgress')
         assert service.send(record, 'Queued one')
         with pytest.raises(CodexRpcError, match='did not confirm') as error:
-            service.steer(record, 'Queued one', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert not isinstance(error.value, CodexSteerRefused)
         assert not service.snapshot('owned').queued  # never sent again on its own
         assert any(u.unsent == ('Queued one',) for u in updates)
@@ -1360,3 +1360,30 @@ def test_a_failed_turn_doesnt_lock_the_chat(server, scenario, tmp_path, monkeypa
             assert 'still working on a turn' in codex_diagnostics.last_failure()
     finally:
         service.close()
+
+
+def test_slow_app_inventory_keeps_its_wait_without_extending_history_timeout(server):
+    start, _ = server
+    queued = threading.Event()
+    with ReadOnlyCodexConnection(start=start, timeout=1) as connection, ThreadPoolExecutor(2) as pool:
+        apps = pool.submit(connection.request, "app/list", {"mode": "hang"}, on_sent=queued.set)
+        assert queued.wait(5)
+        app_id = connection._next_id
+        history = pool.submit(connection.request, "thread/read", {"mode": "hang"})
+        with pytest.raises(CodexRpcError, match="timed out"):
+            history.result(timeout=5)
+        assert not apps.done()
+        connection._receive({"id": app_id, "result": {"data": []}})
+        assert apps.result(timeout=5) == {"data": []}
+        assert not connection.closed
+
+
+def test_app_inventory_still_has_a_bounded_wait(server):
+    start, _ = server
+    with ReadOnlyCodexConnection(start=start) as connection:
+        # Do not constrain Python startup time on a busy CI runner.
+        connection._timeout = 0.1
+        with pytest.raises(CodexRpcError, match="timed out"):
+            connection.request("app/list", {"mode": "hang"})
+        assert not connection.closed
+        assert connection.request("thread/list", {}) == {"echo": {}}

@@ -439,31 +439,40 @@ def test_delete_in_a_codex_chat_from_elsewhere_still_says_why_not(frame, env):
         dialog.Destroy()
 
 
-def test_codex_sign_in_says_how_for_an_off_tool_and_a_chat_from_elsewhere(frame, env):
-    """Sign In said "Open a chat started here with this tool enabled first."
-    (#596): now it says the steps, which differ by case."""
+@pytest.mark.parametrize("is_own", [True, False])
+def test_codex_sign_in_off_and_external_tools_shows_real_address_without_copy(frame, env, monkeypatch, is_own):
     from types import SimpleNamespace
     from thechatplace.providers.codex_tools import CodexTool
     from thechatplace.ui.codex_tools_host import CodexConnectedTools
-    from thechatplace.ui.dialogs import ConnectedToolsDialog
-    key = "" if sys.platform == "darwin" else " (Alt+O)"
-    record = SimpleNamespace(cli_session_id="c-1", provider_options={})
-    own = CodexConnectedTools(_codex_frame(record), _codex_info(is_own=True))
-    own.load = lambda done: done([CodexTool("notes", "off")], "")
-    elsewhere = CodexConnectedTools(_codex_frame(), _codex_info())
-    elsewhere.load = lambda done: done([CodexTool("my notes", "needs-auth", off_for_chat=False, read_only=True)], "")
-    expected = [
-        "Couldn't start signing in to notes. Sign In works only in a chat with this tool on. Press "
-        f"Copy with Tool On{key} to make a copy with it on, then sign in from Connected Tools in that copy.",
-        "Couldn't start signing in to my notes. This chat wasn't started in The Chat Place. To sign in "
-        "to this tool, use Codex in a terminal: codex mcp login 'my notes'."]
-    for host, said in zip((own, elsewhere), expected):
-        dialog = ConnectedToolsDialog(frame, "Chat", host)
-        try:
-            dialog.on_sign_in()
-            assert env["boxes"][-1] == said
-        finally:
-            dialog.Destroy()
+    from thechatplace.ui.dialogs import ConnectedToolsDialog, ElicitationDialog
+    info = _codex_info(is_own=is_own)
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={}) if is_own else None
+    stub = _codex_frame(record)
+    stub._feedback = lambda text: None
+    calls, addresses = [], []
+    def action(selected, name, verb):
+        calls.append((selected, name, verb))
+        return {"authorizationUrl": "https://tools.example/authorize?state=probe", "loginId": "probe-login"}
+    stub.sessions.connected_tool_action = action
+    host = CodexConnectedTools(stub, info)
+    tool = CodexTool("notes", "off" if is_own else "needs-auth",
+                     off_for_chat=is_own, read_only=not is_own)
+    host.load = lambda done: done([tool], "")
+    def cancel(dialog):
+        addresses.append(dialog.request.url)
+        return wx.ID_CANCEL
+    monkeypatch.setattr(ElicitationDialog, "ShowModal", cancel)
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_sign_in()
+        assert calls == [(info, "notes", "login")]
+        assert addresses == ["https://tools.example/authorize?state=probe"]
+        assert "Sign-in page was not opened." in env["boxes"][-1]
+        assert not env["opened"]
+        if record is not None:
+            assert record.provider_options == {}
+    finally:
+        dialog.Destroy()
 
 
 def test_a_copilot_chat_hears_which_chats_have_connected_tools(frame, env, monkeypatch):
@@ -1359,5 +1368,26 @@ def test_a_read_only_boxs_text_is_not_parsed_for_a_shortcut(frame, env):
         # A field beneath its label keeps Windows' own reading of its key.
         city = dialog.control_for("city").GetAccessible()
         assert not isinstance(city, type(box.GetAccessible()))
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("action", ["on_sign_in", "on_reconnect", "on_toggle"])
+def test_unavailable_apps_row_never_performs_a_tool_action(frame, env, action):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    notice = CodexTool("Apps unavailable", "Press Refresh to try again.", informational=True)
+    host.load = lambda done: done([notice], "")
+    def unexpected(*args, **kwargs):
+        pytest.fail("An informational row must not perform a tool action")
+    host.sign_in = host.reconnect = host.set_off = unexpected
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog._list_name() == "Connected tools, 0"
+        getattr(dialog, action)()
+        assert env["boxes"][-1] == notice.text()
+        assert dialog.details.GetValue().startswith(notice.text())
     finally:
         dialog.Destroy()

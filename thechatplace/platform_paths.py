@@ -2560,7 +2560,7 @@ def codex_child_environment(environ=None) -> dict:
             and not key.upper().startswith(("OPENAI_", "AZURE_OPENAI_"))}
 
 
-def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
+def start_codex_server(executable: Optional[str] = None, *, cwd=None) -> CodexServerProcess:
     """Start stdio without a shell, in the existing kill-on-close tree."""
     import subprocess
 
@@ -2569,7 +2569,7 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
         raise OSError("Install the Codex app or CLI, then restart.")
     tree = ProcessTree()
     process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
-                               env=codex_child_environment(),
+                               env=codex_child_environment(), cwd=cwd,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, **tree.popen_kwargs())
     owned = CodexServerProcess(process, tree)

@@ -6430,7 +6430,8 @@ class ConnectedToolsDialog(wx.Dialog):
     def _list_name(self) -> str:
         if not self.loaded or self.load_error:
             return "Connected tools"
-        return f"Connected tools, {len(self.rows)}"
+        count = sum(not getattr(row, "informational", False) for row in self.rows)
+        return f"Connected tools, {count}"
 
     def _name_list(self):
         self.list.SetName(self._list_name())
@@ -6573,6 +6574,9 @@ class ConnectedToolsDialog(wx.Dialog):
             self._tell(self.load_error + " Press Refresh to try again.", back_to=back_to)
             return None
         server = self._selected()
+        if server is not None and getattr(server, "informational", False):
+            self._tell(server.text(), back_to=back_to)
+            return None
         if server is None:
             self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
         return server

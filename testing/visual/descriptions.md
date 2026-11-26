@@ -1244,3 +1244,35 @@ The Lists dialog for "Codex history preview", on "Auto Approvals (5)", the eight
 
 **What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
 
+
+
+## Codex workflows (2026-11-25, #729)
+
+The light and High Contrast Aquatic pictures at 100% were captured in the Windows
+VM. All eight pictures have zero measured clipping, overlap or outside-window
+problems. The independent review opened every picture, changed baseline and diff.
+
+**main-codex-queue-edited:** The main window retains the session list on the left,
+messages at upper right and reply box below. The queued row has gone; its returned
+request appears above the previous draft in the reply box, with the caret visible.
+The running status remains visible. The owned-chat picture has the same layout;
+compared with its baseline the menus include Session, Chat and Tools, session text
+mentions subscription and Attach Files has a different mnemonic.
+
+**codex-tool-approval:** Message fills most of the dialog above Send, Decline and
+Answer Later at lower right. It shows the server and tool name, the complete JSON
+arguments, and “Your answer covers this call only.” The Send button has the default
+blue outline in light and cyan in High Contrast. Nothing overlaps or is clipped.
+
+**codex-tools:** The existing list and lower Details box retain their positions.
+The note adds that an off tool can be signed in and an enabled tool should be
+reconnected afterward; its extra lines fit fully.
+
+Measured normal text is black on white, 21:1, or black on #F0F0F0, 18.43:1.
+Light selected white text on #0078D4 is 4.53:1. High Contrast uses white on
+#202020, 16.29:1, selected #202074 on #8EE3F0, 9.47:1, and cyan focus against
+dark, 11.17:1. All four High Contrast pictures pass the checklist. All four
+light pictures retain the existing native text-control border #ABADB3 against
+white, 2.24:1 (1.97:1 against dialog gray), below the 3:1 border criterion.
+Accepting these baselines records the reviewed layout, without claiming this
+existing contrast defect is fixed.
