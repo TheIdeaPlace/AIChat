@@ -73,18 +73,23 @@ jobs:
         run: |
           git fetch --depth=1 origin main
           git show FETCH_HEAD:tests/test_ui_hidden.py > tests/test_ui_hidden_before736.py
+          Xvfb :99 -screen 0 1920x1080x24 & sleep 3
+          export DISPLAY=:99
           for n in $(seq $(nproc)); do (while :; do :; done) & done
           K="refused_new_codex_chat_puts or refused_new_codex_chat_while"
-          before=0; after=0
           for i in $(seq 40); do
-            xvfb-run -a -s "-screen 0 1920x1080x24" .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_ui_hidden_before736.py -k "$K" > out.txt 2>&1 || { before=$((before+1)); tail -5 out.txt; }
+            .venv/bin/python -m pytest -q -rfE -p no:cacheprovider tests/test_ui_hidden_before736.py -k "$K" >> before.txt 2>&1 || true
           done
           for i in $(seq 40); do
-            xvfb-run -a -s "-screen 0 1920x1080x24" .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_ui_hidden.py -k "$K" > out.txt 2>&1 || { after=$((after+1)); tail -20 out.txt; }
+            .venv/bin/python -m pytest -q -rfE -p no:cacheprovider tests/test_ui_hidden.py -k "$K" >> after.txt 2>&1 || true
           done
-          echo "main's version failed $before of 40 runs; the fix failed $after of 40 runs"
           kill $(jobs -p) || true
-          test "$after" -eq 0
+          for f in before.txt after.txt; do
+            echo "== $f: $(grep -c ' passed' $f) runs reported"
+            grep -E '^(FAILED|ERROR) ' $f | cut -c1-200 | sort | uniq -c
+          done
+          echo "== the fix's failures:"; grep -B30 -E '^(FAILED|ERROR) ' after.txt | head -150 || true
+          ! grep -qE '^(FAILED|ERROR) ' after.txt
 
   # What Orca says and reaches, with real Orca in a desktop of its own
   # (tools/linux_a11y_session.sh): no person, sound or VM needed (#230).
