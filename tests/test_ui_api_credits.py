@@ -797,6 +797,16 @@ def test_usage_has_an_api_credits_section(frame, monkeypatch):
                    "your $20.00 limit. For today, the last 7 days and spending by model and by chat, open Usage and Context from a chat that uses API credits."]
     assert lines[-len(expected_plan):] == expected_plan
     assert lines.index(api[0]) == len(lines) - len(expected_plan) - 1
+    # With the weekly Fable limit kept from a Fable turn (#722), it's one of
+    # the plan's lines: the API line still comes just before them.
+    import time as _time
+    frame._fable_limits = {"status": "allowed", "unifiedWindows": {
+        "seven_day_overage_included": {"utilization": 0.25,
+                                       "resetsAt": _time.time() + 86400}}}
+    frame.on_usage()
+    lines = shown[-1]
+    assert any(line.startswith("Weekly Fable limit 25% used") for line in lines[-3:])
+    assert lines.index(api[0]) == len(lines) - len(expected_plan) - 2
 
 
 def test_settings_show_the_api_credit_choices(frame):

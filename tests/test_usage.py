@@ -25,7 +25,7 @@ def test_limits_in_words():
     reached = usage.limits_text(_info(five=1.0, status="rejected"), NOW)
     assert reached.startswith("You've reached a usage limit; it resets at 10:00 AM.")
     assert usage.limits_text(_info(isUsingOverage=True), NOW).endswith(
-        "Turns are now billed as extra usage.")
+        "Turns are now charged to usage credits.")
 
 
 def test_warnings_only_when_close_or_reached():
@@ -72,7 +72,7 @@ def test_usage_lines_one_per_limit():
     assert lines[0] == "Quiet one: Context: not known until Claude's next reply."
     assert lines[1] == "You've reached a usage limit; it resets at 10:00 AM."
     assert "Weekly Opus limit 50% used." in lines
-    assert lines[-1] == "Turns are now billed as extra usage."
+    assert lines[-1] == "Turns are now charged to usage credits."
     assert len(lines) == 6
     # The spoken text (a limit reached, said unasked) is the same lines run together.
     assert usage.limits_text(info, NOW) == " ".join(lines[1:])
@@ -114,3 +114,42 @@ def test_transcript_tracks_context_and_compaction():
                                compactMetadata={"trigger": "auto"})])
     assert added[0].text == "Conversation compacted (the context was full)."
     assert parser.transcript.context_tokens == 0 and parser.transcript.compactions == 1
+
+
+def test_the_weekly_fable_limit_is_named_and_kept_after_other_turns():
+    """Fable turns report seven_day_overage_included, which Claude Code calls
+    the Fable limit (#722); other models' turns don't, so Usage keeps the
+    last Fable report's."""
+    fable = _info()
+    fable["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.25,
+                                                             "resetsAt": NOW + 2 * 86400}
+    said = "Weekly Fable limit 25% used, resets on Friday at 9:00 AM."
+    assert said in usage.limit_lines(fable, NOW)
+    opus = _info(seven=0.4)
+    merged = usage.with_fable_window(opus, fable, NOW)
+    lines = usage.limit_lines(merged, NOW)
+    assert said in lines
+    assert "Weekly limit 40% used, resets on Friday at 9:00 AM." in lines
+    assert "seven_day_overage_included" not in opus["unifiedWindows"]  # not changed
+    # A newer report of its own wins; nothing to add, nothing added.
+    fresh = _info()
+    fresh["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.5,
+                                                             "resetsAt": NOW + 86400}
+    assert usage.with_fable_window(fresh, fable, NOW) is fresh
+    assert usage.with_fable_window(opus, None, NOW) is opus
+    assert usage.with_fable_window(None, fable, NOW) is None
+    # Once its reset time has passed, the old figure isn't carried.
+    assert usage.with_fable_window(opus, fable, NOW + 3 * 86400) is opus
+
+
+def test_fable_on_usage_credits_is_still_said_after_another_models_turn():
+    """Fable has its own allowance: an Opus turn saying it isn't on usage
+    credits says nothing about Fable (#722)."""
+    fable = _info(isUsingOverage=True)
+    opus = _info(isUsingOverage=False)
+    lines = usage.limit_lines(usage.with_fable_window(opus, fable, NOW), NOW)
+    assert lines[-1] == "Turns are now charged to usage credits."
+    assert opus["isUsingOverage"] is False  # not changed
+    # After the limit it named has reset, it isn't said any more.
+    later = usage.with_fable_window(opus, fable, NOW + 7200)
+    assert "Turns are now charged to usage credits." not in usage.limit_lines(later, NOW)
