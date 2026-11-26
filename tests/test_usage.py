@@ -121,17 +121,35 @@ def test_the_weekly_fable_limit_is_named_and_kept_after_other_turns():
     the Fable limit (#722); other models' turns don't, so Usage keeps the
     last Fable report's."""
     fable = _info()
-    fable["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.25}
-    assert "Weekly Fable limit 25% used." in usage.limit_lines(fable, NOW)
+    fable["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.25,
+                                                             "resetsAt": NOW + 2 * 86400}
+    said = "Weekly Fable limit 25% used, resets on Friday at 9:00 AM."
+    assert said in usage.limit_lines(fable, NOW)
     opus = _info(seven=0.4)
-    merged = usage.with_fable_window(opus, fable)
+    merged = usage.with_fable_window(opus, fable, NOW)
     lines = usage.limit_lines(merged, NOW)
-    assert "Weekly Fable limit 25% used." in lines
+    assert said in lines
     assert "Weekly limit 40% used, resets on Friday at 9:00 AM." in lines
     assert "seven_day_overage_included" not in opus["unifiedWindows"]  # not changed
     # A newer report of its own wins; nothing to add, nothing added.
     fresh = _info()
-    fresh["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.5}
-    assert usage.with_fable_window(fresh, fable) is fresh
-    assert usage.with_fable_window(opus, None) is opus
-    assert usage.with_fable_window(None, fable) is None
+    fresh["unifiedWindows"]["seven_day_overage_included"] = {"utilization": 0.5,
+                                                             "resetsAt": NOW + 86400}
+    assert usage.with_fable_window(fresh, fable, NOW) is fresh
+    assert usage.with_fable_window(opus, None, NOW) is opus
+    assert usage.with_fable_window(None, fable, NOW) is None
+    # Once its reset time has passed, the old figure isn't carried.
+    assert usage.with_fable_window(opus, fable, NOW + 3 * 86400) is opus
+
+
+def test_fable_on_usage_credits_is_still_said_after_another_models_turn():
+    """Fable has its own allowance: an Opus turn saying it isn't on usage
+    credits says nothing about Fable (#722)."""
+    fable = _info(isUsingOverage=True)
+    opus = _info(isUsingOverage=False)
+    lines = usage.limit_lines(usage.with_fable_window(opus, fable, NOW), NOW)
+    assert lines[-1] == "Turns are now charged to usage credits."
+    assert opus["isUsingOverage"] is False  # not changed
+    # After the limit it named has reset, it isn't said any more.
+    later = usage.with_fable_window(opus, fable, NOW + 7200)
+    assert "Turns are now charged to usage credits." not in usage.limit_lines(later, NOW)
