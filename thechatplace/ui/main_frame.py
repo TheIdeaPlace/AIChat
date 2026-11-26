@@ -1293,14 +1293,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          or self.speech.express_enabled)
         # Claude's latest replies only for Express: looking for one can mean
         # reading further back than the last message needs.
-        replies = self.speech.express_enabled
+        express_replies = self.speech.express_enabled
 
         def work():
             try:
                 snap = self.sessions.collect(
                     lambda: collect(own, running, waiting=waiting, order=order,
                                     last_messages=last_messages, background=background,
-                                    replies=replies),
+                                    replies=express_replies),
                     order, owned=owned, last_messages=last_messages)
                 # The Cost column (#692): off this thread, and the ledgers
                 # are read again only when they've changed.
