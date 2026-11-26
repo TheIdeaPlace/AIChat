@@ -111,7 +111,7 @@ class RewindChats:
         # A branch is charged as the chat it comes from (#658): a branch of
         # an API chat is an API chat, its sends asked and said like any
         # other's, and keeps Fable; anything else is on the subscription,
-        # where a model it can't have (Fable) is never carried.
+        # where Fable is kept too (#722): each send checks the plan for it.
         billing = source.billing if source is not None and source.provider == "claude" \
             else "subscription"
         if not model_allowed(model, billing):
@@ -137,6 +137,10 @@ class RewindChats:
             # From a chat started elsewhere there's no list to keep, so it's
             # a new chat here, as Continue Here's is.
             own.disabled_mcp = list(self.speech.mcp_off_for_new_chats)
+        if own.fork_source:
+            # A copy keeps the source's recorded system prompt, which may not
+            # have #319's note, so it's made afresh. A new chat records its own.
+            own.prompt_fresh = True
         if not self._store_write(self.store.add, own):
             return None
         if info.key in self.tool_activity:
@@ -158,7 +162,7 @@ class RewindChats:
     def on_rewind_to_here(self):
         """Chat, Retry from Here (Ctrl+Shift+Z), and the messages list's menu:
         back to just before one of your messages."""
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in ('codex', 'codex-api'):
             if not self._require_capability('branch', self._open):
                 return
             if self._chat_loaded:
@@ -363,7 +367,7 @@ class RewindChats:
     def on_branch_from_here(self):
         """Chat, Branch from Here, and the messages list's menu: a new chat
         whose history ends with the chosen message, to try another way."""
-        if self._open is not None and self._open.provider == 'codex':
+        if self._open is not None and self._open.provider in ('codex', 'codex-api'):
             if not self._require_capability('branch', self._open):
                 return
             if self._chat_loaded:

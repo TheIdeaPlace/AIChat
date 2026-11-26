@@ -4,6 +4,7 @@ No window appears on screen: the frame is created hidden and destroyed at the
 end, and speech is replaced by a recorder. The real look and sound with JAWS
 and NVDA is checked by hand (see DEVELOPING.md).
 """
+import ctypes
 import dataclasses
 import json
 import os
@@ -16,7 +17,7 @@ from thechatplace.ui_text import key_name
 
 wx = pytest.importorskip("wx")
 
-from thechatplace import hub, platform_paths, speech  # noqa: E402
+from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
@@ -261,7 +262,7 @@ def fake_runner(monkeypatch):
 def test_list_order_and_lines(frame):
     items = list(frame.session_list.GetStrings())
     assert items[0].startswith("Blocked one, Claude, Repo, needs you: Pick a name")
-    assert items[1].startswith("Hub probe, Claude, Scratch, idle")
+    assert items[1].startswith("Hub probe, Claude, Claude subscription, Scratch, idle")
     assert items[1].endswith("Chat Place session")
     assert items[2].startswith("Quiet one, Claude, Repo, idle, active 1 minute ago")
     assert frame.session_list.GetSelection() == 0
@@ -1858,7 +1859,7 @@ def test_settings_dialog_lines_up_its_check_boxes(frame):
                             speech.default_options())
     try:
         dialog._body.Layout()  # the check boxes live in the scrolled body, not the dialog
-        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list,
+        boxes = [dialog.own_messages, dialog.remote_control, dialog.task_list, dialog.chrome,
                  dialog.codex_enabled, dialog.copilot_enabled, dialog.agent_auto,
                  dialog.update_notice]
         assert {box.GetPosition().x for box in boxes} == {10}
@@ -2914,6 +2915,45 @@ def test_read_as_plain_text_and_the_setting_open_the_text_box(frame, env, monkey
     frame.speech.formatted_messages = False
     frame.on_read_message()
     assert len(shown) == 1 and len(opened) == 2  # straight to the text box
+
+
+def test_a_formatted_page_that_never_loads_opens_as_plain_text_and_says_why(frame, env,
+                                                                           monkeypatch):
+    # #693: WebView2 157 crashed again and again, and every page was blank.
+    # A page that gives up says why once, and the message opens as text.
+    from thechatplace.ui import main_frame
+    from thechatplace.ui.dialogs import FORMATTED_BROKEN_TEXT, ID_PLAIN_TEXT, MessageDialog
+    _load_reply(frame, env, "## Result")
+
+    class Dead:
+        failed = True
+
+        def __init__(self, parent, title, page):
+            pass
+
+        def ShowModal(self):
+            return ID_PLAIN_TEXT
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(main_frame, "formatted_view_available", lambda: True)
+    monkeypatch.setattr(main_frame, "FormattedMessageDialog", Dead)
+    opened = []
+
+    class Plain(MessageDialog):
+        def ShowModal(self):
+            opened.append(self.text.GetValue())
+            return wx.ID_CANCEL
+    monkeypatch.setattr(main_frame, "MessageDialog", Plain)
+    # Real timers don't fire in these tests; the delay is recorded instead.
+    delays = []
+    monkeypatch.setattr(main_frame.wx, "CallLater",
+                        lambda ms, fn, *args: delays.append(ms) or wx.CallAfter(fn, *args))
+    frame.on_read_message()
+    assert opened == ["## Result"]
+    # Said a moment after the text box opens, so it isn't cut off by it.
+    assert delays and delays[-1] >= 1000
+    assert pump(lambda: env["feedback"] and env["feedback"][-1] == FORMATTED_BROKEN_TEXT)
 
 
 def test_settings_dialog_has_the_formatted_page_choice(frame):
@@ -5870,6 +5910,20 @@ def test_voiceover_reads_the_main_window_labels(frame):
 
 
 @voiceover
+def test_voiceover_can_land_on_the_status_bar_text(frame):
+    # A plain wx view is no accessibility element: on Command+9 VoiceOver
+    # found nothing focused and stayed where it was (#726).
+    from thechatplace.ui import mac_a11y
+    part = frame.status_parts.get("message")
+    view = mac_a11y._target_view(part)
+    assert mac_a11y._send(view, "isAccessibilityElement", restype=ctypes.c_bool)
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityRole")) == "AXStaticText"
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityValue")) == part.GetLabel()
+    part.SetLabel("Message copied.")
+    assert mac_a11y._to_str(mac_a11y._send(view, "accessibilityValue")) == "Message copied."
+
+
+@voiceover
 def test_voiceover_follows_a_changing_name(frame):
     from thechatplace.ui import mac_a11y
     from thechatplace.ui.a11y import set_accessible_name
@@ -7156,7 +7210,7 @@ def test_session_list_columns_reorder_the_rows_at_once_and_are_remembered(frame,
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Chooses)
     frame.on_session_columns()
     assert seen["sample"].title == "Blocked one"  # the preview shows the selected session
-    assert seen["fields"][:4] == ["title", "provider", "folder", "status"]
+    assert seen["fields"][:5] == ["title", "provider", "charged", "cost", "folder"]
     assert frame.session_list.GetStringSelection() == "needs you: Pick a name, Blocked one"
     assert sorted(frame.session_list.GetStrings()) == [
         "idle, Hub probe", "idle, Quiet one", "needs you: Pick a name, Blocked one"]
@@ -7264,30 +7318,31 @@ def test_columns_dialog_moves_says_where_and_stays_on_the_column(frame, monkeypa
     dialog, said, focused = _columns_dialog(frame)
     try:
         assert dialog.shown.GetString(0) == "Title"
-        # Started (#209) and Last message (#146) aren't shown by default.
+        # Started (#209) and Last message (#146) aren't shown by default;
+        # Charged to (#658) is, just after Provider, and Cost (#692) after it.
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
-        assert dialog.preview.GetValue().startswith("Blocked one, Claude, Repo, needs you")
-        dialog.shown.SetSelection(3)  # Status
+        assert dialog.preview.GetValue().startswith("Blocked one, Claude, ")
+        dialog.shown.SetSelection(5)  # Status
         dialog.move_to_end(top=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
-        assert dialog.fields()[:4] == ["status", "title", "provider", "folder"]
+        assert said[-1] == "Status moved to top, 1 of 13."
+        assert dialog.fields()[:4] == ["status", "title", "provider", "charged"]
         assert dialog.shown.GetSelection() == 0 and focused[-1] == "shown"
         assert dialog.preview.GetValue().startswith("needs you: Pick a name, Blocked one")
         dialog.move(-1)
         assert said[-1] == "Status is already at the top."
         dialog.move(1)
-        assert said[-1] == "Status moved down, 2 of 11." and dialog.shown.GetSelection() == 1
+        assert said[-1] == "Status moved down, 2 of 13." and dialog.shown.GetSelection() == 1
         dialog.move_to_end(top=False)
-        assert said[-1] == "Status moved to bottom, 11 of 11."
-        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 10
+        assert said[-1] == "Status moved to bottom, 13 of 13."
+        assert dialog.fields()[-1] == "status" and dialog.shown.GetSelection() == 12
         dialog.move(1)
         assert said[-1] == "Status is already at the bottom."
         # The keys do the same, in the Shown list only.
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_HOME, alt=True)
-        assert said[-1] == "Status moved to top, 1 of 11."
+        assert said[-1] == "Status moved to top, 1 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_DOWN, alt=True)
-        assert said[-1] == "Status moved down, 2 of 11."
+        assert said[-1] == "Status moved down, 2 of 13."
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_UP, alt=True)
         _key(dialog, monkeypatch, dialog.shown, wx.WXK_END, alt=True)
         assert dialog.fields()[-1] == "status"
@@ -7318,25 +7373,25 @@ def test_columns_dialog_add_remove_and_reset(frame, monkeypatch):
         assert dialog.shown.GetSelection() == 1  # on what it added
         assert dialog.available.GetString(0) == "Provider (Claude, Codex or Copilot)"
         dialog.reset()
-        assert said[-1] == "Columns reset to the default: 11 shown, title first."
-        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 11
+        assert said[-1] == "Columns reset to the default: 13 shown, title first."
+        assert dialog.fields()[0] == "title" and len(dialog.fields()) == 13
         assert list(dialog.available.GetStrings()) == [
             "Started (when the session began)", "Last message"]
         dialog.shown.SetSelection(dialog.fields().index("provider"))
         dialog.remove()
-        assert said[-1] == "Provider removed. 10 columns shown."
+        assert said[-1] == "Provider removed. 12 columns shown."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Provider added, 11 of 11."
+        assert said[-1] == "Provider added, 13 of 13."
         dialog.available.SetSelection(0)
         dialog.add()
-        assert said[-1] == "Started added, 12 of 12."
+        assert said[-1] == "Started added, 14 of 14."
         # Adding the last one left moves you to Shown, on it.
         dialog.available.SetSelection(0)
         focused.clear()
         dialog.add()
-        assert said[-1] == "Last message added, 13 of 13."
-        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 12
+        assert said[-1] == "Last message added, 15 of 15."
+        assert focused[-1] == "shown" and dialog.shown.GetSelection() == 14
         assert list(dialog.available.GetStrings()) == ["Every column is shown."]
         dialog.add()
         assert said[-1] == "Every column is shown already."
@@ -7372,7 +7427,7 @@ def test_columns_preview_has_a_sample_when_nothing_is_selected(frame, env, monke
             pass
     monkeypatch.setattr(main_frame, "SessionColumnsDialog", Looks)
     frame.on_session_columns()
-    assert seen["line"].startswith("Example session, Claude, Example, needs you: Choose a version "
+    assert seen["line"].startswith("Example session, Claude, Claude subscription, Example, needs you: Choose a version "
                                    "number, new reply, active 2 minutes ago")
 
 
@@ -8379,12 +8434,14 @@ def test_a_session_link_in_the_formatted_view_opens_here(frame, env, monkeypatch
     page.app_link = None
     page.EndModal = lambda code: ended.append(code)
     page._open_url = lambda url: env["opened"].append(url)
+    page.GetTitle = lambda: 'Reply'
     dialogs.FormattedMessageDialog._follow(page, "thechatplace://session/x")
     assert page.app_link == "thechatplace://session/x"
     assert pump(lambda: ended == [wx.ID_CANCEL])
     dialogs.FormattedMessageDialog._follow(page, "https://example.com")
     dialogs.FormattedMessageDialog._follow(page, "file:///C:/x")
     assert env["opened"] == ["https://example.com"]
+    assert "Couldn't open the file" in env['boxes'][-1]
 
 
 # -- the Last message column (#146) ---------------------------------------------------
@@ -9957,7 +10014,7 @@ def test_links_lists_newest_first_and_opens_one(frame, env, monkeypatch):
     assert seen["label"] == "&List: Links (3):"
     assert seen["rows"] == [
         "release notes, example.com/notes. Claude, 1 message ago",
-        "a file, file:///C:/secret.txt. Claude, 1 message ago, copy only",
+        "a file, C:\\secret.txt. Claude, 1 message ago, file, File not found. Copy only.",
         "example.com/old. You, 2 messages ago"]
     assert opened == ["https://example.com/notes"]
     assert env["feedback"][-1] == "Opening example.com/notes."
@@ -9978,10 +10035,53 @@ def test_a_link_that_cant_open_says_why_and_can_be_copied(frame, env, monkeypatc
     _lists_dialog(frame, monkeypatch, act)
     frame.on_links()
     assert opened == []
-    assert env["feedback"][-3].startswith("A file: link isn't opened from here")
-    assert env["feedback"][-2] == "Copied file:///C:/secret.txt."
-    assert env["feedback"][-1] == "Copied file:///C:/secret.txt as Markdown."
-    assert copied == ["file:///C:/secret.txt", "[a file](file:///C:/secret.txt)"]
+    assert env["feedback"][-3] == "File not found. Copy only."
+    assert env["feedback"][-2] == "Copied C:\\secret.txt."
+    assert env["feedback"][-1] == "Copied C:\\secret.txt as Markdown."
+    assert copied == ["C:\\secret.txt", "[a file](C:\\secret.txt)"]
+
+
+@pytest.mark.parametrize('kind', ['file', 'script', 'folder', 'missing'])
+def test_local_link_buttons_and_folder_action(frame, env, monkeypatch, kind):
+    path = env['tmp'] / ('script.ps1' if kind == 'script' else 'notes.txt')
+    if kind == 'folder':
+        path.mkdir()
+    elif kind != 'missing':
+        path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'`{path}`'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsEnabled() == (kind == 'file')
+        assert page.folder_btn.IsShown()
+        assert page.folder_btn.IsEnabled() == (kind != 'missing')
+        assert page.copy_btn.IsEnabled()
+        if kind == 'folder':
+            assert page.folder_btn.GetLabel() == 'Open folde&r'
+        if kind != 'missing':
+            page.open_selected(containing=True)
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_links()
+    expected = [('folder', str(path))] if kind == 'folder' else [('show', path)]
+    assert env['opened'] == ([] if kind == 'missing' else expected)
+
+
+def test_single_path_code_block_offers_file_actions_without_changing_enter(frame, env, monkeypatch):
+    path = env['tmp'] / 'my notes.txt'
+    path.touch()
+    _links_session(frame, env, [assistant_block(text_block(f'```text\n{path}\n```'), 'm1')])
+
+    def act(page):
+        assert page.open_btn.IsShown() and page.open_btn.IsEnabled()
+        assert page.folder_btn.IsShown() and page.folder_btn.IsEnabled()
+        focused = []
+        monkeypatch.setattr(page.detail, 'SetFocus', lambda: focused.append(True))
+        page.activate()
+        assert focused == [True]
+        assert page.owner.chosen_link is None
+        page.open_selected()
+    _lists_dialog(frame, monkeypatch, act)
+    frame.on_code_blocks()
+    assert env['opened'] == [str(path)]
 
 
 def test_typing_narrows_the_links(frame, env, monkeypatch):
@@ -11477,6 +11577,7 @@ def refuse_codex_creation(frame, monkeypatch):
 
 @pytest.mark.parametrize('source', [None, 'continue'])
 def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(frame, env, monkeypatch, source):
+    from thechatplace.sessions import SessionInfo
     # New Session (or Continue Here) is closed by the time Codex refuses, and
     # with no editable chat open the message box is hidden, so the first
     # message goes to the clipboard, said first, before the reason (#257).
@@ -11484,7 +11585,8 @@ def test_refused_new_codex_chat_with_no_editable_chat_copies_the_first_message(f
     stores = refuse_codex_creation(frame, monkeypatch)
     assert not frame.own_reply.IsShown()
     frame._create_codex_owned('/workspace', 'Refused', 'My first message',
-                              source=object() if source else None, sandbox='workspace-write')
+                              source=SessionInfo('external', 'codex:source', 'Source', '/workspace', 'source', provider='codex')
+                              if source else None, sandbox='workspace-write')
     assert pump(lambda: env["feedback"] and 'first message' in env["feedback"][-1])
     said = env["feedback"][-1]
     assert said.startswith('No Codex chat was started. Your first message is copied to the clipboard. '
@@ -11810,6 +11912,7 @@ def test_window_new_and_continue_pass_codex_model_effort_selection(frame, monkey
     assert args == ('/', 'Synthetic', 'Synthetic prompt')
     assert options['model'] == 'synthetic-one' and options['effort'] == 'future-effort'
     assert options.get('source') is (source if continuing else None)
+    assert options['provider'] == 'codex'  # legacy selection has no billing(), so stays on subscription
 
 
 def test_codex_catalog_availability_is_announced_without_moving_focus(frame, monkeypatch):
@@ -12693,6 +12796,31 @@ def test_settings_has_the_task_list_box(frame):
         dialog.Destroy()
 
 
+def test_settings_claude_in_chrome_box_keeps_only_a_change(frame, monkeypatch):
+    # #319: unchanged, the setting keeps following whether Claude Code has
+    # found the extension; a change is kept as a choice.
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "claude_chrome_extension_installed", lambda: True)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.chrome
+        assert " ".join(box.GetLabel().split()).startswith("Let Claude use Chrome in Claude chats")
+        assert box.GetValue() and dialog.get_settings().claude_in_chrome is None
+        box.SetValue(False)
+        assert dialog.get_settings().claude_in_chrome is False
+    finally:
+        dialog.Destroy()
+    dialog = SettingsDialog(frame, speech.SpeechSettings(claude_in_chrome=False),
+                            speech.default_options())
+    try:
+        assert not dialog.chrome.GetValue()
+        assert dialog.get_settings().claude_in_chrome is False
+        dialog.chrome.SetValue(True)
+        assert dialog.get_settings().claude_in_chrome is True
+    finally:
+        dialog.Destroy()
+
+
 def test_own_turns_get_the_task_list_unless_it_is_turned_off(frame, env, fake_runner):
     assert _start(frame, fake_runner).task_list is True
     frame._runners.clear()
@@ -12962,7 +13090,7 @@ def test_relay_sends_a_claude_reply_to_another_chat_and_goes_there(frame, env, f
     targets, text, title = relay_dialog.seen
     assert title == "Send Reply to Another Chat: Builder"
     # Not Builder itself, nor desktop ones; then a new chat (#378).
-    assert targets == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert targets == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     assert text == ('From Claude, another AI agent, forwarded by the user from their chat '
                     '"Builder":\n\nBuilt it. Tests pass.')
     assert frame._open.title == "Hub probe"
@@ -13031,7 +13159,7 @@ def test_relay_from_a_desktop_session_reads_only(frame, env, fake_runner, relay_
     assert pump(lambda: frame._chat_loaded and frame._chat_messages)
     relay_dialog.pick = lambda text: (0, text)
     frame.on_send_reply_to()
-    assert relay_dialog.seen[0] == ["Hub probe, Claude, Scratch, idle", "New Claude chat"]
+    assert relay_dialog.seen[0] == ["Hub probe, Claude, Claude subscription, Scratch, idle", "New Claude chat"]
     # A desktop session can't be in an agent conversation (#378).
     assert relay_dialog.problems[0].short == "this chat wasn't started here"
     assert fake_runner.instances[-1].prompt.endswith("Desktop answer")
@@ -17361,3 +17489,409 @@ def test_a_chat_started_in_a_worktree_subfolder_stays_there(frame, env):
     frame._note_worktree_move("sub-1", "In a subfolder")
     pump(lambda: False, timeout=1)
     assert frame.store.get("sub-1").cwd == str(folder)
+
+
+# -- prompt suggestions (#474) ---------------------------------------------------------------
+
+
+def _suggested(frame, fake_runner, text="write the script"):
+    """A turn on Hub probe that ends with a suggestion, as Claude Code sends
+    one: after the result, before the turn's end."""
+    runner = _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text=text))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    return runner
+
+
+def test_turns_ask_for_suggestions_only_when_settings_say(frame, fake_runner):
+    assert _start(frame, fake_runner).suggestions is False
+    frame._runners.clear()
+    frame.speech.prompt_suggestions = True
+    frame.reply_text.SetValue("again")
+    frame.on_send()
+    assert fake_runner.instances[-1].suggestions is True
+
+
+def test_a_suggestion_goes_in_the_empty_box_selected_with_its_sound(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    # Selected, so typing replaces it.
+    # All of it: a Windows rich edit box's select-all takes in its closing
+    # paragraph mark too, so the end can be one past the text.
+    start, end = frame.reply_text.GetSelection()
+    assert start == 0 and end >= frame.reply_text.GetLastPosition()
+    assert env["sounds"][-1] == "suggested"
+    # Nothing is said about it: the reply only (Kelly, 2026-11-23).
+    assert env["spoken"][-1] == "Hub probe replied. Done."
+    assert not any("write the script" in s for s in env["feedback"])
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_with_sounds_off_a_suggestion_is_said_by_its_event_name(frame, env, fake_runner):
+    """Kelly, 0.6.3 review: no sound to tell you, so its words, never the
+    suggestion itself (#550 will settle this for every event)."""
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+def test_muted_sounds_say_the_suggestion_too(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    frame.speech.sounds_muted = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+    assert not any("write the script" in s for s in env["feedback"] + env["spoken"])
+
+
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_a_scheme_without_the_sound_says_the_suggestion(frame, env, fake_runner, explicit_none):
+    """A scheme of your own from before Prompt suggested (no entry), or with
+    None chosen for it: no sound will tell you, so its words do."""
+    from thechatplace import sound_events as se
+    sid = "user-" + "e" * 32
+    events = {e.key: se.built_in_ref(e.sound, "wood") for e in se.EVENTS if e.id != se.SUGGESTED}
+    if explicit_none:
+        events["PromptSuggested"] = "none"
+    frame.speech.sound_schemes = {sid: {"name": "Mine", "events": events}}
+    frame.speech.sound_scheme = sid
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_during_a_presentation_the_suggestion_is_said(frame, env, fake_runner, monkeypatch):
+    """Its sound holds back in a presentation or full-screen program, as
+    sounds that just happen do; the reply is still said, so this is too."""
+    from thechatplace.ui import sound_host
+    monkeypatch.setattr(sound_host, "quiet_now", lambda: True)
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    assert "suggested" not in env["sounds"]
+    assert env["feedback"][-1] == announce.PROMPT_SUGGESTED
+
+
+def test_silent_announcements_say_nothing_but_fill_the_box(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    frame.speech.announce = speech.ANNOUNCE_SILENT
+    _suggested(frame, fake_runner)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert announce.PROMPT_SUGGESTED not in env["feedback"] + env["spoken"]
+
+
+def test_coming_back_with_sounds_off_stays_quiet(frame, env, fake_runner):
+    frame.speech.sounds_on = False
+    _suggested(frame, fake_runner)
+    said = list(env["feedback"])
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["feedback"] == said
+
+
+def test_a_box_with_text_in_it_is_never_touched(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("my own draft")
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="other"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame.reply_text.GetValue() == "my own draft"
+    assert "suggested" not in env["sounds"]
+
+
+def test_no_suggestion_nothing_in_the_box(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_a_failed_turn_offers_nothing(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="retry"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("failed", text="Stopped.", is_error=True))
+    # Your own message may come back to the box, as it always has; the
+    # suggestion doesn't.
+    assert "retry" not in frame.reply_text.GetValue()
+    assert "own-1" not in frame._suggestions
+
+
+def test_more_work_after_a_suggestion_drops_it(frame, fake_runner):
+    # A reply with a suggestion, then a steered message taken in and answered:
+    # the suggestion was for the first reply, not the turn's last.
+    _start(frame, fake_runner)
+    for event in (TurnEvent("suggestion", text="old idea"), TurnEvent("steer_taken", data={}),
+                  TurnEvent("finished", text="Done.")):
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", event)
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_nothing_offered_after_background_work(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe",
+                         TurnEvent("finished", data={"after_background": True}))
+    assert frame.reply_text.GetValue() == ""
+
+
+def test_an_api_chat_never_takes_one(frame, fake_runner):
+    # How a chat is charged is fixed when it's made (#658).
+    frame.store.add(OwnSession("api-1", "On credits", frame.store.get("own-1").cwd,
+                               billing="api"))
+    frame._runners["api-1"] = fake_runner([], "", "", None)
+    frame._on_turn_event({"id": "api-1"}, "On credits", TurnEvent("suggestion", text="go on"))
+    assert "api-1" not in frame._suggestion_due
+
+
+def test_slash_commands_dont_ask(frame, fake_runner):
+    frame.speech.prompt_suggestions = True
+    assert _start(frame, fake_runner, text="/compact").suggestions is False
+
+
+def test_sending_the_suggestion_as_it_is_clears_it(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.on_send()
+    assert fake_runner.instances[-1].prompt == "write the script"
+    assert frame._suggestions == {} and frame.reply_text.GetValue() == ""
+
+
+def test_an_untouched_suggestion_isnt_your_draft_and_comes_back(frame, env, fake_runner):
+    _suggested(frame, fake_runner)
+    frame._save_draft()  # as leaving the chat does
+    assert frame._drafts["own-1"] == ""
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion()
+    assert frame.reply_text.GetValue() == "write the script"
+
+
+def test_a_changed_suggestion_is_your_draft_and_isnt_put_back(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("write the script, with tests")
+    frame._save_draft()
+    assert frame._drafts["own-1"] == "write the script, with tests"
+    assert "own-1" not in frame._suggestions
+
+
+def test_a_cleared_suggestion_is_gone(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.reply_text.SetValue("")
+    frame._save_draft()
+    assert "own-1" not in frame._suggestions
+
+
+def test_another_chats_suggestion_waits_for_it(frame, env, fake_runner):
+    _start(frame, fake_runner)
+    frame._open = None  # the user went elsewhere
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("suggestion", text="go on"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert frame._suggestions == {"own-1": "go on"}
+    select(frame, "Hub probe")
+    frame.on_open_session()
+    assert frame.reply_text.GetValue() == "go on"
+
+
+def test_turning_the_setting_off_takes_it_out_of_the_box(frame, fake_runner):
+    _suggested(frame, fake_runner)
+    frame.drop_all_suggestions()
+    assert frame.reply_text.GetValue() == "" and frame._suggestions == {}
+
+
+def test_the_whole_suggestion_goes_in_line_breaks_and_all(frame, fake_runner):
+    _suggested(frame, fake_runner, text="write it\nthen test it")
+    assert frame.reply_text.GetValue() == "write it\nthen test it"
+
+
+def test_settings_has_the_suggestions_box(frame):
+    from thechatplace.ui.dialogs import SettingsDialog
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        box = dialog.suggestions
+        assert " ".join(box.GetLabel().split()).startswith("Suggest what to send next")
+        assert not box.GetValue() and dialog.get_settings().prompt_suggestions is False
+        box.SetValue(True)
+        assert dialog.get_settings().prompt_suggestions is True
+    finally:
+        dialog.Destroy()
+
+
+def test_said_once_when_claude_code_isnt_offering_them(frame, env, fake_runner, monkeypatch):
+    # #709: with the account's flag off, none ever come; say so once a run.
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    frame.speech.prompt_suggestions = True
+    for text in ("first", "second"):
+        _start(frame, fake_runner, text=text)
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert env["feedback"].count(announce.SUGGESTIONS_NOT_OFFERED) == 1
+
+
+def test_not_said_when_the_flag_is_on_or_unknown(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    frame.speech.prompt_suggestions = True
+    for flag in (True, None):
+        monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda f=flag: f)
+        _start(frame, fake_runner, text=f"try {flag}")
+        frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_not_said_when_the_setting_is_off(frame, env, fake_runner, monkeypatch):
+    from thechatplace import announce
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert announce.SUGGESTIONS_NOT_OFFERED not in env["feedback"]
+
+
+def test_settings_says_when_claude_code_isnt_offering_them(frame, monkeypatch):
+    from thechatplace.ui.dialogs import SettingsDialog
+    monkeypatch.setattr(platform_paths, "claude_offers_prompt_suggestions", lambda: False)
+    dialog = SettingsDialog(frame, speech.SpeechSettings(), speech.default_options())
+    try:
+        label = " ".join(dialog.suggestions.GetLabel().split())
+        assert "isn't offering suggestions to your account yet" in label
+    finally:
+        dialog.Destroy()
+
+
+def test_a_message_given_back_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: it went in front of the suggestion, which then went with it.
+    _suggested(frame, fake_runner)
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message"
+    assert "own-1" not in frame._suggestions
+
+
+def test_a_message_given_back_still_goes_before_your_own_text(frame, fake_runner):
+    _start(frame, fake_runner)
+    frame.reply_text.SetValue("typed since")
+    frame._give_back("own-1", "my steered message", True)
+    assert frame.reply_text.GetValue() == "my steered message\n\ntyped since"
+
+
+def test_a_command_put_in_replaces_an_untouched_suggestion(frame, fake_runner):
+    # #709 review: "/compact write the script".
+    _suggested(frame, fake_runner)
+    frame._insert_command("compact")
+    assert frame.reply_text.GetValue().strip() == "/compact"
+    assert "own-1" not in frame._suggestions
+
+
+def test_going_back_to_a_chat_puts_it_back_quietly(frame, env, fake_runner):
+    frame.speech.sounds_on = True
+    _suggested(frame, fake_runner)
+    before = env["sounds"].count("suggested")
+    frame._save_draft()
+    frame.reply_text.ChangeValue("")
+    frame._place_suggestion(sound=False)
+    assert frame.reply_text.GetValue() == "write the script"
+    assert env["sounds"].count("suggested") == before
+
+
+# -- the end of a list (#714) ----------------------------------------------------------------
+
+
+def _edge_key(code, **mods):
+    event = wx.KeyEvent(wx.wxEVT_CHAR_HOOK)
+    event.SetKeyCode(code)
+    for name, down in mods.items():
+        getattr(event, f"Set{name}Down")(down)
+    return event
+
+
+def test_the_edge_sound_at_the_top_and_bottom_of_the_session_list(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._list_end_held = None  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_HOME), wx.WXK_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4
+
+
+def test_no_edge_sound_away_from_the_ends_or_with_a_modifier(frame, env):
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(1)  # a middle row: Up and Down move
+    for code in (wx.WXK_UP, wx.WXK_DOWN):
+        frame._list_end_cue(_edge_key(code), code, listing)
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_UP, Shift=True), wx.WXK_UP, listing)
+    frame._list_end_cue(_edge_key(wx.WXK_DOWN), wx.WXK_DOWN, listing)  # Down at the top moves
+    # Not in the message box either.
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.reply_text)
+    assert env["sounds"] == []
+
+
+def test_a_held_key_plays_the_edge_once(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    for _repeat in range(4):  # Up held: the key repeats
+        frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END]
+    frame._on_list_key_up(wx.KeyEvent(wx.wxEVT_KEY_UP))  # let go
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, listing)
+    assert env["sounds"] == [se.LIST_END] * 2
+
+
+def test_the_edge_sound_in_the_messages_list_and_not_in_an_empty_one(frame, env, fake_runner):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    frame.chat_list.Clear()
+    frame._list_end_cue(_edge_key(wx.WXK_UP), wx.WXK_UP, frame.chat_list)
+    assert env["sounds"] == []  # empty: it says so already
+    frame.chat_list.Append("one")
+    frame.chat_list.Append("two")
+    frame.chat_list.SetSelection(1)
+    frame._list_end_cue(_edge_key(wx.WXK_END), wx.WXK_END, frame.chat_list)
+    assert env["sounds"] == [se.LIST_END]
+
+
+def test_the_edge_sound_through_the_real_key_path(frame, env, monkeypatch):
+    """The window's char hook plays it, and a real key-up on the list lets the
+    next press play it again (#714 review): not just the helper called directly."""
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: listing))
+    for _repeat in range(3):
+        frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END]
+    up = wx.KeyEvent(wx.wxEVT_KEY_UP)
+    up.SetEventObject(listing)
+    listing.GetEventHandler().ProcessEvent(up)
+    frame._on_char_hook(_edge_key(wx.WXK_UP))
+    assert env["sounds"] == [se.LIST_END] * 2
+    assert listing.GetSelection() == 0
+
+
+def test_the_numpad_arrows_play_the_edge_sound_too(frame, env):
+    from thechatplace import sound_events as se
+    frame.speech.sounds_on = True
+    listing = frame.session_list
+    listing.SetSelection(0)
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_UP), wx.WXK_NUMPAD_UP, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_HOME), wx.WXK_NUMPAD_HOME, listing)
+    listing.SetSelection(listing.GetCount() - 1)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_DOWN), wx.WXK_NUMPAD_DOWN, listing)
+    frame._list_end_held = None
+    frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_END), wx.WXK_NUMPAD_END, listing)
+    assert env["sounds"] == [se.LIST_END] * 4

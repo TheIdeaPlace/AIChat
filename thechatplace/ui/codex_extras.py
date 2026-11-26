@@ -191,10 +191,10 @@ class CodexExtras:
             focus.SetFocus()
 
     def _codex_record(self, info):
-        if info is None or info.provider != 'codex' or not info.is_own:
+        if info is None or info.provider not in ('codex', 'codex-api') or not info.is_own:
             self._feedback('Load a Codex chat started here first.')
             return None
-        return self.store.get(info.cli_session_id, provider='codex')
+        return self.store.get(info.cli_session_id, provider=info.provider)
 
     def _change_codex_settings(self, info, what):
         record = self._codex_record(info)
@@ -219,8 +219,11 @@ class CodexExtras:
                     self._feedback(with_stop_key(change or f'Could not change the Codex {what}. The chat keeps its current one.'))
                     return
                 updated = change.record()
-                saved = self.store.get(record.cli_session_id, provider='codex') is record and self._store_write(self.store.update, record.cli_session_id,
-                    provider='codex', provider_options=updated.provider_options)
+                if (record.provider == 'codex-api'
+                        and current.get('model') != updated.provider_options.get('model')):
+                    self._unpriced_confirmed.pop(info.key, None)
+                saved = self.store.get(record.cli_session_id, provider=record.provider) is record and self._store_write(self.store.update, record.cli_session_id,
+                    provider=record.provider, provider_options=updated.provider_options)
                 if not saved:
                     record.provider_options = current
 
@@ -272,7 +275,7 @@ class CodexExtras:
         self._feedback("Getting Codex's models.")
 
         def loaded(models, error):
-            if self.store.get(record.cli_session_id, provider='codex') is not record:
+            if self.store.get(record.cli_session_id, provider=record.provider) is not record:
                 return
             if error or not models:
                 self._feedback(models or 'Codex model choices are unavailable.')
@@ -288,10 +291,11 @@ class CodexExtras:
                 # codex_runtime._follow_default); the row names the model that
                 # default is now, when Codex says which it is.
                 default = next((m for m in models if m.is_default), None)
-                values = [None, *models]
+                paid = info.provider == 'codex-api'
+                values = list(models) if paid else [None, *models]
                 index = self._choose('Change Model', f'Model for {info.title}, from its next turn:',
-                    [CODEX_DEFAULT + (f' ({default.label})' if default else '')
-                     + (' (now)' if not model else '')]
+                    ([] if paid else [CODEX_DEFAULT + (f' ({default.label})' if default else '')
+                     + (' (now)' if not model else '')])
                     + [m.label + (' (now)' if m.model == model else '') for m in models])
                 if index is None:
                     return
@@ -315,7 +319,10 @@ class CodexExtras:
                 if effort is not None and pinned:
                     model = chosen.model
             prepare('prepare_settings', (model, effort))
-        self._load_codex_models(loaded)
+        if info.provider == 'codex-api':
+            self._codex_work(lambda: self.sessions.model_choices(info.provider), loaded)
+        else:
+            self._load_codex_models(loaded)
 
     def _other_provider_said(self, info):
         """Say why a chat made with another model provider can't be copied
@@ -341,7 +348,7 @@ class CodexExtras:
         title = rewind.rewound_title(info.title) if before else rewind.branch_title(info.title)
         # Only a chat started here has settings to keep; a copy of one
         # started elsewhere starts as a new chat does, and says so (#596).
-        own = self.store.get(info.cli_session_id, provider='codex') if info.is_own else None
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         kept = own is not None
         if before:
             plan = rewind.RewindPlan(info.title, message, anchor,

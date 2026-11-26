@@ -208,12 +208,23 @@ class SpeechSettings:
     #: Give The Chat Place's own Claude sessions Claude's task list (#231), as
     #: the desktop app's sessions have it. On unless turned off.
     task_list: bool = True
+    #: Claude in Chrome in The Chat Place's Claude chats (#319): True or
+    #: False as Settings chose, None to follow whether Claude Code has found
+    #: the extension (``chrome_on``).
+    claude_in_chrome: Optional[bool] = None
+    #: Suggested next messages after each reply in Claude chats (#474). Off
+    #: until turned on: it adds a list and an announcement after replies.
+    prompt_suggestions: bool = False
     #: The session list's columns, in the order each row reads them (View,
     #: Session List Columns, #134): ids from ``sessions.FIELD_IDS``.
     session_fields: List[str] = field(default_factory=_default_fields)
     #: One-time Provider-column upgrade (#184). Save this even if the user
     #: removes Provider, so later starts respect that choice.
     provider_column_added: bool = True
+    #: One-time Charged to upgrade (#658), kept the same way.
+    charged_column_added: bool = True
+    #: One-time Cost upgrade (#692), kept the same way.
+    cost_column_added: bool = True
     #: "The Chat Place Update Installed" after an update (#141); Settings
     #: turns it off.
     update_installed_notice: bool = True
@@ -275,6 +286,16 @@ class SpeechSettings:
         from . import platform_paths
         return bool(platform_paths.find_codex())
 
+    def chrome_on(self) -> bool:
+        """Whether Claude chats on the subscription get Claude in Chrome
+        (#319): Settings' choice, or until one is made, whether Claude Code
+        has found the extension, so nobody without it gets tools that can't
+        connect."""
+        if self.claude_in_chrome is not None:
+            return self.claude_in_chrome
+        from . import platform_paths
+        return platform_paths.claude_chrome_extension_installed()
+
     @property
     def enabled(self) -> bool:
         return self.announce != ANNOUNCE_SILENT
@@ -317,6 +338,9 @@ class SpeechSettings:
         settings.notifications = notify if notify in NOTIFY_LEVELS else NOTIFY_ALL
         settings.remote_control = raw.get("remote_control") is True
         settings.task_list = raw.get("task_list") is not False
+        chrome = raw.get("claude_in_chrome")
+        settings.claude_in_chrome = chrome if type(chrome) is bool else None
+        settings.prompt_suggestions = raw.get("prompt_suggestions") is True
         choice = raw.get("codex_enabled")
         settings.codex_enabled = choice if type(choice) is bool else None
         settings.copilot_enabled = raw.get("copilot_enabled") is True
@@ -324,12 +348,28 @@ class SpeechSettings:
                                          if raw.get("new_session_provider") in ("codex", "copilot")
                                          else "claude")
         settings.agent_auto_mode = raw.get("agent_auto_mode") is True
-        from .sessions import clean_fields, FIELD_PROVIDER, FIELD_TITLE
+        from .sessions import clean_fields, FIELD_CHARGED, FIELD_COST, FIELD_PROVIDER, FIELD_TITLE
         settings.session_fields = clean_fields(raw.get("session_fields"))
         if raw.get("provider_column_added") is not True and FIELD_PROVIDER not in settings.session_fields:
             index = (settings.session_fields.index(FIELD_TITLE) + 1
                      if FIELD_TITLE in settings.session_fields else 0)
             settings.session_fields.insert(index, FIELD_PROVIDER)
+        # Charged to (#658) once, after Provider (or Title, or first), so a
+        # chat on API credits says so; removing it later is remembered.
+        if raw.get("charged_column_added") is not True and FIELD_CHARGED not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_CHARGED)
+        # Cost (#692) once, just after Charged to (or where Charged to would
+        # go), so what a chat on API credits has spent is in its row;
+        # removing it later is remembered.
+        if raw.get("cost_column_added") is not True and FIELD_COST not in settings.session_fields:
+            fields_now = settings.session_fields
+            index = (fields_now.index(FIELD_CHARGED) + 1 if FIELD_CHARGED in fields_now
+                     else fields_now.index(FIELD_PROVIDER) + 1 if FIELD_PROVIDER in fields_now
+                     else fields_now.index(FIELD_TITLE) + 1 if FIELD_TITLE in fields_now else 0)
+            fields_now.insert(index, FIELD_COST)
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""

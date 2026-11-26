@@ -54,7 +54,7 @@ import wx
 
 from ..changes import summary_text
 from ..codeblocks import find_code_blocks
-from .. import (__version__, about_you, announce, attachments, backup, bugreport,
+from .. import (__version__, about_you, announce, attachments, backup, build_info, bugreport,
                codex_signin, copilot_signin, signin, export, hub, links,
                platform_paths, properties, relay, remote, usage, workplaces)
 from ..commands import (MENU_BAR, Menu, command as find_command, menu_label,
@@ -68,8 +68,10 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           deny_response, fetch_chat_choices, fetch_commands, usable_commands,
                           describe_elapsed, effort_label, mode_label, model_label,
                           model_matches, model_spoken, models_for, new_session_id,
-                          normalize_permission_mode)
-from .. import codex_long_messages, sound_events
+                          normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON,
+                          fable_in_plan, model_allowed, overage_paused, paused_family,
+                          using_overage)
+from .. import codex_long_messages, reply_costs, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
@@ -140,7 +142,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, AboutYouDialog, Backu
                       BugReportDialog, CommandPickerDialog, MessageDialog, NewSessionDialog, PermissionDialog, PlanDialog,
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
-                      formatted_view_available, press_focused_button_on_a_mac,
+                      formatted_view_available, FORMATTED_BROKEN_TEXT, show_formatted_page, press_focused_button_on_a_mac,
                       remove_whole_chat_page,
                       single_choice_dialog)
 
@@ -294,7 +296,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.titles = TitleStore()  # names given to desktop app sessions (#93)
         # Folders taken off New Session's recent list (#215).
         self.recent_removed = workplaces.RemovedFolders()
-        self.updates = updates or UpdateService(__version__)
+        # As packed: a test build ("0.6.4-bld05") is offered the real 0.6.4.
+        self.updates = updates or UpdateService(build_info.packed_version())
         self._update_busy = False
         # The newer version the last check found, "" if none (#141): Help's
         # update item says it.
@@ -327,6 +330,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 from ..providers.codex import CodexProvider
                 providers.append(CodexProvider(execution=True, session_tools=True,
                     on_update=lambda state: wx.CallAfter(self._on_codex_update, state)))
+                from ..providers.codex_api import CodexApiProvider
+                providers.append(CodexApiProvider(
+                    on_update=lambda state: wx.CallAfter(self._on_owned_update, 'codex-api', state),
+                    on_event=lambda event: wx.CallAfter(self._on_codex_api_event, event)))
             if self.speech.copilot_enabled:
                 from ..providers.copilot import CopilotProvider
                 # Its runtime starts no Copilot until a chat is created or
@@ -412,9 +419,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: on its way.
         self._api_confirmed: set = set()
         self._api_confirm_pending: set = set()
+        self._unpriced_confirmed = {}
         #: An API turn's cost already said (with an answer that left
         #: background work running), so its end says only what's more (#663).
         self._api_cost_said: Dict[str, float] = {}
+        #: The same for the cost kept as a reply's last line (#692),
+        #: whatever Settings says about saying it: (the reply, its cost).
+        self._reply_cost_said: Dict[str, tuple] = {}
+        #: The reply costs the loaded chat's messages last had (#692): a
+        #: change shows even when the transcript itself didn't change.
+        self._chat_costs_shown: Optional[tuple] = None
+        self._chat_costs_pending: Optional[tuple] = None
         #: A send's read-back in an API chat, held until the runner has
         #: really written the message, then said with "on API credits" in
         #: it (#663): "Sent on API credits to Budget: …".
@@ -495,6 +510,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # (they're the account's), each own session's context window, and
         # what's been warned about already, so it's said once.
         self._limits: Optional[dict] = None
+        #: The latest usage report from a turn on Fable (#722): its own allowance.
+        self._fable_limits: Optional[dict] = None
+        #: The Claude plan Claude Code is signed in to (``subscriptionType``,
+        #: #722), "" until the sign-in check says: whether Fable is offered.
+        self.claude_plan = ""
         self._windows: Dict[str, int] = {}  # by session id
         self._model_windows: Dict[str, int] = {}  # by model, from any turn of ours
         self._warned: set = set()
@@ -888,6 +908,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._pending_messages_label: Optional[str] = None
         self._messages_label_key: Optional[tuple] = None  # (key, title, kind)
         self.chat_list.Bind(wx.EVT_KILL_FOCUS, self._on_chat_list_left)
+        # The end-of-list sound plays once per press, not on a held key's
+        # repeats (#714): letting go of a key lets it play again.
+        #: (list, key) of the end-of-list cue last played and still held.
+        self._list_end_held = None
+        for listing in (self.session_list, self.chat_list):
+            listing.Bind(wx.EVT_KEY_UP, self._on_list_key_up)
 
         # Where the reply goes: one panel for The Chat Place's sessions, one for
         # desktop ones, in the same place so the layout is the same.
@@ -940,6 +966,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         osizer.Add(self.attach_list, 0, wx.EXPAND | wx.TOP, 6)
         self.attach_list.Hide()
         self.attach_list.Bind(wx.EVT_KEY_DOWN, self._on_attach_key)
+        # What you might send next (#474): put in the message box, selected,
+        # when it's empty, so typing replaces it and Ctrl+Enter sends it. A
+        # sound says it's there; nothing is said (Kelly, 2026-11-23).
+        #: Chat id -> the suggestion after its latest reply.
+        self._suggestions: Dict[str, str] = {}
+        #: A turn's suggestion, held until its reply has been said.
+        self._suggestion_due: Dict[str, str] = {}
+        #: Said this run that Claude Code isn't offering them (#709).
+        self._told_suggestions_not_offered = False
         self.reply_text.Bind(wx.EVT_TEXT_PASTE, self._on_reply_paste)
 
         self.desktop_reply = wx.Panel(root)
@@ -1049,7 +1084,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _update_status_api(self):
         """The API credits part (#658): shown while an API chat is loaded."""
         info = self._open
-        text = (self._api_spend_line(info.cli_session_id)
+        text = (self._api_spend_line(info.key if info.provider == 'codex-api' else info.cli_session_id)
                 if self._is_api_chat(info) else "")
         self.status_parts.set("api_credits", text)
 
@@ -1251,6 +1286,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     lambda: collect(own, running, waiting=waiting, order=order,
                                     last_messages=last_messages, background=background),
                     order, owned=owned, last_messages=last_messages)
+                # The Cost column (#692): off this thread, and the ledgers
+                # are read again only when they've changed.
+                reply_costs.fill_api_costs(snap.sessions)
                 ended = finished_turns(self._previous_states, snap.sessions,
                                        stale_providers=snap.stale_providers)
                 replies = {}
@@ -1680,7 +1718,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
         if info is not None and info.provider != "claude" and not self._require_capability("delete", info):
             return
-        if info is not None and info.provider == "codex":
+        if info is not None and info.provider in ('codex', 'codex-api'):
             self._delete_codex(info)
             return
         if info is None:
@@ -1885,7 +1923,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _save_draft(self):
         if self._open is not None and self._open.is_own and self._open.provider == "claude":
-            self._drafts[self._open.cli_session_id] = self.reply_text.GetValue()
+            text = self.reply_text.GetValue()
+            suggestion = self._suggestions.get(self._open.cli_session_id)
+            if suggestion is not None and text != suggestion:
+                # Changed or cleared: it's yours now, or gone (#474).
+                self._suggestions.pop(self._open.cli_session_id, None)
+            # An untouched suggestion isn't your draft: it's put back when
+            # you come back to an empty box.
+            self._drafts[self._open.cli_session_id] = "" if text == suggestion else text
         elif self._open is not None and (
                 (self._open.is_own and self._open.provider in RUNTIME_PROVIDERS)
                 or self._open.provider == AGENTS):
@@ -1964,6 +2009,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self.desktop_reply.Show(not editable)
         if not editable:
             self.desktop_note.SetValue(
+                "This Codex API chat is read-only here. Use Continue Here to make an owned API copy."
+                if info.provider == "codex-api" else
                 f"This is a {provider_name(info.provider)} chat. The Chat Place currently "
                 f"reads its local history. Reply in {home_app(info.provider)}."
                 if info.provider in LISTED_PROVIDERS else
@@ -1983,6 +2030,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             if self.session_list.GetSelection() != row:
                 self.session_list.SetSelection(row)
         self._show_attachments()
+        # Put back quietly: the sound was for its coming (#709 review).
+        self._place_suggestion(sound=False)
         if editable and _folder_key(info.cwd) not in self._commands:
             self._fetch_commands(info.cwd)  # ready by the time you want them
         self.chat_list.SetFocus()
@@ -2061,13 +2110,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _api_own(self, session_id: str) -> Optional[OwnSession]:
         """The Claude chat of the app's own with this id, if it's charged to
         API credits; else None."""
-        own = self.store.get(session_id) if session_id else None
-        return own if own is not None and own.provider == "claude" \
-            and own.billing == "api" else None
+        if session_id.startswith('codex-api:'):
+            own = self.store.get(session_id.partition(':')[2], 'codex-api')
+        else:
+            own = self.store.get(session_id) if session_id else None
+        return own if own is not None and own.billing == 'api' else None
 
     def _is_api_chat(self, info: Optional[SessionInfo]) -> bool:
-        return (info is not None and info.is_own and info.provider == "claude"
-                and self._api_own(info.cli_session_id) is not None)
+        return (info is not None and info.is_own
+                and self._api_own(info.key if info.provider == 'codex-api' else info.cli_session_id) is not None)
 
     def _name_reply_box(self, api: bool) -> None:
         """The reply box's name says API credits in such a chat (#658):
@@ -2078,10 +2129,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             set_accessible_name(self.reply_text, name)
 
     @staticmethod
-    def _has_api_key() -> bool:
+    def _has_api_key(provider='claude') -> bool:
         """Whether a Claude API key is kept, without reading it (#658)."""
         try:
-            return platform_paths.has_secret(platform_paths.CLAUDE_API_KEY_SECRET)
+            return platform_paths.has_secret(platform_paths.OPENAI_API_KEY_SECRET if provider == 'codex-api'
+                                             else platform_paths.CLAUDE_API_KEY_SECRET)
         except Exception:  # noqa: BLE001 - unknown reads as none
             return False
 
@@ -2090,10 +2142,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._api_own(session_id) is None:
             return ""
         from ..spend_ledger import default_ledger
-        ledger = default_ledger()
+        api = session_id.startswith('codex-api:')
+        ledger = default_ledger('openai' if api else 'claude')
         # Read again only when the ledger or the limits changed: this runs
         # with every turn status tick.
-        stamp = []
+        stamp = [str(ledger.path)]
         for path in (ledger.path, ledger.limits_path):
             try:
                 info = path.stat()
@@ -2110,6 +2163,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return ""
             self._api_totals_cache = (stamp, totals)
         chat = totals.chat_all_time.get(session_id, 0.0)
+        if api:
+            from ..openai_billing import status_words
+            return status_words(totals)
         return (f"API credits: this chat {_dollars(chat)}, The Chat Place "
                 f"{_dollars(totals.counted)} of {_dollars(totals.limits.overall)}")
 
@@ -2123,40 +2179,195 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self._api_own(session_id)
         if own is None:
             return None
-        if not self._has_api_key():
-            return NO_API_KEY
+        api = own.provider == 'codex-api'
+        if not (self._has_api_key('codex-api') if api else self._has_api_key()):
+            return ('Add an OpenAI key in Tools, API Keys before sending on API credits.' if api else NO_API_KEY)
         # A reached limit or a damaged total is said now, before "Send on API
         # credits?" is asked or "Sent on API credits" said, with the message
         # still in the reply box; the turn's own reservation checks again.
         from ..spend_ledger import default_ledger
         try:
-            refusal = default_ledger().can_spend()
+            refusal = default_ledger('openai' if api else 'claude').can_spend()
         except Exception as exc:  # noqa: BLE001 - unknown is "no", never "yes"
             refusal = f"The Chat Place couldn't check its record of API spending ({exc})."
         if refusal:
             return refusal
+        if api:
+            from ..openai_prices import is_priced
+            from ..providers.codex_rpc import CodexRpcError
+            from ..codex_diagnostics import safe_reason
+            try:
+                model, connection = self.sessions.owned_action('api_billing', own)
+            except (CodexRpcError, ValueError) as exc:
+                return safe_reason(exc) or 'Reopen this API chat before sending. Nothing was sent.'
+            tier = 'default'  # API lifecycle and turn boundaries pin this.
+            binding = (model, tier, connection)
+            if is_priced(model, tier):
+                self._unpriced_confirmed.pop(session_id, None)
+            elif self._unpriced_confirmed.get(session_id) != binding:
+                if not ask:
+                    return 'Confirm this price-unknown model before sending on API credits.'
+                from .dialogs import UnpricedApiDialog
+                totals = default_ledger('openai').totals()
+                if self._modal(UnpricedApiDialog(self, model, min(totals.limits.per_message, totals.left))) != wx.ID_OK:
+                    return ''
+                try:
+                    self.sessions.owned_action('api_billing', own, binding)
+                except (CodexRpcError, ValueError) as exc:
+                    return safe_reason(exc) or 'The API model or connection changed. Review its price before sending. Nothing was sent.'
+                self._unpriced_confirmed[session_id] = binding
+                # This mandatory question also answers the optional paid-send one.
+                self._api_confirm_pending.add(session_id)
+                return None
         # Asked once a message has really gone (#663): a "Send" here that's
         # then refused, or a turn that never sends, asks again next time.
         # Meanwhile one being sent counts, so a message queued behind it
         # isn't asked about again.
-        sending = session_id in self._api_confirm_pending and session_id in self._runners
+        sending = session_id in self._api_confirm_pending and (
+            session_id in self._runners or session_id in getattr(self, '_codex_send_pending', {}))
         if (ask and self.speech.api_confirm_first and session_id not in self._api_confirmed
                 and not sending):
-            if not self._confirm_api_send(own.title):
+            confirmed = (self._confirm_api_send(own.title, 'codex-api') if api
+                         else self._confirm_api_send(own.title))
+            if not confirmed:
                 return ""
             self._api_confirm_pending.add(session_id)
         return None
 
-    def _confirm_api_send(self, title: str) -> bool:
+    def _confirm_api_send(self, title: str, provider='claude') -> bool:
         """ "Send on API credits?": Enter sends, Escape cancels (#658)."""
         dialog = wx.MessageDialog(
-            self, f"Send on API credits? Messages in {title} are charged to your Claude API "
+            self, f"Send on API credits? Messages in {title} are charged to your {'OpenAI' if provider == 'codex-api' else 'Claude'} API "
             "key.", "Send on API credits?", wx.OK | wx.CANCEL | wx.OK_DEFAULT | wx.ICON_QUESTION)
         dialog.SetOKCancelLabels("&Send", "Cancel")
         try:
             return dialog.ShowModal() == wx.ID_OK
         finally:
             dialog.Destroy()
+
+    def _claude_models(self, own=None, billing: str = "") -> list:
+        """The models a Claude chat may be given (#722): Fable on API credits
+        and on a plan that has it; and Fable kept for a chat that already has
+        it, while the plan isn't known yet, rather than lost from the list."""
+        billing = own.billing if own is not None else (billing or "subscription")
+        models = models_for(billing, self.claude_plan)
+        if own is not None and own.model and own.model not in dict(models) \
+                and model_allowed(own.model, billing):
+            models = models_for("api")
+        return models
+
+    def _note_limits(self, session_id: str, info: dict, model: Optional[str] = None):
+        """A turn's usage report (#19). One from a turn on a model that pauses
+        at usage credits (#722, Fable) is also kept as that model's own: Fable
+        has a weekly allowance of its own, so another model's turn saying it
+        isn't on usage credits says nothing about Fable. ``model``: the one
+        it came from, when it isn't the chat's turn (an aside's)."""
+        self._limits = info
+        runner = self._runners.get(session_id)
+        if model is None:
+            model = getattr(runner, "overage_model", "") or ""
+        if not model and runner is not None:
+            turn_model = getattr(runner, "_turn_model", None)
+            model = turn_model() if callable(turn_model) else getattr(runner, "chosen", "")
+        if overage_paused(model):
+            self._fable_limits = info
+
+    def _overage_now(self) -> bool:
+        """Whether the latest report from a Fable turn says turns are charged
+        to usage credits (#722), and the limit it names hasn't reset since."""
+        info = self._fable_limits
+        if not using_overage(info):
+            return False
+        resets = info.get("resetsAt")
+        return not (type(resets) in (int, float) and resets < time.time())
+
+    def _fable_send_problem(self, own, ask: bool = True, plan_only: bool = False,
+                            aside: bool = False):
+        """Before any turn of a subscription chat on Fable (#722): the plan
+        must include Fable, and once a Fable turn has said turns are charged
+        to usage credits, you're asked. Returns (problem, allow): problem is
+        None to send, "" when you chose not to (the message stays with you),
+        or why it can't go; allow is True when you chose usage credits, for
+        that one turn only. ``ask``: you pressed Send; anything else (a
+        queued message, an agent conversation's relay) never goes on usage
+        credits, and gets the reason instead. ``plan_only``: only whether the
+        plan includes Fable. ``aside``: worded for Ask Aside's question."""
+        if own is None or getattr(own, "provider", "claude") != "claude" \
+                or own.billing == "api" or not overage_paused(own.model):
+            return None, False
+        name = model_label(paused_family(own.model))
+        if not fable_in_plan(self.claude_plan):
+            # Pro and the like charge every Fable message to usage credits;
+            # an unknown plan is treated the same (fails closed).
+            plan = signin.plan_name(self.claude_plan)
+            why = (f"Your Claude {plan} plan doesn't include {name}, so every message on it "
+                   "would be charged to usage credits." if plan else
+                   f"The Chat Place hasn't confirmed that your Claude plan includes {name}. "
+                   "Tools, Sign In, Claude Code checks it.")
+            return (f"{why} Nothing was sent. To send it, choose another model with Chat, "
+                    "Chat Settings, Change Model."), False
+        if plan_only or not self._overage_now():
+            return None, False
+        if not ask:
+            return (f"Turns on {name} are now charged to usage credits, so it wasn't sent. "
+                    "Send it yourself to choose whether to use them."), False
+        choice = self._ask_overage(own.title, own.model, aside=aside)
+        if choice == "credits":
+            return None, True
+        if choice == "model":
+            wx.CallAfter(self._change_model_of, own.cli_session_id)
+        return "", False
+
+    def _ask_overage(self, title: str, model: str, aside: bool = False) -> str:
+        """ "Use usage credits?" (#722): "credits", "model" (Change Model) or
+        "cancel". Only ever asked when you send, never popped up by itself,
+        and never remembered. The button that spends has no access key, and
+        Cancel is the default, so a stray key can't spend."""
+        name = model_label(paused_family(model))  # "Fable", not claude-fable-5-2
+        what = (f"Ask this question about {title}" if aside
+                else f"Send this message to {title}")
+        text = (f"Turns on {name} are now charged to usage credits, past your plan's {name} "
+                f"allowance. {what} on usage credits, change the model, or cancel?")
+        dialog = wx.MessageDialog(self, text, "Use usage credits?",
+                                  wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
+        dialog.SetYesNoCancelLabels("Use Usage Credits", "Change &Model", "Cancel")
+        return self._overage_answer(self._modal(dialog))  # _modal destroys it
+
+    @staticmethod
+    def _overage_answer(answer: int) -> str:
+        """The answer "Use usage credits?" gave: Escape and closing it cancel."""
+        return {wx.ID_YES: "credits", wx.ID_NO: "model"}.get(answer, "cancel")
+
+    def _change_model_of(self, session_id: str):
+        """Change Model for this chat, wherever the selection is (#722): a
+        chat just made isn't in the list's snapshot yet."""
+        info = self._current_info(self._own_key(session_id))
+        if info is None:
+            own = self.store.get(session_id)
+            info = own.to_info() if own is not None else None
+        if info is not None:
+            self.on_change_model(info)
+
+    def _running_overage_ok(self, session_id: str, runner) -> bool:
+        """Whether more may go into a running turn now (a steer, Send Now, a
+        message while it waits on background work), asked as Send asks
+        (#722): each message is its own question, whatever was answered for
+        the turn's first. A yes lets the running turn go on on usage credits
+        with what it was given. It goes by the model the turn is on, too: a
+        Change Model the turn couldn't take leaves it on Fable meanwhile."""
+        own = self.store.get(session_id)
+        turn_model = getattr(runner, "_turn_model", None)
+        running_on = turn_model() if callable(turn_model) else ""
+        if own is not None and overage_paused(running_on) and not overage_paused(own.model):
+            own = dataclasses.replace(own, model=running_on)
+        problem, allow = self._fable_send_problem(own)
+        if problem:
+            wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+        elif problem == "":
+            self._feedback("Not sent.")
+        if problem is None and allow and runner is not None:
+            runner.allow_overage = True
+        return problem is None
 
     def _api_notice_spoken(self, session_id: str) -> bool:
         """Whether "Sent on API credits" is spoken for this chat (#663): an
@@ -2214,7 +2425,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if own is None:
             return
         if not self._api_notice_spoken(session_id):
-            self._sound(sound_events.API_SENT, self._own_key(session_id))
+            self._sound(sound_events.API_SENT, session_id if session_id.startswith('codex-api:') else self._own_key(session_id))
             return
         short = announce.api_sent_text(own.title)
         said = short
@@ -2250,6 +2461,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 or not data.get("sent", True):
             return ""
         cost = data.get("cost_usd")
+        if data.get('estimated'):
+            return data.get('cost_words', 'cost not known')
         complete = data.get("cost_complete", True) is not False
         if not turn_over and isinstance(cost, (int, float)):
             self._api_cost_said[session_id] = cost
@@ -2260,6 +2473,33 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return ""  # said already, with the answer before
         # "3 cents more", but "cost not known" alone, never "… more".
         return cost_more(cost_words(more, complete))
+
+    def _keep_reply_cost(self, event, session_id: str, turn_over: bool = True) -> bool:
+        """What a Claude turn on API credits cost, kept with its last reply
+        as the reply's last line (#692), whether or not Settings has it
+        said. An answer with background work left keeps its cost so far;
+        the turn's end then puts what came after on its new reply, or the
+        whole on the same one. True when something was kept."""
+        data = getattr(event, "data", None) or {}
+        earlier = (self._reply_cost_said.pop(session_id, None) if turn_over
+                   else self._reply_cost_said.get(session_id))
+        if data.get("billing") != "api":
+            return False
+        key = reply_costs.claude_reply_key(data)
+        if not key:
+            return False
+        already = earlier[1] if earlier is not None and earlier[0] != key else None
+        words = reply_costs.claude_words(data, already)
+        if not words:
+            return False
+        cost = data.get("cost_usd")
+        if not turn_over and isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            self._reply_cost_said[session_id] = (key, cost)
+        line = reply_costs.cost_line(words)
+        try:
+            return self.store.add_reply_cost(session_id, key, line)
+        except (OSError, ValueError):
+            return False  # the reply reads without it; nothing else is lost
 
     def _say_turn_end(self, text: str, cost: str, title: str, session_id: str,
                       interrupt: bool = True) -> None:
@@ -2279,13 +2519,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return text
         return f"{text.rstrip()} {cost_sentence(cost)}"
 
-    def _first_message_held(self, own: OwnSession, message: str) -> bool:
-        """A new chat on API credits whose first message can't go yet (no
-        key, or Cancel at "Send on API credits?", #658): the chat is made
-        and opened, with the message in its reply box. False to send it."""
+    def _first_message_held(self, own: OwnSession, message: str):
+        """A new chat whose first message can't go yet: on API credits, no
+        key or Cancel at "Send on API credits?" (#658); on Fable, a plan
+        without it, or Cancel at "Use usage credits?" (#722). The chat is
+        made and opened, with the message in its reply box. Returns (held,
+        allow): allow is True when you chose usage credits for that turn."""
         problem = self._api_send_problem(own.cli_session_id)
+        allow = False
         if problem is None:
-            return False
+            # Fable's plan, and usage credits asked about, as Send does
+            # (#722). Its "allow" is the new chat's first turn's alone.
+            problem, allow = self._fable_send_problem(own)
+        if problem is None:
+            return False, allow
         if message:
             self._drafts[own.cli_session_id] = message
         self.open_session(own.to_info())
@@ -2295,7 +2542,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._feedback("Not sent. Your message is in the reply box." if message
                        else "Not sent.")
         self.reply_text.SetFocus()
-        return True
+        return True, False
 
     def _rename_spend(self, old_id: str, new_id: str) -> None:
         """The ledger's record of a chat follows its new id (#663): a line
@@ -2338,7 +2585,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info.provider == AGENTS:
             kind = f"Agent conversation, {info.provider_label}"
         elif info.provider != "claude":
-            kind = f"{info.provider.capitalize()} chat" + ("" if self._can_edit(info) else ", read-only")
+            kind = f"{provider_name(info.provider)} chat" + ("" if self._can_edit(info) else ", read-only")
         elif info.source == "kept":
             kind = "Kept Claude chat, read-only"
         elif info.is_own:
@@ -2369,13 +2616,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     kind += f", continued from {own.forked_from}"
                 if self._remote_control_on(own):
                     kind += ", Remote Control on"
-        elif info.is_own and info.provider == 'codex':
-            own = self.store.get(info.cli_session_id, provider='codex')
+        elif info.is_own and info.provider in ('codex', 'codex-api'):
+            if api:
+                kind += ', on API credits'
+            own = self.store.get(info.cli_session_id, provider=info.provider)
             if own is not None:
                 if own.provider_options.get('model'):
-                    kind += ' on ' + own.provider_options['model']
+                    kind += (', ' if api else ' on ') + own.provider_options['model']
                 if own.provider_options.get('effort'):
-                    kind += ' at ' + own.provider_options['effort']
+                    kind += (', ' + own.provider_options['effort'] + ' effort' if api else ' at ' + own.provider_options['effort'])
                 if (own.provider_options.get('collaboration') == 'plan' and not getattr(
                         self._codex_states.get(info.key), 'plan_unavailable', False)):
                     kind += ', plan mode'
@@ -2420,6 +2669,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 kind += ", API credits"  # #658: heard on arriving in the messages
         elif info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             kind = f", on {provider_name(info.provider)}"
+            if self._is_api_chat(info):
+                kind += ', API credits'
         elif info.provider == AGENTS:
             kind = ", agent conversation"
         if info.provider in LISTED_PROVIDERS and info.state == STATUS_UNAVAILABLE:
@@ -2510,6 +2761,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         generation = self._open_generation
         reader = self._reader
         self._reader_busy = True
+        # What each reply on API credits cost (#692), from the store as it
+        # is now; a change shows even if the transcript didn't change.
+        own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
+        costs = (dict(getattr(own, "reply_costs", None) or {})
+                 if getattr(own, "billing", "") == "api" else {})
+        shown_costs = (info.key, tuple(costs.items()))
+        costs_changed = shown_costs != self._chat_costs_shown
+        self._chat_costs_pending = shown_costs  # shown once a read is applied
 
         def work():
             active_reader = reader
@@ -2518,13 +2777,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if active_reader is None:
                     wx.CallAfter(self._missing_reader, generation)
                     return
-                changed = active_reader.refresh()
+                changed = active_reader.refresh() or (costs_changed and reader is not None)
                 transcript = active_reader.transcript
                 copies = [dataclasses.replace(m) for m in transcript.messages]
-                if info.provider == 'codex':
+                if info.provider in ('codex', 'codex-api'):
                     # A saved long message reads as it was written, not as
                     # the short prompt Codex was sent.
                     copies = codex_long_messages.expand_messages(copies)
+                copies = reply_costs.with_costs(copies, costs, ASSISTANT)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
@@ -2544,7 +2804,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._refresh_chat()
             return
         self._show_missing_transcript(self._open)
-        if (self._open.provider in RUNTIME_PROVIDERS and self._open.provider != "codex"
+        if (self._open.provider in RUNTIME_PROVIDERS and self._open.provider not in ('codex', 'codex-api')
                 and self._can_edit(self._open)):
             # Copilot writes no log until a chat's first message: it still
             # has to be opened to be sent to (#352).
@@ -2668,7 +2928,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._select_on_load = None
             if not self._chat_loaded:
                 name = provider_name(self._open.provider)
-                line = (f"Couldn't load this {name} chat. Try again, or open it in "
+                line = ("Couldn't load this Codex API chat. Try again, or check its key in Tools, API Keys."
+                        if self._open.provider == "codex-api" else f"Couldn't load this {name} chat. Try again, or open it in "
                         f"{home_app(self._open.provider)} to read it."
                         if self._open.provider in LISTED_PROVIDERS
                         else f"Couldn't read this transcript: {error}")
@@ -2684,7 +2945,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if commands is not None:
             self._chat_commands = commands
         if tasks is not None:
-            if self._open.provider == 'codex':
+            if self._open.provider in ('codex', 'codex-api'):
                 state = self._codex_states.get(self._open.key)
                 if state is not None and state.plan_received:
                     tasks = self._codex_task_steps(state, turns, messages)
@@ -2704,6 +2965,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         before_keys = {m.key for m in self._chat_messages}
         self._chat_messages = messages
+        # These messages carry the reply costs read with them (#692).
+        self._chat_costs_shown = getattr(self, "_chat_costs_pending", None)
         if any(m.key not in before_keys and m.kind in (ASSISTANT, COMPACTION) for m in messages):
             self._compaction_tokens.pop(self._open.cli_session_id, None)
         self._check_context()
@@ -2903,10 +3166,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Keyed by label too: a steering row's label says where it is, and
         # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != (message.label, message.text):
+        if cached is None or cached[0] != (message.label, message.text, message.cost):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
-            cached = ((message.label, message.text), f"{message.label}: {spoken}")
+            said = f"{message.label}: {spoken}"
+            if message.cost:
+                # A reply's cost is its last words (#692), as in its row.
+                said = said.rstrip()
+                said = (f"{said}{'' if said.endswith(('.', '!', '?', '…', ':')) else '.'}"
+                        f" {message.cost}")
+            cached = ((message.label, message.text, message.cost), said)
             self._spoken[message.key] = cached
         return cached[1]
 
@@ -2952,7 +3221,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # as soft breaks.
             text = "\n".join(line + "  " if line.strip() else line
                                for line in text.split("\n"))
-        return self._show_page(title, message_page(title, text, heading=message.label), parent)
+        cwd = self._open.cwd if self._open is not None else ''
+        return self._show_page(title, message_page(title, text, heading=message.label, cwd=cwd), parent)
 
     def on_user_guide(self, _event=None):
         """Help, User Guide (#104): the guide as a page, read by heading like
@@ -3005,7 +3275,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
         def work():
             try:
-                page, problem = export.reading_page(title, messages), None
+                page, problem = export.reading_page(title, messages, folder=info.cwd), None
             except Exception as exc:  # noqa: BLE001 - said in the window
                 page, problem = None, exc
             wx.CallAfter(self._whole_chat_ready, key, mark, title, messages, start, page, problem)
@@ -3045,16 +3315,21 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not formatted_view_available():
             return False
         try:
-            options = {"start_at": start_at} if start_at else {}
-            dialog = FormattedMessageDialog(parent or self, title, page, **options)
+            # One page kept and reused on Windows (#693): destroying a web
+            # view crashed WebView2 157 while JAWS ran.
+            result, link, failed = show_formatted_page(
+                parent or self, title, page, start_at, factory=FormattedMessageDialog)
         except RuntimeError as exc:
             self._status(str(exc))
             return False
-        try:
-            shown = dialog.ShowModal() != ID_PLAIN_TEXT
-            link = getattr(dialog, "app_link", None)
-        finally:
-            dialog.Destroy()
+        shown = result != ID_PLAIN_TEXT
+        if failed:
+            # The web view died (#693): said once; plain text from now on.
+            # The caller opens the text box next, and the screen reader reads
+            # that first, so this comes a moment after, rather than cut off.
+            # Not if the window has gone meanwhile (a timer on a destroyed
+            # frame can crash on a Mac).
+            wx.CallLater(1500, lambda: self._gone() or self._feedback(FORMATTED_BROKEN_TEXT))
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown
@@ -3103,7 +3378,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             except ValueError:
                 can_branch = False
             rewind_item = menu.Append(wx.ID_ANY, self._keyed("Retr&y from Here...", "retry_from_here"))
-            anchored = message is not None and bool(message.key if self._open.provider == 'codex' else message.uuid)
+            anchored = message is not None and bool(message.key if self._open.provider in ('codex', 'codex-api') else message.uuid)
             rewind_item.Enable(can_branch and anchored and message.kind == USER)
             menu.Bind(wx.EVT_MENU, lambda e: self.on_rewind_to_here(), rewind_item)
             branch_item = menu.Append(wx.ID_ANY, "Branc&h from Here")
@@ -3204,13 +3479,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info.provider != "claude":
             unavailable[lists.COMMANDS] = f"Commands aren't listed for {provider} chats yet."
             unavailable[lists.DECISIONS] = f"Decisions aren't listed for {provider} chats yet."
-            if info.provider == 'codex':
+            if info.provider in ('codex', 'codex-api'):
                 if not info.is_own:
                     unavailable[lists.TASKS] = ("No task list. Task lists are kept only for Codex chats "
                                                 "run in The Chat Place.")
             else:
                 unavailable[lists.TASKS] = f"Tasks aren't listed for {provider} chats yet."
-            if info.provider != "codex":
+            if info.provider not in ('codex', 'codex-api'):
                 unavailable[lists.SUBAGENTS] = f"Subagents aren't listed for {provider} chats yet."
         approvals, approvals_problem = self._approvals_for(info)
         if approvals_problem:
@@ -3224,7 +3499,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return lists.build(tab, tab_scope, messages, selected, edits, commands,
                                lambda f: self._describe_changed_file(f, cwd), turn, tasks,
                                marks=self.speech.change_marks, subagents=current,
-                               approvals=approvals)
+                               approvals=approvals, cwd=cwd)
 
         returning_to = wx.Window.FindFocus()
         dialog = ListsDialog(self, info.title, build, self._copy_text, self._feedback,
@@ -3233,27 +3508,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         try:
             self._show_lists(dialog)
             chosen = dialog.chosen_link
+            containing = dialog.chosen_containing_folder
             self._lists_category = dialog.category
         finally:
             dialog.Destroy()
         if returning_to:
             returning_to.SetFocus()
         if chosen is not None:
-            self._open_found_link(chosen)
+            self._open_found_link(chosen, containing=containing)
 
     def _approvals_for(self, info):
         """The loaded chat's approval decisions for Lists (#564), oldest
         first, and what to say instead when there are none to list: Codex's
         automatic review and your saved rules, in Codex chats run here. The
         history is a small local file, so it's read here, not on a thread."""
-        if info.provider != "codex" or not info.is_own:
-            if info.provider == "codex":
+        if info.provider not in ('codex', 'codex-api') or not info.is_own:
+            if info.provider in ('codex', 'codex-api'):
                 return [], "Auto approvals are listed only for Codex chats run in The Chat Place."
             return [], f"Auto approvals aren't listed for {info.provider.capitalize()} chats yet."
         from .. import approvals
         state = self._codex_states.get(info.key)
         live = getattr(state, "permission_notices", ()) if state is not None else ()
-        record = self.store.get(info.cli_session_id, provider="codex")
+        record = self.store.get(info.cli_session_id, provider=info.provider)
         try:
             saved = self.sessions.owned_action("review_history", record) if record is not None else ()
         except Exception as exc:  # noqa: BLE001 - this run's are still worth listing
@@ -3277,14 +3553,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         without showing it."""
         return dialog.ShowModal()
 
-    def _open_found_link(self, chosen):
+    def _open_found_link(self, chosen, containing: bool = False):
         """A link chosen in Lists: The Chat Place's own links here, never the
-        shell; others in the browser."""
+        shell; files through the shared safety check, others in the browser."""
         if chosen.is_session_link:
             self.open_link(chosen.url)
             return
         try:
-            platform_paths.open_url(chosen.url)
+            if chosen.file_path:
+                platform_paths.open_local_file(chosen.file_path, containing=containing)
+            elif chosen.can_open:
+                platform_paths.open_url(chosen.url)
+            else:
+                self._feedback(chosen.why_not())
+                return
         except (OSError, ValueError) as exc:
             wx.MessageBox(f"Couldn't open the link: {exc}\n\nIt's {chosen.url}", APP_NAME,
                           wx.OK | wx.ICON_WARNING, self)
@@ -3365,7 +3647,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            f"{your_key('Alt+Enter')} again."))
             return
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
-        if transcript is not None and info.provider == 'codex':
+        if transcript is not None and info.provider in ('codex', 'codex-api'):
             state = self._codex_states.get(info.key)
             if state is not None and state.plan_received:
                 transcript = dataclasses.replace(transcript, tasks=self._codex_task_steps(
@@ -3373,24 +3655,30 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             elif (self._open is not None and self._open.key == info.key and self._chat_loaded):
                 transcript = dataclasses.replace(transcript, tasks=list(self._chat_tasks))
         model = transcript.model if transcript is not None else ""
-        running = getattr(self._codex_states.get(info.key), 'model', '') if info.provider == 'codex' else ''
+        running = getattr(self._codex_states.get(info.key), 'model', '') if info.provider in ('codex', 'codex-api') else ''
         api_spent = None
-        if own is not None and info.provider == "claude" and own.billing == "api":
+        api_cost = ''
+        if own is not None and own.billing == "api":
             from ..spend_ledger import default_ledger
             try:
-                api_spent = default_ledger().totals().chat_all_time.get(info.cli_session_id, 0.0)
+                ledger = default_ledger('openai' if info.provider == 'codex-api' else 'claude')
+                api_spent = ledger.totals().chat_all_time.get(
+                    info.key if info.provider == 'codex-api' else info.cli_session_id, 0.0)
+                if info.provider == 'codex-api':
+                    from ..openai_billing import chat_cost_words
+                    api_cost = chat_cost_words(ledger, info.key)
             except Exception:  # noqa: BLE001 - Properties without it, not an error
                 api_spent = None
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
                 read_error=error, subagent_count=subagent_count, running_model=running,
-                api_spent=api_spent)
+                api_spent=api_spent, api_cost=api_cost)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         lines = properties.with_branch_facts(lines, branch_facts)
         self._show_properties(f"Properties of {info.title or 'Untitled session'}", lines,
-                              returning_to, codex_info=info if info.provider == 'codex' else None)
+                              returning_to, codex_info=info if info.provider in ('codex', 'codex-api') else None)
 
     def _show_properties(self, title, lines, returning_to, codex_info=None):
         if codex_info is not None:
@@ -3408,7 +3696,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 dialog.list.Set(dialog._lines)
                 if dialog._lines:
                     dialog.list.SetSelection(min(max(selected, 0), len(dialog._lines) - 1))
-            self._load_codex_rules(codex_info.cwd, rules_ready)
+            if codex_info.provider == 'codex-api':
+                self._codex_work(lambda: self.sessions.saved_rule_count('codex-api', codex_info.cwd), rules_ready)
+            else:
+                self._load_codex_rules(codex_info.cwd, rules_ready)
         self._modal(dialog)
         if returning_to:
             returning_to.SetFocus()
@@ -3446,7 +3737,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
         def work():
             try:
-                kinds = (about_you.collect_codex(cwds) if provider == "codex"
+                kinds = (about_you.collect_codex(cwds, home=platform_paths.codex_api_home()) if provider == 'codex-api'
+                         else about_you.collect_codex(cwds) if provider == 'codex'
                          else about_you.collect(cwds))
             except Exception as exc:  # noqa: BLE001
                 wx.CallAfter(failed, f"Couldn't read {provider.title()} customization files: {exc}")
@@ -4052,18 +4344,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         context = None
         if self._open is not None:
             context = (self._open.title, *self._context(self._open))
-        lines = usage.usage_lines(context, self._limits)
+        # The weekly Fable limit stays listed after other models' turns (#722).
+        limits = usage.with_fable_window(self._limits, self._fable_limits)
+        lines = usage.usage_lines(context, limits)
         # What fills it, after the context line (#468).
         lines[1:1] = self._context_breakdown(self._open)
         if self._is_api_chat(self._open):
-            # Right after the context, before the plan's limits (#658).
+            # Right after the context, before the plan's limits (#658);
+            # then the whole API credits section, which is this chat's.
             lines.insert(1, usage.PLAN_LIMITS_NOT_FOR_API)
-        lines += self._api_usage_lines()  # #658
+            lines += self._api_usage_lines()
+        else:
+            # On the subscription, the plan's limits stay last, where End
+            # finds them: API credits get one line before them.
+            summary = self._api_usage_lines(summary=True)
+            plan = len(usage.limit_lines(limits))
+            lines[len(lines) - plan:len(lines) - plan] = summary
         self._modal(UsageDialog(self, lines, self._copy_usage))
 
-    def _api_usage_lines(self) -> List[str]:
+    def _api_usage_lines(self, summary: bool = False) -> List[str]:
         """Usage's API credits section (#658): shown once a key has been
-        added, anything spent, or an API chat is loaded."""
+        added, anything spent, or an API chat is loaded. ``summary``: one
+        line, for a chat on the subscription."""
         from ..spend_ledger import default_ledger
         try:
             totals = default_ledger().totals()
@@ -4073,6 +4375,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not (api_open or self._has_api_key() or totals.spent or totals.today
                 or totals.last_7_days or totals.held or totals.problem):
             return []
+        if summary:
+            return [usage.api_credit_summary(totals)]
         names = {own.cli_session_id: own.title for own in self.store.all()
                  if own.provider == "claude"}
         return usage.api_credit_lines(totals, names)
@@ -4549,8 +4853,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback("Not sent.")
             return
         runner = self._runners.get(session_id)
+        allow_overage = False
+        if runner is None or runner.waiting_on_background:
+            # Fable's plan, and usage credits asked about, as Send does (#722).
+            problem, allow_overage = self._fable_send_problem(self.store.get(session_id))
+            if problem is not None:
+                if problem:
+                    wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+                else:
+                    self._feedback("Not sent.")
+                return
         if runner is not None and runner.waiting_on_background:
             # Answered and only waiting on background work (#161): it goes in.
+            if allow_overage:
+                runner.allow_overage = True  # you said yes for this one (#722)
             if runner.send_follow_up(message):
                 # On API credits the runner's "api_sent" says so (#663).
                 self._update_send_state()
@@ -4561,7 +4877,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback(f"{info.title} is working. Use Other Machines again when "
                            "the turn ends.")
             return
-        problem = self._send_now(session_id, message, spoken="")
+        problem = self._send_now(session_id, message, spoken="", allow_overage=allow_overage)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return
@@ -4680,25 +4996,28 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         except Exception:  # noqa: BLE001 - none to offer, Copilot's own is
             return ()
 
-    def on_change_model(self):
+    def on_change_model(self, info: Optional[SessionInfo] = None):
         """Chat, Chat Settings, Change Model: the model for this session's next turns, and
         the running turn's if Claude Code takes it (#468). A session's model
-        goes with every turn, so it can change at any time."""
-        selected = self._selected_session()
-        if selected is not None and selected.provider == 'codex':
+        goes with every turn, so it can change at any time. ``info``: the
+        chat to change, when it isn't the selected one ("Use usage
+        credits?" offers it for the chat it's about, #722)."""
+        selected = info if info is not None else self._selected_session()
+        if selected is not None and selected.provider in ('codex', 'codex-api'):
             self._change_codex_settings(selected, 'model')
             return
         if selected is not None and selected.provider == "copilot":
             self._change_copilot_model(selected)
             return
-        found = self._own_for_setting("model")
+        found = self._own_for_setting("model", selected)
         if found is None:
             return
         info, own = found
         model = self._change_setting("Change Model",
                                      f"Model for {info.title}, now {model_label(own.model)}:",
-                                     # Fable too for a chat on API credits (#658).
-                                     models_for(own.billing), own.model)
+                                     # Fable too for a chat on API credits
+                                     # (#658), and on a plan with Fable (#722).
+                                     self._claude_models(own), own.model)
         if model is None:
             return
         # own's id, not info's: Claude may have given the session another id
@@ -4706,6 +5025,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self._store_write(self.store.update, own.cli_session_id, model=model):
             return
         self._update_heading()
+        runner = self._runners.get(own.cli_session_id)
+        if runner is not None and not runner.cancelled:
+            # A running turn moved to Fable goes through Fable's checks
+            # first, as Send does (#722); if they say no, it's from the next
+            # turn, which checks again.
+            problem, allow = self._fable_send_problem(self.store.get(own.cli_session_id))
+            if problem is not None:
+                if problem:
+                    wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+                self._feedback(f"{info.title} now uses {model_label(model)}, from its next turn.")
+                return
+            if allow:
+                runner.allow_overage = True
         # A running turn changes model too, if Claude Code takes it (#468).
         self._live_change(info, own, lambda runner, done: runner.set_model(model, done),
                           f"{info.title} now uses {model_label(model)}, now and for later turns.",
@@ -4720,7 +5052,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Permissions is showing (#329): focus is in that dialog then, so the
         selected session could be another chat."""
         selected = info if info is not None else self._selected_session()
-        if selected is not None and selected.provider == 'codex':
+        if selected is not None and selected.provider in ('codex', 'codex-api'):
             self._change_codex_permissions(selected)
             return
         if selected is not None and selected.provider == 'copilot':
@@ -4759,18 +5091,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is None:
             self._feedback("No session selected.")
             return
-        if not info.is_own or info.provider not in ("claude", "codex", "copilot"):
+        if not info.is_own or info.provider not in ("claude", "codex", "codex-api", "copilot"):
             where = "terminal" if info.is_terminal else "desktop app"
             self._feedback(f"{info.title} is {kind_name(info)}: it's read-only here, so it keeps "
                            f"no permissions in The Chat Place. Its {where} decides what it may do.")
             return
-        if info.provider in ("codex", "copilot"):
+        if info.provider in ("codex", "codex-api", "copilot"):
             record = self.store.get(info.cli_session_id, provider=info.provider)
             if record is None:
                 self._feedback(f"This {provider_name(info.provider)} chat is no longer in The "
                                "Chat Place.")
                 return
-            host = (CodexPermissions if info.provider == "codex" else CopilotPermissions)(
+            host = (CodexPermissions if info.provider in ('codex', 'codex-api') else CopilotPermissions)(
                 self, info, record)
         else:
             if self.store.get(info.cli_session_id) is None:
@@ -4790,7 +5122,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info is None:
             self._feedback("No session selected.")
             return
-        if info.provider == 'codex':
+        if info.provider == 'codex-api':
+            self._feedback('Connected services have no API-credit price in the table, so they cannot be enabled for this OpenAI chat.')
+            return
+        if info.provider in ('codex', 'codex-api'):
             from .codex_tools_host import CodexConnectedTools
             host = CodexConnectedTools(self, info)
             focus = wx.Window.FindFocus()
@@ -4854,7 +5189,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Chat, Chat Settings, Change Effort (#189): how hard Claude thinks in this
         session's next turns, given as ``--effort`` on every turn."""
         selected = self._selected_session()
-        if selected is not None and selected.provider == 'codex':
+        if selected is not None and selected.provider in ('codex', 'codex-api'):
             self._change_codex_settings(selected, 'effort')
             return
         found = self._own_for_setting("effort")
@@ -5191,7 +5526,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         codex_available = self.sessions.can_create("codex")
         copilot_available = self.sessions.can_create("copilot")
         if forward is not None and not (lookup.path if forward.provider == "claude"
-                                        else codex_available if forward.provider == "codex"
+                                        else codex_available if forward.provider in ('codex', 'codex-api')
                                         else copilot_available):
             self._relay_kept(forward.message, f"{forward.provider.capitalize()} isn't "
                                               "available, so no chat was started.")
@@ -5234,13 +5569,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # An agent conversation hands work between its chats, so a
                 # new Copilot one starts in agent mode (#424).
                 prefill["copilot_plan"] = False
-            codex_available = codex_available and forward.provider == "codex"
+            codex_available = codex_available and forward.provider in ('codex', 'codex-api')
             copilot_available = copilot_available and forward.provider == "copilot"
         offered = tuple(p for p, ok in (("claude", bool(lookup.path)), ("codex", codex_available),
                                         ("copilot", copilot_available)) if ok)
         provider_options = ({"providers": offered,
                              "provider": self.speech.new_session_provider,
                              "load_models": self._load_codex_models if codex_available else None,
+                             "load_api_models": self._load_codex_api_models if codex_available else None,
                              "load_rules": self._load_codex_rules if codex_available else None,
                              "copilot_models": self._copilot_models() if copilot_available else ()}
                             if codex_available or copilot_available else {})
@@ -5254,6 +5590,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                   # always on the subscription for now.
                                   api_key=self._has_api_key() and not (
                                       forward is not None and forward.joint),
+                                  openai_key=self._has_api_key('codex-api') and not (
+                                      forward is not None and forward.joint),
                                   **{**provider_options, **prefill})
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -5264,7 +5602,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             folder, title, mode, message, model = dialog.values()
             effort = dialog.effort()
             provider = getattr(dialog, "provider", lambda: "claude")()
-            policy = getattr(dialog, 'codex_policy', lambda: {})() if provider == 'codex' else {}
+            policy = getattr(dialog, 'codex_policy', lambda: {})() if provider in ('codex', 'codex-api') else {}
             copilot_mode = getattr(dialog, "copilot_mode", lambda: "")()
             chat_options, more_folders = getattr(dialog, "chat_options", _no_options)()
             # What New Session made, said once the chat has started (#561).
@@ -5285,9 +5623,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 pass
         made = forward.made if forward is not None else None
         joint = forward is not None and forward.joint
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(folder, title, message, **options, **policy,
+                                     provider='codex-api' if billing == 'api' else 'codex',
                                      made=made, joint=joint, instructions=chat_options.instructions,
                                      extra_roots=more_folders)
             return
@@ -5303,9 +5642,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._keep_for_files_going_back(folder, message, "no chat was started."):
             return
         session_id = new_session_id()
+        chrome = self._chrome_state(billing)
         try:
             command = build_new_command(exe, session_id, title, mode, model, effort=effort,
-                                        allowed_dirs=more_folders, options=chat_options)
+                                        allowed_dirs=more_folders, options=chat_options,
+                                        chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             # The dialog has gone, with the first message you typed in it.
             self._relay_kept(message, f"No chat was started: {exc} Your message wasn't sent.")
@@ -5314,6 +5655,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          permission_mode=mode, started=False, model=model, effort=effort,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          billing=billing,  # fixed from now on (#658)
+                         prompt_note=chrome,
                          **_options_fields(chat_options, more_folders))
         if not self._store_write(self.store.add, own):
             return
@@ -5322,10 +5664,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.refresh_sessions()
             made(own.to_info(), message)
             return
-        if self._first_message_held(own, message):
-            return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
+        held, allow = self._first_message_held(own, message)
+        if held:
+            return  # said why: API credits (#658) or Fable (#722)
         # Start the turn first, so the session view sees it running.
-        self._start_turn(own.cli_session_id, command, folder, message, title)
+        self._start_turn(own.cli_session_id, command, folder, message, title,
+                         allow_overage=allow)
         self.open_session(own.to_info())
         self.refresh_sessions()
         if made is not None:
@@ -5373,11 +5717,102 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._attachments.pop(session_id, None)
         self._show_attachments()
 
+    def _open_claude_id(self) -> str:
+        """The open chat's id if it's a Claude chat of The Chat Place's own."""
+        info = self._open
+        if info is None or not info.is_own or info.provider != "claude":
+            return ""
+        return info.cli_session_id
+
+    def _typed_text(self) -> str:
+        """The message box's text, with an untouched suggestion counted as
+        an empty box (#709 review): it's Claude's, not yours, so nothing
+        built on what you typed (a message given back, a command put in)
+        takes it along. Taking it this way drops it."""
+        text = self.reply_text.GetValue()
+        session_id = self._open_claude_id()
+        if session_id and text and text == self._suggestions.get(session_id):
+            self._suggestions.pop(session_id, None)
+            self.reply_text.ChangeValue("")
+            return ""
+        return text
+
+    def _place_suggestion(self, sound: bool = True) -> bool:
+        """The open chat's suggestion into its message box, selected, if the
+        box is empty: typing replaces it, and Ctrl+Enter sends it as it is.
+        A box with anything in it is never touched. True if placed; the
+        sound plays then (#474). The focus stays where it is."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if not text or self.reply_text.GetValue().strip():
+            return False
+        # ChangeValue: no text event, so it isn't taken for your typing.
+        self.reply_text.ChangeValue(text)
+        # As the box holds it: a Windows rich edit box can change its line
+        # endings, and an exact match is what says it's untouched.
+        self._suggestions[session_id] = self.reply_text.GetValue()
+        self.reply_text.SetSelection(-1, -1)
+        if sound:
+            key = self._own_key(session_id)
+            if self._sound_would_play(sound_events.SUGGESTED, key):
+                self._sound(sound_events.SUGGESTED, key)
+            elif self.speech.enabled:
+                # No sound to tell you (sounds off or muted, a scheme with
+                # none for it, or held back during a presentation): its words
+                # instead, never the suggestion itself, queued after the reply
+                # (Kelly, 0.6.3 review; #550 settles this for every event).
+                self._speak_announcement(announce.PROMPT_SUGGESTED, interrupt=False)
+        return True
+
+    def _clear_suggestions(self, session_id: str):
+        """A new turn has started: what was suggested after the last one is
+        out of date. One still sitting untouched in the box goes with it."""
+        self._suggestion_due.pop(session_id, None)
+        text = self._suggestions.pop(session_id, None)
+        if (text is not None and session_id == self._open_claude_id()
+                and self.reply_text.GetValue() == text):
+            self.reply_text.ChangeValue("")
+
+    def _offer_suggestion(self, session_id: str, title: str):
+        """After a reply has been said: its suggestion, if one came, kept for
+        the chat and put in its message box if it's open with the box empty.
+        True if one came (#474)."""
+        text = self._suggestion_due.pop(session_id, None)
+        if not text:
+            return False
+        self._suggestions[session_id] = text
+        if session_id == self._open_claude_id() and self._place_suggestion():
+            # The suggestion isn't read out (Kelly, 2026-11-23): its sound
+            # tells you, or with none, _place_suggestion says "Prompt suggested."
+            self._status(f"{title}: a suggested message is in your message box.")
+        return True
+
+    def _say_suggestions_not_offered(self, session_id: str):
+        """A turn asked for a suggestion and none came, and Claude Code's own
+        flag says it isn't offering them to this account (#709): said once a
+        run, for the open chat, so the setting isn't taken to be broken. Not
+        when the flag is on or unknown: then a reply without one is just a
+        reply with nothing likely to suggest."""
+        if (self._told_suggestions_not_offered or session_id != self._open_claude_id()
+                or platform_paths.claude_offers_prompt_suggestions() is not False):
+            return
+        self._told_suggestions_not_offered = True
+        self._feedback(announce.SUGGESTIONS_NOT_OFFERED)
+
+    def drop_all_suggestions(self):
+        """Settings turned suggestions off: none shown, none waiting."""
+        session_id = self._open_claude_id()
+        text = self._suggestions.get(session_id)
+        if text is not None and self.reply_text.GetValue() == text:
+            self.reply_text.ChangeValue("")
+        self._suggestions.clear()
+        self._suggestion_due.clear()
+
     def _show_attachments(self):
         """The loaded session's attachments, under the reply box."""
         info = self._open
         paths = (self._attachments.get(self._attachment_key(info), [])
-                 if info and info.is_own and info.provider in ('claude', 'codex') else [])
+                 if info and info.is_own and info.provider in ('claude', 'codex', 'codex-api') else [])
         if paths:
             self.attach_list.Set([os.path.basename(p) for p in paths])
             self.attach_list.SetSelection(0)
@@ -5412,7 +5847,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         them, and so does a picture on the clipboard (a screenshot from
         Win+Shift+S, say); text pastes as usual."""
         info = self._open
-        own = info is not None and info.is_own and info.provider in ('claude', 'codex')
+        own = info is not None and info.is_own and info.provider in ('claude', 'codex', 'codex-api')
         copied, folders = self._clipboard_files() if own else ([], [])
         if copied:
             self._add_attachments(self._attachment_key(info), copied)
@@ -5484,12 +5919,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if info.is_own:
             self._feedback(f"{info.title} is already a Chat Place session; reply to it here.")
             return
-        if info.provider == "codex":
+        if info.provider in ('codex', 'codex-api'):
             if self._other_provider_said(info):
                 return
             dialog = NewSessionDialog(self, info.cwd, continue_from=info.title,
                                       providers=("codex",), provider="codex", source_state=info.state,
-                                      load_models=self._load_codex_models, load_rules=self._load_codex_rules, feedback=self._feedback)
+                                      openai_key=self._has_api_key('codex-api'),
+                                      load_models=self._load_codex_models, load_api_models=self._load_codex_api_models,
+                                      load_rules=self._load_codex_rules, feedback=self._feedback)
             try:
                 if dialog.ShowModal() != wx.ID_OK:
                     return
@@ -5497,10 +5934,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 effort = getattr(dialog, 'effort', lambda: '')()
                 policy = getattr(dialog, 'codex_policy', lambda: {})()
                 chat_options, more_folders = getattr(dialog, 'chat_options', _no_options)()
+                route = getattr(dialog, "billing", lambda: "subscription")()
             finally:
                 dialog.Destroy()
             options = {key: value for key, value in (('model', model), ('effort', effort)) if value}
             self._create_codex_owned(info.cwd, title, message, source=info, **options, **policy,
+                                     provider='codex-api' if route == 'api' else 'codex',
                                      instructions=chat_options.instructions, extra_roots=more_folders)
             return
         if info.provider == "copilot":
@@ -5564,6 +6003,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._keep_for_files_going_back(info.cwd, message, "no copy was made."):
             return
         new_id = new_session_id()
+        chrome = self._chrome_state(billing)
         try:
             command = build_fork_command(
                 lookup.path, info.cli_session_id, new_id, title, mode, model,
@@ -5571,7 +6011,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 | set(self._snapshot.desktop_cli_ids),
                 cowork_ids=self._snapshot.cowork_cli_ids, effort=effort,
                 allowed_dirs=more_folders,
-                options=dataclasses.replace(chat_options, fresh=bool(chat_options)))
+                options=dataclasses.replace(chat_options, fresh=True), chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             # The dialog has gone, with the first message you typed in it.
             self._relay_kept(message, f"No copy was made: {exc} Your message wasn't sent.")
@@ -5582,8 +6022,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          remote_control=remote_control,
                          # The copy carries the source's recorded system
                          # prompt (checked: instructions given to a fork were
-                         # ignored), so its own options need it made afresh.
-                         prompt_fresh=bool(chat_options),
+                         # ignored), so it's made afresh: for its own options,
+                         # and for what this chat can't do (#319), which the
+                         # source's record may not have.
+                         prompt_fresh=True, prompt_note=chrome,
                          disabled_mcp=list(self.speech.mcp_off_for_new_chats),
                          billing=billing,  # fixed from now on (#658)
                          **_options_fields(chat_options, more_folders))
@@ -5595,9 +6037,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self.tool_activity.add(own.to_info().key)
             except OSError:
                 pass
-        if self._first_message_held(own, message):
-            return  # API credits: no key, or Cancel at "Send on API credits?" (#658)
-        self._start_turn(new_id, command, info.cwd, message, title)
+        held, allow = self._first_message_held(own, message)
+        if held:
+            return  # said why: API credits (#658) or Fable (#722)
+        self._start_turn(new_id, command, info.cwd, message, title,
+                         allow_overage=allow)
         self.open_session(own.to_info())
         self.refresh_sessions()
         if remote_control == "on":
@@ -5660,6 +6104,29 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Here's are (its first Send forks the whole conversation); the
         original is left as it was."""
         info = self._selected_session()
+        if info is not None and info.provider in ('codex', 'codex-api'):
+            if info.provider == 'codex-api':
+                self._feedback('This chat is already charged to OpenAI API credits.')
+                return
+            if not self._has_api_key('codex-api'):
+                self._feedback('Add an OpenAI key in Tools, API Keys first.')
+                return
+            if not info.cwd or not os.path.isdir(info.cwd):
+                self._feedback(f"{info.title}'s folder ({info.cwd or 'unknown'}) doesn't exist any more, so a new chat can't be started in it.")
+                return
+            question = wx.MessageDialog(self,
+                'Make a new chat charged to your OpenAI key? Its first message sends a text copy '
+                'of this conversation. Costs are estimated and may be higher for that first message.',
+                'Continue on API Credits', wx.OK | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
+            question.SetOKCancelLabels('&Continue', 'Cancel')
+            try:
+                if question.ShowModal() != wx.ID_OK:
+                    return
+            finally:
+                question.Destroy()
+            self._create_codex_owned(info.cwd, info.title + ' (continued)', '', source=info,
+                                     provider='codex-api', model='gpt-5-nano')
+            return
         problem = self._continue_on_api_problem(info)
         if problem:
             self._feedback(problem)
@@ -5674,15 +6141,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         title = f"{info.title} (continued)"[:MAX_TITLE]
         own = OwnSession(cli_session_id=new_session_id(), title=title, cwd=source.cwd,
                          permission_mode=source.permission_mode, started=False,
-                         # Fable stays the subscription's to refuse; every
-                         # other model is kept.
+                         # Fable is kept: on API credits it's charged like
+                         # any model (#658).
                          model=source.model, effort=source.effort,
                          fork_source=source.cli_session_id, forked_from=info.title,
                          created_ms=now, last_activity_ms=now, billing="api",
                          # The copy carries the source's recorded system
                          # prompt, so its Chat Options come with it (#468).
                          agent=source.agent, instructions=source.instructions,
-                         output_style=source.output_style, prompt_fresh=source.prompt_fresh,
+                         # Made afresh, so the copy has #319's note too.
+                         output_style=source.output_style, prompt_fresh=True,
                          disabled_mcp=list(source.disabled_mcp),
                          allowed_dirs=list(source.allowed_dirs),
                          allowed_dirs_at=dict(source.allowed_dirs_at))
@@ -5719,11 +6187,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._feedback(f"This {provider_name(info.provider)} chat is still getting ready.")
                 return
             message = self.reply_text.GetValue().strip()
-            if info.provider == 'codex' and self._handle_codex_command(info, message):
+            if info.provider in ('codex', 'codex-api') and self._handle_codex_command(info, message):
                 if self.reply_text.GetValue().strip() == message:
                     self.reply_text.SetValue('')
                 return
-            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
+            if not message and not (info.provider in ('codex', 'codex-api') and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -5734,7 +6202,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     # the picture, so sending again gave Codex the path (#468).
                     self._feedback('Still putting files back in this folder. Send again in a moment.')
                     return
-                if info.provider == 'codex':
+                if info.provider in ('codex', 'codex-api'):
                     try:
                         message = self._codex_message(info, message)
                     except (ValueError, OSError) as error:
@@ -5743,7 +6211,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self.reply_text.SetValue("")
                 self._codex_drafts.pop(info.key, None)
                 self._send_codex_owned(record, message)
-                if info.provider == 'codex':
+                if info.provider in ('codex', 'codex-api'):
                     self._clear_attachments(self._attachment_key(info))
                     getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
@@ -5798,10 +6266,29 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # stop lands, so keep the text and say why.
             self._feedback("Still stopping. Send again in a moment.")
             return False
+        allow_overage = False
+        if runner is None or runner.waiting_on_background:
+            # A message that goes now, on Fable (#722): only on a plan that
+            # includes it, and on usage credits only if you say so, asked
+            # each time you press Send. An agent conversation's relay
+            # (``announce_send`` off) isn't asked: it gets the reason. A
+            # message queued now is checked when it goes.
+            problem, allow_overage = self._fable_send_problem(self.store.get(session_id),
+                                                              ask=announce_send)
+            if problem is not None:
+                if problem and announce_send:
+                    wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
+                elif problem:
+                    self._feedback(problem)
+                else:
+                    self._feedback("Not sent.")
+                return False
         if runner is not None and runner.waiting_on_background:
             # Claude has answered and is only waiting for background work
             # (#161): the message goes in now, as the next one, rather than
             # waiting for work that may take an hour.
+            if allow_overage:
+                runner.allow_overage = True  # you said yes for this one (#722)
             prompt, images = attachments.build(message, attached)
             if runner.send_follow_up(prompt, images):
                 if attached:  # a relayed message leaves the chat's own attachments
@@ -5839,7 +6326,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return True
         prompt, images = attachments.build(message, attached)
         problem = self._send_now(session_id, prompt, images=images, spoken=message,
-                                 attached=attached, announce_send=announce_send)
+                                 attached=attached, announce_send=announce_send,
+                                 allow_overage=allow_overage)
         if problem:
             wx.MessageBox(problem, APP_NAME, wx.OK | wx.ICON_WARNING, self)
             return False
@@ -5850,10 +6338,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _send_now(self, session_id: str, message: str, queued: bool = False,
                   images: Optional[List[dict]] = None, spoken: Optional[str] = None,
                   attached: Optional[List[str]] = None,
-                  announce_send: bool = True) -> Optional[str]:
+                  announce_send: bool = True, allow_overage: bool = False) -> Optional[str]:
         """Start a turn with ``message``. Returns why it can't, or None once
         sent; the caller decides how to say it (a dialog when Kelly pressed
-        Send, speech for a queued message going out on its own)."""
+        Send, speech for a queued message going out on its own).
+        ``allow_overage``: you chose usage credits for this turn (#722)."""
         own = self.store.get(session_id)
         if session_id in self._rewinding_files or (own is not None
                                                    and self._files_going_back_in(own.cwd)):
@@ -5880,6 +6369,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         problem = self._api_send_problem(session_id, ask=False)
         if problem:
             return problem
+        if not allow_overage:
+            # Nothing goes on Fable without the plan for it, or on usage
+            # credits without your say (#722): Send asked already; a queued
+            # message going on its own gets the reason.
+            problem, _allow = self._fable_send_problem(own, ask=False)
+            if problem:
+                return problem
+        chrome, own = self._chrome_for_turn(own)
         try:
             if self._session_exists(own):
                 command = build_resume_command(
@@ -5887,7 +6384,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     own_ids={s.cli_session_id for s in self.store.all()},
                     desktop_ids=self._snapshot.desktop_cli_ids, model=own.model,
                     allowed_tools=own.allowed_tools, title=own.title, effort=own.effort,
-                    allowed_dirs=own.allowed_dirs, options=own.chat_options())
+                    allowed_dirs=own.allowed_dirs, options=own.chat_options(),
+                    chrome=chrome)
             else:
                 # The first turn never got as far as creating the session:
                 # start it again rather than resume something that isn't there.
@@ -5904,20 +6402,55 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                                  cowork_ids=self._snapshot.cowork_cli_ids,
                                                  effort=own.effort, resume_at=own.fork_at,
                                                  allowed_dirs=own.allowed_dirs,
-                                                 options=own.chat_options())
+                                                 options=own.chat_options(),
+                                                 chrome=chrome)
                 else:
                     command = build_new_command(exe, own.cli_session_id, own.title,
                                                 own.permission_mode, own.model,
                                                 allowed_tools=own.allowed_tools,
                                                 effort=own.effort,
                                                 allowed_dirs=own.allowed_dirs,
-                                                options=own.chat_options())
+                                                options=own.chat_options(),
+                                                chrome=chrome)
         except (ResumeRefused, ValueError) as exc:
             return str(exc)
         self._start_turn(own.cli_session_id, command, own.cwd, message, own.title,
                          queued=queued, images=images, spoken=spoken, attached=attached,
-                         announce_send=announce_send)
+                         announce_send=announce_send, allow_overage=allow_overage)
         return None
+
+    def _chrome_state(self, billing: str) -> str:
+        """Whether a Claude chat charged this way gets Claude in Chrome
+        (#319). Never on API credits: Claude Code keeps it off with an API
+        key even when asked, so the chat is told why instead."""
+        if billing == "api":
+            return CHROME_API
+        return CHROME_ON if self.speech.chrome_on() else CHROME_OFF
+
+    def _chrome_for_turn(self, own: OwnSession) -> Tuple[str, OwnSession]:
+        """The Claude in Chrome state for ``own``'s next turn, and the chat
+        as it is after noting it. When it isn't what the chat's recorded
+        system prompt was made with (Settings changed, or a chat from before
+        #319, recorded without --chrome), the prompt is made afresh from now
+        on: Claude Code would otherwise keep telling it Chrome isn't there.
+
+        Only when Chrome itself comes or goes: a prompt made afresh stays so
+        for the rest of the chat, and the notes for off and for API credits
+        say near enough what a chat recorded before #319 was told (no
+        Chrome), so those chats keep their recorded prompt."""
+        state = self._chrome_state(own.billing)
+        if own.prompt_note == state:
+            return state, own
+        changes = {"prompt_note": state}
+        if (CHROME_ON in (state, own.prompt_note) and not own.prompt_fresh
+                and self._session_exists(own)):
+            changes["prompt_fresh"] = True
+        if self._store_write(self.store.update, own.cli_session_id, **changes):
+            own = self.store.get(own.cli_session_id) or own
+        elif "prompt_fresh" in changes:
+            # Not saved, but this turn still mustn't keep the old note.
+            own = dataclasses.replace(own, **changes)
+        return state, own
 
     def _session_exists(self, own: OwnSession) -> bool:
         if own.started:
@@ -5927,7 +6460,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _start_turn(self, session_id: str, command, cwd: str, prompt: str, title: str,
                     queued: bool = False, images: Optional[List[dict]] = None,
                     spoken: Optional[str] = None, attached: Optional[List[str]] = None,
-                    announce_send: bool = True):
+                    announce_send: bool = True, allow_overage: bool = False):
         """``spoken`` is what's read back (what you typed, without the
         attachment lines added to ``prompt``)."""
         holder = {"id": session_id}
@@ -5951,8 +6484,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             # Tools turned off for this chat (#468).
                             disabled_mcp=list(own.disabled_mcp) if own is not None else [],
                             context_usage=True,  # for Usage and Context (#468)
+                            # A suggested next message (#474), as Settings
+                            # chose; the runner never asks on API credits.
+                            # Not for a slash command or an agent conversation's
+                            # turn, which never show one: a request for nothing.
+                            suggestions=(self.speech.prompt_suggestions
+                                         and not prompt.lstrip().startswith("/")
+                                         and not self._agent_quiet("claude", session_id)),
+                            allow_overage=allow_overage,  # this turn only (#722)
                             # Charged as the chat was made to be (#658).
                             **self._billing_kwargs(session_id))
+        # What came after the last reply is out of date once a turn starts.
+        self._clear_suggestions(session_id)
         # What you typed and attached, to give back if the turn never starts.
         runner.typed = spoken if spoken is not None else prompt
         runner.attached = list(attached or [])
@@ -6070,6 +6613,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         is_open_now = (self._open is not None and self._open.provider == "claude"
                        and self._open.cli_session_id == session_id)
+        if event.kind == "suggestion":
+            # After the result, before the turn ends (#474): offered once the
+            # reply has been said, so it never comes first. Never in a chat
+            # on API credits, whose turns don't ask: one that came anyway
+            # (a variable of the user's own) would be an uncounted request.
+            own = self.store.get(session_id)
+            if own is None or own.billing != "api":
+                self._suggestion_due[session_id] = event.text
+            return
+        if event.kind in ("text", "tool", "steer_taken"):
+            # More work after a reply that came with a suggestion (a steered
+            # message, Send Now, a follow-up): that suggestion was for the
+            # reply before, not for what comes next (#709 review).
+            self._suggestion_due.pop(session_id, None)
         if event.kind == "api_sent":
             # The runner wrote a message on API credits, after its account
             # check (#663): every way one goes in (Send, a queued message,
@@ -6097,7 +6654,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._queue_activity("text", event.text)
             return
         if event.kind == "limits" and event.data is not None:
-            self._limits = event.data
+            self._note_limits(session_id, event.data)
             warning = usage.limit_warning(event.data)
             key = ("limit", usage.limit_warning_key(event.data))
             if warning and key not in self._warned:
@@ -6264,6 +6821,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._store_write(self.store.update, session_id, state=state, detail=detail,
                               unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            # What it cost, as its reply's last line (#692), before the chat
+            # is read again below.
+            self._keep_reply_cost(event, session_id)
             self._note_worktree_move(session_id, title)
             quiet = self._agent_quiet("claude", session_id)
             self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
@@ -6322,6 +6882,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         # Silent, or nothing new to say but its cost: the
                         # cost is still said, as Settings asks (#663).
                         self._speak_announcement(said, interrupt=False, about=session_id)
+            if (event.kind == "finished" and not event.is_error and not command_result
+                    and not quiet and not queued and session_id not in self._runners
+                    and not (event.data or {}).get("after_background")):
+                if not self._offer_suggestion(session_id, title) and \
+                        getattr(runner, "suggestions", False) is True:
+                    self._say_suggestions_not_offered(session_id)
+            else:
+                self._suggestion_due.pop(session_id, None)
             # The turn is over: a "Sent on API credits" still owed for it
             # would be stale news now (speech.Speaker, #663).
             speaker.forget(session_id)
@@ -6397,6 +6965,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # What the answer cost so far, on API credits (#663); the turn's end
         # says only what came after.
         cost = self._api_cost_words(event, session_id, turn_over=False)
+        if self._keep_reply_cost(event, session_id, turn_over=False) and (
+                self._open is not None and self._open.provider == "claude"
+                and self._open.cli_session_id == session_id):
+            self._refresh_chat()  # the answer's cost line (#692)
         denials = event.denials or self._denials.get(session_id, [])
         self._denials[session_id] = []  # said now, not again at the turn's end
         quiet = self._agent_quiet("claude", session_id)
@@ -6471,6 +7043,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # (#663); it was confirmed when it was queued. If it can't go,
             # it waits, and the turn's end gives it back saying why.
             problem = self._api_send_problem(session_id, ask=False)
+            if problem is None and self._fable_send_problem(self.store.get(session_id),
+                                                            ask=False)[0]:
+                # Not on usage credits without asking (#722): it comes back at
+                # the turn's end instead, saying why.
+                problem = "usage credits"
             if problem is None and runner is not None and runner.send_follow_up(queued):
                 self._sound(sound_events.QUEUED_SENT, key, on_its_own=True)
                 self._feedback(f"Sent your queued message. {title} is working.")
@@ -6808,7 +7385,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                f"{key_name('Ctrl+Enter')} queues it for after.")
                 return
             message = self.reply_text.GetValue().strip()
-            if not message and not (info.provider == 'codex' and self._attachments.get(self._attachment_key(info))):
+            if not message and not (info.provider in ('codex', 'codex-api') and self._attachments.get(self._attachment_key(info))):
                 self._feedback("Type a message first.")
                 return
             record = self.store.get(info.cli_session_id, provider=info.provider)
@@ -6817,7 +7394,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return
             if self._history_unknown():
                 return
-            if info.provider == 'codex':
+            if info.provider in ('codex', 'codex-api'):
                 try:
                     message = self._codex_message(info, message)
                 except (ValueError, OSError) as error:
@@ -6826,7 +7403,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.reply_text.SetValue("")
             self._codex_drafts.pop(info.key, None)
             self._steer_codex_owned(record, message)
-            if info.provider == 'codex':
+            if info.provider in ('codex', 'codex-api'):
                 self._clear_attachments(self._attachment_key(info))
                 getattr(self, '_codex_skills', {}).pop(info.key, None)
             return
@@ -6851,6 +7428,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         # Attachments go as @"path", as a queued message's do.
         text, _images = attachments.build(message, attached, images_inline=False)
+        if not self._running_overage_ok(session_id, runner):
+            return  # a turn allowed on usage credits took only its own message (#722)
         if not runner.steer(text):
             self._sound(sound_events.NOT_SENT, self._own_key(session_id))
             self._feedback(f"The turn has just ended. {key_name('Ctrl+Enter')} sends your "
@@ -6904,6 +7483,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         text = waiting[index]
         if self._history_unknown():
             return
+        if not self._running_overage_ok(info.cli_session_id, runner):
+            return  # a turn allowed on usage credits took only its own message (#722)
         if not runner.steer(text):
             self._feedback("The turn is already ending: the message stays queued and goes "
                            "when it's done.")
@@ -6936,6 +7517,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if runner is None or not 0 <= index < len(waiting):
             return
         text = waiting[index]
+        if not self._running_overage_ok(info.cli_session_id, runner):
+            return  # Fable on usage credits: asked as Send asks (#722)
         if runner.waiting_on_background and runner.send_follow_up(text):
             # Claude is idle, waiting on background work (#161): nothing to
             # stop, so it simply goes as the next message.
@@ -6990,7 +7573,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         typed since (it was written first), so nothing is lost. The caret
         stays at the end, where Kelly was typing."""
         if is_open:
-            typed = self.reply_text.GetValue()
+            typed = self._typed_text()
             self.reply_text.SetValue(f"{message}\n\n{typed.lstrip()}" if typed.strip()
                                      else message)
             self.reply_text.SetInsertionPointEnd()
@@ -8088,6 +8671,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self.speech = dialog.get_settings()
         finally:
             dialog.Destroy()
+        if not self.speech.prompt_suggestions:
+            self.drop_all_suggestions()  # off means none shown, from now (#474)
         if not self.speech.check_updates_at_start:
             # Turned off in the first seconds after starting: the check still
             # waiting doesn't run either.
@@ -8413,7 +8998,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         Code's slash commands or your skills; it goes at the start of the
         reply box, ready to finish and send."""
         info = self._open
-        if info is not None and info.provider == 'codex':
+        if info is not None and info.provider in ('codex', 'codex-api'):
             if self._require_capability('send', info):
                 self._codex_commands(info)
             return
@@ -8456,7 +9041,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Put ``/name `` at the start of the reply, replacing a command
         that's already there (only a real one: "/path/x is broken" stays),
         keeping the rest of what you typed, line breaks and all."""
-        rest = self.reply_text.GetValue().lstrip(" \t")
+        rest = self._typed_text().lstrip(" \t")
         known = {c["name"] for c in commands or []}
         match = re.match(r"/(\S*)[ \t]*", rest)
         if match and (match.group(1) in known or not commands):
@@ -8839,6 +9424,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._gone():
             return
         text = signin.describe(status)
+        if status.known:
+            # Which models are offered (#722): Fable on a plan that has it.
+            self.claude_plan = (status.plan if status.signed_in and status.subscription
+                                else "")
         if not manual:
             # At start-up, only a problem is news, and not over the list.
             if getattr(self, "_sign_in_asked", False):
@@ -8937,16 +9526,50 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def on_about(self, _event=None):
         wx.MessageBox(
-            f"{APP_NAME} version {__version__}\n\nA home for your AI chats: keyboard and "
+            # Which build too ("0.6.4, build bld05 (commit 487a6d67 on …)"),
+            # so one test build is never taken for another.
+            f"{APP_NAME} version {build_info.describe()}\n\nA home for your AI chats: keyboard and "
             "screen reader friendly, with Claude, Codex and GitHub Copilot in one session list. "
             "Replies use your sign-in with the selected provider.\n\n"
-            "An independent project by Kelly Ford, not made, sponsored or endorsed by "
+            "An independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by "
             "Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; "
             "ChatGPT and Codex are OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.\n\n"
             "Questions and bug reports: support@theideaplace.net",
             f"About {APP_NAME}", wx.OK | wx.ICON_INFORMATION, self)
 
     # ------------------------------------------------------------- keyboard
+
+    #: Keys that go to the top or bottom of a list, and which end each means.
+    _LIST_END_KEYS = {wx.WXK_UP: "top", wx.WXK_HOME: "top",
+                      wx.WXK_DOWN: "bottom", wx.WXK_END: "bottom",
+                      # The numpad's, with Num Lock off (#714 review).
+                      wx.WXK_NUMPAD_UP: "top", wx.WXK_NUMPAD_HOME: "top",
+                      wx.WXK_NUMPAD_DOWN: "bottom", wx.WXK_NUMPAD_END: "bottom"}
+
+    def _list_end_cue(self, event: wx.KeyEvent, key: int, focus) -> None:
+        """The Reached the end of a list sound (#714), as QuickMail has it:
+        Up or Home on the first row of the session list or the messages list,
+        Down or End on the last, unmodified, moves nothing, and without a
+        sound sounded like a key that didn't register. Once per press: a key
+        held down repeats, and the cue waits for it to be let go
+        (_on_list_key_up). An empty list says it's empty already."""
+        end = self._LIST_END_KEYS.get(key)
+        if (end is None or focus not in (self.session_list, self.chat_list)
+                or event.HasAnyModifiers()):
+            self._list_end_held = None
+            return
+        count, row = focus.GetCount(), focus.GetSelection()
+        if count == 0 or row == wx.NOT_FOUND or row != (0 if end == "top" else count - 1):
+            self._list_end_held = None
+            return
+        if self._list_end_held == (focus, key):
+            return  # the same key, still held
+        self._list_end_held = (focus, key)
+        self._sound(sound_events.LIST_END)
+
+    def _on_list_key_up(self, event: wx.KeyEvent):
+        self._list_end_held = None
+        event.Skip()
 
     def _on_char_hook(self, event: wx.KeyEvent):
         if self._menu_open and gtk_a11y.IS_LINUX:
@@ -8961,6 +9584,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         ctrl = event.ControlDown()
         in_session = focus is not None and focus is not self.session_list and \
             self._is_in_session_view(focus)
+        # Before anything else, and without taking the key: it goes on as usual.
+        self._list_end_cue(event, key, focus)
 
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             if ctrl and event.AltDown() and not event.ShiftDown():
@@ -9140,7 +9765,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         index = self.chat_list.GetSelection()
         if not (0 <= index < len(visible)):
             return
-        if self._copy_text(visible[index].full_text()):
+        if self._copy_text(visible[index].copy_text()):  # without its cost line (#692)
             self._feedback("Message copied.")
         else:
             self._feedback("Couldn't open the clipboard.")

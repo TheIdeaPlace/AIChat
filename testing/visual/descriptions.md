@@ -65,6 +65,12 @@ This picture is the same as main-own, except that a small white list 48 tall app
 
 **What looks off:** There is no visible label for the attachments list. The bottom of its border sits 6 pixels from the "Show tool activity" check box, which is tighter than the spacing elsewhere. Three lists now show a blue selected row at once (#181).
 
+## main-suggestion: An own session whose last reply came with a suggested next message
+
+#474, taken again on 2026-11-23 for the design where the suggestion goes in the message box. From light-100 and hc-aquatic-100. The same as main-own, except that the message box holds one line, "Write the script, and add a --dry-run option", in its ordinary text: black on white in light (21:1, measured from the pixels), white on #202020 in High Contrast Aquatic. It's selected, so typing replaces it, but the picture doesn't show that: Windows draws a text box's selection only while the box has the focus, and here the messages list has it. Nothing else is added under the box; the earlier picture's "Suggested messages" label and list are gone, and the layout is main-own's.
+
+**What looks off:** Nothing. On screen, nothing marks the text as a suggestion rather than something you typed until you reach the box; the sound is the cue (Kelly's choice).
+
 ## main-desktop: A desktop app session loaded: the read-only panel instead of a reply box
 
 Here the session list is 378 wide and the right column 574 wide, the same split as main-own. The heading at the top right, "Fix the flaky upload test, AIChat, needs you: Pick a name for the release branch. Claude desktop app session, read-only.", is too long for one line, so it wraps onto two (574 by 31), breaking before "session, read-only.". Everything below moves down 15 pixels to make room. "Messages in Fix the flaky upload test (needs you: Pick a name for the release branch, read-only):" heads the messages list and fits on its line in full, so it shows no "...". The messages list is 574 by 328 and shows four rows, with the last one, "You: Thanks. Which branch name should the release use?", selected. Where the reply box would be, "About replying:" heads a read-only box of the same size. It holds a four-line paragraph explaining that the session belongs to the Claude desktop app. Under it are two buttons, "Open in Claude" and "Continue Here...". The rest matches main-own. The status bar's middle part is too short for its text and ends in "..." (#179).
@@ -217,6 +223,19 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Full c
 
 ## settings: Settings
 
+**Since #474 (2026-11-23):** 680 by 1003 in light-100, 25 pixels taller, for an unchecked "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)" check box. It sits just under the Chrome one, wrapped onto two lines, lined up with the others at the left, and has no underlined letter. Everything below moves down 25 pixels. Its label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic (#FFFFFF on #202020), as the boxes around it do. Only light-100 and hc-aquatic-100 were run; the Codex, Copilot and speech-problem Settings pictures weren't run again.
+
+**Since #319 (2026-11-22):** the light-100 picture is 680 by 978, 40 pixels taller, for an
+unchecked "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in
+Chrome extension; from the next turn)" check box, wrapped onto two lines, between the task-list
+and Codex check boxes and lined up with them at the left. It has no underlined letter (every
+letter in it is taken in Settings). Everything below moves down 40 pixels; nothing else changed.
+Its label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic
+(#FFFFFF on #202020), the same as the check boxes around it. The Codex, Copilot and
+speech-problem Settings pictures were accepted again from the same runs, each 40 pixels taller
+(42 for speech-problem, which now scrolls, with its check boxes wrapped short of the scroll
+bar). Only light-100 and hc-aquatic-100 were run.
+
 **Since #658 (2026-11-17):** the light-100 picture is 680 by 938, 80 pixels taller, for an
 "API credits" group under Reading messages, framed like the groups above it, holding two
 checked boxes: "Ask before the first API-credit message in each chat" (B underlined) and
@@ -273,48 +292,88 @@ cost less than a cent.", and the Total reads "Spent since the total was reset: $
 for running messages: $5.00. Left: $172.66." Release Held stays greyed: nothing held is
 left over from an earlier run.
 
+## new-session-fable-plan: New Session on a Max plan (#722)
+
+680 by 651, the New Session dialog with no API key, signed in to a Max plan: the same rows as
+new-session, with Model showing Fable. The About permissions box is taller and starts with
+"Fable uses your plan's Fable allowance. If a turn would go past it and be charged to usage
+credits, The Chat Place stops the turn as soon as Claude Code says so, and asks each time you
+send whether to use them." before the usual permissions text, all of it showing without a
+scroll. On another plan (new-session), Fable isn't offered and the dialog is as before.
+
 ## new-session-api-credits: New Session with Charge to (#658)
 
 680 by 637, the New Session dialog with a key kept: a "Charge to:" row between Title and
 Model, its dropdown showing "API credits", lined up with the rows above and below. Model
-shows Fable, which is offered only on API credits. The About permissions box starts with
+shows Fable, offered on API credits (and on a Max or Ultra plan, #722). The About permissions box starts with
 "Every message in this chat is charged to your Claude API key, and Fable is offered.
 Claude.ai connectors aren't available on API credits. A chat's charging can't be changed
 once it's made." before the usual permissions text. Without a key (new-session), there's
 no Charge to row and the dialog is as before.
 
+**Since #661 (2026-11-17), API Keys has a provider choice.** Every API Keys picture gains a "Provider:" row at the top, with a dropdown ("Claude (Anthropic)" or "Codex (OpenAI)", P underlined). The dialog stays 600 by 680: everything below moves down to make room, and the read-only boxes (Test result, About spending) are a little shorter. Nothing else in its layout changed, and nothing is cut off. The rest of the dialog follows the provider chosen: its own key, Test Key, limits, total and Release Held. Accepted in all six variants from the probe run at commit a988c51, along with New Session and New Session with Charge to. Contrast was measured as before: the text is unchanged in colour.
+
+**Since 2026-11-18, the limit boxes start at 20.00 and 2.00 for both providers** (they were 190.00 and 5.00 for Claude, 5.00 and 0.50 for OpenAI), so the amounts in the API Keys, OpenAI and Usage pictures below change too; the pictures will be updated in the next probe run.
+
+**Since #680 (2026-11-19), API Keys opens on Provider, and each choice says whether that provider has a key** ("Claude (Anthropic), no key", "Claude (Anthropic), key added", "Codex (OpenAI), no key"). In every API Keys picture the Provider dropdown has the focus (its dotted focus outline; in High Contrast the selected text is highlighted), and Test Key is no longer focused in api-keys-with-key. A VM screenshot at 100% shows the longer text fits the dropdown with room to spare. The probe couldn't be run for this change (the only free VM had no network to install Python), so the pictures will be retaken with the next API Keys change (#668). Usage on a chat on the subscription now has one "API credits: ..." line just before the plan's limits, instead of the full API credits section at the end.
+
+## openai-keys-empty, -held, -testing, -failed, -updating: API Keys on Codex (OpenAI) (#661)
+
+The same dialog with "Codex (OpenAI)" chosen. The key box is labelled "OpenAI API key:", and Key status reads "OpenAI: No key" or "OpenAI: key ending in ...".
+- **The limits start at 5.00 and 0.50.**
+- **The Total box begins "Estimated OpenAI costs."**, then spent, held (with how much is held for messages no longer running) and left. Release Held is on when something is held that nothing is running for.
+- **Testing:** "Testing the key..." while a test runs. **Failed:** the refusal in plain words. **Updating:** saving a new key.
+- **"About spending"** names the OpenAI account.
+
+The keyboard walk in the VM (ClaudeTesting-2 on THESTADIUM) reached every control by Tab, wrapped round to Provider, reversed with Shift+Tab, and left with Escape.
+
+## openai-usage and openai-properties: an OpenAI API chat (#661)
+
+- **Usage** lists "OpenAI API credits: estimated spending ... of $5.00", the chat's cost, the date of the prices, what's held and what's left (written "$0.50" here, but "50 cents" in API Keys), the last stopped message's at-most estimate, and that limits are approximate.
+- **Properties** adds "Charged to: OpenAI API credits", "Spending on API credits by this chat", and the model chosen (gpt-5-nano).
+
 ## main-api-chat: A chat on API credits (#658)
 
 The main window, 1000 by 720, with a chat on API credits loaded. The title bar reads
 "Release notes on credits, API credits — The Chat Place"; its session row reads "Release
-notes on credits, API credits, Claude, Scratch, idle, ..."; the heading above the messages
+notes on credits, Claude, Claude API credits, Scratch, idle, ..." (since #684, Charged to is
+shown at first and the title no longer has ", API credits"; every own chat's row also gains
+"Claude subscription" or similar after Provider, so every main-window picture with one of The
+Chat Place's own chats in the list is wider in that row, and Session List Columns shows twelve
+columns with Charged to third. The probe couldn't run for #684 (no networked VM was free);
+these pictures are retaken with #668's run); the heading above the messages
 ends "on API credits."; the messages list's label ends "API credits)". The status bar gains
 a button between the chat's state and "1 session needs you": "API credits: this chat
 $0.42, The Chat Place $0.42 of $190", black on white (20.6:1; 15.7:1 in Desert). The
 visible "Your message (Ctrl+Enter sends):" label doesn't say API credits; the box's
 accessible name does.
 
+Since #692 the session row gains the Cost column after Charged to ("…, Claude API credits, 42
+cents, Scratch, …"), the reply's row in the messages list ends "Cost: 42 cents", and Session
+List Columns shows thirteen columns with Cost fourth. The probe wasn't run for #692 (no VM
+from that session); these pictures are retaken with the next run.
+
 ## sounds: Tools, Sounds
 
-A dialog titled "Sounds", 546 by 633 at 100%. At the top, two check boxes, "Play sounds" and "Disable Windows sound for The Chat Place's notifications" (Mute all sounds left the dialog in #596: Tools, Mute All Sounds is the place for it). Below them, four labeled drop-down lists in a column: Volume (80%), Sound scheme (Glass), Tool sounds play for (The open chat only) and Other sounds play for (The open chat and every chat in the list). Then three buttons side by side, "Scheme Actions...", "Browse Gallery..." and "Sound Tutorial..." (U underlined). Then "Sound events (23 of 23 events have a sound):" over a list filling the middle, its first row "Tool ran: Tick" selected. The list shows about 18 rows ("Tool ran: Tick", "File changed: Write", "Still working: Hum", "Message sent: Send", "Message queued: Hold", "Message steered into the turn: Bend", "Steered message taken: Taken", "Queued message sent: Release", "Queued message removed: Withdraw", "You stopped a turn: Stop", "Reply finished: Rise", "Another chat finished: Low rise", "Agent reply handed on: Pass", "Ask Aside answered: Aside", "Needs you: Call", "Answer sent: Answer", "Turn failed: Fall", "Message not sent: Bump", with "Ask Aside not answered: Aside fall" half shown at the bottom edge) and a vertical scroll bar for the rest ("Ask Aside not answered: Aside fall", "Service trouble: Waver", "Usage or context warning: Alert", "Conversation compacted: Settle", "Message from another session: Knock"). Below it a row with "Sound:" and a drop-down (Tick), then Preview, Choose File... and Remove File..., the last greyed because Tick isn't a file of your own. OK and Cancel at the bottom right. (#250, sound schemes; the remade sounds, 2026-11-07, and Queued message deleted, #581, renamed Queued message removed in #599; Tool sounds play for, Write and Answer sent, #588; Agent reply handed on, #590; no mute check box and the Sound Tutorial button, #596)
+A dialog titled "Sounds", 546 by 633 at 100%. At the top, two check boxes, "Play sounds" and "Disable Windows sound for The Chat Place's notifications" (Mute all sounds left the dialog in #596: Tools, Mute All Sounds is the place for it). Below them, four labeled drop-down lists in a column: Volume (80%), Sound scheme (Glass), Tool sounds play for (The open chat only) and Other sounds play for (The open chat and every chat in the list). Then three buttons side by side, "Scheme Actions...", "Browse Gallery..." and "Sound Tutorial..." (U underlined). Then "Sound events (25 of 25 events have a sound):" over a list filling the middle, its first row "Tool ran: Tick" selected. The list shows about 18 rows ("Tool ran: Tick", "File changed: Write", "Still working: Hum", "Message sent: Send", "Message queued: Hold", "Message steered into the turn: Bend", "Steered message taken: Taken", "Queued message sent: Release", "Queued message removed: Withdraw", "You stopped a turn: Stop", "Reply finished: Rise", "Another chat finished: Low rise", "Agent reply handed on: Pass", "Ask Aside answered: Aside", "Needs you: Call", "Answer sent: Answer", "Turn failed: Fall", "Message not sent: Bump", with "Ask Aside not answered: Aside fall" half shown at the bottom edge) and a vertical scroll bar for the rest ("Ask Aside not answered: Aside fall", "Service trouble: Waver", "Usage or context warning: Alert", "Conversation compacted: Settle", "Message from another session: Knock", "Prompt suggested: Taps", "Reached the end of a list: Edge"). Below it a row with "Sound:" and a drop-down (Tick), then Preview, Choose File... and Remove File..., the last greyed because Tick isn't a file of your own. OK and Cancel at the bottom right. (#250, sound schemes; the remade sounds, 2026-11-07, and Queued message deleted, #581, renamed Queued message removed in #599; Tool sounds play for, Write and Answer sent, #588; Agent reply handed on, #590; no mute check box and the Sound Tutorial button, #596; Prompt suggested, #474; Reached the end of a list, #714)
 
 **What looks off:** Nothing at 100%: every row fits its width and no text is cut off, and "Tool sounds play for:" fits its column; the half-shown last row is the list scrolling, not clipping. The three buttons fit in a row at 100% and 175%, and "Sound Tutorial..." measures black on #FDFDFD (20.6:1), white on #202020 in High Contrast Aquatic (16.3:1), on the #596 run. The labels are black on #F0F0F0 (18.4:1), the drop-downs black on #FDFDFD (20.7:1), the selected row white on #0078D4 (4.5:1) and the other rows black on white (21:1), measured on the #588 run. At 175% (960 by 946) nothing is cut off; the events list shows about 13 rows and scrolls for the rest. High Contrast Aquatic keeps every control visible, the list white on #202020 (16.3:1), the selected row #202020 on aqua #8EE3F0 (11.2:1), the scroll bar drawn with arrows, and Remove File visibly greyed.
 
 ## sounds-own-scheme: Tools, Sounds on a scheme of your own
 
-The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 23 events have a sound):". Rows read "Tool ran: Tick (Soft bell)", "Reply finished: Rise (Wood)", "Needs you: Call (Glass)" and "Turn failed: Fall"; the other nineteen, "Queued message removed", "Agent reply handed on" and "Answer sent" among them, say "None". The third drop-down is labeled "Tool sounds play for". The list scrolls as in sounds. The Sound drop-down shows "Tick (Soft bell)".
+The same dialog on "Quiet evenings", a scheme of your own. The events label reads "Sound events (4 of 25 events have a sound):". Rows read "Tool ran: Tick (Soft bell)", "Reply finished: Rise (Wood)", "Needs you: Call (Glass)" and "Turn failed: Fall"; the other twenty-one, "Queued message removed", "Agent reply handed on" and "Answer sent" among them, say "None". The third drop-down is labeled "Tool sounds play for". The list scrolls as in sounds. The Sound drop-down shows "Tick (Soft bell)".
 
 **What looks off:** Nothing. The longest row ("Message steered into the turn: None") and the drop-down's "Tick (Soft bell)" fit without cutting off. High Contrast Aquatic as in sounds.
 
 ## sound-gallery: Tools, Sounds, Browse Gallery
 
-A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 23 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 23 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and license on two lines. Add, Reload and Close sit at the bottom right.
+A 546 by 433 dialog titled "Sound Scheme Gallery". At the top, a status line "2 schemes.". "Sound schemes:" labels a list with two rows: "Rain at Night, by Synthetic Author. 12 of 25 events have a sound." (selected) and "Bright Bells, by Another Author. 15 of 25 events have a sound. Added." "Details:" labels a read-only box below with the selected scheme's description, author and license on two lines. Add, Reload and Close sit at the bottom right.
 
 **What looks off:** Nothing. Both rows and the details fit at 100% and at 175% (960 by 760). High Contrast Aquatic draws the list, the details box and the buttons in the theme's colors, the selected row in aqua with dark text.
 
 ## sound-tutorial: Help, Sound Tutorial
 
-A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in Tools, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 23 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", and some empty space below the last row. A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
+A 440 by 560 dialog titled "Sound Tutorial", resizable. At the top, two lines of black text on the dialog's light grey: "Arrow to an event and press Space to hear it in the Glass scheme. Change sounds in Tools, Sounds." Below, "Sound events:" (E underlined) labels a white list filling most of the window, with the 25 event names one per row, from "Tool ran" (selected, white on blue, 4.5:1) through "Agent reply handed on" (after "Another chat finished") and "Answer sent" (after "Needs you") to "Message from another session", "Prompt suggested" and "Reached the end of a list". The list is full: the last row sits just above its bottom edge, whole, with no scroll bar (#474, #714; it had empty space below 23 rows). A single Close button sits at the bottom right. Text is black on #f0f0f0 (18.4:1) and on the list's white (21:1). (#250)
 
 ## sound-tutorial-from-sounds: Tools, Sounds, Sound Tutorial
 
@@ -682,6 +741,8 @@ The same dialog for "Codex policy preview", a Codex chat the app started: "Kind:
 ## session-columns: View, Session List Columns
 
 This is a 700 by 560 dialog. A two-line intro runs across the top (668 by 31): "Each session in the list is read as one line. Choose what it says, and in what order: put Status first to hear what each session is" and "doing before its title.". Below it are two equal lists side by side, each 326 by 294: "Available columns:" with two rows, "Started (when the session began)" (selected) and "Last message", and "Shown columns, in the order they're read:" with eleven rows: Title, "Provider (Claude, Codex or Copilot)" (#355), Folder, "Status (needs you, working or idle)", New reply, Last activity, "Kind (desktop app, Cowork, terminal or The Chat Place)", Remote Control, Archived, Hidden and Groups. Every row fits, the Kind row with its closing bracket. Both have a selected row; the right one has the focus outline. Under them is one row of seven ordinary-sized buttons: "Add", "Remove", "Move Up", "Move Down", "Move to Top", "Move to Bottom" and "Reset to Default", the last ending near the right list's edge. "Preview of the selected session's line:" heads a 60-tall read-only box whose text wraps onto two lines: "Fix the flaky upload test, Claude, AIChat, needs you: Pick a name for the release branch, active 1 minute ago, desktop app" and "session". "OK" (default) and "Cancel" are at the bottom right. At 175% the dialog is 1190 by 956 (the earlier 175% picture was 1120 wide, from before #300): the two lists are 567 wide, all seven buttons fit on one row with Reset to Default at its end, and the preview wraps onto two lines, ending "desktop app session".
+
+**Since #682 (2026-11-19):** "Charged to (subscription, plan or API credits)" is a column; a VM screenshot at 100% showed it fits in either list. **Since #684,** it's shown at first, third in "Shown columns" (twelve rows), and "Available columns" is back to Started and Last message. The probe couldn't be run for this change (the only free VM had no network), so the picture will be retaken with #668's probe run.
 
 **What looks off:** Nothing (#289).
 

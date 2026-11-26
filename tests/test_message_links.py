@@ -67,17 +67,17 @@ def test_a_repeated_address_keeps_words_from_an_older_mention():
     assert link.words == "release notes" and link.who == "You" and link.ago == 0
 
 
-def test_only_web_mail_and_session_links_open():
+def test_web_mail_and_session_links_open_but_missing_files_and_scripts_do_not(tmp_path):
     web = FoundLink("https://x.org", "", "Claude", 0)
     mail = FoundLink("mailto:me@x.org", "", "Claude", 1)
     session = FoundLink("thechatplace://session/abc-1", "Build", "You", 2)
-    file_link = FoundLink("file:///C:/secret.txt", "notes", "Claude", 0)
+    file_link = FoundLink((tmp_path / 'missing.txt').as_uri(), "notes", "Claude", 0)
     script = FoundLink("javascript:alert(1)", "click", "Claude", 0)
     bad_app = FoundLink("thechatplace://elsewhere/x", "", "Claude", 0)
     assert web.can_open and mail.can_open and session.can_open
     assert not file_link.can_open and not script.can_open and not bad_app.can_open
     assert mail.address == "me@x.org"
-    assert file_link.why_not().startswith("A file: link isn't opened from here")
+    assert file_link.why_not() == "File not found. Copy only."
     assert "copy only" in script.row()
     assert bad_app.why_not().startswith("That link isn't one The Chat Place knows.")
     assert web.why_not() == ""
@@ -121,8 +121,9 @@ def test_incomplete_addresses_are_only_copied(url):
     assert link.why_not() == "That address isn't complete, so it can only be copied."
 
 
-def test_a_path_isnt_called_a_scheme():
-    assert FoundLink("C:\\Users\\x", "", "Claude", 0).why_not().startswith("This link isn't")
+def test_a_missing_path_isnt_called_a_scheme(tmp_path):
+    assert FoundLink(str(tmp_path / 'missing.txt'), "", "Claude", 0).why_not() == \
+        "File not found. Copy only."
 
 
 def test_long_addresses_are_read_short_and_copied_whole():

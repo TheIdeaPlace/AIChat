@@ -14,6 +14,8 @@ shipped.
 
 | Note | Issue |
 |---|---|
+| [codex-browser-524.md](codex-browser-524.md): supported browser interfaces, installed 0.163.0 schema and live capability checks | #524 |
+| [codex-more-models-review.md](codex-more-models-review.md): review fixes, model sources and native service-tier blocker | #685 |
 | [codex-feature-gaps.md](codex-feature-gaps.md): shared workflows, native boundaries and remaining work | #467, #468 |
 | [codex-auto-review.md](codex-auto-review.md): per-chat reviewer verification, independent review fixes and validation limits | #358, #374 |
 | [steering.md](steering.md): what `claude -p` does with a message mid-turn, how `--replay-user-messages` tells the cases apart, and Codex's `turn/steer` | #238, #239 |

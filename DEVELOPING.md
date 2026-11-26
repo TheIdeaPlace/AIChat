@@ -93,11 +93,26 @@ disk image's README.txt says how to open it (System Settings, Privacy & Security
 
 ## Releasing
 
-The version lives in one place, `__version__` in `thechatplace/__init__.py`. To release:
+The version lives in one place, `__version__` in `thechatplace/__init__.py`. It's always the
+version being worked on, not the one last released:
 
-1. Set `__version__`, and write `release-notes/v<version>.md` (what it is, what's new, downloads,
-   requirements), in one commit on main.
-2. Tag it `v<version>` and push the tag.
+1. **Right after a release,** the next commit on main sets `__version__` to the next patch
+   version and starts its `release-notes/v<version>.md` (the intro and the footers, copied from
+   the release just made). Every PR after that adds its entry there. Kelly can choose a minor
+   version instead at any point, by renaming the file and changing `__version__`.
+2. **To release,** finish the notes (what it is, what's new, downloads, requirements) on main,
+   then tag `v<version>` and push the tag. No version change is needed then.
+
+**Which build is which.** Every build writes `thechatplace/_build.py` (never committed) with
+`tools/write_build_info.py` before PyInstaller runs: the commit, the branch, the date, and
+`TCP_BUILD_LABEL` if one is set. Help, About, bug reports and the smoke test say it, through
+`thechatplace/build_info.py`; a source run reads the commit from `.git`. A test build for Kelly is
+a hand run of the release workflow with **build label** set to its folder's name (`bld05` for
+`testing\tcp\<version>\bld05`). It's packed as `<version>-<label>` (`tools/check_version.py
+--pack`), a pre-release that Velopack and `updater._version_key` sort before `<version>`, so an
+installed test build still updates to the real release. The Windows file version and the Mac
+bundle version stay `<version>`, as both need plain numbers. A tag never takes a label: the
+version check refuses one.
 
 `.github/workflows/release-thechatplace.yml` then builds every platform side by side, and
 publishes one GitHub release (a pre-release before 1.0) only if Windows and macOS succeed. For
@@ -139,6 +154,14 @@ the release workflow signs and notarizes it. The Linux build (AppImages for x64 
 preview. It has been tested with Orca 51 on an MNT Pocket Reform, with Orca 48 on Debian 13
 (arm64) in a virtual machine, and on Ubuntu 26.04 (arm64) in a virtual machine.
 
+**What VoiceOver lands on is tested, not tried by hand.** `tests/test_mac_voiceover.py` runs on
+a Mac (CI's macOS job included): it focuses each control on every surface the visual probe
+opens, and runs each Go to command and F6 stop, and asks macOS for the app's focused
+accessibility element, the one VoiceOver reads. It fails if that is the window or has no
+name. It also selects and copies on a real formatted page in WebKit. Both of 0.6.3's Mac
+reports (#725, #726) were found and fixed this way; how VoiceOver sounds is still heard by a
+person. The windows come to the front, so run it with the screen unlocked and the Mac left alone.
+
 **API credits are checked against the real API before a build reaches anyone.**
 `tests/test_live_api.py` runs Test Key, a new chat and its second message, and Stop through
 the app's own code, on a real key, for about a cent on Haiku:
@@ -146,6 +169,127 @@ the app's own code, on a real key, for about a cent on Haiku:
 It's skipped otherwise, and never runs in CI. The other API-credit tests use a fake Claude
 Code, which is only as right as what we believe the real one says: #662 reached a test build
 because every fake reported a key the way the real one doesn't.
+
+OpenAI's separate `codex-api` backend (#661) has windowless tests in
+`tests/test_codex_api.py` and opt-in real app-server checks in `tests/test_live_openai.py`:
+
+```powershell
+$env:TCP_LIVE_OPENAI='1'
+$env:TCP_LIVE_OPENAI_KEY_FILE='C:\Users\kelly\OneDrive\testing\idt\keys\openai.txt'
+& 'C:\Users\kelly\GitHub\AIChat\.venv\Scripts\python.exe' -m pytest -q -x -s -p no:cacheprovider tests/test_live_openai.py
+```
+
+Run paid checks outside the coding agent's network sandbox; don't add CA overrides for
+its TLS failure. The tests use temporary homes and memory-only login, never the default
+Codex home or the saved system-store secret. They print token counters and estimated
+costs, never the key. For the free real-CLI redirect and dropped-stream checks, set
+`TCP_LIVE_OPENAI_FREE=1` and use `-k "redirect or cut_stream"` without enabling the paid flag.
+
+OpenAI's ledger lives in `openai-billing/`, separate from Claude's unchanged files. Its
+defaults are Claude's: $20 overall and about $2 per message. The API runtime home `codex-api/`
+is excluded from backups. The app's single-instance guard remains part of spending
+safety: the ledger lock protects concurrent chats within that app process.
+
+API route invariants are applied after all per-thread settings. In CLI 0.163 the
+`turn/start` schema has no `config` field; sending a matching field there is not proof
+of server enforcement. Safety depends on the verified start/resume/fork configuration,
+fresh route checks, and the transport's strict turn-field validation. A caller cannot
+submit a different endpoint through the API transport. Hosted search, connected services,
+automatic review, native compaction/goals, and subagents are blocked until their costs
+can be accounted for. Side questions and copies cut at an earlier turn are not enabled
+for this backend yet. A full-history copy requires a known source usage baseline.
+Starts and full forks save their token baselines. A possible paid write invalidates
+the durable baseline until settlement; Stop/refusal retain the latest valid counters.
+Missing baselines recover from a matching turn's first `total - last` report. A
+counter regression, turn mismatch or model reroute invalidates the baseline.
+Any stream error keeps uncertain spending held, including a successful retry; a retry
+does not interrupt the turn. Completed-turn trackers accept late matching usage. If an
+earlier final snapshot overlaps a later turn, the earlier usage is charged first, then
+an append-only correction removes the duplicate later settlement. A crash between these
+writes can only over-count. Corrections retain original settlement dates and Reset scope.
+A confirmed key refusal frees the unspent reservation. Stop can settle an estimated
+maximum of recorded usage plus one request's context and maximum output, using the
+dated table; if that exceeds the reservation, the remaining hold stays.
+A timed-out Stop retains its tracker while other chats run; process cleanup claims
+a draining state before rejecting new sends and closing, so it cannot kill a new turn.
+
+Checkpoint 3 exposes these routes in Tools, API Keys with a Provider choice and in
+New Session's Charge to. OpenAI key updates run off the UI thread; each paid write
+checks the key generation, so replacement affects existing processes and removal
+blocks queued messages. Model changes use the API-key home's catalog plus dated priced
+choices, not ChatGPT's. Models without valid prices require mandatory consent and retain
+per-message allowances; token snapshots are separate from dollar settlements. Steers also
+reserve an allowance for unpriced sends. Consent is stored per connection, thread, model
+and standard tier, and checked by the backend before every paid send, including queue
+advancement. GPT-5.6 Sol's page specifies no end time or zone: the conservative cutoff is
+2026-11-29 10:00 UTC (the start of November 30 in UTC+14), tested with a fake clock.
+Active turns continue without a dollar stop after expiry and keep their allowances. A frozen
+priced token prefix prevents duplicate unpriced accounting; later updates keep all new tokens.
+Reply events and speech use only that unpriced delta and explain that the price expired.
+The finished event carries stopping even when no terminal outcome arrived, so speech says
+stopped after a timed-out Stop or a disconnect while stopping.
+Queued messages return unsent with the confirmation reason if consent is missing.
+Unknown per-chat spending is read from reservations, never displayed as zero. Live priced
+reservations do not set priced-cost-unknown flags. Release Held and Reset do not resolve
+uncertain costs; a later complete accounting does.
+Subscription-to-API continuation stores quoted history in `api_context`; no turn is sent
+until the user sends a message. Failed or cancelled sends restore only user text. Native
+attachment parts survive the prefix. The writer event clears the deferred context.
+
+Codex estimates assume OpenAI's standard pricing. Standard intent stays selected at
+thread and turn boundaries, but CLI 0.163 omits the explicit standard tier from its
+Responses request. The API defaults to `auto`: the Project's configured tier, normally
+`default`. Kelly's decision is to keep API-credit sends enabled and document that
+Priority projects cost more than the app estimates. There is no send block.
+
+The free native completion fixture supplies upstream `service_tier: priority`, then
+checks usage, turn and raw-response events. CLI 0.163 does not forward that actual tier,
+even with `experimentalRawEvents`; its generated usage/turn schemas have no actual-tier
+field. Raw response usage metadata is opaque and is not evidence of a tier without an
+explicit service-provided value. Consequently the current adapter cannot convert a
+message to unpriced mode on an unreported tier. If a future app-server exposes an actual
+nonstandard tier, mark that message price unknown, announce it and retain its allowance;
+do not confuse the requested/configured tier with the tier actually used. See
+[the review evidence](dev-notes/codex-more-models-review.md).
+
+The visual probe includes `new-session-openai`, `openai-keys-empty`,
+`openai-keys-held`, `openai-keys-testing`, `openai-keys-failed`,
+`openai-keys-updating`, `openai-properties`, and
+`openai-usage`, `new-session-unpriced`, `openai-unpriced-confirm`, and
+`main-openai-unpriced`. Each uses made-up keys and fake data. The optional first-send question is
+a native `wx.MessageDialog`, not an app-defined dialog surface: native message
+boxes do not use the probe's modal capture hook. Run them through the existing
+VM workflow, for example `tools/ui_probe_vm.ps1 -Variant light-100 -Surface openai-keys-held`,
+and inspect the other variants for wrapping and focus. Window tests and these
+surfaces run in CI; do not run window tests on Kelly's PC during this work.
+
+Orca's automated steps switch API Keys to OpenAI and check the key box, limits and
+estimated total. Run `tools/orca_speech.sh --keep /tmp/tcp-openai-orca` in the existing
+isolated Linux accessibility session. To check manually with Orca, NVDA or JAWS:
+
+1. Open Tools, API Keys (Alt+T, P), use Alt+P, and choose Codex (OpenAI). Listen for
+   Provider, OpenAI, Key status, and the masked OpenAI API key field. Tab through
+   limits, Total and Release Held; a live reservation must not be releasable.
+2. Add a test key, then Test Key. Listen for Testing and its result with estimated
+   cost, or the refusal. Replace or remove the key while a request is delayed;
+   the dialog must remain usable and say the update is pending before it finishes.
+3. In New Session choose Codex, then API credits. Confirm that dated priced models
+   and API-home models marked price unknown are offered, with human approval modes.
+   Choose a price-unknown model. Listen for the warning that dollar limits cannot stop
+   a message. Enter on the warning must cancel. Reopen it, Tab to Cancel,
+   Tab to Send on API credits, Shift+Tab back to Cancel, and Escape; the message must stay in the reply box.
+   Change models and verify that the warning returns. The required warning must still
+   appear with the optional first-send setting off. Cancel the ordinary first-send question: the
+   message stays in the reply box. Send it, then listen for one guaranteed
+   Sent on API credits notice, including with ordinary announcements off.
+4. Read the row, window title, messages name, reply field, Properties and Usage.
+   All identify API credits; costs say estimated, or cost not known for missing
+   usage. Stop a reply, check the estimated maximum or retained hold, and send
+   again. Check a second chat can continue while the first Stop is delayed.
+
+Real tool-environment and fork semantics require the paid suite outside the agent
+sandbox. Tool isolation tries priced nano models then mini, and skips explicitly
+if no actual environment output was returned. Fork is tested independently of it.
 
 Linux isn't tested by hand for each release. CI's **Orca (Linux)** job runs real Orca in a
 desktop of its own (`tools/linux_a11y_session.sh`: a session bus, Xvfb, a window manager and an
@@ -249,12 +393,16 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/claude_cli.py` | `claude` commands, the `--resume` guard, the environment, stream-json events, running a turn |
 | `thechatplace/billing.py` | How a Claude chat is charged (#658): the subscription or API credits, the check of initialize's `account` before anything is sent, the key's `apiKeyHelper` settings, budgets, the key scrubber and the words for API failures |
 | `thechatplace/spend_ledger.py` | What API credits have cost (#658): `api-spend.jsonl` (reservations, settlements, resets, appended only) and `api-limits.json`, under one lock so two chats can't spend the same money |
+| `thechatplace/reply_costs.py` | What chats on API credits cost where you read them (#692): each reply's "Cost: …" last line, kept by reply in `OwnSession.reply_costs`, and the Session list's Cost column from the ledgers, replayed only when they change |
+| `thechatplace/openai_billing.py`, `thechatplace/openai_prices.py` | OpenAI's named system secret and one dated table for estimated standard text-token costs (#661) |
+| `thechatplace/providers/codex_api.py`, `codex_billing.py` | The isolated API-credit Codex backend: ephemeral login, route checks and pins, send events, provider-specific reservations, token settlement and bounded Stop (#661) |
 | `thechatplace/rewind.py`, `thechatplace/ui/rewind_chats.py` | Retry from Here (named Rewind to Here until #596) and Branch from Here (#468): where to cut a Claude chat's history, what each choice does, putting files back with `--rewind-files` |
 | `thechatplace/hub.py` | Gathering the list, noticing finished turns |
 | `thechatplace/announce.py` | What gets announced |
 | `thechatplace/commands.py` | Every menu command once (#575): its id, label, access key, key, and which menu it's in. `MainFrame._build_menu` builds the menu bar from it, and `_command_handlers` says what each id does. Ids are kept once released: customizable keys (#635) store them |
 | `thechatplace/keymap.py` | Your keyboard shortcuts (#635): `keys.json` (only the keys you changed, by command id, in Windows names; ids it doesn't know are kept), the one name for a key, which keys can't be given and why (`FIXED`, `refusal`), and which command a key runs. `MainFrame.apply_keys` shows a change at once, and feeds `ui_text.your_key`, through which everything the app says names a changeable key (`test_key_names` fails on a default key said any other way) |
 | `thechatplace/ui/keys_dialog.py` | Tools, Customize Keyboard Shortcuts and Change Key (#635), and `event_key`, a key press in keymap's names |
+| `thechatplace/ui/mac_keys.py` | No Command+letter on a Mac's buttons (#675): `mac_a11y.stop_button_command_keys` keeps wx from giving a button with "&" in its label Command and that letter (which took Command+V from text boxes), keeping Return on the default button and Escape on Cancel, and each window's buttons are swept as it's shown. A Mac dialog has no letter shortcuts. `install` runs before the first window; nothing runs on Windows or Linux |
 | `thechatplace/sound_events.py`, `thechatplace/ui/sound_host.py`, `thechatplace/ui/sounds_dialog.py` | Sounds: each event's sound, sound schemes, what the window plays, and Tools, Sounds. `thechatplace/assets/sounds` holds copies of app-kit's WAVs; app-kit plays them. Schemes, scheme files and the gallery follow app-kit's `sounds/SCHEMES.md`, through its `soundschemes` and `soundgallery`; app-kit's `apps.json` is bundled with `--collect-data theideaplace_appkit` |
 | `thechatplace/sound_gallery.py`, `thechatplace/ui/sound_gallery_dialog.py` | Tools, Sounds, Browse Gallery: the signed gallery of sound schemes. `--sound-gallery <folder or address>` points it at a gallery of your own for testing |
 | `thechatplace/rendering.py` | A message's markdown as a safe HTML page, for the formatted view |
@@ -267,9 +415,11 @@ the combined figure, because each skips the others' tests.
 | `thechatplace/session_tools.py`, `thechatplace/session_tools_mcp.py` | The session tools Claude turns get (`/wrap` and the like, #165): the tools' answers, the connection to the window, and the MCP server (`--session-tools-mcp`), whose stdio the built app's smoke test checks |
 | `thechatplace/ui/` | The wxPython window and dialogs |
 | `tests/` | pytest tests, built on made-up records shaped like the real ones |
+| `thechatplace/build_info.py` | Which build this is, for Help, About, bug reports and the smoke test |
 | `thechatplace/updater.py` | Velopack updates, adapted from GHManage's updater |
-| `tools/check_version.py` | Prints the version; checks a release tag against it |
+| `tools/check_version.py` | Prints the version (`--pack`: with a test build's label); checks a release tag against it |
 | `tools/make_version_info.py` | The Windows version resource for the built exe |
+| `tools/write_build_info.py` | Writes `thechatplace/_build.py`: which build this is (label, commit, branch, date) |
 | `tools/coverage_check.py`, `testing/coverage/baseline.json`, `.coveragerc` | The weekly coverage check, its baseline and its settings |
 | `winsetup.bat`, `macsetup.sh` (`.command`), `linuxsetup.sh` | Set up `.venv` on Windows, a Mac or Linux |
 | `BuildAndRelease/WinBuilds/build_windows.cmd` | Build on Windows (unsigned) |

@@ -1293,7 +1293,9 @@ class AgentChats:
             return
         self._agent_usage_busy = True
         members = [(m, self._agent_member_info(m)) for m in conversation.members]
-        limits = self._limits
+        from .. import usage
+        # The weekly Fable limit kept as Usage keeps it (#722).
+        limits = usage.with_fable_window(self._limits, getattr(self, "_fable_limits", None))
         windows, model_windows = dict(self._windows), dict(self._model_windows)
         compacted = dict(getattr(self, "_compaction_tokens", {}))
 

@@ -67,19 +67,27 @@ if errorlevel 1 goto :failed
 set "VERSION="
 for /f "usebackq delims=" %%v in (`"%PY%" tools\check_version.py`) do set "VERSION=%%v"
 if not defined VERSION goto :failed
+REM The version to pack as: with TCP_BUILD_LABEL set (a test build, as in
+REM bld05), 0.6.4-bld05, which Velopack sorts before the 0.6.4 release.
+set "PACK_VERSION="
+for /f "usebackq delims=" %%v in (`"%PY%" tools\check_version.py --pack`) do set "PACK_VERSION=%%v"
+if not defined PACK_VERSION goto :failed
 echo.
-echo The Chat Place %VERSION%
+echo The Chat Place %PACK_VERSION%
 
 REM ------------------------------------------------------------------ app ----
 echo.
 echo Building the app (PyInstaller)...
 "%PY%" tools\make_version_info.py
 if errorlevel 1 goto :failed
+REM Which build this is, for the About box (thechatplace\build_info.py).
+"%PY%" tools\write_build_info.py
+if errorlevel 1 goto :failed
 REM --onedir because Velopack swaps an app folder in place; velopack is imported
 REM lazily, so it's named; --collect-binaries wx brings WebView2Loader.dll, which
 REM the formatted message view needs; the speech scripts and NVDA's controller
 REM client (thechatplace\nvda, #98) are data files.
-"%PY%" -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace --version-file build\version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx --collect-data theideaplace_appkit --icon thechatplace\assets\app.ico --add-data "thechatplace\assets;thechatplace\assets" --add-data "thechatplace\speech;thechatplace\speech" --add-data "thechatplace\nvda;thechatplace\nvda" TheChatPlace.pyw
+"%PY%" -m PyInstaller --noconfirm --clean --noconsole --onedir --name TheChatPlace --version-file build\version_info.txt --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_api --hidden-import thechatplace.openai_billing --hidden-import thechatplace.openai_prices --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime --collect-binaries wx --collect-data theideaplace_appkit --icon thechatplace\assets\app.ico --add-data "thechatplace\assets;thechatplace\assets" --add-data "thechatplace\speech;thechatplace\speech" --add-data "thechatplace\nvda;thechatplace\nvda" TheChatPlace.pyw
 if errorlevel 1 goto :failed
 if not exist "dist\TheChatPlace\TheChatPlace.exe" goto :failed
 
@@ -116,7 +124,7 @@ echo Packing the installer and portable zip (Velopack)...
 if exist releases rmdir /s /q releases
 set "NOTES="
 if exist "release-notes\v%VERSION%.md" set "NOTES=--releaseNotes release-notes\v%VERSION%.md"
-"%VPK%" pack --packId TheChatPlace --packVersion %VERSION% --packDir dist\TheChatPlace --mainExe TheChatPlace.exe --packTitle "The Chat Place" --packAuthors "Kelly Ford" --icon thechatplace\assets\app.ico --channel %CHANNEL% --outputDir releases --instLocation PerUser --shortcuts StartMenuRoot %NOTES%
+"%VPK%" pack --packId TheChatPlace --packVersion %PACK_VERSION% --packDir dist\TheChatPlace --mainExe TheChatPlace.exe --packTitle "The Chat Place" --packAuthors "Kelly Ford" --icon thechatplace\assets\app.ico --channel %CHANNEL% --outputDir releases --instLocation PerUser --shortcuts StartMenuRoot %NOTES%
 if errorlevel 1 goto :failed
 if not exist "releases\TheChatPlace-%CHANNEL%-Setup.exe" goto :failed
 
@@ -132,7 +140,7 @@ if errorlevel 1 goto :copy_failed
 :done
 echo.
 echo ========================================================================
-echo BUILD SUCCESSFUL: The Chat Place %VERSION% (unsigned)
+echo BUILD SUCCESSFUL: The Chat Place %PACK_VERSION% (unsigned)
 echo ========================================================================
 echo   Installer:  releases\TheChatPlace-%CHANNEL%-Setup.exe
 echo   Portable:   releases\TheChatPlace-%CHANNEL%-Portable.zip

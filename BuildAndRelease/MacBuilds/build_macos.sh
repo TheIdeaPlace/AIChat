@@ -141,6 +141,11 @@ echo "Running the tests..."
 "$PY" -m pytest -q tests || fail "the tests."
 
 VERSION=$("$PY" tools/check_version.py) || fail "tools/check_version.py"
+# The version to pack as: with TCP_BUILD_LABEL (a test build, as in bld05),
+# 0.6.4-bld05, which Velopack sorts before the 0.6.4 release.
+PACK_VERSION=$("$PY" tools/check_version.py --pack) || fail "tools/check_version.py --pack"
+# Which build this is, for the About box (thechatplace/build_info.py).
+"$PY" tools/write_build_info.py || fail "tools/write_build_info.py"
 echo ""
 echo "The Chat Place $VERSION ($([ "$SIGN" = "1" ] && echo "signed: $TCP_SIGNING_IDENTITY" || echo unsigned)$([ "$NOTARIZE" = "1" ] && echo ", notarized"))"
 
@@ -152,7 +157,7 @@ echo ""
 echo "Building the app (PyInstaller)..."
 rm -rf "$APP"
 "$PY" -m PyInstaller --noconfirm --clean --windowed --onedir --name TheChatPlace \
-    --osx-bundle-identifier "$BUNDLE_ID" --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime \
+    --osx-bundle-identifier "$BUNDLE_ID" --hidden-import velopack --hidden-import thechatplace.providers.codex --hidden-import thechatplace.providers.codex_api --hidden-import thechatplace.openai_billing --hidden-import thechatplace.openai_prices --hidden-import thechatplace.providers.codex_runtime --hidden-import thechatplace.providers.codex_aside --hidden-import thechatplace.ui.codex_tools_host --hidden-import thechatplace.providers.copilot --hidden-import thechatplace.providers.copilot_runtime \
     --collect-data theideaplace_appkit \
     --add-data "thechatplace/assets:thechatplace/assets" \
     --add-data "thechatplace/speech:thechatplace/speech" \
@@ -209,7 +214,7 @@ if [ "${TCP_KEEP_RELEASES:-0}" != "1" ]; then
     rm -rf "$RELEASES"
 fi
 mkdir -p "$RELEASES"
-VPK_ARGS=(pack --packId TheChatPlace --packVersion "$VERSION" --packDir "$APP"
+VPK_ARGS=(pack --packId TheChatPlace --packVersion "$PACK_VERSION" --packDir "$APP"
           --mainExe TheChatPlace --packTitle "The Chat Place" --packAuthors "Kelly Ford"
           --bundleId "$BUNDLE_ID" --channel "$CHANNEL" --outputDir "$RELEASES"
           # No Setup.pkg: signing one needs a Developer ID Installer certificate,
@@ -243,14 +248,17 @@ smoke_test "$PACKED_APP" packed
     "$PACKED_APP/Contents/Info.plist" 2>/dev/null)" = "thechatplace" ] \
     || fail "the packed app's Info.plist lost the thechatplace:// link type"
 # And Velopack, inside the packed app, finds its updater and knows its version.
-grep -q "\"updater\": \"$VERSION\"" smoke-local.json \
+grep -q "\"updater\": \"$PACK_VERSION\"" smoke-local.json \
     || { cat smoke-local.json; fail "Velopack doesn't see the packed app as updatable."; }
+# The About box's build line made it into the app (build_info, _build.py).
+grep -q "\"build\": \"[^\"]*commit" smoke-local.json \
+    || { cat smoke-local.json; fail "the app doesn't know which build it is (_build.py)."; }
 if [ "$SIGN" = "1" ]; then
     codesign --verify --strict --deep "$PACKED_APP" || fail "the packed app's signature"
 fi
 
 echo ""
-bash "$HERE/create_dmg.sh" "$PACKED_APP" "$DMG" "$VERSION" "$([ "$SIGN" = "1" ] && echo signed)" \
+bash "$HERE/create_dmg.sh" "$PACKED_APP" "$DMG" "$PACK_VERSION" "$([ "$SIGN" = "1" ] && echo signed)" \
     || fail "the disk image."
 if [ "$SIGN" = "1" ]; then
     codesign --force --timestamp ${TCP_KEYCHAIN:+--keychain "$TCP_KEYCHAIN"} \
@@ -266,7 +274,7 @@ fi
 
 echo ""
 echo "========================================================================"
-echo "BUILD SUCCESSFUL: The Chat Place $VERSION ($([ "$SIGN" = "1" ] && echo signed || echo unsigned)$([ "$NOTARIZE" = "1" ] && echo ", notarized"))"
+echo "BUILD SUCCESSFUL: The Chat Place $PACK_VERSION ($([ "$SIGN" = "1" ] && echo signed || echo unsigned)$([ "$NOTARIZE" = "1" ] && echo ", notarized"))"
 echo "========================================================================"
 echo "  Disk image:  $DMG"
 echo "  Update feed: $RELEASES/releases.$CHANNEL.json and the packages beside it"

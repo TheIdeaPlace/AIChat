@@ -200,8 +200,8 @@ def test_a_claude_reply_goes_to_a_codex_chat_and_the_window_follows(dialog):
     w = Window()
     dialog.choose = lambda text: (0, text + '\n\nCheck the tests too.')
     w.on_send_reply_to()
-    assert dialog.seen.choices == ['Reviewer, Codex, work, idle',
-                                   'Second opinion, Claude, work, idle']
+    assert dialog.seen.choices == ['Reviewer, Codex, ChatGPT subscription, work, idle',
+                                   'Second opinion, Claude, Claude subscription, work, idle']
     assert dialog.seen.text.startswith('From Claude, another AI agent, forwarded by the user '
                                        'from their chat "Builder":\n\nBuilt it. Tests pass.')
     assert w.opened == ['Reviewer']

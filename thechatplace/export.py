@@ -142,7 +142,7 @@ def message_anchor(index: int) -> str:
     return f"m{index + 1}"
 
 
-def reading_page(title: str, messages: Iterable) -> str:
+def reading_page(title: str, messages: Iterable, folder: str = "") -> str:
     """A whole chat as one page to read in the app (#538): a level 2 heading per
     message, with the message's own headings under it, so 2 moves from message to
     message. A tool row is a level 3 heading naming what it did: all alike at level
@@ -162,7 +162,7 @@ def reading_page(title: str, messages: Iterable) -> str:
         level = 3 if activity else 2
         # On the HTML, not the markdown, so a "Title\n---" or a heading in a quote
         # moves down too and can't pass for a message.
-        inner = shift_html_headings(markdown_to_html(text), level)
+        inner = shift_html_headings(markdown_to_html(text, folder, file_links=True), level)
         body.append(f'<section><h{level} id="{message_anchor(index)}">{html.escape(heading)}'
                     f"</h{level}>{inner}</section>")
     return html_page(title, "\n".join(body))

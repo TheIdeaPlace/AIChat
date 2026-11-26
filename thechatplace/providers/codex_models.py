@@ -37,7 +37,8 @@ def read_models(connection):
                     or type(row.get('hidden')) is not bool
                     or type(row.get('isDefault')) is not bool
                     or not isinstance(row.get('supportedReasoningEfforts'), list)
-                    or not _text(row.get('defaultReasoningEffort'))):
+                    or (row.get('defaultReasoningEffort') not in (None, '')
+                        and not _text(row.get('defaultReasoningEffort')))):
                 raise CodexRpcError('Codex model catalog could not be verified')
             if row['id'] in ids or row['model'] in names:
                 raise CodexRpcError('Codex model catalog contains duplicate choices')
@@ -51,7 +52,7 @@ def read_models(connection):
                         or option['reasoningEffort'] in efforts or len(efforts) >= 64):
                     raise CodexRpcError('Codex model efforts could not be verified')
                 efforts.append(option['reasoningEffort'])
-            if row['defaultReasoningEffort'] not in efforts:
+            if efforts and row.get('defaultReasoningEffort') not in efforts:
                 raise CodexRpcError('Codex default model effort could not be verified')
             modalities = row.get('inputModalities', ['text', 'image'])
             if (not isinstance(modalities, list)
@@ -59,7 +60,7 @@ def read_models(connection):
                 raise CodexRpcError('Codex model input support could not be verified')
             if not row['hidden'] and 'text' in modalities:
                 models.append(CodexModel(row['model'], row['displayName'], tuple(efforts),
-                                         row['defaultReasoningEffort'], row['isDefault']))
+                                         row.get('defaultReasoningEffort') or '', row['isDefault']))
         cursor = page.get('nextCursor')
         if cursor is None:
             return tuple(models)

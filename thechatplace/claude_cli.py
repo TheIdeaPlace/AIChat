@@ -153,6 +153,18 @@ SESSION_INJECTED_PREFIXES = ("CLAUDE_CODE_SDK_", "CLAUDE_CODE_HOST_",
 #: Turns Claude's task-list tools on for every model (#231).
 TASK_LIST_VAR = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
 
+#: Prompt suggestions (#474): a predicted next message after each turn.
+#: Checked with Claude Code 2.1.326: ``--prompt-suggestions`` alone sends
+#: nothing; with this variable set too, a ``prompt_suggestion`` message
+#: ({"suggestion": "write the script"}) comes about 1.2 s after the turn's
+#: result, before the process exits, even once stdin is closed. At most one
+#: per turn, and not every turn: Claude Code skips it when it has nothing
+#: likely to offer (3 of 4 tries on the default model, fewer on Haiku).
+SUGGESTION_VAR = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
+SUGGESTION_FLAGS = ("--prompt-suggestions", "true")
+#: The longest suggestion kept: one message, not a document.
+MAX_SUGGESTION = 2000
+
 #: Turns on Claude Code's file checkpoints for a ``-p`` turn (#468): before
 #: each of your messages it saves the files Claude is about to change
 #: (``~/.claude/file-history/<session>``) and writes a
@@ -184,11 +196,10 @@ def normalize_permission_mode(mode: str) -> str:
 #: says. Aliases, so each means that family's latest model. "" passes no
 #: ``--model`` at all, leaving it to Claude Code's own setting.
 #:
-#: Fable is left out on purpose. Claude Code's docs: on some plans Fable
-#: bills to usage credits, and in ``-p`` mode (every turn The Chat Place runs) it
-#: does so without asking. The Chat Place must never cost extra, and the
-#: ``apiKeySource`` check can't catch this (it's still the subscription
-#: login). Add it only once Kelly's plan is known to include it.
+#: Fable isn't here: it's offered only by plan (#722, below). On Pro, Fable
+#: isn't in the plan's limits and every message is charged to usage credits,
+#: in ``-p`` mode (every turn The Chat Place runs) without asking, and the
+#: ``apiKeySource`` check can't catch that (it's still the subscription login).
 MODELS = [
     ("", "Default (your Claude Code setting)"),
     ("opus", "Opus"),
@@ -198,20 +209,35 @@ MODELS = [
 MODEL_LABELS = dict(MODELS)
 #: The choices for a chat on API credits (#658): Fable too. On an API key
 #: Fable is charged like any other model, at its own price, to the credits
-#: the chat was made to spend, so the reason it's left out above doesn't
-#: apply. Subscription chats never get it.
+#: the chat was made to spend.
 API_MODELS = MODELS + [("fable", "Fable")]
 API_MODEL_LABELS = dict(API_MODELS)
+#: The plans (``claude auth status``'s ``subscriptionType``) whose limits
+#: include Fable, with a weekly Fable allowance of their own (#722). Anything
+#: else, Pro, Team, Enterprise or a value not known yet, gets no Fable:
+#: only "max" was seen (2026-11-25); "ultra" is what Anthropic's pages name.
+FABLE_PLANS = ("max", "ultra")
 
 
-def models_for(billing: str) -> list:
-    """The model choices for a chat charged ``billing`` (billing.ROUTE_*)."""
-    return API_MODELS if billing == "api" else MODELS
+def fable_in_plan(plan: str) -> bool:
+    """Whether a subscription on ``plan`` has Fable in its limits (#722)."""
+    return (plan or "").strip().lower() in FABLE_PLANS
+
+
+def models_for(billing: str, plan: str = "") -> list:
+    """The model choices for a chat charged ``billing`` (billing.ROUTE_*):
+    Fable on API credits, and on a subscription whose ``plan`` includes it."""
+    if billing == "api" or fable_in_plan(plan):
+        return API_MODELS
+    return MODELS
 
 
 def model_allowed(model: str, billing: str) -> bool:
-    """Whether a chat charged ``billing`` may keep ``model``."""
-    return model in dict(models_for(billing))
+    """Whether a chat charged ``billing`` may keep ``model``. A subscription
+    chat may keep Fable (#722): the plan decides whether it's offered, and a
+    turn is stopped once it would be charged to usage credits, whatever the
+    plan is by then (``overage_problem``)."""
+    return model in dict(API_MODELS)
 
 #: The effort choices for a session (#189): ``--effort`` value and what the
 #: picker says. Checked with Claude Code 2.1.296: ``-p`` takes ``--effort``
@@ -300,13 +326,85 @@ def is_safe_dir(folder: str) -> bool:
             and platform_paths.is_specific_folder(folder))
 
 
+APPEND_PROMPT = "--append-system-prompt="
+
+#: Whether a turn has Claude in Chrome (#319), and if not, why: the values a
+#: chat keeps as ``OwnSession.prompt_note``, so it knows when the note below
+#: changed and its recorded system prompt has to be made afresh.
+CHROME_ON = "chrome"
+#: Settings, "Let Claude use Chrome", is off (or the extension isn't installed).
+CHROME_OFF = "no-chrome"
+#: A chat on API credits: Claude Code keeps Claude in Chrome off when it's
+#: signed in with an API key, even with --chrome (Anthropic's Claude in
+#: Chrome page: it needs a claude.ai plan and /login).
+CHROME_API = "no-chrome-api"
+CHROME_STATES = (CHROME_ON, CHROME_OFF, CHROME_API)
+
+_NOTE_START = ("This chat is run by The Chat Place, which starts Claude Code in print mode, "
+               "not the Claude desktop app. ")
+_NOTE_DESKTOP_ONLY = (
+    "Computer use (mcp__computer-use__ tools) and the desktop app's built-in browser pane "
+    "(mcp__Claude_Browser__ tools) aren't available in this chat, even if a skill describes "
+    "them or the user's settings turn them on, and no setting the user can change here "
+    "turns them on. Don't tell the user to enable them. ")
+_NOTE_FALLBACK = (
+    "If a task needs one, say plainly that it isn't available in The Chat Place, then use "
+    "what this chat does have: web fetch or search tools, or any browser or computer tools "
+    "the user's own MCP servers provide. Otherwise, ask the user to check in their own "
+    "browser, or say the Claude desktop app can do it.")
+_NOTES = {
+    CHROME_ON: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) is available. If its "
+        "tools say the browser extension isn't connected, tell the user to open Chrome with "
+        "the Claude extension signed in to the same claude.ai account as Claude Code. "
+        + _NOTE_DESKTOP_ONLY + "If a task needs a browser, use Claude in Chrome; otherwise use "
+        "web fetch or search tools, or any tools the user's own MCP servers provide."),
+    CHROME_OFF: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) is off in this chat: "
+        "the user can turn it on in The Chat Place's Settings, with \"Let Claude use "
+        "Chrome\", once the Claude in Chrome extension is installed and signed in. "
+        "Say that, rather than pointing to any other setting. " + _NOTE_DESKTOP_ONLY
+        + _NOTE_FALLBACK),
+    CHROME_API: (
+        _NOTE_START + "Claude in Chrome (mcp__claude-in-chrome__ tools) isn't available in "
+        "this chat, because it's charged to API credits and Claude in Chrome needs a claude.ai "
+        "plan; a chat on the user's Claude subscription can use it. Say that, rather than "
+        "pointing to a setting. " + _NOTE_DESKTOP_ONLY + _NOTE_FALLBACK),
+}
+
+
+def unavailable_note(chrome: str = CHROME_OFF) -> str:
+    """Told to Claude on every turn (#319): what this chat can and can't use.
+    Claude Code's own skills describe Claude in Chrome, computer use and the
+    desktop app's browser pane. Computer use and the browser pane exist only
+    in the desktop app, and Claude in Chrome only with --chrome. Without a
+    note, a chat asked anything that needs a browser told Kelly, three times
+    over, to turn on Claude in Chrome, which was already on.
+
+    Claude Code records the system prompt on a chat's first request and
+    reuses the record (--system-prompt-snapshot). So when the note a chat
+    gets changes to or from Chrome being available, its prompt is made
+    afresh (``MainFrame._chrome_for_turn``), or it would be told Chrome isn't
+    there when it is. Copies (Continue Here, Rewind or Branch from Here,
+    Continue on API Credits) are always made afresh."""
+    return _NOTES.get(chrome, _NOTES[CHROME_OFF])
+
+
+#: The note when Claude in Chrome is off: what every turn said before #319
+#: passed --chrome, and what the tests check for by this name.
+UNAVAILABLE_NOTE = unavailable_note(CHROME_OFF)
+
+
 def _common_flags(permission_mode: str, model: str = "",
                   allowed_tools: Collection[str] = (), effort: str = "",
                   allowed_dirs: Collection[str] = (),
-                  options: Optional[ChatOptions] = None) -> List[str]:
+                  options: Optional[ChatOptions] = None,
+                  chrome: str = CHROME_OFF) -> List[str]:
     permission_mode = normalize_permission_mode(permission_mode)
     if permission_mode not in PERMISSION_MODE_VALUES:
         raise ValueError(f"Unknown permission mode: {permission_mode!r}")
+    if chrome not in CHROME_STATES:
+        raise ValueError(f"Unknown Claude in Chrome state: {chrome!r}")
     # --replay-user-messages: Claude Code echoes each message as it takes it
     # in, which is how a turn knows whether a steered message joined the work
     # in progress or is being answered after it (#238).
@@ -325,10 +423,28 @@ def _common_flags(permission_mode: str, model: str = "",
             raise ValueError(f"Not a valid effort level: {effort!r}")
         # Every turn, as with the model: each turn is a new process (#189).
         flags += ["--effort", effort]
-    if options is not None:
-        # Agent, instructions and output style (#468), every turn, as the
-        # model is. Before the lists below, whose values run to the next flag.
-        flags += options.flags()
+    # Claude in Chrome (#319), every turn: each turn is a new process, and
+    # claudeInChromeDefaultEnabled doesn't apply in print mode. Checked with
+    # Claude Code 2.1.326: the extension connects within the turn's first
+    # second, its tools ask through the host's permission prompt like any
+    # other, and a resumed turn still sees the tabs the last one opened (the
+    # extension's tab group goes by the session). With Chrome closed the turn
+    # starts just the same. Off is said too, so a later default can't turn
+    # it on behind the setting.
+    flags.append("--chrome" if chrome == CHROME_ON else "--no-chrome")
+    # Agent, instructions and output style (#468), every turn, as the model
+    # is. Before the lists below, whose values run to the next flag.
+    option_flags = options.flags() if options is not None else []
+    # What this chat can't do (#319), after any instructions of the chat's
+    # own, in the one --append-system-prompt Claude Code takes.
+    note = unavailable_note(chrome)
+    for index, flag in enumerate(option_flags):
+        if flag.startswith(APPEND_PROMPT):
+            option_flags[index] = flag + "\n\n" + note
+            break
+    else:
+        option_flags.append(APPEND_PROMPT + note)
+    flags += option_flags
     rules = [rule for rule in allowed_tools if is_safe_rule(rule)]
     if rules:
         # "Allow for This Chat" (#187, #329). Claude Code keeps a session-scoped
@@ -360,12 +476,13 @@ def build_new_command(executable: str, session_id: str, title: str,
                       permission_mode: str, model: str = "",
                       allowed_tools: Collection[str] = (), effort: str = "",
                       allowed_dirs: Collection[str] = (),
-                      options: Optional[ChatOptions] = None) -> List[str]:
+                      options: Optional[ChatOptions] = None,
+                      chrome: str = CHROME_OFF) -> List[str]:
     """Command for the first turn of a new session. The prompt goes on stdin."""
     if not platform_paths.is_safe_id(session_id):
         raise ValueError("Not a valid session id.")
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs, options),
+                                          allowed_dirs, options, chrome),
                "--session-id", session_id]
     title = " ".join((title or "").split())
     if title:
@@ -396,7 +513,8 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
                        cowork_ids: Collection[str] = (), effort: str = "",
                        resume_at: str = "",
                        allowed_dirs: Collection[str] = (),
-                       options: Optional[ChatOptions] = None) -> List[str]:
+                       options: Optional[ChatOptions] = None,
+                       chrome: str = CHROME_OFF) -> List[str]:
     """Command for the first turn of a copy of another session (#189), such
     as a desktop app session, to carry on in The Chat Place.
 
@@ -428,7 +546,8 @@ def build_fork_command(executable: str, source_id: str, new_id: str, title: str,
     if not platform_paths.is_safe_id(new_id) or new_id == source_id or new_id in taken_ids:
         raise ValueError("The new session needs an id of its own.")
     command = [executable, *_common_flags(permission_mode, model, effort=effort,
-                                          allowed_dirs=allowed_dirs, options=options),
+                                          allowed_dirs=allowed_dirs, options=options,
+                                          chrome=chrome),
                "--resume", source_id, "--fork-session", "--session-id", new_id]
     if resume_at:
         command += ["--resume-session-at", resume_at]
@@ -462,7 +581,8 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
                          desktop_ids: Collection[str], model: str = "",
                          allowed_tools: Collection[str] = (), title: str = "",
                          effort: str = "", allowed_dirs: Collection[str] = (),
-                         options: Optional[ChatOptions] = None) -> List[str]:
+                         options: Optional[ChatOptions] = None,
+                         chrome: str = CHROME_OFF) -> List[str]:
     """Command for a later turn. Refuses anything but The Chat Place's own sessions.
 
     ``--name`` goes on every turn, not just the first (#123). Other sessions
@@ -473,7 +593,7 @@ def build_resume_command(executable: str, session_id: str, permission_mode: str,
     """
     check_resume_allowed(session_id, own_ids, desktop_ids)
     command = [executable, *_common_flags(permission_mode, model, allowed_tools, effort,
-                                          allowed_dirs, options)]
+                                          allowed_dirs, options, chrome)]
     title = " ".join((title or "").split())
     if title:
         command += ["--name", title]
@@ -593,6 +713,13 @@ def stdin_lines(prompt: str, images: Optional[List[dict]] = None) -> bytes:
     return initialize_line() + message_line(prompt, images)
 
 
+#: Claude in Chrome's tools (#319), and how Claude Code words their
+#: permission requests ("Allow Claude in Chrome to navigate on example.com?")
+#: and names the rule that allows a site ("ClaudeInChromeDomain(example.com)").
+CHROME_TOOL_PREFIX = "mcp__claude-in-chrome__"
+_CHROME_ASK = re.compile(r"Allow Claude in Chrome to (.{1,300}?)\?")
+_CHROME_SITE_RULE = re.compile(r"ClaudeInChromeDomain\(([^()\s]{1,253})\)")
+
 QUESTION_TOOL = "AskUserQuestion"
 PLAN_TOOL = "ExitPlanMode"
 SHELL_TOOLS = ("Bash", "PowerShell")
@@ -686,7 +813,28 @@ class PermissionRequest:
             return f"Claude asks: {first}{more}"
         if self.is_plan:
             return "Claude's plan is ready for you to approve"
+        chrome = self._chrome_summary()
+        if chrome:
+            return chrome
         return f"Claude wants to {describe_tool_use(self.tool_name, self.input)}"
+
+    def _chrome_summary(self) -> str:
+        """A Claude in Chrome request in the words Claude Code gives it
+        (#319): its description is "Allow Claude in Chrome to navigate on
+        example.com?", which names the website, where the tool's name alone
+        ("mcp__claude-in-chrome__navigate") doesn't."""
+        if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
+            return ""
+        match = self._chrome_ask()
+        if match:
+            return f"Claude in Chrome wants to {match.group(1)}"
+        return f"Claude in Chrome wants to use {self.tool_name[len(CHROME_TOOL_PREFIX):]}"
+
+    def _chrome_ask(self):
+        """Claude in Chrome's description in its usual words, or None."""
+        if not self.tool_name.startswith(CHROME_TOOL_PREFIX):
+            return None
+        return _CHROME_ASK.fullmatch(" ".join(self.description.split()))
 
     def detail(self) -> str:
         """Everything about the request, to read by line."""
@@ -694,7 +842,9 @@ class PermissionRequest:
 
     def _detail(self) -> str:
         lines = [self.summary() + "."]
-        if self.description and self.description not in lines[0]:
+        # A Claude in Chrome description already is the summary; any other
+        # (in words this doesn't know) is kept as the reason.
+        if self.description and self.description not in lines[0] and not self._chrome_ask():
             lines.append(f"Why: {self.description}")
         if self.tool_name in SHELL_TOOLS:
             lines += ["", f"{self.tool_name} command:", str(self.input.get("command", ""))]
@@ -765,7 +915,8 @@ class PermissionRequest:
         if rules:
             # Both grants by name: the folder is a working folder for every
             # tool on later turns, not only for this rule (--add-dir).
-            label = "Allow, and don't ask again in this chat for " + ", ".join(rules)
+            label = ("Allow, and don't ask again in this chat for "
+                     + ", ".join(_rule_words(rule) for rule in rules))
             return label + (", and let Claude work in " + _folders_words(dirs) if dirs else "")
         if mode == "acceptEdits":
             return "Allow, and accept all file edits for the rest of this chat"
@@ -784,6 +935,20 @@ class PermissionRequest:
         if mode:
             return [], [], mode
         return [], dirs, ""
+
+
+def _rule_words(rule: str) -> str:
+    """A rule as Allow for This Chat names it: as it is, except Claude in
+    Chrome's (#319): its site rule, "ClaudeInChromeDomain(example.com)", is
+    "Claude in Chrome on example.com", and one of its tools,
+    "mcp__claude-in-chrome__tabs_create_mcp", is "Claude in Chrome's
+    tabs_create_mcp tool"."""
+    match = _CHROME_SITE_RULE.fullmatch(rule)
+    if match:
+        return f"Claude in Chrome on {match.group(1)}"
+    if rule.startswith(CHROME_TOOL_PREFIX) and "(" not in rule:
+        return f"Claude in Chrome's {rule[len(CHROME_TOOL_PREFIX):]} tool"
+    return rule
 
 
 def _folders_words(dirs: List[str]) -> str:
@@ -883,6 +1048,12 @@ class StreamParser:
         #: ``<synthetic>`` error text): each is a request that went through,
         #: and so may have cost something (#663).
         self.assistant_messages = 0
+        #: The latest top-level assistant message with text: its record
+        #: uuid and API message id, which the transcript keys the reply by
+        #: (a reply merged from several records goes by the message id). A
+        #: turn on API credits keeps its cost with that reply (#692).
+        self.reply_uuid = ""
+        self.reply_message_id = ""
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -1065,6 +1236,11 @@ class StreamParser:
                             self._edits[use_id] = path
                         events.append(TurnEvent("tool", text=name,
                                                 detail=f"{name}: {target}" if target else name))
+            if any(e.kind == "text" for e in events) and reply_model != "<synthetic>":
+                record_id = event.get("uuid")
+                message_id = message.get("id") if isinstance(message, dict) else None
+                self.reply_uuid = record_id if isinstance(record_id, str) else ""
+                self.reply_message_id = message_id if isinstance(message_id, str) else ""
             return events
         if etype == "user" and event.get("isReplay"):
             # One of our own messages, echoed as Claude Code takes it in
@@ -1082,6 +1258,13 @@ class StreamParser:
                     if path and not block.get("is_error"):
                         events.append(TurnEvent("edited", data={"file_path": path}))
             return events
+        if etype == "prompt_suggestion":
+            # What you might send next (#474), after the turn's result.
+            text = event.get("suggestion")
+            if isinstance(text, str) and text.strip():
+                text = text.strip()[:MAX_SUGGESTION]
+                return [TurnEvent("suggestion", text=text, session_id=self.session_id)]
+            return []
         if etype == "result":
             self.finished = True
             models = event.get("modelUsage")
@@ -1218,6 +1401,49 @@ def fable_problem(actual: str, chosen: str, sent: bool = False,
     return (f"Claude Code would have used Fable, {which}. Some plans bill Fable to usage "
             f"credits, so The Chat Place {done}. Choose another model with Chat, "
             "Chat Settings, Change Model, then send again.")
+
+
+#: The models whose subscription turns pause once they'd be charged to usage
+#: credits (#722). Fable first: its own weekly limit is reached soonest. With
+#: usage credits on, any model can go past the plan's limits, so the rule
+#: takes a list; adding a model here is all the turn and the window need.
+OVERAGE_PAUSED = ("fable",)
+
+#: Said when a turn is stopped because it's now charged to usage credits.
+OVERAGE_STOPPED = (
+    "Claude Code said this turn is now being charged to usage credits, past your plan's "
+    "{model} allowance, so The Chat Place stopped it. The request that went past it may have "
+    "been charged. To keep going, send again and choose Use Usage Credits, or choose another "
+    "model with Chat, Chat Settings, Change Model.")
+
+
+def overage_paused(model: str) -> bool:
+    """Whether a subscription turn on ``model`` pauses at usage credits."""
+    model = (model or "").lower()
+    return any(mark in model for mark in OVERAGE_PAUSED)
+
+
+def using_overage(info) -> bool:
+    """Whether a ``rate_limit_event``'s info says turns are now charged to
+    usage credits (Claude Code's ``isUsingOverage``)."""
+    return isinstance(info, dict) and info.get("isUsingOverage") is True
+
+
+def overage_problem(info, model: str, billing: str = "subscription",
+                    allowed: bool = False) -> Optional[str]:
+    """The message for a turn on ``model`` to stop at (#722): a subscription
+    turn on a paused model, once ``info`` says it's charged to usage credits,
+    unless you chose to keep going on them for this turn (``allowed``). On
+    API credits that's how every turn is charged, and the limits bound it."""
+    if allowed or billing == "api" or not overage_paused(model) or not using_overage(info):
+        return None
+    return OVERAGE_STOPPED.format(model=model_label(paused_family(model)))
+
+
+def paused_family(model: str) -> str:
+    """The alias in OVERAGE_PAUSED that ``model`` belongs to, for its label."""
+    model = (model or "").lower()
+    return next((mark for mark in OVERAGE_PAUSED if mark in model), model)
 
 
 #: How long a finished turn waits for Claude Code to say it's idle (its SDK's
@@ -1391,8 +1617,20 @@ class TurnRunner:
                  context_usage: bool = False,
                  billing: str = "subscription", api_key_name: str = "",
                  ledger=None, chat_id: str = "", purpose: str = "turn",
-                 cost_baselines=None) -> None:
+                 cost_baselines=None, suggestions: bool = False,
+                 allow_overage: bool = False) -> None:
         self.command = command
+        #: You chose to keep going on usage credits for this one turn (#722);
+        #: never kept for the next.
+        self.allow_overage = allow_overage
+        #: Stopped because the turn was now charged to usage credits (#722).
+        self.stopped_for_overage = False
+        #: The model it was on then, for "Use usage credits?".
+        self.overage_model = ""
+        #: Ask for a suggested next message (#474). Never on API credits:
+        #: it's another request the turn's result doesn't count, so its cost
+        #: would be missing from the chat's spending.
+        self.suggestions = suggestions and normalize_route(billing) != ROUTE_API
         #: How this turn is charged (#658): billing.ROUTE_SUBSCRIPTION or
         #: ROUTE_API, fixed for the process. Anything but "api" is the
         #: subscription.
@@ -1513,6 +1751,12 @@ class TurnRunner:
             # and later). Off, the environment is left as it was, so a value
             # the user set themselves still applies.
             self._env[TASK_LIST_VAR] = "1"
+        if self.suggestions:
+            self._env[SUGGESTION_VAR] = "1"
+        elif self.billing == ROUTE_API:
+            # Not even one the user's own environment asks for (#709 review):
+            # its request would be missing from what the chat has spent.
+            self._env.pop(SUGGESTION_VAR, None)
         self._process: Optional[subprocess.Popen] = None
         self._tree = platform_paths.ProcessTree()
         self._lock = threading.Lock()
@@ -1769,6 +2013,20 @@ class TurnRunner:
             waiting = list(self._controls)
         for request_id in waiting:
             self._control_done(request_id, False, {}, TURN_ENDED)
+
+    def _turn_model(self) -> str:
+        """The model the usage-credit pause goes by (#722): the one that
+        wrote the latest reply, else what system/init or initialize said,
+        else the chosen one. A chosen paused model counts as well: an agent
+        on it (allowed only when the chat chose it, chat_options) writes
+        replies the main reply_model never shows."""
+        reply = self.parser.reply_model if self.parser.reply_model != "<synthetic>" else ""
+        actual = (reply or self.parser.model
+                  or resolved_model(self.parser.resolved_models, self.chosen))
+        chosen = self.chosen or ""
+        if overage_paused(chosen) and not overage_paused(actual):
+            return chosen
+        return actual or chosen
 
     def set_model(self, model: str, on_done: Callable[[bool, dict, str], None]) -> bool:
         """Change the running turn's model (Change Model, #468). Checked with
@@ -2109,7 +2367,9 @@ class TurnRunner:
                 self.ledger.settle(self.reservation, added, by_model)
         if event.is_error:
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
-                                 self.reservation.amount if self.reservation else None)
+                                 self.reservation.amount if self.reservation else None,
+                                 bool(self.reservation and self.reservation.overall_cap),
+                                 bool(self.reservation and self.reservation.others_held))
             if plain:
                 event.text = plain
 
@@ -2170,10 +2430,15 @@ class TurnRunner:
                       "cost_usd": None if guessed else round(self.costs.total, 6),
                       "cost_complete": self.cost_complete and not guessed,
                       "sent": self.messages_written > 0,
-                      "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()}}
+                      "model_costs": {m: round(c, 6) for m, c in self.costs.models.items()},
+                      # The reply the cost is kept with, as its last line (#692).
+                      "reply_uuid": self.parser.reply_uuid,
+                      "reply_message_id": self.parser.reply_message_id}
         if event.is_error and event.kind == "failed":
             plain = failure_text(event.raw_type, event.text, self.costs.known_total,
-                                 self.reservation.amount if self.reservation else None)
+                                 self.reservation.amount if self.reservation else None,
+                                 bool(self.reservation and self.reservation.overall_cap),
+                                 bool(self.reservation and self.reservation.others_held))
             if plain:
                 event.text = plain
 
@@ -2214,6 +2479,10 @@ class TurnRunner:
             self.costs = cost_tracker_for(
                 self.command, self.baselines,
                 self.reservation.amount if self.reservation is not None else None)
+            if self.suggestions:
+                command += list(SUGGESTION_FLAGS)
+            elif self.billing == ROUTE_API:
+                command += [SUGGESTION_FLAGS[0], "false"]
             if self.mcp_config:
                 # Last: --mcp-config takes several values, so nothing that
                 # isn't one may follow it.
@@ -2425,6 +2694,42 @@ class TurnRunner:
                                     and not self._unanswered)):
                             self.retry = {**(event.data or {}), "at": self._clock()}
                         self._emit(event)
+                        continue
+                    if event.kind == "limits":
+                        # Usage first, so Tools, Usage says it (#19); then
+                        # whether the turn is now charged to usage credits
+                        # (#722). Claude Code sends this again whenever its
+                        # status or isUsingOverage changes, so the request
+                        # that tipped it over brings it, mid-turn.
+                        self._emit(event)
+                        problem = overage_problem(event.data, self._turn_model(),
+                                                  self.billing, self.allow_overage)
+                        if problem:
+                            self.stopped_for_overage = True
+                            self.overage_model = self._turn_model()
+                            with sent_lock:
+                                unsent = not message_sent
+                                message_sent = True  # and never: the timer can't send it
+                            if unsent:
+                                # Before the message went (not seen, but a
+                                # resumed process could): it comes back.
+                                unanswered.cancel()
+                                self.stopped_before_answer = True
+                            self._kill()
+                            if (not unsent and final is not None and not final.is_error
+                                    and not carrying_on and not self.background_tasks
+                                    and not said_while_waiting):
+                                # Answered already, and only a later request
+                                # (a suggestion, say) went over: the answer
+                                # stands, and the next Send asks. With
+                                # background work going, that work was
+                                # stopped too, so the reason is the ending.
+                                stop_reading = True
+                                break
+                            self.stopped_mid_turn = not unsent
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
                         continue
                     if event.kind == "fallback":
                         # A fallback mid-turn gets no new system/init, so the

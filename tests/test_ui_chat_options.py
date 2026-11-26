@@ -5,6 +5,7 @@ import pytest
 wx = pytest.importorskip("wx")
 
 from thechatplace import platform_paths  # noqa: E402
+from thechatplace.claude_cli import APPEND_PROMPT, UNAVAILABLE_NOTE  # noqa: E402
 from thechatplace.aside import AsideEvent  # noqa: E402
 from thechatplace.chat_options import ChatOptions  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
@@ -617,7 +618,8 @@ def test_new_session_starts_with_its_chat_options(frame, env, folder, tmp_path, 
     frame.on_new_session()
     command = FakeRunner.instances[-1].command
     assert command[command.index("--agent") + 1] == "code-reviewer"
-    assert "--append-system-prompt=Be strict." in command
+    # The chat's instructions, then what isn't available here (#319).
+    assert APPEND_PROMPT + "Be strict.\n\n" + UNAVAILABLE_NOTE in command
     assert command[command.index("--settings") + 1] == '{"outputStyle": "Concise"}'
     assert command[command.index("--add-dir") + 1] == other
     assert "--system-prompt-snapshot" not in command
@@ -627,6 +629,26 @@ def test_new_session_starts_with_its_chat_options(frame, env, folder, tmp_path, 
     assert own.allowed_dirs == [other] and own.allowed_dirs_at[other] > 0
     assert frame.session_heading.GetLabel().endswith(
         "Chat Place session on the default model, as code-reviewer.")
+
+
+def test_continue_here_without_options_still_hears_what_isnt_available(frame, monkeypatch):
+    # #319, checked live: a copy keeps its source's recorded system prompt,
+    # so the note reached it only with the prompt made afresh.
+    from thechatplace.ui import main_frame
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            self.message.SetValue("Carry on")
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    select(frame, "Desktop one")
+    frame.on_continue_here()
+    command = FakeRunner.instances[-1].command
+    assert "--fork-session" in command
+    assert APPEND_PROMPT + UNAVAILABLE_NOTE in command
+    assert command[command.index("--system-prompt-snapshot") + 1] == "off"
+    new_id = command[command.index("--session-id") + 1]
+    assert frame.store.get(new_id).prompt_fresh
 
 
 def test_continue_here_carries_its_chat_options(frame, folder, tmp_path, monkeypatch):
@@ -641,11 +663,83 @@ def test_continue_here_carries_its_chat_options(frame, folder, tmp_path, monkeyp
     select(frame, "Desktop one")
     frame.on_continue_here()
     command = FakeRunner.instances[-1].command
-    assert "--fork-session" in command and "--append-system-prompt=Keep going." in command
+    assert "--fork-session" in command
+    assert APPEND_PROMPT + "Keep going.\n\n" + UNAVAILABLE_NOTE in command
     # The copy carries the source's recorded system prompt, so it's made afresh.
     assert command[command.index("--system-prompt-snapshot") + 1] == "off"
     new_id = command[command.index("--session-id") + 1]
     assert frame.store.get(new_id).prompt_fresh
+
+
+def test_claude_in_chrome_reaches_a_chat_recorded_without_it(frame):
+    # #319: own-1 was recorded before --chrome (no prompt_note), with a note
+    # saying Chrome isn't there. Once Settings turns Chrome on, its turns get
+    # --chrome and its prompt is made afresh, or that note would stay.
+    from thechatplace.claude_cli import CHROME_ON, unavailable_note
+    frame.speech.claude_in_chrome = True
+    assert frame._send_now("own-1", "What tabs do I have open?") is None
+    command = FakeRunner.instances[-1].command
+    assert "--chrome" in command and "--no-chrome" not in command
+    assert APPEND_PROMPT + unavailable_note(CHROME_ON) in command
+    assert command[command.index("--system-prompt-snapshot") + 1] == "off"
+    own = frame.store.get("own-1")
+    assert own.prompt_note == CHROME_ON and own.prompt_fresh
+
+
+def test_an_older_chat_without_chrome_keeps_its_recorded_prompt(frame):
+    # Its recorded note (no Chrome) is near enough the off note: a prompt made
+    # afresh would be for the rest of the chat, so it isn't.
+    frame.speech.claude_in_chrome = False
+    assert frame._send_now("own-1", "Hello") is None
+    command = FakeRunner.instances[-1].command
+    assert "--no-chrome" in command and "--system-prompt-snapshot" not in command
+    own = frame.store.get("own-1")
+    assert own.prompt_note == "no-chrome" and not own.prompt_fresh
+    # Turned on later, it's made afresh then.
+    frame._runners.clear()
+    frame.speech.claude_in_chrome = True
+    assert frame._send_now("own-1", "Now with Chrome") is None
+    assert "--chrome" in FakeRunner.instances[-1].command
+    assert frame.store.get("own-1").prompt_fresh
+
+
+def test_claude_in_chrome_off_keeps_a_new_chats_recorded_prompt(frame):
+    # A chat whose first turn hasn't run has nothing recorded: it's only noted.
+    frame.store.add(OwnSession("own-3", "Fresh", frame.store.get("own-1").cwd))
+    frame.speech.claude_in_chrome = False
+    assert frame._send_now("own-3", "Hello") is None
+    command = FakeRunner.instances[-1].command
+    assert "--no-chrome" in command and "--chrome" not in command
+    assert APPEND_PROMPT + UNAVAILABLE_NOTE in command
+    assert "--system-prompt-snapshot" not in command
+    own = frame.store.get("own-3")
+    assert own.prompt_note == "no-chrome" and not own.prompt_fresh
+
+
+def test_claude_in_chrome_is_never_offered_on_api_credits(frame):
+    from thechatplace.claude_cli import CHROME_API, CHROME_OFF, CHROME_ON
+    frame.speech.claude_in_chrome = True
+    assert frame._chrome_state("subscription") == CHROME_ON
+    assert frame._chrome_state("api") == CHROME_API
+    frame.speech.claude_in_chrome = False
+    assert frame._chrome_state("subscription") == CHROME_OFF
+
+
+def test_new_session_notes_its_chrome_state(frame, folder, monkeypatch):
+    from thechatplace.ui import main_frame
+    frame.speech.claude_in_chrome = True
+
+    class Fills(main_frame.NewSessionDialog):
+        def ShowModal(self):
+            self.set_folder(folder)
+            self.message.SetValue("Open example.com")
+            return wx.ID_OK
+    monkeypatch.setattr(main_frame, "NewSessionDialog", Fills)
+    frame.on_new_session()
+    command = FakeRunner.instances[-1].command
+    assert "--chrome" in command and "--system-prompt-snapshot" not in command
+    own = frame.store.get(command[command.index("--session-id") + 1])
+    assert own.prompt_note == "chrome" and not own.prompt_fresh
 
 
 # -- Chat, Chat Settings, Chat Options ---------------------------------------------------------------------
@@ -758,7 +852,7 @@ def test_branch_from_here_has_an_access_key_and_stop_background_task_follows_sto
 class FakeAside:
     instances = []
 
-    def __init__(self, command, cwd, question, on_event):
+    def __init__(self, command, cwd, question, on_event, **kwargs):
         self.command, self.cwd, self.question, self.on_event = command, cwd, question, on_event
         self.cancelled = False
         FakeAside.instances.append(self)

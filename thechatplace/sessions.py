@@ -36,7 +36,7 @@ STATUS_UNAVAILABLE = "status unavailable"
 #: Backends whose chats come from the other app's own list (#184, #352): only
 #: an explicit idle finishes a turn there, and their history is read in that
 #: app's terms ("Reply in Copilot CLI"), never as a Claude transcript.
-LISTED_PROVIDERS = ("codex", "copilot")
+LISTED_PROVIDERS = ("codex", "codex-api", "copilot")
 #: Backends whose owned chats run through a provider runtime that the window
 #: drives with SessionController.owned_action (send, stop, answer, prepare,
 #: live state updates). Adding one means at least (#352, #370):
@@ -51,9 +51,9 @@ LISTED_PROVIDERS = ("codex", "copilot")
 #:   file of their own if older releases would refuse them).
 #: Codex-only features (permission modes, saved rules, plans, Continue Here,
 #: agent conversations) stay Codex's until each is built for another.
-RUNTIME_PROVIDERS = ("codex", "copilot")
+RUNTIME_PROVIDERS = ("codex", "codex-api", "copilot")
 #: The app to go to for a listed provider's chat ("Reply in Copilot CLI").
-HOME_APPS = {"codex": "Codex", "copilot": "Copilot CLI"}
+HOME_APPS = {"codex": "Codex", "codex-api": "The Chat Place", "copilot": "Copilot CLI"}
 
 
 def home_app(provider: str) -> str:
@@ -147,9 +147,13 @@ class SessionInfo:
     #: the chat it continues (``OwnSession.forked_from``), "" otherwise. A
     #: Copilot copy's first message carries the history (#423).
     continued_from: str = ""
-    #: One of The Chat Place's own Claude chats charged to API credits
-    #: (#658): its row says so after the name.
+    #: One of The Chat Place's own chats charged to API credits (#658): its
+    #: row says so in the Charged to column.
     api_credits: bool = False
+    #: What such a chat has spent in all, as the Cost column says it (#692):
+    #: "$1.42", "an estimated 3 cents"; "" when there's nothing to say. Filled
+    #: in with each snapshot by ``reply_costs.fill_api_costs``.
+    api_cost: str = ""
 
     #: Only set by the Claude adapter after the original has disappeared.
     kept_transcript: Optional[Path] = None
@@ -169,6 +173,26 @@ class SessionInfo:
     @property
     def is_own(self) -> bool:
         return self.source == OWN
+
+    @property
+    def charged_to(self) -> str:
+        """What the Charged to column says: how one of The Chat Place's own
+        chats is paid for, "" for any other session, whose charging can't be
+        known for sure (a terminal Claude Code may be on an API key). A row
+        on API credits always says so, kept or not (#658)."""
+        if self.api_credits:
+            return "OpenAI API credits" if self.provider == "codex-api" else "Claude API credits"
+        if not (self.is_own or (self.source == KEPT and self.kept_from == OWN)):
+            return ""
+        if self.provider == "codex-api":
+            return "OpenAI API credits"
+        if self.provider == "claude":
+            return "Claude subscription"
+        if self.provider == "codex":
+            return "ChatGPT subscription"
+        if self.provider == "copilot":
+            return "Copilot plan"
+        return ""
 
     @property
     def is_terminal(self) -> bool:
@@ -247,8 +271,6 @@ class SessionInfo:
                 and not self.detail and order == DEFAULT_FIELDS):
             values[FIELD_STATUS] = ""
         parts = [values[f] for f in order if values.get(f)]
-        if self.api_credits and FIELD_TITLE not in order:
-            parts.insert(0, "API credits")  # said whatever the columns (#658)
         return ", ".join(parts) or values[FIELD_TITLE]
 
     def field_values(self, now_ms: Optional[int] = None) -> Dict[str, str]:
@@ -259,10 +281,10 @@ class SessionInfo:
             groups = (("group " if len(self.groups) == 1 else "groups ")
                       + ", ".join(self.groups))
         return {
-            # A chat on API credits says so after its name (#658).
-            FIELD_TITLE: (self.title or "Untitled session")
-            + (", API credits" if self.api_credits else ""),
+            FIELD_TITLE: self.title or "Untitled session",
             FIELD_PROVIDER: self.provider_label or self.provider.capitalize(),
+            FIELD_CHARGED: self.charged_to,
+            FIELD_COST: self.api_cost if self.api_credits else "",
             FIELD_FOLDER: self.repo,
             FIELD_STATUS: state,
             FIELD_NEW_REPLY: "new reply" if self.unread else "",
@@ -284,6 +306,8 @@ class SessionInfo:
 #: what order. The ids are saved in settings.json; never rename one.
 FIELD_TITLE = "title"
 FIELD_PROVIDER = "provider"
+FIELD_CHARGED = "charged"
+FIELD_COST = "cost"
 FIELD_FOLDER = "folder"
 FIELD_STATUS = "status"
 FIELD_NEW_REPLY = "new_reply"
@@ -298,6 +322,8 @@ FIELD_LAST_MESSAGE = "last_message"
 FIELDS = [
     (FIELD_TITLE, "Title"),
     (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
+    (FIELD_CHARGED, "Charged to (subscription, plan or API credits)"),
+    (FIELD_COST, "Cost (what a chat on API credits has spent)"),
     (FIELD_FOLDER, "Folder"),
     (FIELD_STATUS, "Status (needs you, working or idle)"),
     (FIELD_NEW_REPLY, "New reply"),
@@ -318,7 +344,10 @@ FIELD_NAMES = dict(FIELDS)
 OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: The columns rows read unless you choose otherwise, in the order they
 #: are read. Provider is added once to older saved choices by SpeechSettings;
-#: users can subsequently remove it like any other column.
+#: users can subsequently remove it like any other column. Charged to
+#: (#658) is the one place a row says it's on API credits, so it's shown
+#: too, and added once to older choices the same way. So is Cost (#692),
+#: just after it.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
 
@@ -475,7 +504,8 @@ def in_view(info: SessionInfo, view: str) -> bool:
         return False
     if view in (VIEW_CLAUDE, VIEW_CODEX, VIEW_COPILOT):
         wanted = view.removeprefix("provider:")
-        return info.provider == wanted or wanted in info.member_providers
+        return (info.provider == wanted or wanted in info.member_providers
+                or wanted == 'codex' and info.provider == 'codex-api')
     if view == VIEW_ACTIVE:
         return info.state in (NEEDS_YOU, WORKING)
     if view == VIEW_NEEDS_YOU:

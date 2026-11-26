@@ -9,6 +9,7 @@ from .codex_rpc import (check_startable, CodexMessageTooLong, MAX_MESSAGE_CHARS,
                         CodexSteerRefused)
 from .codex_requests import CodexRequest, CodexRequestResolved, CodexRequestDeclined, QUESTIONS, ELICITATION
 from .codex_input import input_items, validate_input
+from .codex_billing import account_matches, route_config, is_api
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
                 raise CodexFeatureError('unavailable')
             proof.policy.verify_workspace(proof.cwd)
             from .codex_rpc import is_chatgpt_account, ReadOnlyCodexConnection
-            if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
+            if not account_matches(self, self.request('account/read', {'refreshToken': True})):
                 raise CodexTurnRejected('chatgpt_required')
             ReadOnlyCodexConnection._verify_turn_route(self, {'threadId': proof.native_id, 'cwd': proof.cwd})
             if method in ACTION_METHODS and not (method.startswith('thread/goal/')
@@ -82,7 +83,7 @@ class CodexExecutionConnection(CodexLifecycleConnection):
             held = self._runtime_threads.get(native_id)
         if held is not proof or (proof is not None and not self.owns_runtime(proof)):
             raise CodexFeatureError('unavailable')
-        if not is_chatgpt_account(self.request('account/read', {'refreshToken': True})):
+        if not account_matches(self, self.request('account/read', {'refreshToken': True})):
             raise CodexTurnRejected('chatgpt_required')
         sent = []
         try:
@@ -320,10 +321,14 @@ class CodexExecutionConnection(CodexLifecycleConnection):
         expected = {'threadId': proof.native_id, 'cwd': proof.cwd, 'model': proof.model,
                     'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                     'sandboxPolicy': proof.policy.turn_policy()}
+        if is_api(self):
+            expected['config'] = route_config(self)
+            expected['serviceTier'] = 'default'
         if proof.effort is not None:
             expected['effort'] = proof.effort
-        if proof.instructions is not None:
-            expected['additionalContext'] = instruction_context(proof)
+        context = instruction_context(proof)
+        if context:
+            expected['additionalContext'] = context
         if proof.collaboration is not None:
             expected['collaborationMode'] = collaboration_options(proof)
         if set(params) != set(expected) | {'input'} or any(params[k] != v for k, v in expected.items()):
@@ -374,8 +379,34 @@ class CodexExecutionConnection(CodexLifecycleConnection):
 INVALID_REQUEST = -32600
 
 
+# Every turn, including resumed chats and copies, needs the host's actual
+# capabilities (#524). Desktop skills can otherwise send users to settings
+# that don't exist here. Keep this separate from editable chat instructions.
+UNAVAILABLE_NOTE = (
+    "While The Chat Place is running this chat through Codex app-server, the "
+    "desktop app's built-in browser, its browser extension "
+    "for controlling the user's real browser, native computer use, and Codex Cloud "
+    "aren't available in this chat, even if a skill describes them or the user's "
+    "desktop settings turn them on. No setting in The Chat Place enables them; "
+    "don't tell the user to enable them here. The 'Let Claude use Chrome' setting "
+    "applies only to Claude chats. This limitation applies to both ChatGPT subscription "
+    "and API-credit Codex chats. If a task needs an unavailable feature, say plainly "
+    "that it isn't available in The Chat Place. Use only tools actually available "
+    "in this chat, such as web search or explicitly enabled MCP browser or computer "
+    "tools; these are separate from the desktop features. Otherwise ask the user "
+    "to check in their own browser or use a supported desktop app. If a later "
+    "message comes from another app, these limits may not apply."
+)
+
+
 def instruction_context(proof):
-    return {'tcp_chat_instructions': {'kind': 'application', 'value': proof.instructions}}
+    # The tiny paid key test needs no host guidance; Ask Aside still does.
+    if proof.ephemeral and getattr(proof.connection, '_purpose', None) == 'test':
+        return {}
+    context = {'tcp_capabilities': {'kind': 'application', 'value': UNAVAILABLE_NOTE}}
+    if proof.instructions is not None:
+        context['tcp_chat_instructions'] = {'kind': 'application', 'value': proof.instructions}
+    return context
 
 
 def collaboration_options(proof):
@@ -458,10 +489,14 @@ class CodexTurnExecutor:
                 'approvalPolicy': proof.policy.approval, 'approvalsReviewer': proof.policy.reviewer,
                 'sandboxPolicy': proof.policy.turn_policy(),
                 'input': inputs}
+            if is_api(self.connection):
+                params['config'] = route_config(self.connection)
+                params['serviceTier'] = 'default'
             if proof.effort is not None:
                 params['effort'] = proof.effort
-            if proof.instructions is not None:
-                params['additionalContext'] = instruction_context(proof)
+            context = instruction_context(proof)
+            if context:
+                params['additionalContext'] = context
             if proof.collaboration is not None:
                 params['collaborationMode'] = collaboration_options(proof)
             verify_frame_size('turn/start', params)
@@ -618,12 +653,17 @@ class CodexTurnExecutor:
             requests = tuple(r for r in self._requests.values()
                              if buffer.status == 'inProgress'
                              and (r.thread_id, r.turn_id) == (buffer.thread_id, buffer.turn_id))
-            return CodexTurnState(buffer.turn_id, buffer.status, buffer.replies, requests, buffer.file_changes,
+            replies, reasoning = buffer.replies, buffer.reasoning
+            if getattr(self.connection, "billing_route", "") == "api":
+                from ..billing import scrub
+                replies = tuple((identity, scrub(text)) for identity, text in replies)
+                reasoning = tuple((identity, scrub(text)) for identity, text in reasoning)
+            return CodexTurnState(buffer.turn_id, buffer.status, replies, requests, buffer.file_changes,
                                   buffer.started_at, buffer.activity, self._notices.get(proof.native_id, ''),
                                   self._token_usage.get(proof.native_id), self._context_epochs.get(proof.native_id, 0),
                                   tuple(replace(t) for t in buffer.tasks), buffer.plan_received,
                                   buffer.changed_paths, tuple(buffer.review_notices.items()),
-                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, buffer.reasoning,
+                                  self._compaction_turns.get(proof.native_id) == buffer.turn_id, buffer.retry, reasoning,
                                   tools_started=buffer.tools_started, edits_made=buffer.edits_made)
 
     def answer(self, proof, request, result, *, dispatch_guard=None):

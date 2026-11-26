@@ -182,6 +182,9 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "open_url", lambda url: opened.append(url))
     # Nor real Claude Code files, an editor or Explorer (#92).
     patch(platform_paths, "claude_home", lambda: root / "claude")
+    # ~/.claude.json too: whether the Chrome extension is installed (#319)
+    # mustn't depend on the machine the tests run on.
+    patch(platform_paths, "claude_config_file", lambda: root / "claude.json")
     patch(platform_paths, "codex_home", lambda: root / "codex")
     patch(platform_paths, "agents_skills_dir", lambda: root / "agents-skills")
     patch(platform_paths, "edit_file", lambda path: opened.append(("edit", path)))
@@ -194,12 +197,16 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     patch(platform_paths, "delete_backup_secret", lambda: secret.pop("pw", None))
     # Nor a real API key (#658): named secrets in memory too.
     named = {}
+    from thechatplace import spend_ledger
+    patch(spend_ledger, '_DEFAULT', None)
+    patch(spend_ledger, '_OPENAI_DEFAULT', None)
     patch(platform_paths, "secrets_available", lambda: True)
     patch(platform_paths, "has_secret", lambda name: name in named)
     patch(platform_paths, "load_secret", lambda name: named.get(name))
     patch(platform_paths, "save_secret", lambda name, text: named.__setitem__(name, text))
     patch(platform_paths, "delete_secret", lambda name: named.pop(name, None))
     patch(platform_paths, "show_in_folder", lambda path: opened.append(("show", path)))
+    patch(platform_paths, "open_local_folder", lambda path: opened.append(("folder", path)))
     boxes = []
     patch(wx, "MessageBox", lambda *a, **k: boxes.append(a[0]) or wx.YES)
     # No real Windows notifications (#20): they're recorded. The hidden test
@@ -241,9 +248,10 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     class FakeMcpSession:
         closed = False
 
-        def __init__(self, exe, cwd, disabled=(), mcp_config=None):
+        def __init__(self, exe, cwd, disabled=(), mcp_config=None, chrome=False):
             mcp["calls"].append(("open", cwd))
             mcp["opened_with"] = {"disabled": list(disabled), "mcp_config": mcp_config}
+            mcp["chrome"] = chrome  # Claude in Chrome listed too (#319)
 
         def _check(self):
             if mcp["error"]:
@@ -316,8 +324,10 @@ class FakeRunner:
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
                  task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False,
                  billing="subscription", api_key_name="", ledger=None, chat_id="",
-                 purpose="turn", cost_baselines=None):
+                 purpose="turn", cost_baselines=None, suggestions=False, allow_overage=False):
+        self.allow_overage = allow_overage  # usage credits for this turn (#722)
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
+        self.suggestions = suggestions  # prompt suggestions asked for (#474)
         # How the turn is charged (#658), as the window asked.
         self.billing, self.ledger, self.chat_id, self.purpose = billing, ledger, chat_id, purpose
         self.cost_baselines = cost_baselines

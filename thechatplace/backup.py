@@ -354,6 +354,7 @@ def tcp_inventory() -> Inventory:
     inv.areas.append(Area("thechatplace/data", str(root),
                           "The Chat Place's settings, groups and session records"))
     inv.items = walk(root, "thechatplace/data",
+                     exclude_dirs=('codex-api',),
                      exclude_files=("*.log", STATE_FILE_RUNTIME, "computer.json",
                                     platform_paths.WHOLE_CHAT_PAGE_FILE, *SECRET_FILES),
                      inventory=inv)

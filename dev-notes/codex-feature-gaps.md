@@ -50,8 +50,8 @@ it does not imply an unperformed live-provider or screen-reader check passed.
 | 21. Worktree handoff | Open. Needs canonical path rebinding, native cwd verification and recovery when paths move or disappear. Existing worktree creation remains. |
 | 22. Memory controls | Native thread memory-mode on/off, including before the first message. |
 | 23. Speed tiers | Open. Model catalogs advertise tiers; selection needs explicit usage/cost wording and per-turn verification, with configured defaults preserved. |
-| 24. Browser | Open. A configured MCP browser server can now be enabled; Codex desktop's integrated browser is not supplied by that. |
-| 25. Computer use | Open. Requires a supported host/service API, accessible consent and platform isolation. |
+| 24. Browser | Open. [Research for #524](codex-browser-524.md) found no supported desktop browser/extension attachment for third-party app-server chats in installed Codex 0.163.0. Browser flags and policy schema types don't supply that interface. Every normal turn now explains the limitation, including resumed chats, copies and API-credit chats. An explicitly selected MCP browser server remains a separate option. |
+| 25. Computer use | Open. The documented native integration belongs to the desktop app; no supported app-server host attachment was found in the #524 research. The same per-turn note explains its absence. Still requires a supported host/service API, accessible consent and platform isolation. |
 | 26. Remote hosts/mobile | Open. Needs an authenticated transport and remote paths/approval identity; the local stdio runtime cannot stand in for it. |
 | 27. Cloud | Open. Needs a supported authenticated cloud task API and environment/result lifecycle. Do not guess private desktop endpoints. |
 

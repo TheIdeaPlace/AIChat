@@ -2,7 +2,9 @@
 
 This guide uses Windows key names. On a Mac, use Command (Cmd) for Ctrl,
 Option for Alt and Return for Enter. Open menus from the menu bar (VoiceOver:
-VO+M). The Alt keys listed beside a dialog's settings work on Windows and Linux only.
+VO+M). The Alt keys listed beside a dialog's settings work on Windows and Linux only. On a Mac,
+dialogs follow the Mac's own keys: Return presses the default button, Escape cancels, and Tab or
+VoiceOver reach the rest.
 
 The Chat Place is a keyboard and screen reader friendly home for your AI chats. Claude, Codex
 and GitHub Copilot CLI chats share one list: read, find and export conversations, hear replies,
@@ -18,7 +20,7 @@ This guide starts with the everyday things and goes deeper as it goes on. Each p
 heading, so your screen reader's heading keys move between them. For every key in one list, use
 Help, Keyboard Shortcuts (F1). A glossary at the end explains the terms the guide uses.
 
-The Chat Place is an independent project by Kelly Ford, not made, sponsored or endorsed by
+The Chat Place is an independent project by Kelly Ford and other contributors, not made, sponsored or endorsed by
 Anthropic, OpenAI, Microsoft or GitHub. Claude and Claude Code are trademarks of Anthropic; ChatGPT and Codex are
 OpenAI products; GitHub Copilot is a product of GitHub, a Microsoft company.
 
@@ -28,7 +30,8 @@ You need:
 
 - Windows 10 or 11, a Mac with Apple silicon, or a Linux PC (x64 or arm64, a preview) at least as
   new as Ubuntu 24.04, Debian 13 or Fedora 40, with Orca for speech.
-- For Codex chats: a native Codex CLI signed in to ChatGPT. Codex chats are listed once Codex is
+- For Codex chats: a native Codex CLI and either a ChatGPT sign-in or an OpenAI API key
+  for chats on API credits. Codex chats are listed once Codex is
   found; Settings, Include Codex chats turns them off or on. Claude Code is not required.
 - For GitHub Copilot CLI chats (a preview): the native GitHub Copilot CLI, signed in with
   `copilot login` to a GitHub account that has Copilot, and **Include GitHub Copilot CLI chats**
@@ -53,12 +56,13 @@ once to sign in:
 Or let The Chat Place do it: Tools, Sign In, Claude Code offers to install Claude Code when it
 can't find it, and to sign you in when it isn't signed in.
 
-The Chat Place never uses an API key. Reading chats costs nothing, because everything it reads
-is on your own computer. Each message you send, and the work the AI does to answer it, is a
-**turn**. Codex turns use your ChatGPT sign-in. In Claude chats started here, each turn is a
-Claude Code turn, which counts against your plan's monthly Agent SDK credit; past that credit,
-turns stop unless you've turned on extra usage, which is billed. Tools, Usage and Context
-(Ctrl+Shift+U) shows where you stand.
+Reading chats costs nothing, because everything the app reads is on your own computer. Each
+message you send, and the work the AI does to answer it, is a **turn**. Subscription Codex turns
+use your ChatGPT sign-in. Subscription Claude turns count against your plan's monthly Agent SDK
+credit; past that credit, turns stop unless you've turned on extra usage, which is billed.
+You can instead choose API credits for a new Claude or Codex chat and charge turns to that
+provider's key. Tools, Usage and Context (Ctrl+Shift+U) shows where you stand; API costs are
+estimated. See Chats on API credits for setup and limits.
 
 ### Installing
 
@@ -237,9 +241,114 @@ between Claude and a website, so you can say "post this as a draft" instead.
 - If a command-line tool does the job, such as `gh` for GitHub, Claude can use that without
   connecting anything. Just ask.
 
-Claude in Chrome, which lets Claude use your browser, and computer use aren't available in chats
-The Chat Place runs yet. For Chrome, use the Claude desktop app, or `claude --chrome` in a terminal.
-Computer use is a preview in the desktop app, off until you turn it on, and not on every plan.
+### You want Claude to use your browser
+
+**Claude in Chrome** lets Claude use your Chrome or Edge browser: open pages, read them, fill in
+forms and click. Claude chats here can use it once you have the Claude in Chrome extension
+installed and signed in to the same claude.ai account as Claude Code. Then:
+
+- It's on in Claude chats on your subscription, new and old, from their next message.
+  **Settings, "Let Claude use Chrome"** turns it off or on. Until you change it, it's on if
+  Claude Code has found the extension on your computer.
+- Ask for it by name the first time, for example "Using Chrome, open example.com and tell me
+  what's on it." Keep Chrome open while Claude works in it.
+- The first time in a chat, Claude in Chrome asks to "create a browser window and read your
+  tabs", and often to "open a new browser tab". Then each website asks your permission, as
+  "Claude in Chrome wants to navigate on example.com", and again for reading, clicking or typing
+  there. **Allow for This Chat** lets it use that site for the rest of the chat. A local address
+  counts with its port, such as 127.0.0.1:8765. In Auto mode, sites Claude Code judges safe may
+  not ask at all.
+- Claude keeps the tabs it opens in a tab group of the chat's own, and finds them again on your
+  next message, as long as Chrome stays open. A copy of the chat starts with a group of its own.
+  Claude often closes its tabs when it's done: ask it to leave a tab open if you want to come
+  back to it. It sees only its own tabs, not the ones you opened.
+- It isn't available in chats on API credits: Claude Code keeps it off with an API key. Claude is
+  told so, so it says so rather than sending you to a setting.
+
+**What Claude can do in Chrome.** More than open pages and click. Its tools let it:
+
+- Go to pages, go back and forward, and open, switch between and close its own tabs.
+- Read a page: its text, its layout as a list of the things on it (links, buttons, fields), or a
+  search of it for something you describe ("the Submit button").
+- Click, type, press keys, scroll, drag, and fill in form fields, check boxes and lists.
+- Take screenshots, and record what it does as an animated GIF.
+- Read the page's console messages and the network requests it made, and run JavaScript in it:
+  useful for checking a web page you're building.
+- Upload a file to a page's upload field, up to 10 MB. The file has to be one the chat can read:
+  in its folder, or a folder you've added to the chat. It refuses key and password files, such as
+  `.env`, `.pem` and `.key` files and anything in `.ssh`.
+- Resize the window, and choose between browsers when more than one has the extension.
+- Work in sites you're already signed in to, such as Gmail, Google Docs or GitHub, as you.
+
+Things to ask, for example: "In Chrome, open my calendar and list tomorrow's meetings", "Fill in
+this form from contacts.csv", "Check the console on localhost:3000 for errors", "Copy the prices
+on this page into a CSV file" or "Record a GIF of signing up on my test site".
+
+**Working from here, not in Chrome.** You can stay in The Chat Place and let Claude tell you what's
+in Chrome, switching to Chrome with Alt+Tab only when you have to. Ask Claude:
+
+- **To describe a page in words:** "What's on the page you have open? List the headings, links and
+  form fields", or "Read me the main article". Claude usually tells you an article in its own
+  words rather than reading it out word for word.
+- **What tabs it's using:** "Which tabs have you got open, and what's in each?" It knows only the
+  tabs it opened.
+- **To tell you when it needs you:** "Tell me when you need me to go to Chrome and do something,
+  and what." Claude stops at a sign-in page, a CAPTCHA or a pop-up box anyway; this way its reply,
+  which The Chat Place announces as usual, says what to do there.
+- **To save what it sees:** "Take a screenshot and save it in my Documents folder", then open the
+  file yourself. Claude may ask to run a command to copy it there. "Record a GIF of what you do"
+  saves the GIF where Chrome saves downloads, usually your Downloads folder.
+- **What size it's working at:** "What size is the page in the tab you're using? Check
+  window.innerWidth and window.innerHeight." With Chrome maximized it's your screen's width and a little less than its height;
+  something like 400 by 500 means the tab is too small (see "Known problems").
+
+**What it won't do.** It stops and asks you to sign in, type passwords or solve CAPTCHAs yourself.
+It won't trade stocks, enter sensitive information such as card or ID numbers, or follow
+instructions it finds on a page or in an email. It can fill in a signup or checkout form if you
+ask, so check what it's about to do. Adult and pirated-content sites are blocked; banking and
+other financial sites ask your permission first, like any other site. If a page puts up a
+pop-up message box, Claude can't get past it: close it yourself and tell Claude to go on. Browser
+work counts against your plan's usage, and more than ordinary chat.
+
+**Known problems.** These are Claude in Chrome's, and happen in Claude Code too:
+
+- **Maximize Chrome before you ask Claude to browse.** Claude works in its own tabs in the
+  background, and each keeps the size Chrome's window had when Claude opened it. If the window was
+  small then, sites show their phone layout and screenshots are tiny. Resizing and reloading
+  doesn't fix a tab that's already open: maximize Chrome and ask Claude to open a new tab.
+  Windows 11 is adding a setting that does this for you: **Open apps maximized**, in Settings,
+  Accessibility, Visual effects, which maximizes every app's window as it opens. It came to Windows
+  Insiders in August 2026 and to Release Preview in September 2026, so your Windows may not have
+  it yet.
+- **A tab opened by a link can be left behind.** If a link opens a new tab, Claude may not be able
+  to close it afterwards. The same can happen to a blank tab when Claude closes its other tabs.
+  Close it yourself with Ctrl+W.
+
+The extension keeps its own list of sites you've always allowed: open the extension, then its
+menu (three dots), **Extension settings**, Permissions. Anthropic describes it all in more detail:
+
+- [Get started with Claude in Chrome](https://support.claude.com/en/articles/12012173-getting-started-with-claude-in-chrome)
+- [Use Claude Code with Chrome](https://code.claude.com/docs/en/chrome), which is how chats here use it
+- [Claude in Chrome permissions guide](https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide)
+  and [Use Claude in Chrome safely](https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely)
+- [Claude in Chrome troubleshooting](https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting)
+
+Computer use, which lets Claude use your other apps, isn't available in chats The Chat Place runs.
+Claude is told so, so it says so plainly and uses what it has, such as Chrome or web search,
+rather than asking you to turn it on. Computer use is a preview in the desktop app, off until you
+turn it on, and not on every plan.
+
+### You want Codex to use your browser
+
+Codex chats run here cannot use the Codex or ChatGPT desktop app's built-in browser,
+browser extension, native computer use or Codex Cloud. This applies to subscription and
+API-credit chats. No setting here turns these features on for Codex; **Let Claude use Chrome**
+applies only to Claude. Codex is told these limits in each chat, including reopened chats
+and copies, so it can explain them instead of sending you to a setting.
+
+An MCP browser server you have configured and explicitly enabled through
+**View, Connected Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
+check a page in your own browser.
 
 ### You're asked too often, or you want more control
 
@@ -366,32 +475,155 @@ job.
 
 ### You want to use API credits instead of your plan
 
+Tools, API Keys opens on **Provider**, whose choices say whether each has a key, for example
+"Claude (Anthropic), key added" and "Codex (OpenAI), no key". The rest of the dialog is about
+the provider chosen there.
+
+For **Codex**, open **Tools, API Keys** (Alt+T, P), choose **Codex (OpenAI)** under
+**Provider** (Alt+P), paste your OpenAI key into the masked box, and choose **Add Key**.
+**Test Key** checks it with a small paid request. Each provider has its own limits and total:
+both start at $20 overall and about $2 a message. **Save Limits**, **Reset Total** and
+**Release Held** apply to the provider selected here. Release Held asks first, because the
+released money may represent spending that could not be counted.
+
+In **New Session**, choose **Codex**, then **API credits** under **Charge to**. The subscription
+is the default and a chat's billing never changes. The app uses a separate Codex home and
+keeps your ChatGPT sign-in separate. Continue on API Credits waits for your first Send; the conversation is a hidden prefix to your message. Cancelling Send keeps only your message in the reply box. **Continue on API Credits** makes a new chat with a text
+copy of the earlier conversation; that first message may cost more.
+
+The model list offers priced models and other models advertised by Codex's API-key home.
+Priced models are gpt-5-nano, gpt-5.4-nano, gpt-5.4-mini, gpt-5.4, gpt-5.5,
+gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gpt-6-sol, gpt-6-luna and
+gpt-6.1-sol. Other models say **price unknown**. Availability depends on your OpenAI account.
+Ultra effort is not offered on API credits.
+
+Every priced OpenAI cost says **estimated**, using prices checked November 19, 2026.
+Codex costs assume OpenAI's standard pricing. If your OpenAI project is set to use Priority processing, Codex chats cost more than The Chat Place estimates.
+Reasoning is included in output, and cache writes are counted
+where reported. Long-context models use conservative surcharge rates: twice input and cache,
+one and a half times output, because cumulative counters cannot prove the request's band.
+Each model uses its own maximum input and output. GPT-5.6 Sol's promotional price expires
+at 10:00 UTC on November 29, 2026; after that it says price unknown unless the table is updated.
+
+Before your first message with **price unknown**, a required question explains that your
+OpenAI key will be charged and your dollar limits cannot stop a message. Cancel is the
+default. Enter or Escape on the warning keeps your message; Tab reaches Cancel,
+then Send on API credits. Changing the model or restarting the app requires the question again.
+Turning off the optional first-message question in Settings does not turn this warning off.
+
+Every paid send still says **Sent on API credits to** the chat's name, even with announcements
+off. After an unpriced reply, you hear, for example, **testing replied; used 12,400 tokens, cost unknown**. This notice stays spoken with the cost setting off. Tokens count input plus
+output; cached input and reasoning are included in those figures.
+
+Each unpriced message keeps a per-message **allowance** against the overall limit, normally
+$2, or the remaining overall allowance. This can block later messages but cannot cap a
+message's actual cost. Send Now (Ctrl+Enter) holds another allowance for a steer.
+Usage and Context (Ctrl+Shift+U), Properties (Alt+Enter), the status
+bar and Tools, API Keys identify unpriced usage. Unknown-only spending says **cost unknown**.
+Mixed spending says **priced spending $X, plus unpriced usage**. The status bar gives a short
+total; Usage and Context gives the token details.
+Input, cached-input, cache-write and output tokens are saved across restarts. Reset Total
+starts a new overall usage total; Properties keeps the chat's history. Release Held frees
+inactive allowances without deleting token history.
+
+**Stop** counts reported usage and, when possible, adds a ceiling for one interrupted request:
+**estimated, at most**. With price unknown, Stop says cost unknown and keeps the allowance;
+it cannot give a dollar ceiling. Missing usage or a stream error can keep credit held. Release Held
+becomes available once that message is no longer running. A refused key releases the unused
+hold; replace it in API Keys and send again. Connected services, hosted search, automatic
+review, subagents, compaction, goals, Ask Aside and copies cut at an earlier turn are not
+available on OpenAI credits. Human approvals and full-history API copies are available.
+
+If a price expires during a turn, the turn continues with cost unknown and its allowance
+held. Only later tokens enter unpriced usage. The reply notice says the price expired
+and counts only those unpriced tokens. Queued messages come back unsent with a
+confirmation reason. Stopped or failed unpriced replies say **stopped** or **failed**;
+incomplete counts say **at least** or **tokens not reported**.
+
+For **Claude**, the existing Anthropic API options work as follows.
+
 If you have prepaid credit on an Anthropic API key, a Claude chat can spend that instead of
 your Claude subscription.
 
 1. Add the key in **Tools, API Keys** (Alt+T, P): paste it in the Claude API key box and choose
    **Add Key**. **Test Key** checks it with a request that costs less than a cent. The same
-   dialog sets the limits: The Chat Place stops API chats once it has spent $190, and stops any
-   one message at about $5, until you change them. On a Mac, the first message on API credits
+   dialog sets the limits: The Chat Place stops API chats once it has spent $20, and stops any
+   one message at about $2, until you change them. On a Mac, the first message on API credits
    may bring up a keychain question for "security": choose **Always Allow**.
 2. In **New Session** (Ctrl+N) choose **API credits** under **Charge to**. Fable is offered for
    these chats. To carry on a chat you already have, use **Chat, Continue on API Credits**: it
    makes a new chat that picks up from the old one, whose first message costs more because the
    whole conversation goes again.
 
-You always know when a message is on API credits: the chat's row and the window's title say
-"API credits", each message you send is said to have gone on API credits once Claude Code has
+You always know when a message is on API credits: the chat's row says "Claude API credits" in
+its Charged to column, the window's title says "API credits", each message you send is said to have gone on API credits once Claude Code has
 it ("Sent on API credits to Budget", with your message read back after it; always said, even
 when announcements are off, and said once more if another announcement cuts it off before
 Budget says anything of its own. Until it's said, the status bar shows "Sending on API
 credits…"), the first one in each
 chat asks "Send on API credits?" (Enter sends, Escape doesn't), each reply, stopped message and
 Ask Aside answer says what it cost, and
-the status bar shows what the chat and The Chat Place have spent. A chat's charging can't be
+the status bar shows what the chat and The Chat Place have spent in a Claude chat. In a
+Codex chat it shows The Chat Place's estimated priced total and any unpriced token count.
+Usage and Context (Ctrl+Shift+U) gives the Codex chat's figure and what's held.
+
+**What each chat and each reply cost.** The Session list's **Cost** column, just after Charged
+to, says what a chat on API credits has spent in all, in the words Properties (Alt+Enter) uses:
+"$1.42" for a Claude chat, "an estimated 3 cents" for a Codex chat, or "cost unknown for 12,400
+tokens" for a Codex model with no known price. It's left out for chats on a subscription,
+chats started outside The Chat Place, and chats that haven't spent anything yet. Each reply in a
+chat on API credits ends with what it cost, in the words you heard: "Cost: 19 cents", "Cost: an
+estimated 3 cents", or "Cost: unknown, 12,400 tokens". It's at the end of the reply's line in the
+messages list, and the last line when you read the whole message (Enter) or its formatted page.
+It's kept with the chat in The Chat Place's own files, never in Claude Code's or Codex's, so it's
+still there after a restart. Copy leaves out the cost line, so a reply you paste elsewhere doesn't
+carry it; an exported chat keeps it. It's there even with "Give the cost of each API-credit reply"
+turned off in Tools, Settings; that setting only changes what you hear. A reply's cost covers
+the whole turn it ended, tool calls included.
+
+A chat's charging can't be
 changed once it's made. Your key only goes to Anthropic, whatever a settings file says, and a
 key Anthropic refuses is said within seconds. Claude.ai connectors and Remote Control aren't
-available on API credits, and Codex and Copilot chats can't use them yet. Older releases of
+available in Claude API chats. Copilot chats cannot use API credits. Older releases of
 The Chat Place don't list chats on API credits.
+
+**When a limit is reached**, for Claude and Codex alike: a message that reaches the per-message
+limit stops and says so, and you can send another. Once the overall limit is used up, a message
+stops at what was left of it and says it was the overall limit. After that, nothing is sent
+on API credits until you raise the limit or reset the total in Tools, API Keys; your message
+stays in the reply box. If other chats' messages were holding part of the limit, you can send
+again once they finish.
+
+In a Claude chat on API credits, Usage and Context (Ctrl+Shift+U) ends with the API credits
+details. In a chat on your subscription, they're one line just before your plan's limits, which
+stay last: what's been spent and what's left of the limit. For the rest (today, the last 7 days,
+and spending by model and by chat), open Usage and Context from a chat that uses API credits.
+
+These totals count only what The Chat Place spends. The Claude Console and the OpenAI dashboard
+show everything charged to your account, including other apps using the same key, so their
+totals can be higher. To see The Chat Place's spending there too, make a key just for it: both
+let you create several keys and show spending for each.
+
+### Understanding model costs
+
+The costs The Chat Place shows in the Cost column, at the end of each reply, in the status bar,
+in Usage and Context, in Properties and in Tools, API Keys are a guide to what you're spending,
+not a bill.
+
+- **They're this copy's own count.** The Chat Place counts only what this copy of it sends, on
+  this computer. It doesn't see other computers, other apps, or anything else using the same key.
+  **Reset Total** in Tools, API Keys starts its count again.
+- **They're estimates.**
+  - A Claude cost is what Claude Code reports for each message, from Anthropic's prices.
+  - A Codex cost is worked out by The Chat Place from OpenAI's prices, checked November 19, 2026,
+    and the usage Codex reports. That's why Codex costs are always said as "estimated".
+  - A Codex model with no known price shows the tokens it used instead of a cost.
+- **Your actual charge can differ.** Price changes, discounts, taxes, credits, OpenAI's Priority
+  processing, and usage that couldn't be counted (a message stopped partway, say) all make the bill
+  differ from The Chat Place's figures.
+- **The final word is your provider's.** For Claude chats, that's the Claude Console's usage and
+  billing pages (Anthropic). For Codex chats, it's the OpenAI dashboard's usage and billing pages.
+  To find The Chat Place's own spending there, give it a key of its own.
 
 ### You want several chats or agents working at once
 
@@ -713,10 +945,16 @@ key again to see later messages. Escape puts you back where you pressed the key.
 
 Press **Enter** on a message to read it as a formatted page. There, your screen reader's browse
 mode moves by heading (H), table (T), list (L) and code block (each code block is a region: R in
-JAWS, D in NVDA). Links open in your browser. **Read as Plain Text** (Alt+P) shows the message in
+JAWS, D in NVDA). Web links open in your browser; safe local files open in their default app. **Read as Plain Text** (Alt+P) shows the message in
 a plain text box instead, to read by line, word and character. Escape closes either one and puts
 you back on the same message. On Windows the formatted page needs Microsoft's Edge WebView2
-runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Linux,
+runtime, which comes with Windows 11; without it, Enter opens the plain text box. On Windows,
+closing the page hides and empties its window rather than closing it, and the next message loads
+into it. While hidden it holds an empty page, and nothing is on screen or reachable until you open
+another message. If WebView2
+stops working, the formatted page closes within half a minute, the message opens in the plain
+text box, and you hear that the formatted view stopped working. Messages then open as plain text
+until you restart The Chat Place. On Linux,
 Enter opens the plain text box unless you turn on the formatted page in Settings, Reading
 messages; it needs WebKitGTK, and Orca 48 moved through its headings but didn't read it line by
 line.
@@ -805,6 +1043,34 @@ update. In Claude chats started here, Claude keeps a list only because The Chat 
 as the desktop app does. **Settings, "Let Claude keep a task list"** (Alt+K) turns that off from
 the next turn. That setting applies only to Claude.
 
+### Suggested messages
+
+After a reply, Claude can suggest what you might send next, such as "write the script" after it
+has proposed one. Turn it on with **Settings, "Suggest what to send next after each reply"**. It's
+off at first.
+
+- **When a reply comes with a suggestion,** it's put in your message box, selected, and the
+  **Prompt suggested** sound plays. The suggestion itself isn't read aloud. With sounds off or
+  muted, or when the sound is held back during a presentation, you hear "Prompt suggested"
+  instead (unless announcements are set to Silent), and the status bar says a suggested message
+  is in your message box. Not every reply has one: Claude suggests something only when there's a
+  likely next step.
+- **Type to replace it.** Because it's selected, whatever you type takes its place. An arrow key
+  keeps it and moves the cursor, so you can change it. **Ctrl+Enter** sends it as it stands, with
+  anything you've attached.
+- **Only into an empty box.** If you've typed something, or the chat has a draft waiting, your text
+  is left alone and the suggestion isn't put in.
+- **It isn't your draft.** Leave the chat with the suggestion untouched and it's offered again
+  when you come back. Change it and it's your draft like anything you typed; delete it and it's
+  gone.
+- Your next message clears it, and each chat keeps its own.
+- It works in Claude chats started here on your subscription. Chats on API credits don't ask for
+  suggestions, because each one is an extra request that the reply's cost wouldn't include. Codex
+  and Copilot chats don't have them: neither offers suggestions to other apps yet.
+- **It needs a recent Claude Code:** 2.1.326 sends suggestions, 2.1.286 doesn't. In a terminal,
+  `claude update` brings yours up to date. If Claude Code's own record says suggestions aren't on
+  for your account, the setting says so, and a chat tells you once, after a reply.
+
 ## Sounds
 
 Sounds tell you what a chat is doing without a word being said: you can hear tools running with tool activity off, and know a chat needs you from across the room. They're off until you turn them on. A sound adds to what's announced or on the status bar, and never replaces it, so nothing is lost with sounds off.
@@ -853,6 +1119,8 @@ Every event has a sound of its own, and events that belong together sound alike:
 | Usage or context warning | Alert: high notes, alternating |
 | Conversation compacted | Settle: a chord settling down into one low note |
 | Message from another session | Knock: two knocks, then a lower note answering, when another Claude Code session sends a message into this chat (shown as "From another session") |
+| Prompt suggested | Taps: two light high taps, when Claude's suggested next prompt is put in your message box (see "Suggested messages") |
+| Reached the end of a list | Edge: one soft, short note, when Up or Home on the first row of the session list or the messages list, or Down or End on the last, has nowhere to go. The same sound as QuickMail's |
 
 When a lot happens at once, some sounds are left out so it never turns into noise. A tick is skipped if another sound is playing, and there's at most one every fifth of a second. The same sound doesn't repeat within a second. **Needs you** and **Turn failed** go first.
 
@@ -1001,7 +1269,7 @@ Lists opens on the kind you used last. Some keys open it on their own kind:
 For every kind:
 
 - **Enter** reads the item in full in the Details box below the list. For links, Enter (or
-  Open) opens the link in your browser and closes Lists. For subagents, Enter (or Read
+  Open) opens the link and closes Lists. For subagents, Enter (or Read
   Conversation) opens the subagent's conversation over Lists.
 - **Ctrl+C** (or Copy) copies the item: the code, the link's address, the file's path, the
   command, your answer, or a subagent's final report. You hear what was copied. For links, **Ctrl+Shift+C** (or Copy as
@@ -1013,8 +1281,25 @@ For every kind:
 A kind with nothing to list says so, for example "No commands in this chat." Each link is listed
 once, at its newest mention. A long address is shortened to its site and its end, but the whole
 address is always what's opened or copied. A link in a code block or in inline code says "in
-code". Only web, email and session links open; anything else, such as a file path, is marked
-"copy only" and says why if you try to open it. Links in tool calls and results are listed only
+code". Local paths are listed as **file**: Windows drive paths, network paths and file: URLs,
+bare or in inline code, quotes, angle brackets or Markdown link targets. Paths containing spaces
+need one of those delimiters. A line suffix such as `:12` means the file itself. Clear relative
+file references use the session's working folder when it is known.
+
+- **Open** opens an existing safe file in its default app.
+- **Open containing folder** selects the file in File Explorer or Finder. On Linux it uses the
+  file manager, or opens the containing folder.
+- A folder offers **Open folder** and Copy. Executable, script and shortcut types offer folder
+  access and Copy, with the reason in the row. Missing files say **File not found. Copy only.**
+- Existence and safety are checked again when you choose an action.
+- A network path (`\\server\share\…`) isn't checked while the list or page is shown, so an
+  unreachable computer can't hold up The Chat Place; it's checked when you choose Open.
+- In formatted reading, activate a file link with your usual screen-reader link key. It uses
+  the same rules. Use **Ctrl+L** for folder access and Copy.
+- A code block containing just one local path offers Open and folder access too. Enter still
+  reads the code; Copy keeps its original text.
+
+Other unsupported link types are copy-only. Links in tool calls and results are listed only
 with Show Tool Activity on.
 
 ### Subagent conversations
@@ -1348,7 +1633,7 @@ The parts of this guide that describe each feature say the same.
 Codex chats are listed once The Chat Place finds a native Codex CLI: the Codex app's copy on
 Windows, the copy bundled with the ChatGPT app on a Mac, or the copy Codex's own installer keeps
 in your `.codex` folder. Existing chats are listed even when Codex isn't signed in; starting
-chats, sending and usage need the sign-in. Settings offers
+chats, sending and usage need the sign-in for subscription chats. API-credit chats use their separate OpenAI key. Settings offers
 **Include Codex chats (restart required)** to turn them off or on, and your choice is kept. If
 Codex isn't found, that option says to install the Codex app or CLI, then restart. Turning the
 option off and restarting hides Codex chats without deleting anything.
@@ -1753,9 +2038,11 @@ Press **Ctrl+N** (File, New Session). It works from anywhere in the window. Then
 - **Title:** optional; without one, it's made from the first words of your message.
 - **Model:**
     - Claude: Default (your Claude Code setting), Opus, Sonnet or Haiku, each the latest of its
-      kind. Change Model (Chat, Chat Settings) changes it later, from the next turn. Fable isn't offered, because
-      on some plans it bills to usage credits without asking; if a turn would run on Fable anyway,
-      The Chat Place stops it before anything is sent, and says why.
+      kind, and Fable on a Max or Ultra plan. Change Model (Chat, Chat Settings) changes it later,
+      from the next turn. On Pro, or a plan The Chat Place doesn't recognize, Fable isn't offered,
+      because every Fable message would be charged to usage credits. See "Fable and usage
+      credits". If a turn would run on a Fable you didn't choose, The Chat Place stops it before
+      anything is sent, and says why.
     - Codex: **Codex's default** (your Codex settings), or one of the models Codex offers. A chat
       on Codex's default uses whatever that is at each turn, so it moves with it if it changes. The
       list loads in the background; if it can't be loaded, Codex's default is still there.
@@ -2552,7 +2839,8 @@ copy of the chat.
 **You can't add a new tool from The Chat Place.** It works with the tools already set up in each
 provider. Add or remove Claude's with Claude Code (`claude mcp`) or on claude.ai, and Codex's with
 Codex in a terminal (`codex mcp add`), then press **Refresh** (Alt+F). Copilot chats don't have Connected
-Tools yet. Claude in Chrome isn't available in chats The Chat Place runs yet.
+Tools yet. Claude in Chrome shows in a Claude chat's list as `claude-in-chrome` when it's on (see
+"You want Claude to use your browser").
 
 **"3 tools" on a row** means that server or connector offers three separate things the AI can use,
 such as searching or fetching a page. **Details** (Alt+D) lists their names, as the server gives
@@ -2673,12 +2961,18 @@ still listed.
 what order. Move Status to the top, for example, and each line starts with "needs you", "working"
 or "idle", so you can stop on the one you want before hearing its title.
 
-The parts are called columns: Title, Provider (Claude, Codex or Copilot), Folder, Status, New
-reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the others in "The
-kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at first. Started and
-Last message are read only once you add them. Older saved choices gain Provider once, just after
-Title (or first if Title is hidden), without changing their other columns. If you remove
-Provider afterward, it stays removed. A column with nothing to say for a chat, such as New reply
+The parts are called columns: Title, Provider (Claude, Codex or Copilot), Charged to, Cost, Folder,
+Status, New reply, Last activity, Kind (desktop app, Cowork, terminal, The Chat Place and the
+others in "The kinds side by side"), Remote Control, Archived, Hidden and Groups, all read at
+first. Started and Last message are read only once you add them. Charged to says how each of
+The Chat Place's own chats is paid for: "Claude subscription", "Claude API credits", "ChatGPT
+subscription", "OpenAI API credits" or "Copilot plan". It's the one place a chat's line says
+it's on API credits. It's left out for chats started outside The Chat Place and for agent
+conversations. Cost says what a chat on API credits has spent in all ("$1.42", or "an estimated
+3 cents" for Codex), and is left out when it hasn't spent anything. Older saved choices gain
+Provider once, just after Title (or first if Title is hidden), Charged to once, just after
+Provider, and Cost once, just after Charged to, without changing their other columns. If you
+remove one afterward, it stays removed. A column with nothing to say for a chat, such as New reply
 when there isn't one, is simply left out of that line.
 
 **Last activity** ("active 5 minutes ago") is the last time the chat did anything, even in the
@@ -2845,6 +3139,12 @@ setting moves straight to it.
   chat on or off instead (see "Remote Control").
 - **Let Claude keep a task list** (Alt+K): Claude chats started here only, from your next
   message. On at first.
+- **Let Claude use Chrome** (no access key; Tab to it): Claude in Chrome in Claude chats started here on your
+  subscription, from each chat's next message. On at first if Claude Code has found the Claude in
+  Chrome extension (see "You want Claude to use your browser").
+- **Suggest what to send next after each reply** (no access key; Tab to it): suggested messages in
+  Claude chats started here on your subscription, from each chat's next message. Off at first
+  (see "Suggested messages").
 - **Include Codex chats (restart required)** (Alt+X): on once Codex is found. Restart The Chat
   Place for a change to count; you hear that when you press OK.
 - **Include GitHub Copilot CLI chats (preview; restart required)** (Alt+I): shown only once
@@ -2865,7 +3165,9 @@ copies the selected line, Copy All (Alt+A) copies every line, and Escape closes 
 status bar's context button opens it too.
 
 - **In a Claude chat:** how full the chat's context is ("Context 62% full: 124,000 of 200,000
-  tokens"), then each of your plan's usage limits on its own line. It's also said once, unasked,
+  tokens"), then each of your plan's usage limits on its own line. Once a Fable turn has run, that
+  includes "Weekly Fable limit", from the latest Fable turn, since turns on other models don't
+  report it. It's also said once, unasked,
   when the context passes 80%, or a limit passes 90%. In a Claude chat started here, once a turn
   has run since The Chat Place started, lines after the context say what fills it, as Claude Code
   reported at the end of that turn: "System prompt: 2,362 tokens", "Memory files: 1,279 tokens",
@@ -3371,7 +3673,27 @@ The Chat Place uses. Run `claude update` in a terminal, then send again.
 with Fable, which the chat didn't choose: its default model, or a fallback from the model you
 chose. Some plans bill Fable to usage credits, so The Chat Place stops the turn, usually before
 your message is sent, and puts your message back in the message box. Choose another model with
-Chat, Chat Settings, Change Model, then send again.
+Chat, Chat Settings, Change Model, then send again. To use Fable on purpose, choose it with
+Change Model; it's offered on Max and Ultra plans.
+
+**Fable and usage credits.** Max and Ultra plans include a weekly Fable allowance. Past it,
+Fable stops working, or, if usage credits are turned on for your account, Claude Code charges
+Fable turns to them without asking. So The Chat Place stops a Fable turn as soon as Claude Code
+says it's being charged to usage credits, and says so. The request that went past the allowance,
+and any already under way, may be charged.
+
+From then on, each time you send to a chat on Fable (Send, Steer, Other Machines, Ask Aside, or
+a new chat's first message), it asks **Use usage credits?**:
+- **Use Usage Credits** sends it on usage credits, for that one turn.
+- **Change Model** opens Change Model for that chat.
+- **Cancel** (the default, and Escape) sends nothing; your message stays in the message box.
+
+It asks every time and never remembers your answer. A queued message, or an agent
+conversation's message, isn't sent on usage credits: it comes back with the reason.
+
+A chat on Fable isn't sent at all while Claude Code isn't signed in to a plan that includes
+Fable: on Pro, Team or Enterprise, or before The Chat Place has checked your plan. Choose another
+model with Change Model, or check the sign-in with Tools, Sign In, Claude Code.
 
 **Claude doesn't use one of my connectors or MCP servers.** Choose Tools, Connected Tools (MCP)
 with the chat selected. A tool that needs sign-in has Sign In; one that failed has Reconnect and
@@ -3389,11 +3711,12 @@ Codex app's copy, the copy in the ChatGPT app on a Mac, or a Codex CLI you insta
 Settings (Ctrl+Comma), check **Include Codex chats (restart required)** (Alt+X), save and
 restart. If Codex isn't found, that option says to install the Codex app or CLI, then restart.
 Existing chats are listed even when Codex isn't signed in; only starting chats, sending and
-usage need the sign-in.
+usage need the sign-in for subscription chats. API-credit chats use their separate OpenAI key.
 
 **I'm not sure Codex is signed in.** Choose Tools, Sign In, Codex. It says whether Codex is signed
 in to ChatGPT and, if it isn't or uses another kind of credential, offers to open `codex login`
-in its own window. Codex chats here are sent only with your ChatGPT sign-in.
+in its own window. This checks subscription chats. For API-credit chats, use Tools, API Keys,
+Codex (OpenAI), Test Key.
 
 **A Codex chat is read-only and can't edit its folder.** On Windows, Codex can edit a folder only
 after its Windows sandbox is set up: choose Set up Agent sandbox in the Codex app, or add

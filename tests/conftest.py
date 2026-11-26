@@ -8,6 +8,32 @@ sys.path.insert(0, str(HERE))
 import pytest  # noqa: E402
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """If the process is still alive a while after the tests end, print
+    where every thread is (#711). On macOS CI, pytest has sometimes passed
+    every test and then hung until the job's 20-minute limit cancelled it,
+    with nothing in the log to say why. Exiting normally cancels this."""
+    import faulthandler
+    faulthandler.dump_traceback_later(90, exit=False)
+    session.config._tcp_exit_status = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """On macOS CI, leave as soon as pytest has said its last word (#711).
+    The hang above was the main thread alone in native code after Python
+    had finished, wx's Cocoa teardown at exit, and it took a passing run past
+    the job's limit (#731, twice). Nothing is left to report by now, so the
+    process ends with pytest's own status rather than wait on it. Elsewhere,
+    and on a Mac outside CI, it exits as usual."""
+    import os
+    status = getattr(config, "_tcp_exit_status", None)
+    if status is not None and sys.platform == "darwin" and os.environ.get("CI"):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(status)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
@@ -68,7 +94,19 @@ def app():
     """
     wx = pytest.importorskip("wx")
     instance = wx.GetApp() or wx.App(False)
+    # As the app does (#675): on a Mac, buttons get no Command+letter.
+    # Nothing elsewhere.
+    from thechatplace.ui import mac_keys
+    mac_keys.install(instance)
     yield instance
+
+
+@pytest.fixture(autouse=True)
+def _no_build_label(monkeypatch):
+    """A labelled test build runs the suite with TCP_BUILD_LABEL set (build_info):
+    no test may see it, or the release-tag checks refuse the label."""
+    monkeypatch.delenv("TCP_BUILD_LABEL", raising=False)
+    monkeypatch.delenv("TCP_BUILD_COMMIT", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +116,21 @@ def _no_keys_left_from_another_test():
     set_your_keys({})
     yield
     set_your_keys({})
+
+
+@pytest.fixture(autouse=True)
+def _formatted_view_not_given_up():
+    """A formatted page that timed out in one test (#693) mustn't turn the
+    formatted view off for every test after it. Only if the dialogs are
+    loaded: windowless test files never import wx."""
+    import sys as _sys
+    dialogs = _sys.modules.get("thechatplace.ui.dialogs")
+    if dialogs is not None:
+        dialogs._FORMATTED_BROKEN = False
+    yield
+    dialogs = _sys.modules.get("thechatplace.ui.dialogs")
+    if dialogs is not None:
+        dialogs._FORMATTED_BROKEN = False
 
 
 @pytest.fixture(autouse=True)

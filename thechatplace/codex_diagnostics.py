@@ -33,6 +33,11 @@ def _copilot_error(error):
 
 
 def safe_reason(error):
+    from .providers.codex_rpc import ApiCreditsRefused, CodexRuntimeProblem
+    from .openai_prices import Unpriced
+    if type(error) in (ApiCreditsRefused, CodexRuntimeProblem, Unpriced):
+        from .billing import scrub
+        return scrub(str(error))[:1000]
     from .providers.codex_features import CodexFeatureError
     if type(error) is CodexFeatureError:
         return CodexFeatureError.REASONS.get(error.code, '')

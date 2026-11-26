@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, List, NamedTuple, Optional, Tuple
 
-from .sessions import FIELD_FOLDER, FIELD_PROVIDER, FIELD_STATUS, FIELD_TITLE, SessionInfo
+from .sessions import (FIELD_CHARGED, FIELD_FOLDER, FIELD_PROVIDER, FIELD_STATUS, FIELD_TITLE,
+                       SessionInfo)
 from .transcript import ASSISTANT, PLAN, ChatMessage
 
 #: What can be sent on: what an agent said, or a plan it proposed. Not
@@ -23,10 +24,12 @@ RELAYABLE = (ASSISTANT, PLAN)
 MAX_LENGTH = {"codex": 32000}
 
 #: How a chat is named in the target list: enough to tell two apart.
-TARGET_FIELDS = (FIELD_TITLE, FIELD_PROVIDER, FIELD_FOLDER, FIELD_STATUS)
+TARGET_FIELDS = (FIELD_TITLE, FIELD_PROVIDER, FIELD_CHARGED, FIELD_FOLDER, FIELD_STATUS)
 
 
 def provider_name(provider: str) -> str:
+    if provider == 'codex-api':
+        return 'Codex'
     return (provider or "").capitalize() or "Another agent"
 
 

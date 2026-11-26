@@ -43,7 +43,7 @@ def test_ui_shortcut_literals_are_translated_except_native_menu_accelerators():
     ui = Path(__file__).resolve().parents[1] / 'thechatplace'
     failures = []
     for path in ui.rglob('*.py'):
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding='utf-8'))
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
         for node in ast.walk(tree):
             if not isinstance(node, ast.Constant) or not isinstance(node.value, str):

@@ -186,13 +186,13 @@ class LiveTurns:
         and it says if none are running, so it's on for its own chats."""
         info = info if info is not None else self._open
         return bool(self._background_entries(info)) or (
-            info is not None and info.provider == 'codex' and info.is_own)
+            info is not None and info.provider in ('codex', 'codex-api') and info.is_own)
 
     def on_stop_background_task(self):
         """Chat, Stop Background Task: end one shell command or agent Claude
         left running in the background, keeping the turn and the rest."""
         info = self._open
-        if info is not None and info.provider == 'codex' and info.is_own:
+        if info is not None and info.provider in ('codex', 'codex-api') and info.is_own:
             self._codex_control(info, '/background')
             return
         if info is None or info.provider != "claude" or not info.is_own:

@@ -48,9 +48,24 @@ def opened(tmp_path, monkeypatch, app):
     def record(self):
         shown.append(type(self).__name__)
         return wx.ID_CANCEL
+    # Native message boxes bypass wx.Dialog's interception and hang the
+    # capture loop. They are OS controls, not app-defined probe surfaces.
+    def native_message_box(_dialog):
+        pytest.fail("Native wx.MessageDialog must not be a probe surface")
+    monkeypatch.setattr(wx.MessageDialog, "ShowModal", native_message_box)
     for cls in (wx.Dialog, wx.TextEntryDialog, wx.SingleChoiceDialog):
         monkeypatch.setattr(cls, "ShowModal", record)
     return shown
+
+
+def test_native_confirmation_fails_instead_of_blocking_the_probe(opened):
+    dialog = wx.MessageDialog(None, "Synthetic confirmation", "Probe guard", wx.OK | wx.CANCEL)
+    try:
+        with pytest.raises(pytest.fail.Exception, match="Native wx.MessageDialog"):
+            dialog.ShowModal()
+        assert opened == []
+    finally:
+        dialog.Destroy()
 
 
 @pytest.mark.parametrize("name", list(ui_probe.SURFACES))

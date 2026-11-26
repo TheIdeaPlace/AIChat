@@ -490,12 +490,17 @@ class McpSession:
     def __init__(self, executable: str, cwd: str,
                  popen: Callable[..., subprocess.Popen] = subprocess.Popen,
                  lifetime: float = MAX_LIFETIME, disabled: Collection[str] = (),
-                 mcp_config: Optional[str] = None) -> None:
+                 mcp_config: Optional[str] = None, chrome: bool = False) -> None:
         if not cwd:
             raise McpError("This chat has no folder.")
         command = [executable, "-p", "--input-format", "stream-json", "--output-format",
                    "stream-json", "--verbose", "--permission-prompts", "none",
                    *settings_args(disabled)]
+        if chrome:
+            # Claude in Chrome (#319), as the chat's turns have it: without
+            # --chrome, mcp_status leaves claude-in-chrome out (checked with
+            # Claude Code 2.1.326), so the list wouldn't show what the chat has.
+            command.append("--chrome")
         if mcp_config:
             # Last: --mcp-config takes several values, as in a turn.
             command += ["--mcp-config", mcp_config]
@@ -670,9 +675,10 @@ def _refusal(subtype: str, error: str) -> str:
 
 
 def open_session(executable: str, cwd: str, disabled: Collection[str] = (),
-                 mcp_config: Optional[str] = None) -> McpSession:
+                 mcp_config: Optional[str] = None, chrome: bool = False) -> McpSession:
     """The session the window uses (tests put a fake here)."""
-    return McpSession(executable, cwd, disabled=disabled, mcp_config=mcp_config)
+    return McpSession(executable, cwd, disabled=disabled, mcp_config=mcp_config,
+                      chrome=chrome)
 
 
 def lifetime_minutes() -> int:

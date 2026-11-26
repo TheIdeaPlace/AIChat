@@ -109,6 +109,64 @@ def claude_folder_trusted(folder: str) -> Optional[bool]:
     return False
 
 
+#: (path, key) -> ((modified time, size), the answer last read from it).
+_config_flag_cache: dict = {}
+
+
+def claude_config_flag(key: str) -> Optional[bool]:
+    """A true/false value Claude Code keeps in ~/.claude.json, by its key
+    (the first place it appears), or None when the file has none.
+
+    Asked on every send, on the UI thread. The file runs to megabytes and
+    Claude Code rewrites it all the time, so it's read again only when it has
+    changed, and searched for the one key rather than parsed. A read that
+    fails (the file mid-replace, or half written) keeps the last answer, so
+    one turn isn't told the wrong thing. Only read, never written."""
+    path = claude_config_file()
+    pattern = re.compile(rb'"' + re.escape(key.encode()) + rb'"\s*:\s*(true|false)')
+    last = _config_flag_cache.get((str(path), key), (None, None))
+    try:
+        info = path.stat()
+        stamp = (info.st_mtime_ns, info.st_size)
+        if stamp == last[0]:
+            return last[1]
+        data = path.read_bytes()
+    except FileNotFoundError:
+        _config_flag_cache.pop((str(path), key), None)
+        return None
+    except OSError:
+        return last[1]
+    match = pattern.search(data)
+    if match is None:
+        # Half written, or not recorded yet: only a whole file without the
+        # key is remembered as having none.
+        if not data.rstrip().endswith(b"}"):
+            return last[1]
+        value = None
+    else:
+        value = match.group(1) == b"true"
+    _config_flag_cache[(str(path), key)] = (stamp, value)
+    return value
+
+
+def claude_chrome_extension_installed() -> bool:
+    """Whether Claude Code last found the Claude in Chrome extension
+    (``cachedChromeExtensionInstalled``, #319): what decides whether chats
+    get ``--chrome`` until Settings says otherwise. False if not recorded."""
+    return claude_config_flag("cachedChromeExtensionInstalled") is True
+
+
+def claude_offers_prompt_suggestions() -> Optional[bool]:
+    """Whether Claude Code's server-side flag for prompt suggestions is on
+    for this account (#474, #709): ``tengu_prompt_suggestion`` among the
+    feature flags it caches in ~/.claude.json. Without it, ``--prompt-
+    suggestions`` and its variable send nothing: on one PC the flag was true
+    and suggestions came, on another 13 of 13 turns brought none, on two
+    versions of Claude Code. None when it isn't recorded (an older Claude
+    Code, or a file not read yet), which isn't taken as off."""
+    return claude_config_flag("tengu_prompt_suggestion")
+
+
 def projects_dir() -> Path:
     return claude_home() / "projects"
 
@@ -1071,6 +1129,124 @@ def open_url(url: str) -> None:
         import subprocess
 
         subprocess.Popen(["xdg-open", url])
+
+
+def _finder_alias(path: Path) -> bool:
+    """A Finder alias can launch an app despite having no file extension.
+
+    Apple's TN1150 FileInfo has the big-endian finderFlags at bytes 8–9;
+    kIsAlias is 0x8000. Alias files also use the 'alis' file type.
+    """
+    if sys.platform != 'darwin':
+        return False
+    import errno
+    try:
+        info = _read_xattr(path, 'com.apple.FinderInfo')
+    except OSError as exc:
+        absent = {getattr(errno, 'ENOATTR', None), errno.ENODATA, errno.ENOTSUP}
+        if exc.errno in absent:
+            return False
+        raise  # metadata we couldn't inspect mustn't allow an Open
+    return len(info) >= 10 and (info[:4] == b'alis' or int.from_bytes(info[8:10], 'big') & 0x8000 != 0)
+
+
+def _read_xattr(path: Path, name: str) -> bytes:
+    """An extended attribute's value. ``os.getxattr`` exists only on Linux, so on a Mac this calls
+    the C library's getxattr(path, name, value, size, position, options) directly (#253 review:
+    every file check on a Mac raised AttributeError). Raises OSError, with the C errno, as
+    os.getxattr does: ENOATTR when the file has no such attribute."""
+    if hasattr(os, 'getxattr'):
+        return os.getxattr(path, name)
+    import ctypes
+    import ctypes.util
+    libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    getxattr = libc.getxattr
+    getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
+                         ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+    getxattr.restype = ctypes.c_ssize_t
+    raw_path, raw_name = os.fsencode(str(path)), name.encode()
+    size = getxattr(raw_path, raw_name, None, 0, 0, 0)
+    if size < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(path))
+    buffer = ctypes.create_string_buffer(size)
+    got = getxattr(raw_path, raw_name, buffer, size, 0, 0)
+    if got < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(path))
+    return buffer.raw[:got]
+
+
+def local_file_status(value: str, *, quick: bool = False):
+    """What a reply's local reference may do now (#253), without opening it.
+
+    ``quick`` is for listing and drawing pages: a network path is not touched
+    then, since an unreachable server holds the call for the OS's network
+    timeout on the UI thread. Opening always calls this with ``quick`` off.
+    """
+    from .local_files import FileStatus, blocked_type, local_path, network_path, plain_path
+    if not plain_path(value):
+        return FileStatus('', 'invalid', 'Unsafe file path. Copy only.')
+    path = local_path(value)
+    if not path or not plain_path(path):
+        return FileStatus(path, 'invalid', 'Unsafe file path. Copy only.')
+    if quick and network_path(path):
+        if blocked_type(path):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'network', 'Network file. Checked when you open it.')
+    if not os.path.isabs(path):
+        return FileStatus(path)  # a Windows path on another operating system
+    try:
+        resolved = Path(path).resolve(strict=True)
+        mode = resolved.stat().st_mode
+        if stat.S_ISDIR(mode):
+            return FileStatus(path, 'folder', 'Folder. Use Open folder or Copy.')
+        if not stat.S_ISREG(mode):
+            return FileStatus(path, 'invalid', 'Not a regular file. Copy only.')
+        executable = sys.platform != 'win32' and bool(mode & 0o111)
+        if blocked_type(path) or blocked_type(str(resolved)) or executable or _finder_alias(resolved):
+            return FileStatus(path, 'blocked', 'Executable, script or shortcut type. '
+                              'Use Open containing folder or Copy.')
+        return FileStatus(path, 'file', '')
+    except (OSError, ValueError, RuntimeError):
+        return FileStatus(path)
+
+
+def open_local_file(value: str, *, containing: bool = False) -> None:
+    """Act only on the item the user chose; recheck it immediately (#253)."""
+    status = local_file_status(value)
+    if containing:
+        if not status.can_reveal:
+            raise ValueError(status.reason)
+        if status.kind == 'folder':
+            open_local_folder(status.path)
+        else:
+            show_in_folder(Path(status.path))
+    else:
+        if not status.can_open:
+            raise ValueError(status.reason)
+        open_url(status.path)
+
+
+def open_local_folder(path: str) -> None:
+    """Open a directory in the file manager, including a Mac .app bundle.
+
+    The default Open verb on a bundle runs it, so ask Finder for a folder
+    window explicitly. Pass the path as an argument, never AppleScript code.
+    """
+    import subprocess
+    if sys.platform == 'win32':
+        subprocess.Popen([_windows_program('explorer.exe'), path])
+    elif sys.platform == 'darwin':
+        script = ('on run argv\n'
+                  'tell application "Finder"\n'
+                  'activate\n'
+                  'open folder (POSIX file (item 1 of argv) as alias)\n'
+                  'end tell\nend run')
+        subprocess.Popen(['osascript', '-e', script, path])
+    else:
+        subprocess.Popen(['xdg-open', path])
 
 
 def _windows_program(*parts: str) -> str:
@@ -2405,6 +2581,55 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
     return owned
 
 
+def codex_api_home() -> Path:
+    return app_data_dir() / 'codex-api'
+
+
+def start_codex_api_server(executable=None, *, home=None) -> CodexServerProcess:
+    """API-only process: no ambient credentials, disk login, or endpoint (#661)."""
+    import json
+    import subprocess
+    from .providers.codex_billing import route_config
+    from types import SimpleNamespace
+    home = Path(home) if home is not None else codex_api_home()
+    home.mkdir(parents=True, exist_ok=True)
+    if (home / 'auth.json').exists():
+        raise OSError('The API Codex home contains a disk sign-in. Remove it before using API credits.')
+    executable = executable or find_codex()
+    if not executable or not _native_codex(executable):
+        raise OSError('Install the native Codex CLI, then restart.')
+    env = {k: v for k, v in codex_child_environment().items()
+           if not k.upper().startswith(('CODEX_', 'ANTHROPIC_', 'OTEL_', 'RUST_'))
+           and k.upper() not in ('SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE',
+                                'CURL_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS', 'NODE_TLS_REJECT_UNAUTHORIZED')}
+    env.update(CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
+    config = route_config(SimpleNamespace(billing_route='api'))
+    config.update(log_dir=str(home / 'logs'))
+    args = [executable, 'app-server', '--listen', 'stdio://']
+    for key, value in config.items():
+        # TOML has no null. Standard service is explicitly pinned (#685).
+        if isinstance(value, dict) and value:
+            for field, setting in value.items():
+                args += ['-c', f'{key}.{field}={json.dumps(setting)}']
+        elif value is not None:
+            args += ['-c', f'{key}={json.dumps(value)}']
+    tree = ProcessTree()
+    try:
+        process = subprocess.Popen(args, env=env, cwd=home, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   **tree.popen_kwargs())
+    except BaseException:
+        tree.close()
+        raise
+    owned = CodexServerProcess(process, tree)
+    try:
+        tree.attach(process)
+    except BaseException:
+        owned.close()
+        raise
+    return owned
+
+
 # ---------------------------------------------------------------------------
 # GitHub Copilot CLI (#352)
 # ---------------------------------------------------------------------------
@@ -2716,6 +2941,7 @@ def start_codex_archive_server(profile: Path, executable=None) -> CodexServerPro
 
 BACKUP_SECRET = "scheduled-backup-passphrase"
 CLAUDE_API_KEY_SECRET = "claude-api-key"
+OPENAI_API_KEY_SECRET = "openai-api-key"
 BACKUP_SECRET_FILE = "backup-passphrase.dpapi"
 #: Every secret file on Windows ends in this; backups leave them all out.
 SECRET_SUFFIX = ".dpapi"
@@ -2723,6 +2949,7 @@ SECRET_SUFFIX = ".dpapi"
 _SECRETS = {
     BACKUP_SECRET: (BACKUP_SECRET_FILE, "The Chat Place backup passphrase"),
     CLAUDE_API_KEY_SECRET: ("claude-api-key" + SECRET_SUFFIX, "The Chat Place Claude API key"),
+    OPENAI_API_KEY_SECRET: ("openai-api-key" + SECRET_SUFFIX, "The Chat Place OpenAI API key"),
 }
 _SECRET_SERVICE = "The Chat Place"
 _SECRET_ACCOUNT = BACKUP_SECRET

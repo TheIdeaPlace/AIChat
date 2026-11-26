@@ -683,7 +683,8 @@ def s_main_compacted(frame, env):
 
 def s_main_api_chat(frame, env):
     """A chat on API credits loaded (#658): its row, the heading and title
-    say so, and the status bar shows what it and the app have spent."""
+    say so, and the status bar shows what it and the app have spent. Its
+    row's Cost column and its reply's last line say what they cost (#692)."""
     import fake_env
     from records import assistant_block, text_block, user_text
     from thechatplace import spend_ledger
@@ -693,7 +694,8 @@ def s_main_api_chat(frame, env):
         user_text("Summarize the release notes."),
         assistant_block(text_block("Three fixes and one new feature."), "m1")])
     frame.store.add(OwnSession("probe-api", "Release notes on credits", cwd,
-                               last_activity_ms=fake_env.now_ms(), billing="api"))
+                               last_activity_ms=fake_env.now_ms(), billing="api",
+                               reply_costs={"m1": "Cost: 42 cents"}))
     ledger = spend_ledger.default_ledger()
     held = ledger.reserve("probe-api")
     ledger.settle(held, 0.42, {"claude-opus-5-5": 0.42})
@@ -738,6 +740,13 @@ def s_main_attachments(frame, env):
         paths.append(str(folder / name))
     frame._attachments["own-1"] = paths
     frame._show_attachments()
+
+
+def s_main_suggestion(frame, env):
+    """A reply came with a suggested next message (#474)."""
+    _open(frame, "Visual probe")
+    frame._suggestions["own-1"] = "Write the script, and add a --dry-run option"
+    frame._place_suggestion(sound=False)
 
 
 def s_main_desktop(frame, env):
@@ -1081,6 +1090,30 @@ def s_main_status_bar(frame, env):
     frame.status_parts.layout()
 
 
+def _openai_probe_ledger(env, name):
+    from thechatplace import spend_ledger
+    ledger = spend_ledger.SpendLedger(env['tmp'] / name)
+    chat = 'codex-api:openai-probe'
+    priced = ledger.reserve(chat)
+    ledger.settle(priced, .42)
+    ledger.close(priced, complete=True)
+    unknown = ledger.reserve(chat, unpriced=True)
+    ledger.record_openai_tokens(unknown, 'future-model',
+        dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
+             outputTokens=400, reasoningOutputTokens=100), unpriced=True)
+    ledger.close(unknown, complete=False)
+    return ledger, chat
+
+
+def s_main_openai_unpriced(frame, env):
+    """Production status text from mixed ledger spending (#685)."""
+    from thechatplace import openai_billing
+    s_main_status_bar(frame, env)
+    ledger, _ = _openai_probe_ledger(env, 'status-openai')
+    frame.status_parts.set('api_credits', openai_billing.status_words(ledger.totals()))
+    frame.status_parts.layout()
+
+
 def s_main_narrow(frame, env):
     _open(frame, "Visual probe")
     from thechatplace.ui.sizes import dip
@@ -1314,6 +1347,44 @@ def d_new_session_api_credits(frame, env):
     dialog._on_charge()
     dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
     return lambda: frame._modal(dialog)
+
+
+def d_new_session_fable_plan(frame, env):
+    """New Session signed in to a Max plan (#722): the subscription offers
+    Fable, which is chosen, and the note says what happens past its allowance."""
+    from thechatplace.ui.dialogs import NewSessionDialog
+    before, frame.claude_plan = frame.claude_plan, "max"
+    try:
+        dialog = NewSessionDialog(frame, env["folders"]["Scratch"])
+    finally:
+        frame.claude_plan = before  # the dialog keeps what it read
+    dialog.model.SetSelection(dialog.model.GetStrings().index("Fable"))
+    return lambda: frame._modal(dialog)
+
+
+def d_new_session_openai(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',),
+                              provider='codex', openai_key=True)
+    dialog.charge.SetSelection(1)
+    dialog._on_charge()
+    return lambda: frame._modal(dialog)
+
+
+def d_new_session_unpriced(frame, env):
+    from thechatplace.ui.dialogs import NewSessionDialog
+    from thechatplace.providers.codex_models import CodexModel
+    dialog = NewSessionDialog(frame, env['folders']['Scratch'], providers=('codex',),
+                              provider='codex', openai_key=True)
+    dialog._api_models = (CodexModel('future-model', 'Future model', ('low',), 'low', False),)
+    dialog.charge.SetSelection(1)
+    dialog._on_charge()
+    return lambda: frame._modal(dialog)
+
+
+def d_openai_unpriced(frame, env):
+    from thechatplace.ui.dialogs import UnpricedApiDialog
+    return lambda: frame._modal(UnpricedApiDialog(frame, 'future-model', 2))
 
 
 def d_codex_new(frame, env):
@@ -1897,6 +1968,49 @@ def d_links(frame, env):
     return frame.on_links
 
 
+def d_local_file_links(frame, env, category='links'):
+    """Real temporary files exercise every local-file policy state (#253)."""
+    from thechatplace import lists
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    from thechatplace.ui.dialogs import ListsDialog
+    folder = env['tmp'] / 'Local files'
+    folder.mkdir(exist_ok=True)
+    safe = folder / 'notes.txt'
+    script = folder / 'script.ps1'
+    safe.write_text('A local document.', encoding='utf-8')
+    script.touch()
+    message = ChatMessage(ASSISTANT, f'`{safe}`\n\n`{script}`\n\n'
+                          f'`{folder}`\n\n`{folder / "missing.txt"}`\n\n```text\n{safe}\n```')
+
+    def build(tab, scope):
+        return lists.build(tab, scope, [message], message, [], [], str, cwd=str(folder))
+
+    def show():
+        dialog = ListsDialog(frame, 'Local files', build, frame._copy_text, frame._feedback,
+                             category=category)
+        try:
+            return dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+    return show
+
+
+def d_local_file_code(frame, env):
+    return d_local_file_links(frame, env, category='code')
+
+
+def d_local_file_reading(frame, env):
+    from thechatplace.transcript import ASSISTANT, ChatMessage
+    _open(frame, 'Fix the flaky upload test')
+    path = env['tmp'] / 'notes.txt'
+    path.write_text('A local document.', encoding='utf-8')
+    message = ChatMessage(ASSISTANT, f'# Local files\n\nRead `{path}` or '
+                          f'[the same file](<{path.as_uri()}>).\n\n'
+                          f'`{env["tmp"] / "missing.txt"}` was not found.')
+    frame.speech.formatted_messages = True
+    return lambda: frame._read_whole_message(message)
+
+
 def d_find_all(frame, env):
     """Find in All Sessions' results, for a word the made-up sessions use."""
     from thechatplace.search import Target, search_sessions
@@ -2298,6 +2412,82 @@ def d_api_keys_with_key(frame, env):
     return show
 
 
+def _openai_keys(frame, env, state):
+    from thechatplace import openai_billing, spend_ledger
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    ledger = spend_ledger.SpendLedger(env['tmp'] / 'openai-probe')
+    if state != 'empty':
+        openai_billing.save_api_key('sk-proj-probe-' + '0' * 30)
+        held = ledger.reserve('codex-api:probe')
+        if state == 'held':
+            ledger.record_openai_tokens(held, 'future-model',
+                dict(inputTokens=12000, cachedInputTokens=4000, cacheWriteInputTokens=1000,
+                     outputTokens=400, reasoningOutputTokens=100), unpriced=True)
+        ledger.close(held, complete=False)
+    class Test:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            pass
+        def cancel(self):
+            pass
+    dialog = ApiKeysDialog(frame, openai_ledger=ledger, openai_runner_factory=Test)
+    dialog.provider_choice.SetSelection(1)
+    dialog.on_provider()
+    if state == 'testing':
+        dialog.on_test()
+    elif state == 'updating':
+        dialog._key_change_pending = True
+        dialog._sync()
+        dialog.result.SetValue('Updating the OpenAI key. Please wait...')
+    elif state == 'failed':
+        dialog.result.SetValue('OpenAI refused your key. Replace it and test again. No charge was made for the refused request.')
+    elif state == 'held':
+        dialog.result.SetValue('Your key works. That test was estimated at less than a cent.')
+    return lambda: frame._modal(dialog)
+
+
+def d_openai_keys_empty(frame, env):
+    return _openai_keys(frame, env, 'empty')
+
+
+def d_openai_keys_held(frame, env):
+    return _openai_keys(frame, env, 'held')
+
+
+def d_openai_keys_testing(frame, env):
+    return _openai_keys(frame, env, 'testing')
+
+
+def d_openai_keys_failed(frame, env):
+    return _openai_keys(frame, env, 'failed')
+
+
+def d_openai_keys_updating(frame, env):
+    return _openai_keys(frame, env, 'updating')
+
+
+def d_openai_properties(frame, env):
+    from thechatplace.own_store import OwnSession
+    from thechatplace.properties import session_properties
+    from thechatplace.ui.dialogs import PropertiesDialog
+    record = OwnSession('openai-probe', 'OpenAI budget', env['folders']['Scratch'],
+                        provider='codex-api', billing='api', provider_options={'model': 'gpt-5-nano'})
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'properties-openai')
+    lines = session_properties(record.to_info(), own=record,
+        api_cost=openai_billing.chat_cost_words(ledger, chat))
+    return lambda: frame._modal(PropertiesDialog(frame, 'Properties of OpenAI budget', lines, frame._copy_properties))
+
+
+def d_openai_usage(frame, env):
+    from thechatplace.ui.dialogs import UsageDialog
+    from thechatplace import openai_billing
+    ledger, chat = _openai_probe_ledger(env, 'usage-openai')
+    lines = openai_billing.usage_lines(ledger, chat)
+    return lambda: frame._modal(UsageDialog(frame, lines, frame._copy_usage))
+
+
 def d_restore_chooser(frame, env):
     """Restore from Backup's chooser (#450): a backup's chats, one skipped."""
     from thechatplace.ui.dialogs import RestoreChooserDialog
@@ -2404,6 +2594,7 @@ def d_rename(frame, env):
 #: name -> (kind, function, what it shows). Order is the order photographed:
 #: main-window states first, then dialogs.
 SURFACES = {
+    'main-openai-unpriced': ('window', s_main_openai_unpriced, 'Status bar with priced spending, unpriced tokens and an allowance'),
     "main-compacted": ("window", s_main_compacted,
                        "Compaction and command output remain visible with tool activity off."),
     "main-start": ("window", s_main_start, "Main window as it opens: session list, no session loaded"),
@@ -2419,6 +2610,8 @@ SURFACES = {
                           "An own session mid-turn with a steered message not yet taken in"),
     "main-attachments": ("window", s_main_attachments,
                          "An own session with two files attached to the next message"),
+    "main-suggestion": ("window", s_main_suggestion,
+                        "An own session whose last reply came with a suggested next message"),
     "main-desktop": ("window", s_main_desktop,
                      "A desktop app session loaded: the read-only panel instead of a reply box"),
     "main-kept": ("window", s_main_kept,
@@ -2478,6 +2671,12 @@ SURFACES = {
     "new-session-api-credits": ("dialog", d_new_session_api_credits,
                                 "New Session once a Claude API key is added, with Charge to "
                                 "on API credits and Fable chosen (#658)"),
+    "new-session-fable-plan": ("dialog", d_new_session_fable_plan,
+                               "New Session on a Max plan, with Fable chosen and its note "
+                               "(#722)"),
+    'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
+    'new-session-unpriced': ('dialog', d_new_session_unpriced, 'New Session offers a model with price unknown'),
+    'openai-unpriced-confirm': ('dialog', d_openai_unpriced, 'Mandatory price-unknown warning, Cancel default'),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
     "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
@@ -2546,6 +2745,12 @@ SURFACES = {
     "bug-report": ("dialog", d_bug_report, "Help, Report a Bug"),
     "code-blocks": ("dialog", d_code_blocks, "Tools, Lists: a message's code blocks"),
     "links": ("dialog", d_links, "Tools, Lists: Links"),
+    "local-file-links": ("dialog", d_local_file_links,
+                         "Links: a document, script, folder and missing file"),
+    "local-file-code": ("dialog", d_local_file_code,
+                        "Code Blocks: a single file path with file actions"),
+    "local-file-reading": ("dialog", d_local_file_reading,
+                           "Formatted reading: local document and missing file links"),
     "find-all": ("dialog", d_find_all, "View, Find in All Sessions: the results"),
     "changes": ("dialog", d_changes, "Tools, Lists: Changed Files"),
     "lists-codex-files": ("dialog", d_lists_codex_files, "Codex Changed Files: updates, additions, deletions and renames"),
@@ -2587,6 +2792,13 @@ SURFACES = {
     "api-keys": ("dialog", d_api_keys, "Tools, API Keys with no key and nothing spent"),
     "api-keys-with-key": ("dialog", d_api_keys_with_key,
                           "Tools, API Keys with a key, some spending and a test's answer"),
+    'openai-keys-empty': ('dialog', d_openai_keys_empty, 'OpenAI API Keys without a saved key'),
+    'openai-keys-held': ('dialog', d_openai_keys_held, 'OpenAI API Keys with estimated spending and Release Held'),
+    'openai-keys-testing': ('dialog', d_openai_keys_testing, 'OpenAI API Keys while testing a made-up key'),
+    'openai-keys-failed': ('dialog', d_openai_keys_failed, 'OpenAI API Keys after key refusal'),
+    'openai-keys-updating': ('dialog', d_openai_keys_updating, 'OpenAI API Keys while replacing a key'),
+    'openai-properties': ('dialog', d_openai_properties, 'Codex API Properties with unknown spending'),
+    'openai-usage': ('dialog', d_openai_usage, 'OpenAI Usage with estimated maximum and unknown spending'),
     "relay": ("dialog", d_relay, "Send Reply to Another Chat: a Codex reply going to a Claude chat"),
     "rewind": ("dialog", d_rewind, "Retry from Here on your first message: Conversation only chosen"),
     "rewind-files": ("dialog", d_rewind_files,
@@ -2637,6 +2849,10 @@ DIALOG_CLASSES = {
     "settings-speech-problem": "SettingsDialog",
     "new-session": "NewSessionDialog",
     "new-session-api-credits": "NewSessionDialog",
+    "new-session-fable-plan": "NewSessionDialog",
+    'new-session-openai': 'NewSessionDialog',
+    'new-session-unpriced': 'NewSessionDialog',
+    'openai-unpriced-confirm': 'UnpricedApiDialog',
     "new-session-worktree": "NewSessionDialog",
     "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
@@ -2688,6 +2904,9 @@ DIALOG_CLASSES = {
     "bug-report": "BugReportDialog",
     "code-blocks": "ListsDialog",
     "links": "ListsDialog",
+    "local-file-links": "ListsDialog",
+    "local-file-code": "ListsDialog",
+    "local-file-reading": "FormattedMessageDialog",
     "find-all": "FindResultsDialog",
     "changes": "ListsDialog",
     "lists-codex-files": "ListsDialog",
@@ -2722,6 +2941,13 @@ DIALOG_CLASSES = {
     "backup-schedule": "BackupScheduleDialog",
     "api-keys": "ApiKeysDialog",
     "api-keys-with-key": "ApiKeysDialog",
+    'openai-keys-empty': 'ApiKeysDialog',
+    'openai-keys-held': 'ApiKeysDialog',
+    'openai-keys-testing': 'ApiKeysDialog',
+    'openai-keys-failed': 'ApiKeysDialog',
+    'openai-keys-updating': 'ApiKeysDialog',
+    'openai-properties': 'PropertiesDialog',
+    'openai-usage': 'UsageDialog',
     "relay": "RelayDialog",
     "rewind": "RewindDialog",
     "rewind-files": "RewindDialog",
@@ -2737,7 +2963,8 @@ DIALOG_CLASSES = {
 #: What a formatted-page surface shows instead where there's no web view
 #: (a Mac, or Windows without the WebView2 runtime).
 PLAIN_INSTEAD = {"shortcuts-page": "ShortcutsDialog", "user-guide": "MessageDialog",
-                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog"}
+                 "message-formatted": "MessageDialog", "whole-chat": "MessageDialog",
+                 "local-file-reading": "MessageDialog"}
 
 
 def expected_class(name: str) -> str:

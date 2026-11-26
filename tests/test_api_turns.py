@@ -152,7 +152,7 @@ def test_an_api_turn_gets_the_key_only_through_its_one_settings(tmp_path, book):
                         "deniedMcpServers": [{"serverName": "github"}],
                         "apiKeyHelper": platform_paths.api_key_helper_command(),
                         "env": billing.API_ENV}        # where the key may go (#663)
-    assert cmd[cmd.index("--max-budget-usd") + 1] == "5.00"
+    assert cmd[cmd.index("--max-budget-usd") + 1] == "2.00"
     assert cmd[-2:] == ["--mcp-config", '{"mcpServers": {}}']  # still last
     assert runner.command == command                              # the turn's own, unchanged
     assert "sk-ant" not in " ".join(cmd) and "sk-ant" not in json.dumps(captured["env"])
@@ -165,6 +165,27 @@ def test_an_api_turn_gets_the_key_only_through_its_one_settings(tmp_path, book):
     totals = book.totals()
     assert totals.spent == pytest.approx(0.05) and totals.held == 0
     assert totals.by_chat == {"chat-1": pytest.approx(0.05)}
+
+
+def test_an_api_turn_names_the_reply_its_cost_is_kept_with(tmp_path, book):
+    # #692: the last reply with text, by its message id and record uuid.
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="assistant", uuid="u1", message={"id": "msg_1", "content": [
+            {"type": "text", "text": "Looking"}]}),
+        ev(type="assistant", uuid="u2", message={"id": "msg_1", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}),
+        ev(type="assistant", uuid="u3", message={"id": "msg_2", "content": [
+            {"type": "text", "text": "pong"}]}),
+        result("pong", cost=0.19),
+    ])
+    _runner, events, _captured = run(process, tmp_path, book)
+    final = events[-1]
+    assert final.data["reply_message_id"] == "msg_2" and final.data["reply_uuid"] == "u3"
+    from thechatplace.reply_costs import claude_reply_key, claude_words, cost_line
+    assert claude_reply_key(final.data) == "msg_2"
+    assert cost_line(claude_words(final.data)) == "Cost: 19 cents"
 
 
 @pytest.mark.parametrize("account", [SUBSCRIPTION, None, {**HELPER, "apiKeySource":
@@ -229,17 +250,74 @@ def test_over_the_per_message_limit_is_said_plainly(tmp_path, book):
         init_answer(HELPER),
         ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
         ev(type="result", subtype="error_max_budget_usd", is_error=True, session_id="s1",
-           errors=["Reached maximum budget"], total_cost_usd=5.03,
-           modelUsage={"claude-opus-5-5": {"costUSD": 5.03}}),
+           errors=["Reached maximum budget"], total_cost_usd=2.03,
+           modelUsage={"claude-opus-5-5": {"costUSD": 2.03}}),
     ])
     # A new chat, so the whole total is this turn's, overrun and all.
     _runner, events, _ = run(process, tmp_path, book,
                              command=["claude", "-p", "--session-id", "chat-1"])
     final = events[-1]
-    assert final.is_error and "per-message limit of $5.00" in final.text
-    assert "$5.03" in final.text and final.data["cost_usd"] == pytest.approx(5.03)
+    assert final.is_error and "per-message limit of $2.00" in final.text
+    assert "$2.03" in final.text and final.data["cost_usd"] == pytest.approx(2.03)
     totals = book.totals()
-    assert totals.spent == pytest.approx(5.03) and totals.held == 0
+    assert totals.spent == pytest.approx(2.03) and totals.held == 0
+
+
+def test_running_out_of_the_overall_limit_says_so_not_the_per_message_one(tmp_path, book):
+    # Only 50 cents left of the overall limit, under the $2 per message: the
+    # message is stopped at 50 cents, and blaming the per-message limit
+    # would send you to the wrong box.
+    book.set_limits(0.50, 2.00)
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="result", subtype="error_max_budget_usd", is_error=True, session_id="s1",
+           errors=["Reached maximum budget"], total_cost_usd=0.52,
+           modelUsage={"claude-opus-5-5": {"costUSD": 0.52}}),
+    ])
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--session-id", "chat-1"])
+    final = events[-1]
+    assert final.is_error and "overall limit for Claude API credits ran out" in final.text
+    assert "50 cents of it was left" in final.text and "per-message" not in final.text
+    assert "reset the total" in final.text and "(" not in final.text
+    assert "other chats" not in final.text
+
+
+@pytest.mark.parametrize("overall,per_message,capped", [
+    (20.00, 2.00, False),   # plenty left: the per-message limit is what stops it
+    (1.00, 2.00, True),     # less left than a message may spend
+    (2.00, 2.00, True),     # the two meet: nothing could be sent afterwards
+    (2.004, 2.00, True),    # within a cent of meeting, after rounding down
+    (2.02, 2.00, False),    # 2 cents would be left, enough for another message
+])
+def test_a_reservation_knows_when_the_overall_limit_capped_it(tmp_path, overall,
+                                                              per_message, capped):
+    book = spend_ledger.SpendLedger(tmp_path)
+    book.set_limits(overall, per_message)
+    reservation = book.reserve("chat-1")
+    assert reservation.overall_cap is capped and not reservation.others_held
+
+
+def test_other_chats_holding_the_overall_limit_are_said(tmp_path, book):
+    # Another chat's message holds $2 of $2.50, so this one gets 50 cents,
+    # and may get more once that message finishes.
+    book.set_limits(2.50, 2.00)
+    held = book.reserve("chat-other")
+    assert not held.overall_cap
+    process = FakeProcess([
+        init_answer(HELPER),
+        ev(type="system", subtype="init", session_id="s1", apiKeySource="apiKeyHelper"),
+        ev(type="result", subtype="error_max_budget_usd", is_error=True, session_id="s1",
+           errors=["Reached maximum budget"], total_cost_usd=0.51,
+           modelUsage={"claude-opus-5-5": {"costUSD": 0.51}}),
+    ])
+    _runner, events, _ = run(process, tmp_path, book,
+                             command=["claude", "-p", "--session-id", "chat-1"])
+    final = events[-1]
+    assert "overall limit for Claude API credits ran out" in final.text
+    assert "other chats' messages were holding the rest" in final.text
+    assert "Send again once they finish" in final.text
 
 
 @pytest.mark.parametrize("said,expected", [
@@ -446,7 +524,7 @@ def test_a_turn_that_dies_mid_reply_keeps_its_reservation_counted(tmp_path, book
     ], returncode=1, stderr_lines=["boom"])
     _runner, events, _ = run(process, tmp_path, book)
     assert events[-1].kind == "failed"
-    assert book.totals().held == 5.0           # what it spent isn't known
+    assert book.totals().held == 2.0           # what it spent isn't known
 
 
 def test_fable_is_allowed_on_api_credits_and_still_refused_on_the_subscription(tmp_path, book):
@@ -548,7 +626,7 @@ def test_a_real_api_turn_settles_what_claude_code_reports(tmp_path, book):
     args = log["args"]
     assert json.loads(args[args.index("--settings") + 1]) == {
         "apiKeyHelper": platform_paths.api_key_helper_command(), "env": billing.API_ENV}
-    assert args[args.index("--max-budget-usd") + 1] == "5.00"
+    assert args[args.index("--max-budget-usd") + 1] == "2.00"
     assert book.totals().spent == pytest.approx(0.0123)
 
 
@@ -761,17 +839,23 @@ def test_billing_is_kept_and_anything_odd_is_the_subscription(tmp_path):
     assert again.get("aaaa-2").billing == "subscription"
     for odd in ("API", "credits", None, 5, ""):
         session = _session_from_dict({"cli_session_id": "bbbb-1", "title": "t", "cwd": "c",
-                                      "billing": odd, "model": "fable"})
+                                      "billing": odd, "model": "opus[1m]"})
         assert session.billing == "subscription" and session.model == ""
 
 
-def test_fable_is_kept_only_for_api_chats(tmp_path):
+def test_fable_is_offered_on_api_credits_and_plans_with_it(tmp_path):
+    """#722: a subscription chat may keep Fable (the plan decides whether
+    it's offered, and the usage-credit stop guards every turn)."""
     store = OwnSessionStore(tmp_path / "sessions.json")
-    with pytest.raises(ValueError):
-        store.add(OwnSession("aaaa-3", "t", str(tmp_path), model="fable"))
-    assert cli.model_allowed("fable", "api") and not cli.model_allowed("fable", "subscription")
+    store.add(OwnSession("aaaa-3", "t", str(tmp_path), model="fable"))
+    assert OwnSessionStore(tmp_path / "sessions.json").get("aaaa-3").model == "fable"
+    assert cli.model_allowed("fable", "api") and cli.model_allowed("fable", "subscription")
+    assert not cli.model_allowed("opus[1m]", "subscription")
     assert ("fable", "Fable") in cli.models_for("api")
-    assert "fable" not in dict(cli.models_for("subscription"))
+    for plan in ("", "pro", "team", "enterprise", "free", "Maximum"):
+        assert "fable" not in dict(cli.models_for("subscription", plan)), plan
+    for plan in ("max", "Max", "ultra", " ULTRA "):
+        assert ("fable", "Fable") in cli.models_for("subscription", plan), plan
     assert cli.MODELS == [m for m in cli.API_MODELS if m[0] != "fable"]
     assert cli.model_label("fable") == "Fable"
 
@@ -912,7 +996,7 @@ def test_a_result_without_a_usable_cost_keeps_the_reservation_held(tmp_path, boo
     assert final.kind == "finished" and not runner.cost_complete
     assert final.data["cost_complete"] is False and final.data["sent"] is True
     totals = book.totals()
-    assert totals.spent == 0 and totals.held == pytest.approx(5.0)
+    assert totals.spent == 0 and totals.held == pytest.approx(2.0)
     assert book.can_spend() is None          # held, not damaged
 
 
@@ -940,7 +1024,7 @@ def test_an_aside_without_a_usable_cost_keeps_its_reservation_held(tmp_path, boo
     _runner, events, _ = run_fake_aside(tmp_path, book, [init_answer(HELPER), STARTED,
                                                          _bad_cost_result(cost)])
     assert events[-1].kind == "done" and events[-1].cost_complete is False
-    assert book.totals().held == pytest.approx(5.0) and book.totals().spent == 0
+    assert book.totals().held == pytest.approx(2.0) and book.totals().spent == 0
 
 
 def test_an_api_turn_never_shows_a_key_in_anything_it_says(tmp_path, book):
@@ -1173,7 +1257,7 @@ def test_stop_with_a_steer_not_taken_in_ends_at_once_and_gives_it_back(tmp_path,
     assert runner.echoes is False                     # so it says "may not have been"
     totals = book.totals()
     assert totals.spent == pytest.approx(0.02)
-    assert totals.held == pytest.approx(5.0 - 0.02)   # whether it went in isn't known
+    assert totals.held == pytest.approx(2.0 - 0.02)   # whether it went in isn't known
 
 
 def test_stop_after_send_now_ends_at_once_and_holds_the_new_messages_cost(tmp_path, book):
@@ -1187,7 +1271,7 @@ def test_stop_after_send_now_ends_at_once_and_holds_the_new_messages_cost(tmp_pa
     assert runner.untaken() == [("now", "Do this instead")]
     totals = book.totals()
     assert totals.spent == pytest.approx(0.02)
-    assert totals.held == pytest.approx(5.0 - 0.02)
+    assert totals.held == pytest.approx(2.0 - 0.02)
 
 
 AUTH_RETRY = ev(type="system", subtype="api_retry", attempt=3, max_retries=10,
@@ -1218,7 +1302,7 @@ def test_a_key_refused_after_claude_answered_keeps_the_hold(tmp_path, book):
         AUTH_RETRY])
     runner, events, _ = run(process, tmp_path, book)
     assert events[-1].text == billing.KEY_REFUSED and runner.stopped_mid_turn
-    assert not runner.stopped_before_answer and book.totals().held == pytest.approx(5.0)
+    assert not runner.stopped_before_answer and book.totals().held == pytest.approx(2.0)
 
 
 def test_other_retries_are_left_to_claude_code(tmp_path, book):

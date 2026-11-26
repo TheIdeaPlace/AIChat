@@ -15,7 +15,7 @@ from theideaplace_appkit import difftext
 
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
-                          PERMISSION_MODES, models_for)
+                          PERMISSION_MODES, fable_in_plan, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
                         WORKING, NEEDS_YOU, STATUS_UNAVAILABLE)
 from ..speech import (ANNOUNCE_LABELS, ANNOUNCE_LEVELS, API_NOTICE_LABELS, API_NOTICES,
@@ -28,6 +28,58 @@ from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
 from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
+
+#: Settings' Claude in Chrome check box (#319). The note Claude is given
+#: when it's off points here by these words ("Let Claude use Chrome").
+#: No access key: every letter in it is taken in Settings (C by Cancel, whose
+#: stock label is "&Cancel" on a Mac and Linux), so it's reached with Tab.
+CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscription (needs "
+                        "the Claude in Chrome extension; from the next turn)")
+#: Settings' prompt suggestions check box (#474). No access key, for the
+#: same reason as the Chrome one: every letter in it is taken.
+SUGGESTIONS_SETTING_LABEL = ("Suggest what to send next after each reply in Claude chats on "
+                             "your subscription (from the next turn)")
+#: Added to it when Claude Code's own flag says it isn't offering them to
+#: this account (platform_paths.claude_offers_prompt_suggestions, #709).
+SUGGESTIONS_NOT_OFFERED = (". Claude Code isn't offering suggestions to your account yet, so "
+                           "none will appear until Anthropic turns them on for it")
+
+
+class UnpricedApiDialog(wx.Dialog):
+    """Mandatory consent to an unpriced paid chat; Cancel stays default (#685)."""
+
+    def __init__(self, parent, model, allowance):
+        super().__init__(parent, title='Send with price unknown?',
+                         size=dialog_size(parent, 600, 340),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        warning = ("This spends OpenAI API credits. The Chat Place has no price for "
+                   f"{model}, so it can't estimate the cost, and your dollar limits can't stop a message.")
+        self.warning = wx.TextCtrl(self, value=warning + '\n\n'
+            f'An allowance of up to ${allowance:,.2f} will be held for each message against your overall limit. '
+            'This allowance limits later sends; it cannot limit what this message costs. '
+            'Stop keeps the allowance when the cost is unknown.',
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        set_accessible_name(self.warning, 'Price unknown warning')
+        self.cancel = wx.Button(self, wx.ID_CANCEL, 'Cancel')
+        self.send = wx.Button(self, wx.ID_OK, '&Send on API credits')
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(self.cancel, 0, wx.RIGHT, dip_width(self, 8))
+        buttons.Add(self.send)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.warning, 1, wx.EXPAND | wx.ALL, dip_width(self, 12))
+        sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.ALL, dip_width(self, 12))
+        self.SetSizer(sizer)
+        self.cancel.SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL)
+        # Start on the warning so every reader can read it, including macOS.
+        # Enter on this read-only field must still choose Cancel, never Send.
+        def key(event):
+            if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                self.EndModal(wx.ID_CANCEL)
+            else:
+                event.Skip()
+        self.warning.Bind(wx.EVT_KEY_DOWN, key)
+        wx.CallAfter(self.warning.SetFocus)
 
 
 class ShortcutsDialog(wx.Dialog):
@@ -68,6 +120,10 @@ CHARGE_CHOICES = [("subscription", "Claude subscription"), ("api", "API credits"
 API_CREDITS_NOTE = ("Every message in this chat is charged to your Claude API key, and "
                     "Fable is offered. Claude.ai connectors aren't available on API "
                     "credits. A chat's charging can't be changed once it's made.")
+#: Said in New Session on a plan whose limits include Fable (#722).
+FABLE_PLAN_NOTE = ("Fable uses your plan's Fable allowance. If a turn would go past it and "
+                   "be charged to usage credits, The Chat Place stops the turn as soon as "
+                   "Claude Code says so, and asks each time you send whether to use them.")
 
 
 def single_choice_dialog(parent, prompt: str, title: str, choices) -> wx.SingleChoiceDialog:
@@ -214,7 +270,8 @@ class NewSessionDialog(wx.Dialog):
                  recent=(), projects_root: str = "", feedback=None, clone_root: str = "",
                  remove_recent=None, providers=("claude",), provider="claude", source_state="", load_models=None, load_rules=None,
                  title_text: str = "", message: str = "", copilot_models=(),
-                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False):
+                 copilot_plan: bool = True, load_chat_choices=None, api_key: bool = False,
+                 openai_key: bool = False, load_api_models=None):
         """``api_key``: a Claude API key is kept, so Charge to is offered (#658)."""
         title = f"Continue Here: {continue_from}" if continue_from \
             else "New Chat Place Session"
@@ -225,6 +282,12 @@ class NewSessionDialog(wx.Dialog):
         self._projects_root = projects_root or default_folder
         self._clone_root = clone_root or self._projects_root
         self._feedback = feedback or (lambda text: None)
+        #: The Claude plan (#722), from the window: whether Fable is offered.
+        plan = getattr(parent, "claude_plan", "")
+        self._claude_plan = plan if isinstance(plan, str) else ""
+        self._load_api_models = load_api_models
+        self._api_models = ()
+        self._api_models_requested = False
         # Takes a folder off the recent list for good (#215): True if it did.
         self._remove_recent = remove_recent
         self._repo = None           # workplaces.RepoInfo of the folder, or None
@@ -358,6 +421,7 @@ class NewSessionDialog(wx.Dialog):
         # buttons, so Tab always stops on it with one chosen (#428). No
         # access key: every letter of "Charge to" is taken in this dialog.
         self._api_key = bool(api_key)
+        self._openai_key = bool(openai_key)
         self.charge_label = wx.StaticText(self, label="Charge to:")
         grid.Add(self.charge_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.charge = wx.Choice(self, choices=[label for _v, label in CHARGE_CHOICES])
@@ -372,7 +436,8 @@ class NewSessionDialog(wx.Dialog):
 
         self.model_label = wx.StaticText(self, label="Mo&del:")
         grid.Add(self.model_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.model = wx.Choice(self, choices=[label for _v, label in MODELS])
+        self.model = wx.Choice(self, choices=[
+            label for _v, label in models_for("subscription", self._claude_plan)])
         set_accessible_name(self.model, "Model")
         self.model.SetSelection(0)  # Claude Code's own default
         self.model.Bind(wx.EVT_CHOICE, self._on_codex_model)
@@ -418,8 +483,8 @@ class NewSessionDialog(wx.Dialog):
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
         note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-                           value=(CONTINUE_NOTE + "\n\n" + permission_note()) if continue_from
-                           else permission_note())
+                           # Fable's note too, on a plan with it (#722).
+                           value=self._claude_note())
         set_accessible_name(note, about)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -978,12 +1043,13 @@ class NewSessionDialog(wx.Dialog):
         mode = PERMISSION_MODES[index][0] if 0 <= index < len(PERMISSION_MODES) \
             else DEFAULT_PERMISSION_MODE
         index = self.model.GetSelection()
-        models = models_for(self.billing())  # Fable too on API credits (#658)
+        models = self._claude_models()  # Fable on API credits (#658) or the plan (#722)
         model = models[index][0] if 0 <= index < len(models) else ""
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             mode = DEFAULT_PERMISSION_MODE
-            index = self.model.GetSelection() - 1
-            model = self._codex_models[index].model if 0 <= index < len(self._codex_models) else ""
+            index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+            choices = self._codex_route_models()
+            model = choices[index].model if 0 <= index < len(choices) else ""
         elif self.provider() == "copilot":
             mode = DEFAULT_PERMISSION_MODE  # it always asks
             index = self.model.GetSelection() - 1
@@ -1014,7 +1080,7 @@ class NewSessionDialog(wx.Dialog):
     def billing(self) -> str:
         """How the new chat is charged (#658): "api" only for a Claude chat
         with API credits chosen; otherwise the subscription."""
-        if not self._api_key or self.provider() != "claude":
+        if not self._charge_available():
             return "subscription"
         index = self.charge.GetSelection()
         return CHARGE_CHOICES[index][0] if 0 <= index < len(CHARGE_CHOICES) else "subscription"
@@ -1022,24 +1088,74 @@ class NewSessionDialog(wx.Dialog):
     def _sync_charge(self):
         """Charge to is there only for Claude, once a key exists (#658).
         Disabled too when hidden, as the other fields are."""
-        shown = self._api_key and self.provider() == "claude"
+        shown = self._charge_available()
+        selected = self.charge.GetSelection()
+        labels = ['ChatGPT subscription' if self.provider() in ('codex', 'codex-api') else 'Claude subscription', 'API credits']
+        if list(self.charge.GetStrings()) != labels:
+            self.charge.Set(labels)
+            self.charge.SetSelection(max(0, selected))
         if self.charge.IsShown() != shown or self.charge_label.IsShown() != shown:
             for control in (self.charge_label, self.charge):
                 control.Show(shown)
                 control.Enable(shown)
             self.Layout()
 
+    def _charge_available(self):
+        return (self._api_key if self.provider() == 'claude' else
+                self._openai_key if self.provider() in ('codex', 'codex-api') else False)
+
+    def _codex_route_models(self):
+        if self.billing() == 'api':
+            from ..openai_prices import model_choices
+            if self._load_api_models is not None and not self._api_models_requested:
+                self._api_models_requested = True
+                wx.CallAfter(self._load_api_models, self._set_api_models)
+            return model_choices(self._api_models)
+        return self._codex_models
+
+    def _set_api_models(self, models, error):
+        if not self or self.IsBeingDeleted():
+            return
+        self._api_models = () if error else tuple(models)
+        if self.billing() == 'api':
+            self._on_charge()
+            self._feedback('OpenAI API model choices are available.' if not error else
+                           'OpenAI API model choices could not be loaded; dated choices remain available.')
+
     def _claude_note(self) -> str:
         note = (CONTINUE_NOTE + "\n\n" + permission_note()) if self.continuing \
             else permission_note()
         if self.billing() == "api":
             note = API_CREDITS_NOTE + "\n\n" + note
+        elif fable_in_plan(self._claude_plan):
+            note = FABLE_PLAN_NOTE + "\n\n" + note
         return note
 
+    def _claude_models(self) -> list:
+        """The Claude models offered: Fable on API credits (#658), and on a
+        subscription whose plan includes it (#722)."""
+        return models_for(self.billing(), self._claude_plan)
+
     def _on_charge(self):
-        """API credits offer Fable; the subscription doesn't (#658). The
-        model chosen stays chosen if it's on both lists."""
-        models = models_for(self.billing())
+        """API credits offer Fable; the subscription does on a plan with it
+        (#658, #722). The model chosen stays chosen if it's on both lists."""
+        if self.provider() in ('codex', 'codex-api'):
+            old_models, old_paid = getattr(self, '_display_codex_models', ((), False))
+            old_index = self.model.GetSelection() - (0 if old_paid else 1)
+            old = old_models[old_index].model if 0 <= old_index < len(old_models) else ''
+            old_effort = self.effort_choice.GetStringSelection()
+            self._on_provider()
+            models = self._codex_route_models()
+            selected = next((i for i, choice in enumerate(models) if choice.model == old), 0)
+            self.model.SetSelection(selected if self.billing() == 'api' else
+                                    selected + 1 if models and old else 0)
+            self._on_codex_model()
+            efforts = list(self.effort_choice.GetStrings())
+            self.effort_choice.SetSelection(efforts.index(old_effort) if old_effort in efforts else 0)
+            if models and models[selected].model != old:
+                self._feedback('Model changed to ' + models[selected].label + '.')
+            return
+        models = self._claude_models()
         index = self.model.GetSelection()
         before = self.model.GetString(index) if 0 <= index < self.model.GetCount() else ""
         labels = [label for _v, label in models]
@@ -1053,6 +1169,8 @@ class NewSessionDialog(wx.Dialog):
         from ..chat_options import ChatOptions
         saved = self._options_by_provider = getattr(self, '_options_by_provider', {})
         previous = self._control_provider
+        if previous != provider:
+            self.charge.SetSelection(0)
         if previous in ('claude', 'codex'):
             saved[previous] = (self._chat_options, list(self._chat_folders))
         if previous != provider:
@@ -1060,7 +1178,7 @@ class NewSessionDialog(wx.Dialog):
             self._update_chat_options_summary()
         if self._control_provider == "claude":
             self._claude_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
-        elif self._control_provider == "codex":
+        elif self._control_provider in ('codex', 'codex-api'):
             self._codex_choices = (self.model.GetSelection(), self.effort_choice.GetSelection(), self.mode.GetSelection())
         elif self._control_provider == "copilot":
             self._copilot_mode_choice = max(self.mode.GetSelection(), 0)
@@ -1085,16 +1203,25 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Copilot CLI. " + note
                 self.note.SetValue(note + "\n\n" + COPILOT_NOTE)
-        elif provider == "codex":
+        elif provider in ('codex', 'codex-api'):
             # "Codex's default", as Change Effort and Properties say it (#596).
-            self.model.Set([CODEX_DEFAULT] + [choice.label for choice in self._codex_models])
-            self.model.SetSelection(min(self._codex_choices[0], len(self._codex_models)))
-            self.model.Enable(bool(self._codex_models))
+            models = self._codex_route_models()
+            paid = self.billing() == 'api'
+            self._display_codex_models = (models, paid)
+            self.model.Set(([] if paid else [CODEX_DEFAULT]) + [choice.label for choice in models])
+            self.model.SetSelection(min(self._codex_choices[0], max(0, self.model.GetCount()-1)))
+            self.model.Enable(bool(models))
             self._on_codex_model()
             self.effort_choice.SetSelection(min(self._codex_choices[1], self.effort_choice.GetCount() - 1))
             from .permission_hosts import CODEX_REVIEW_MODES, CODEX_REVIEW_NOTE
-            self.mode.Set([label for value, label in CODEX_REVIEW_MODES])
-            self.mode.SetSelection(self._codex_choices[2])
+            modes = CODEX_REVIEW_MODES[:2] if paid else CODEX_REVIEW_MODES
+            self.mode.Set([label for value, label in modes])
+            if paid:
+                previous = CODEX_REVIEW_MODES[min(self._codex_choices[2], len(CODEX_REVIEW_MODES)-1)][0]
+                selected = next((i for i, (value, label) in enumerate(modes) if value[:2] == previous[:2]), 0)
+            else:
+                selected = min(self._codex_choices[2], len(modes)-1)
+            self.mode.SetSelection(selected)
             self.mode.Enable()
             self.note.SetValue("Codex uses your ChatGPT sign-in. Choose a model and effort level, "
                 "or leave them on Codex's default. "
@@ -1107,9 +1234,18 @@ class NewSessionDialog(wx.Dialog):
                 if self._source_state in (WORKING, NEEDS_YOU, STATUS_UNAVAILABLE):
                     note = "This chat may still be working in Codex. " + note
                 self.note.SetValue(note + "\n\n" + self.note.GetValue())
+            if paid:
+                self.note.SetValue('API credits charge your OpenAI key, with estimated costs from a dated price table. '
+                    'Limits are separate from Claude and can be passed by one request. '
+                    'Models without a dated price say price unknown and require confirmation; dollar limits cannot stop those messages. '
+                    'Their per-message allowance stays held. Long-context prices use conservative surcharge rates. '
+                    'Human approval review is available. Hosted search, connected services, '
+                    'subagents, background goals and native compaction are unavailable. Billing is fixed for this chat.')
+                if self.continuing:
+                    self.note.SetValue('The first message sends a text copy of the earlier conversation.\n\n' + self.note.GetValue())
         else:
             for control, choices, selected in zip((self.model, self.effort_choice, self.mode),
-                    ([label for value, label in models_for(self.billing())],
+                    ([label for value, label in self._claude_models()],
                      [label for value, label in EFFORTS],
                      [label for value, label in PERMISSION_MODES]), self._claude_choices or (0, 0, 0)):
                 control.Set(choices)
@@ -1170,7 +1306,7 @@ class NewSessionDialog(wx.Dialog):
         if self.provider() not in ("claude", "codex"):
             return ChatOptions(), []
         options = self._chat_options
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             options = ChatOptions(instructions=options.instructions)
         return options, list(self._chat_folders)
 
@@ -1178,19 +1314,21 @@ class NewSessionDialog(wx.Dialog):
         """The ``--effort`` chosen, "" for Claude Code's own setting (#189)."""
         if self.provider() == "copilot":
             return ""
-        if self.provider() == "codex":
-            model = self.model.GetSelection() - 1
+        if self.provider() in ('codex', 'codex-api'):
+            model = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
             effort = self.effort_choice.GetSelection() - 1
-            choices = self._codex_models[model].efforts if 0 <= model < len(self._codex_models) else ()
+            models = self._codex_route_models()
+            choices = models[model].efforts if 0 <= model < len(models) else ()
             return choices[effort] if 0 <= effort < len(choices) else ""
         index = self.effort_choice.GetSelection()
         return EFFORTS[index][0] if 0 <= index < len(EFFORTS) else ""
 
     def _on_codex_model(self, _event=None):
-        if self.provider() != "codex":
+        if self.provider() not in ('codex', 'codex-api'):
             return
-        index = self.model.GetSelection() - 1
-        efforts = self._codex_models[index].efforts if 0 <= index < len(self._codex_models) else ()
+        index = self.model.GetSelection() - (0 if self.billing() == 'api' else 1)
+        models = self._codex_route_models()
+        efforts = models[index].efforts if 0 <= index < len(models) else ()
         self.effort_choice.Set([CODEX_DEFAULT] + [codex_effort_label(value) for value in efforts])
         self.effort_choice.SetSelection(0)
         self.effort_choice.Enable(bool(efforts))
@@ -1203,8 +1341,10 @@ class NewSessionDialog(wx.Dialog):
     def _refresh_rules(self):
         if not self or self.IsBeingDeleted():
             return
-        if self._load_rules is None or self.provider() != 'codex':
+        if self._load_rules is None or self.provider() not in ('codex', 'codex-api'):
             return
+        if self.billing() == 'api':
+            return  # never read the ChatGPT home's rules for an API chat
         folder = self.folder.GetValue().strip()
         if folder == self._rules_for:
             return
@@ -1226,7 +1366,7 @@ class NewSessionDialog(wx.Dialog):
         self._codex_models = () if error else tuple(models)
         self._codex_model_error = error
         self._codex_models_loaded = True
-        if self.provider() == "codex":
+        if self.provider() in ('codex', 'codex-api'):
             self._on_provider()
             if self.IsShown():
                 self._feedback("Codex model choices are available." if self._codex_models else
@@ -1571,12 +1711,8 @@ class SettingsDialog(wx.Dialog):
                        wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         self.recent_limit = wx.SpinCtrl(body, min=0, max=workplaces.RECENT_MAX,
                                         initial=speech.recent_folder_limit)
+        # On a Mac its text box and stepper are named too (set_accessible_name).
         set_accessible_name(self.recent_limit, "Recent folders New Session offers")
-        # On a Mac it's a text box and arrows of wx's own: VoiceOver reads
-        # the text box, so that's named too. Windows' has no such children.
-        for part in self.recent_limit.GetChildren():
-            if isinstance(part, wx.TextCtrl):
-                set_accessible_name(part, "Recent folders New Session offers")
         recent_row.Add(self.recent_limit, 0, wx.RIGHT, 8)
         self.clear_recent_btn = None
         if clear_recent is not None:
@@ -1605,6 +1741,25 @@ class SettingsDialog(wx.Dialog):
             self.GetClientSize().width - 20 - _check_box_glyph(self)))
         self.task_list.SetValue(speech.task_list)
         outer.Add(self.task_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # Claude in Chrome (#319). Until it's changed here it follows whether
+        # Claude Code has found the extension, so only a change is kept.
+        self.chrome = wx.CheckBox(body, label=_wrapped(
+            self, CHROME_SETTING_LABEL,
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self._chrome_choice = speech.claude_in_chrome
+        self._initial_chrome = speech.chrome_on()
+        self.chrome.SetValue(self._initial_chrome)
+        outer.Add(self.chrome, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # Prompt suggestions (#474), off until turned on. Its label says
+        # when Claude Code isn't offering them to this account (#709).
+        offered = platform_paths.claude_offers_prompt_suggestions()
+        self.suggestions = wx.CheckBox(body, label=_wrapped(
+            self, SUGGESTIONS_SETTING_LABEL + (SUGGESTIONS_NOT_OFFERED if offered is False else ""),
+            self.GetClientSize().width - 20 - _check_box_glyph(self)))
+        self.suggestions.SetValue(speech.prompt_suggestions)
+        outer.Add(self.suggestions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         codex_label = "Include Code&x chats (restart required)"
         if not platform_paths.find_codex():
@@ -1761,7 +1916,8 @@ class SettingsDialog(wx.Dialog):
         if height + chrome > screen_area(self).height:
             narrower = (self.GetClientSize().width - 20 - _check_box_glyph(self)
                         - wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self))
-            for box in (self.remote_control, self.task_list, self.codex_enabled,
+            for box in (self.remote_control, self.task_list, self.chrome, self.suggestions,
+                        self.codex_enabled,
                         self.copilot_enabled, self.agent_auto):
                 if box is None:
                     continue
@@ -1794,6 +1950,11 @@ class SettingsDialog(wx.Dialog):
                                        self.notify_choice.GetSelection(), 0)],
                                    remote_control=self.remote_control.GetValue(),
                                    task_list=self.task_list.GetValue(),
+                                   prompt_suggestions=self.suggestions.GetValue(),
+                                   claude_in_chrome=(
+                                       self.chrome.GetValue()
+                                       if self.chrome.GetValue() != self._initial_chrome
+                                       else self._chrome_choice),
                                    codex_enabled=(self.codex_enabled.GetValue() if self._codex_changed
                                        or self.codex_enabled.GetValue() != self._initial_codex_effective
                                        else self._codex_choice),
@@ -1964,9 +2125,52 @@ def remove_whole_chat_page() -> None:
         pass
 
 
+#: Set once a formatted page died in this run (#693). WebView2 157 crashed its
+#: browser process again and again on Kelly's ARM64 PC (msedge.dll+0xe5e3dc),
+#: and every page shown after that was blank, with Escape (relayed by the
+#: page's own script) doing nothing. Pages open as plain text from then on.
+_FORMATTED_BROKEN = False
+#: How long a page may take to show its first sign of life (navigation
+#: committed, a heartbeat, or loaded) before it's taken as dead, and how long
+#: it then has to finish: a whole long chat is a big file to read in.
+FORMATTED_START_TIMEOUT_MS = 10000
+FORMATTED_NAVIGATED_TIMEOUT_MS = 30000
+#: The page says it's alive this often (_HEARTBEAT), and is taken as dead
+#: after this long without a word while its window is active. A crashed
+#: browser carries no messages, so the heartbeat stops with it. Generous:
+#: the heartbeat runs on the page's main thread, which also builds what a
+#: screen reader reads, and a long chat on a slow PC can keep it busy for a
+#: while. One false alarm turns formatted pages off until restart (#693
+#: second-opinion review).
+FORMATTED_HEARTBEAT_MS = 2000
+FORMATTED_SILENCE_MS = 30000
+#: Said once, when that happens, after the plain text has opened.
+FORMATTED_BROKEN_TEXT = ("The formatted view stopped working. Showing plain text until you "
+                         "restart The Chat Place.")
+
+#: The page's heartbeat (#693), through the same "hub" handler as the keys.
+_HEARTBEAT = """
+(function () {
+  function hub() {
+    return (window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.hub) || window.hub;
+  }
+  function beat(word) { var h = hub(); if (h) { h.postMessage(word); } }
+  document.addEventListener('DOMContentLoaded', function () { beat('alive'); });
+  setInterval(function () { beat('alive'); }, %d);
+})();
+""" % FORMATTED_HEARTBEAT_MS
+
+
+def formatted_view_broken() -> bool:
+    return _FORMATTED_BROKEN
+
+
 def formatted_view_available() -> bool:
     """Whether this computer's web view (Edge WebView2 on Windows, WebKit on
     a Mac, WebKitGTK on Linux) can show the formatted page."""
+    if _FORMATTED_BROKEN:
+        return False
     try:
         import wx.html2
         return bool(wx.html2.WebView.IsBackendAvailable(_webview_backend()))
@@ -2003,33 +2207,65 @@ class FormattedMessageDialog(wx.Dialog):
     MessageDialog.
     """
 
-    def __init__(self, parent, title: str, page_html: str, start_at: str = ""):
-        """``start_at``: the heading to open on (``export.message_anchor``)."""
+    def __init__(self, parent, title: str, page_html: str, start_at: str = "",
+                 reusable: bool = False):
+        """``start_at``: the heading to open on (``export.message_anchor``).
+        ``reusable``: kept by ``show_formatted_page`` and loaded again for each
+        message (#693), so its heading is found on loading, not by a script
+        fixed into the page."""
         import wx.html2
         from .. import platform_paths
         self._start_at = start_at
+        self._reusable = reusable
         self._page_file = None
         super().__init__(parent, title=title, size=dialog_size(parent, 820, 620),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         _prepare_webview_data_folder()
         self._open_url = platform_paths.open_url
         self._loaded = False
+        #: The page never loaded, or stopped beating (#693): the caller shows
+        #: the message as plain text, and says why, once.
+        self.failed = False
+        self._beats = False  # the heartbeat script went in
+        self._watchdog = None
+        # The watchdog's state, set on every platform: the page's events
+        # touch it even where nothing watches (Mac and Linux, #693).
+        import time
+        self._clock = time.monotonic
+        self._heard = False
+        self._deadline = 0.0
+        self._last_tick = 0.0
+        self._focus_on_show = False  # loaded while still hidden (#693)
+        self._parked = False  # hidden between messages, holding PARKED_PAGE
         self.app_link = None  # a thechatplace:// link chosen in the page (#144)
         try:
             self.view = wx.html2.WebView.New(self, backend=_webview_backend())
         except Exception as exc:  # noqa: BLE001
             self.Destroy()
             raise RuntimeError(f"Couldn't show the formatted page: {exc}") from exc
+        if sys.platform == "win32":
+            # wx titles the web view's own window "wxWebView", and screen
+            # readers said it on the way into the page every time (#693).
+            self.view.SetLabel("")
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.view, 1, wx.EXPAND | wx.ALL, 4)
         row = wx.BoxSizer(wx.HORIZONTAL)
         plain = wx.Button(self, ID_PLAIN_TEXT, "Read as &Plain Text")
         row.Add(plain, 0, wx.RIGHT, 6)
-        row.Add(wx.Button(self, wx.ID_CANCEL, "&Close"), 0)
+        close = wx.Button(self, wx.ID_CANCEL, "&Close")
+        row.Add(close, 0)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         plain.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(ID_PLAIN_TEXT))
+        #: The kept page's own modal loop (#693), while it runs; see run_kept.
+        self._own_loop = None
+        self._own_result = wx.ID_CANCEL
+        if reusable:
+            # Run by run_kept, not wx's ShowModal: every way out ends it here.
+            close.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
+            self.Bind(wx.EVT_CLOSE, self._on_close_kept)
+            self.Bind(wx.EVT_CHAR_HOOK, self._on_key_kept)
         if wx.Platform == "__WXMAC__":
             # A Mac button has no Alt mnemonic, so Option+P works from the
             # buttons too, and Command+W closes, as in any Mac window (#119).
@@ -2046,7 +2282,9 @@ class FormattedMessageDialog(wx.Dialog):
             self.view.AddUserScript(_KEY_RELAY)
             from ..rendering import go_to_script
             start_script = go_to_script(start_at)
-            if start_script:
+            if start_script and not reusable:
+                # A reused page (Windows) finds its heading on loading instead:
+                # a user script stays for every later page.
                 # As well as on loading, below: WebKit may refuse RunScript's eval
                 # under the page's rules, and this needs none. RunScript was seen
                 # working on WebView2; Mac and Linux haven't been run.
@@ -2054,15 +2292,223 @@ class FormattedMessageDialog(wx.Dialog):
                                         f"function(){{{start_script}}});")
             if wx.Platform == "__WXGTK__":
                 self.view.AddUserScript(_FOCUS_PAGE)
+            if _watch_pages():
+                # Last, so a page that beats has its other scripts too (#693).
+                self.view.AddUserScript(_HEARTBEAT)
+                self._beats = True
         except Exception:  # noqa: BLE001 - Escape still works from the buttons
             pass
         self.view.Bind(wx.html2.EVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, self._on_script_message)
         self.view.Bind(wx.html2.EVT_WEBVIEW_NAVIGATING, self._on_navigating)
         self.view.Bind(wx.html2.EVT_WEBVIEW_NEWWINDOW, self._on_new_window)
         self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_loaded)
+        self.view.Bind(wx.html2.EVT_WEBVIEW_ERROR, self._on_error)
+        self.view.Bind(wx.html2.EVT_WEBVIEW_NAVIGATED, self._on_navigated)
+        if reusable:
+            # Gone with this window, however it goes, so a loop never outlives it.
+            self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy_kept)
         self._load(page_html)
+        # A dead web view never loads, or stops beating, and is a blank page
+        # in which Escape does nothing (#693). The watchdog gives it up.
+        # Windows only, where WebView2 crashed; Mac and Linux are as before.
+        if _watch_pages():
+            self._start_watchdog()
 
-    def _load(self, page_html: str):
+    # -- is the page alive? (#693) ------------------------------------------------
+
+    def _start_watchdog(self, clock=None):
+        """Watch the page from now: it has FORMATTED_START_TIMEOUT_MS to show
+        a sign of life, then must keep beating while its window is active."""
+        import time
+        self._clock = clock or time.monotonic
+        if self._watchdog is None:
+            self._watchdog = wx.Timer(self)
+            self.Bind(wx.EVT_TIMER, lambda e: self._tick(), self._watchdog)
+        self._heard = False
+        self._deadline = self._clock() + FORMATTED_START_TIMEOUT_MS / 1000
+        self._last_tick = self._clock()
+        self._watchdog.Start(1000)
+
+    def reload(self, title: str, page_html: str, start_at: str = ""):
+        """The next message in this same window and web view (#693): its
+        web view is never closed during the run, because closing one is what
+        crashed WebView2 157 on Kelly's PCs. Raises RuntimeError, leaving
+        the page parked and whole, if the message can't be loaded."""
+        self._drop_page_file()
+        self._start_at = start_at
+        self._loaded = False
+        self._focus_on_show = False
+        self.failed = False
+        self.app_link = None
+        self.SetTitle(title)
+        self._parked = False
+        try:
+            self._load(page_html, first=False)
+        except RuntimeError:
+            self.park()
+            raise
+        if _watch_pages():
+            self._start_watchdog(getattr(self, "_clock", None))
+
+    def park(self):
+        """Hidden between messages (#693): an empty page in place of the last
+        message, so none of it is read or shown when the window opens again,
+        nothing from it is counted for the next one, and a whole chat's file
+        goes now rather than at the next start."""
+        self.stop_watching()
+        self._drop_page_file()
+        self._parked = True
+        self._loaded = False
+        try:
+            self.view.SetPage(PARKED_PAGE, "")
+        except Exception:  # noqa: BLE001 - the next reload replaces it anyway
+            pass
+
+    def _from_parked_page(self) -> bool:
+        """Whether an event is the parked page's, not the message's: while
+        parked, or while the parked page is still the one showing."""
+        if getattr(self, "_parked", False):
+            return True
+        try:
+            return self.view.GetCurrentTitle() == PARKED_TITLE
+        except Exception:  # noqa: BLE001
+            return False
+
+    # -- the kept page's own modal loop (#693) -------------------------------------
+    #
+    # wx's ShowModal ended at once (2 ms, return code unchanged) every time
+    # the kept page was shown again on Kelly's PCs, so the page runs a loop of
+    # its own: the rest of The Chat Place disabled while it's open, as a modal
+    # dialog's would be, and Escape, Close, Alt+F4 and Read as Plain Text all
+    # ending it through EndModal below.
+
+    def run_kept(self, came_from=None) -> int:
+        """Show the page and wait until it's closed; the result, as ShowModal's.
+        A parked page (nothing loaded into it) is never shown: it would be
+        a blank window. ``came_from``: the control to go back to afterwards,
+        taken before the page was loaded (show_formatted_page): the page's
+        owner is the main window, which may be disabled behind a dialog (the
+        Plan, a subagent's conversation), and Windows activates only an
+        enabled owner."""
+        self._own_result = wx.ID_CANCEL
+        if self._parked or self._own_loop is not None:
+            return wx.ID_CANCEL
+        if came_from is None:
+            came_from = wx.Window.FindFocus()
+        try:
+            if came_from and wx.GetTopLevelParent(came_from) is self:
+                came_from = None  # never back into this page once it's hidden
+        except Exception:  # noqa: BLE001
+            came_from = None
+        disabler = wx.WindowDisabler(self)
+        try:
+            self.Show()
+            self.Raise()
+            if self._focus_on_show:
+                # It loaded while hidden: into it now that it can be read.
+                self._focus_on_show = False
+                wx.CallAfter(lambda: self and self.IsModal() and self._into_page())
+            loop = wx.GUIEventLoop()
+            self._own_loop = loop
+            loop.Run()
+        finally:
+            self._own_loop = None
+            del disabler
+            if self:
+                self.Hide()
+            _return_to(came_from)
+        return self._own_result
+
+    def _on_destroy_kept(self, event):
+        event.Skip()
+        if event.GetEventObject() is self and self._own_loop is not None:
+            self._own_loop.Exit()
+
+    def IsModal(self):
+        if getattr(self, "_own_loop", None) is not None:
+            return True
+        return super().IsModal()
+
+    def EndModal(self, retCode):
+        loop = getattr(self, "_own_loop", None)
+        if loop is not None:
+            self._own_result = retCode
+            loop.Exit()
+            return
+        if super().IsModal():
+            super().EndModal(retCode)
+
+    def _on_close_kept(self, event):
+        # Alt+F4 or the title bar: hidden like Close, never destroyed (the
+        # main window takes it at exit).
+        if event.CanVeto():
+            event.Veto()
+        self.EndModal(wx.ID_CANCEL)
+
+    def _on_key_kept(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE and self._own_loop is not None:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        event.Skip()
+
+    def stop_watching(self):
+        """Hidden between messages: nothing to watch until the next one."""
+        if self._watchdog is not None:
+            self._watchdog.Stop()
+
+    def _drop_page_file(self):
+        if self._page_file is not None:
+            try:
+                self._page_file.unlink()
+            except OSError:
+                pass  # the next run removes it
+            self._page_file = None
+
+    def _on_navigated(self, _event):
+        # Committed: a big page now has longer to finish reading in.
+        if self._from_parked_page():
+            return
+        if not self._heard and not self._loaded:
+            self._deadline = max(self._deadline,
+                                 self._clock() + FORMATTED_NAVIGATED_TIMEOUT_MS / 1000)
+
+    def _heard_from_page(self):
+        self._heard = True
+        silence = self._clock() + FORMATTED_SILENCE_MS / 1000
+        if self._loaded:
+            self._deadline = silence
+        else:
+            # Still reading in: a first beat on DOMContentLoaded mustn't cut a
+            # big page's time to finish (a long chat, a slow PC, a screen
+            # reader building its view of the page).
+            self._deadline = max(self._deadline, silence)
+
+    def _tick(self):
+        if not self or self.IsBeingDeleted() or self.failed or self._parked:
+            return
+        now = self._clock()
+        last, self._last_tick = getattr(self, "_last_tick", now), now
+        if now - last > 3:
+            # Ticks a second apart came far apart: the PC slept, or was too
+            # busy to run them. The page hasn't had its chance to speak.
+            self._deadline = max(self._deadline, now + FORMATTED_SILENCE_MS / 1000)
+            return
+        if self._loaded and not self._beats:
+            return  # no heartbeat script could be added: nothing to listen for
+        if self._heard and not self.IsActive():
+            # Not in front: the page's timers may be slowed, so only an
+            # active window's silence counts.
+            self._deadline = now + FORMATTED_SILENCE_MS / 1000
+            return
+        if now > self._deadline:
+            self._give_up()
+
+    def _check_loaded(self):
+        """For the tests: as if the watchdog's time had run out."""
+        if self and not self.IsBeingDeleted() and not self._loaded:
+            self._give_up()
+
+    def _load(self, page_html: str, first: bool = True):
         from ..rendering import needs_page_file, page_file_bytes
         if sys.platform == "win32" and needs_page_file(page_html):
             # WebView2's limit for a page passed in. The file holds the chat, so
@@ -2072,7 +2518,11 @@ class FormattedMessageDialog(wx.Dialog):
                 path.write_bytes(page_file_bytes(page_html))
             except OSError as exc:
                 # Passed in, it would be a blank page where Escape doesn't work.
-                self.Destroy()
+                # A kept page is left whole, hidden, to go with the main
+                # window: destroying its web view is the crash it's kept to
+                # avoid (#693).
+                if first and not self._reusable:
+                    self.Destroy()
                 raise RuntimeError("Couldn't show the formatted page: "
                                    f"{exc.strerror or exc}") from exc
             self._page_file = path
@@ -2080,35 +2530,88 @@ class FormattedMessageDialog(wx.Dialog):
             return
         self.view.SetPage(page_html, "")
 
+    def _on_error(self, event):
+        """Only a failure of the page itself: not a link (vetoed anyway), and
+        not the first about:blank being replaced by the page, which engines
+        report as a cancelled navigation."""
+        import wx.html2
+        if (self._loaded or event is None or self._from_parked_page()
+                or not _watch_pages()):
+            return
+        if event.GetInt() == wx.html2.WEBVIEW_NAV_ERR_USER_CANCELLED:
+            return
+        url = event.GetURL() or ""
+        page = self._page_file.as_uri() if self._page_file is not None else ""
+        if url in ("", "about:blank", page) or (page and url.rstrip("/") == page):
+            self._give_up()
+
+    def _give_up(self):
+        """The web view couldn't show the page (#693): plain text instead,
+        here and for the rest of this run."""
+        global _FORMATTED_BROKEN
+        _FORMATTED_BROKEN = True
+        if self.failed:
+            return
+        self.failed = True
+        if self.IsModal():
+            self.EndModal(ID_PLAIN_TEXT)
+        else:
+            wx.CallAfter(lambda: self and self.IsModal() and self.EndModal(ID_PLAIN_TEXT))
+
     def Destroy(self):
-        if self._page_file is not None:
-            try:
-                self._page_file.unlink()
-            except OSError:
-                pass  # the next run removes it
-            self._page_file = None
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.Stop()
+        self._drop_page_file()
+        # A window is destroyed later, at idle time, which a running loop of
+        # its own may never reach: end the loop now (#693). Destroyed with its
+        # parent instead, EVT_WINDOW_DESTROY ends it (_on_destroy_kept).
+        loop = getattr(self, "_own_loop", None)
+        if loop is not None:
+            loop.Exit()
         return super().Destroy()
 
     def _on_loaded(self, _event):
         if not self or self.IsBeingDeleted():
             return  # the page file couldn't be written, and the view's still finishing
+        if self._from_parked_page():
+            # The hidden page's own load, or one closed before it loaded. A
+            # message that loads before its window shows still counts (#693).
+            return
         if not self._loaded:
             self._loaded = True
-            # Into the page, so the screen reader starts reading it.
-            self.view.SetFocus()
-            gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
-            from ..rendering import go_to_script
-            script = go_to_script(self._start_at)
-            # Windows only: wx waits for its answer, and WebKit may never give one
-            # under the page's rules. The user script does it there.
-            if script and sys.platform == "win32":
-                try:
-                    self.view.RunScript(script)
-                except Exception:  # noqa: BLE001 - it's still open, at the top
-                    pass
+            self._heard_from_page()
+            if not self.IsShown():
+                # Loaded before its window showed (a short message in a
+                # running web view): focusing a hidden window would take
+                # focus off the list into nothing. run_kept does it on showing.
+                self._focus_on_show = True
+                return
+            self._into_page()
+
+    def _into_page(self):
+        """Into the page, so the screen reader starts reading it, at the
+        heading it opens on."""
+        self.view.SetFocus()
+        gtk_a11y.focus_web_view(self.view)  # Linux: past wx's wrapper, into the page
+        from ..rendering import go_to_script
+        script = go_to_script(self._start_at)
+        # Windows only: wx waits for its answer, and WebKit may never give one
+        # under the page's rules. The user script does it there.
+        if script and sys.platform == "win32":
+            try:
+                self.view.RunScript(script)
+            except Exception:  # noqa: BLE001 - it's still open, at the top
+                pass
 
     def _on_script_message(self, event):
         message = event.GetString()
+        if self._from_parked_page():
+            return  # the hidden page's, or the last message's: not this one's
+        # Any word from the page shows its browser is still alive (#693).
+        self._heard_from_page()
+        if message == "alive":
+            return
         if message == "escape":
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif message == "plain":
@@ -2116,8 +2619,7 @@ class FormattedMessageDialog(wx.Dialog):
 
     def _on_navigating(self, event):
         url = event.GetURL()
-        if not self._loaded and not url.lower().startswith(
-                ("http:", "https:", "mailto:", "thechatplace:")):
+        if not self._loaded and _is_the_page_itself(url, self._page_file):
             return  # the page itself. A long one can be followed from before it's all in.
         # A link: never in here. http, https and mailto go to the browser.
         event.Veto()
@@ -2131,11 +2633,163 @@ class FormattedMessageDialog(wx.Dialog):
         window itself (``app_link``), never handed to the shell, which would
         only start The Chat Place again."""
         from ..links import is_app_link
-        if is_app_link(url):
+        from ..local_files import local_path
+        from .. import platform_paths
+        if local_path(url):
+            try:
+                platform_paths.open_local_file(url)
+            except (OSError, ValueError) as exc:
+                wx.MessageBox(f"Couldn't open the file: {exc}\n\n"
+                              f"Close this view, then use Links ({key_name(your_key('Ctrl+L'))}) "
+                              "for file actions and Copy.", self.GetTitle(),
+                              wx.OK | wx.ICON_INFORMATION, self)
+        elif is_app_link(url):
             self.app_link = url
             wx.CallAfter(self.EndModal, wx.ID_CANCEL)
         elif url.lower().startswith(("http:", "https:", "mailto:")):
             self._open_url(url)
+
+
+#: The one formatted page kept for the run on Windows (#693), or None.
+_SHARED_PAGE = None
+
+
+#: What the kept page holds while hidden (#693): nothing to read, and a
+#: title that marks its events as not the next message's.
+PARKED_TITLE = "The Chat Place, nothing open"
+PARKED_PAGE = f"<html><head><title>{PARKED_TITLE}</title></head><body></body></html>"
+
+
+def _is_the_page_itself(url: str, page_file) -> bool:
+    """Whether a navigation before the page has loaded is the page loading,
+    not a link. WebView2 loads a page passed in (SetPage) as a
+    ``data:text/html`` address, not about:blank (seen on WebView2 157), and
+    turning that away left every short message blank (#697 review). A long
+    chat loads from its page file; any other file: address is a link (#253)."""
+    if url == "about:blank" or url.startswith("data:text/html"):
+        return True
+    return page_file is not None and url == page_file.as_uri()
+
+
+def _reuse_pages() -> bool:
+    """Windows only: there, destroying a WebView2 crashed its browser while
+    JAWS ran (WebView2 157; Kelly's x64 and ARM64 PCs), and on ARM64 left
+    every later page blank. Kept open and loaded again, a page closed only as
+    The Chat Place exits. Mac and Linux make a page per message, as before."""
+    return sys.platform == "win32"
+
+
+def _watch_pages() -> bool:
+    """Whether a page is watched for a dead web view (#693): Windows only,
+    where WebView2 crashed. Mac and Linux are left as they were."""
+    return sys.platform == "win32"
+
+
+#: A formatted page is being shown (#693), from loading to closing: another
+#: request in that time (one run while waiting keys are let through) gets
+#: plain text, never the kept page loaded over this one.
+_PAGE_BUSY = False
+
+
+def _return_to(window) -> None:
+    """Back to the control you were on before the page opened, with its
+    window in front."""
+    try:
+        if not window:
+            return
+        top = wx.GetTopLevelParent(window)
+        if top and top.IsEnabled():
+            top.Raise()
+        window.SetFocus()
+    except Exception:  # noqa: BLE001 - gone meanwhile: the caller moves focus anyway
+        pass
+
+
+def _let_waiting_keys_through() -> None:
+    """Deliver keystrokes already waiting (#693) before a modal page opens."""
+    try:
+        wx.SafeYield(None, True)
+    except Exception:  # noqa: BLE001 - nothing to deliver, or no event loop (tests)
+        pass
+
+
+def show_formatted_page(parent, title: str, page_html: str, start_at: str = "",
+                        factory=None):
+    """Show a formatted page modally and return (result, app_link, failed).
+    ``factory``: what makes a page (FormattedMessageDialog unless a test
+    passes its own). The real one is kept and reused on Windows (#693);
+    anything else is made and destroyed each time. Raises RuntimeError if the
+    page can't be made, as FormattedMessageDialog does."""
+    global _PAGE_BUSY
+    factory = factory or FormattedMessageDialog
+    options = {"start_at": start_at} if start_at else {}
+    if factory is not FormattedMessageDialog or not _reuse_pages():
+        dialog = factory(parent, title, page_html, **options)
+        try:
+            result = dialog.ShowModal()
+            return result, getattr(dialog, "app_link", None), getattr(dialog, "failed", False)
+        finally:
+            dialog.Destroy()
+    # Owned by the main window, which lives the whole run: a page owned by a
+    # dialog would be destroyed with it, and that is the crash to avoid.
+    owner = wx.GetTopLevelParent(parent) if parent is not None else None
+    while owner is not None and owner.GetParent() is not None:
+        owner = wx.GetTopLevelParent(owner.GetParent())
+    page = _SHARED_PAGE
+    if _PAGE_BUSY or (page and not page.IsBeingDeleted() and page.IsModal()):
+        # Already open, or opening: plain text this once. Never a second web
+        # view, which would be destroyed after, and that is the crash.
+        raise RuntimeError("The formatted page is already open")
+    _PAGE_BUSY = True
+    try:
+        return _show_kept_page(page, owner, title, page_html, start_at)
+    finally:
+        _PAGE_BUSY = False
+
+
+def _run_kept(page, came_from):
+    run = getattr(page, "run_kept", None)
+    return run(came_from) if run is not None else page.ShowModal()
+
+
+def _show_kept_page(page, owner, title, page_html, start_at):
+    global _SHARED_PAGE
+    # Where you are now, before anything below can move focus: to go back to.
+    try:
+        came_from = wx.Window.FindFocus()
+    except Exception:  # noqa: BLE001 - no app (tests): nowhere to go back to
+        came_from = None
+    if page and not page.IsBeingDeleted() and page.GetParent() is owner:
+        page.reload(title, page_html, start_at)  # RuntimeError: plain text instead
+    else:
+        page = FormattedMessageDialog(owner, title, page_html, start_at, reusable=True)
+        _SHARED_PAGE = page
+    # The key that opened this (Enter in the messages list) still has its
+    # character to come. Shown at once, a kept page took it on its Close
+    # button and closed in 0 ms (Kelly's log, #693), so let it go to the
+    # list first, and start the page with its web view focused, not Close.
+    _let_waiting_keys_through()
+    view = getattr(page, "view", None)
+    if view is not None:
+        wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+    import time
+    opened = time.monotonic()
+    result = _run_kept(page, came_from)
+    if (time.monotonic() - opened < 0.3 and result == wx.ID_CANCEL
+            and not getattr(page, "_loaded", True) and not page.failed
+            and page and not page.IsBeingDeleted()):
+        # Closed before anything could happen: a stray key, not you. Once more.
+        _let_waiting_keys_through()
+        if view is not None:
+            wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+        result = _run_kept(page, came_from)
+    link, failed = page.app_link, page.failed
+    page.park()
+    if failed:
+        # Its web view died: never shown again this run (plain text from now
+        # on). Not destroyed either; it goes with the main window.
+        _SHARED_PAGE = None
+    return result, link, failed
 
 
 # -- Claude is waiting for an answer (#187, #188) ---------------------------------------
@@ -2307,7 +2961,8 @@ class PermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        self.request_text = _read_only_text(self, request.detail(), "Request")
+        from ..billing import scrub
+        self.request_text = _read_only_text(self, scrub(request.detail()), "Request")
         sizer.Add(self.request_text, 1, wx.EXPAND | wx.ALL, 8)
         sizer.Add(wx.StaticText(self, label="&Reason to give Claude if you deny (optional):"),
                   0, wx.LEFT, 8)
@@ -2385,7 +3040,8 @@ class CodexPermissionDialog(wx.Dialog):
         self.choice = ""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Request:"), 0, wx.LEFT | wx.TOP, 8)
-        detail = request.detail(file_detail)
+        from ..billing import scrub
+        detail = scrub(request.detail(file_detail))
         if chat_rule is not None and provider != "Codex":
             # Copilot's (#426): The Chat Place keeps the command and answers
             # Allow Once each time; Copilot's own "always" is never sent.
@@ -3114,16 +3770,30 @@ class PlanDialog(wx.Dialog):
     def _read_formatted(self, request):
         from ..rendering import message_page
         title = "Claude's plan"
+        if not formatted_view_available():
+            self._formatted_gone()  # it died earlier in this run (#693)
+            return
         try:
-            dialog = FormattedMessageDialog(self, title, message_page(title, request.plan()))
+            # The shared page on Windows (#693), never destroyed with this
+            # dialog: that would close its web view.
+            _result, _link, failed = show_formatted_page(
+                self, title, message_page(title, request.plan()))
         except RuntimeError:
             self.plan_text.SetFocus()
             return
-        try:
-            dialog.ShowModal()
-        finally:
-            dialog.Destroy()
+        if failed:
+            wx.MessageBox(FORMATTED_BROKEN_TEXT + " The plan is in the Plan box.",
+                          title, wx.OK | wx.ICON_INFORMATION, self)
+            self._formatted_gone()
+            return
         (self.formatted_button or self.plan_text).SetFocus()
+
+    def _formatted_gone(self):
+        """No formatted view for the rest of the run (#693): the button goes
+        quiet, and you're on the plan's text, which has it all."""
+        if self.formatted_button is not None:
+            self.formatted_button.Disable()
+        self.plan_text.SetFocus()
 
     def chosen_mode(self) -> str:
         index = self.mode.GetSelection()
@@ -4351,7 +5021,7 @@ class AgentConversationDialog(wx.Dialog):
             used = slot < slots
             new = used and info is None and provider is not None
             any_new = any_new or new
-            new_codex = new_codex or (new and provider == "codex")
+            new_codex = new_codex or (new and provider in ('codex', 'codex-api'))
             permission = self.permissions[slot]
             if new:
                 labels = [label for _value, label in self._modes(provider)]
@@ -4476,7 +5146,7 @@ class AgentConversationDialog(wx.Dialog):
                 value = self._modes(provider)[index][0]
                 if provider == "claude":
                     permission = value
-                elif provider == "codex":
+                elif provider in ('codex', 'codex-api'):
                     permission, approval_policy, approvals_reviewer = value
             members.append(SimpleNamespace(info=info, provider=provider,
                                            role=" ".join(self.roles[slot].GetValue().split()),
@@ -4746,10 +5416,12 @@ class ListsPage(wx.Panel):
                                         wx.FONTWEIGHT_NORMAL))
         sizer.Add(self.detail, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.open_btn = self.markdown_btn = None
-        if category == lists.LINKS:
+        self.open_btn = self.markdown_btn = self.folder_btn = None
+        if category in (lists.LINKS, lists.CODE):
             self.open_btn = wx.Button(self, label="&Open")
             self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected())
+            self.folder_btn = wx.Button(self, label="Open containing folde&r")
+            self.folder_btn.Bind(wx.EVT_BUTTON, lambda e: self.open_selected(containing=True))
         if category == lists.SUBAGENTS:
             # A subagent's conversation, to read like a chat (#468). It sits
             # where Links has Open: what Enter does comes first.
@@ -4762,7 +5434,8 @@ class ListsPage(wx.Panel):
             self.markdown_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected(markdown=True))
         # The gap goes between buttons, not after the last, so the row ends
         # where the dialog's Close does (#288).
-        for index, button in enumerate(b for b in (self.open_btn, self.copy_btn, self.markdown_btn)
+        for index, button in enumerate(b for b in (self.open_btn, self.folder_btn,
+                                                  self.copy_btn, self.markdown_btn)
                                        if b is not None):
             row.Add(button, 0, wx.LEFT if index else 0, 6)
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.TOP | wx.LEFT | wx.RIGHT, 8)
@@ -4810,6 +5483,18 @@ class ListsPage(wx.Panel):
         for button in (self.copy_btn, self.open_btn, self.markdown_btn):
             if button is not None:
                 button.Enable(item is not None)
+        if self.category in (lists.LINKS, lists.CODE):
+            link = item.link if item is not None else None
+            status = link.file_status if link is not None and link.file_path else None
+            self.open_btn.Show(self.category == lists.LINKS or link is not None)
+            self.open_btn.Enable(link is not None and link.can_open)
+            self.open_btn.SetToolTip(link.why_not() if link is not None else '')
+            self.folder_btn.Show(status is not None)
+            self.folder_btn.Enable(status is not None and status.can_reveal)
+            label = 'Open folde&r' if status and status.kind == 'folder' else 'Open containing folde&r'
+            self.folder_btn.SetLabel(label)
+            set_accessible_name(self.folder_btn, label.replace('&', ''))
+            self.Layout()
         if self.category == lists.SUBAGENTS and self.open_btn is not None:
             self.open_btn.Enable(item is not None and item.subagent is not None
                                  and item.subagent.readable)
@@ -4863,16 +5548,19 @@ class ListsPage(wx.Panel):
         # It opens once read, in the background (#468), so this returns first.
         self.owner.open_subagent(item.subagent, self.owner, closed, still_on)
 
-    def open_selected(self):
+    def open_selected(self, containing: bool = False):
         item = self.selected()
         if item is None or item.link is None:
             self.owner.feedback(f"No {lists.NOUNS[self.category]} match." if self.items
                                 else lists.empty_text(self.category, self.owner.scope))
             return
-        if not item.link.can_open:
+        allowed = (item.link.file_path and item.link.file_status.can_reveal
+                   if containing else item.link.can_open)
+        if not allowed:
             self.owner.feedback(item.link.why_not())
             return
         self.owner.chosen_link = item.link
+        self.owner.chosen_containing_folder = containing
         _end_modal(self.owner, wx.ID_OK)
 
     def copy_selected(self, markdown: bool = False):
@@ -4952,6 +5640,7 @@ class ListsDialog(wx.Dialog):
         self.feedback = feedback
         self.open_subagent = open_subagent
         self.chosen_link = None
+        self.chosen_containing_folder = False
         self._built = {}  # (kind, scope) -> its items
         #: Which platform's keys switch kinds (tests choose either).
         self.platform = sys.platform
@@ -6355,7 +7044,7 @@ class ChatOptionsDialog(wx.Dialog):
         self._provider = provider
         self._folder = folder
         self._options = options or ChatOptions()
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             self._options = ChatOptions(instructions=self._options.instructions)
         self._choices = choices
         self._chat_model = model
@@ -6388,7 +7077,7 @@ class ChatOptionsDialog(wx.Dialog):
         set_accessible_name(self.style, "Output style")
         grid.Add(self.style, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        if provider == "codex":
+        if provider in ('codex', 'codex-api'):
             grid.ShowItems(False)
             sizer.Hide(grid)
 
@@ -6425,7 +7114,7 @@ class ChatOptionsDialog(wx.Dialog):
 
         sizer.Add(wx.StaticText(self, label="A&bout these options:"), 0, wx.LEFT, 10)
         note = (CODEX_CHAT_OPTIONS_NOTE + (" " + CODEX_CHAT_OPTIONS_LATER_NOTE if existing else "")
-                if provider == "codex" else
+                if provider in ('codex', 'codex-api') else
                 CHAT_OPTIONS_NOTE + (" " + CHAT_OPTIONS_LATER_NOTE if existing else ""))
         self.note = _read_only_text(self, note, "About these options", min_height=90)
         sizer.Add(self.note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -6452,7 +7141,7 @@ class ChatOptionsDialog(wx.Dialog):
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and (self.instructions if provider == "codex" else self.agent).SetFocus())
+        wx.CallAfter(lambda: self and (self.instructions if provider in ('codex', 'codex-api') else self.agent).SetFocus())
 
     # -- the agent and style choices
 

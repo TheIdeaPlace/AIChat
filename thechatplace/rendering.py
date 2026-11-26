@@ -16,15 +16,17 @@ The page is built to be inert:
 * Images aren't loaded: the image syntax is switched off, so it reads as a
   link instead.
 * A Content-Security-Policy allows nothing but the page's own styles, so
-  nothing remote is fetched and no script in the page can run.
-* Links keep only http, https and mailto targets, which the viewer opens in
-  the default browser, never in itself, and links to sessions
-  (``thechatplace://session/<id>``, #144), which The Chat Place opens itself.
+  nothing remote is fetched and no script in the page can run. A page read
+  in the app also allows eval, for the viewer's own scripts (#725).
+* Links keep only web, email and session targets. In-app reading additionally
+  links local files (#253); the viewer intercepts them and checks safety and
+  existence before opening. Exported HTML has no local file actions.
 """
 from __future__ import annotations
 
 import html
 import re
+import uuid
 
 import markdown
 from markdown.extensions.fenced_code import FencedCodeExtension
@@ -32,6 +34,8 @@ from markdown.extensions.sane_lists import SaneListExtension
 from markdown.extensions.tables import TableExtension
 
 from .links import parse_link
+from . import platform_paths
+from .local_files import file_url, local_references
 
 _CODE = re.compile(r'<pre><code(?: class="language-([^"]+)")?>(.*?)</code></pre>', re.DOTALL)
 _HREF = re.compile(r'<a href="([^"]*)"')
@@ -108,10 +112,23 @@ def _converter() -> markdown.Markdown:
     return md
 
 
-def markdown_to_html(text: str) -> str:
+def markdown_to_html(text: str, cwd: str = "", *, file_links: bool = False) -> str:
     """The body HTML for ``text``: code blocks as named regions, unsafe links
     made plain text."""
-    body = _converter().convert(text or "")
+    text = text or ""
+    # Protect paths before Markdown consumes their backslashes or spaces.
+    # An unpredictable prefix keeps message text from impersonating a token.
+    prefix = 'TCPLOCAL' + uuid.uuid4().hex
+    references = local_references(text, cwd) if file_links else []
+    replacements = {}
+    pieces, end = [], 0
+    for index, ref in enumerate(references):
+        token = f'{prefix}N{index}END'
+        replacements[token] = ref
+        pieces.extend((text[end:ref.start], token))
+        end = ref.end
+    pieces.append(text[end:])
+    body = _converter().convert(''.join(pieces))
 
     def code_region(match: "re.Match[str]") -> str:
         language, code = match.group(1) or "", html.unescape(match.group(2))
@@ -123,7 +140,37 @@ def markdown_to_html(text: str) -> str:
         safe = _SAFE_LINK.match(href) or parse_link(href) is not None
         return match.group(0) if safe else "<a"
 
-    return _HREF.sub(link, _CODE.sub(code_region, body))
+    body = _HREF.sub(link, _CODE.sub(code_region, body))
+
+    def file_link(match):
+        ref = replacements[match.group()]
+        status = platform_paths.local_file_status(ref.path, quick=True)
+        label = ref.words or ref.text
+        name = f'{label}, file' + (f'. {status.reason}' if status.reason else '')
+        return (f'<a href="{html.escape(file_url(ref.path), quote=True)}" '
+                f'aria-label="{html.escape(name, quote=True)}">{html.escape(label)}</a>')
+
+    token_pattern = re.compile(prefix + r'N\d+END')
+
+    def original(match):
+        ref = replacements[match.group()]
+        return html.escape(ref.words or ref.text, quote=True)
+
+    # Markdown can copy a token into a code fence's language attribute or
+    # a reference-style link label. Restore text there, never nested links
+    # or markup inside an attribute. All tags here came from the converter.
+    parts = re.split(r'(<[^>]*>)', body)
+    anchor_depth = 0
+    for index, part in enumerate(parts):
+        if index % 2:
+            if re.match(r'<a(?:\s|>)', part):
+                anchor_depth += 1
+            elif part == '</a>':
+                anchor_depth = max(0, anchor_depth - 1)
+            parts[index] = token_pattern.sub(original, part)
+        else:
+            parts[index] = token_pattern.sub(original if anchor_depth else file_link, part)
+    return ''.join(parts)
 
 
 def shift_html_headings(body_html: str, by: int = 1) -> str:
@@ -144,10 +191,17 @@ def html_page(title: str, body_html: str, *, landmark: bool = False) -> str:
     for the pages published on the web, where it sits among other pages."""
     name = html.escape(title, quote=True)
     body = f"<main>{body_html}</main>" if landmark else body_html
+    # A page with no landmark is read in the app's own viewer. On a Mac and on
+    # Linux, wx's Copy, Select All and Can Copy are scripts it runs through
+    # eval, which default-src 'none' refused: Command+C copied nothing and
+    # showed "Error running JavaScript" (#725). Allowing eval lets no script
+    # in the page run (inline scripts, handlers and javascript: links are
+    # still refused); only scripts already running, the viewer's, can use it.
+    scripts = "" if landmark else "; script-src 'unsafe-eval'"
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<meta http-equiv=\"Content-Security-Policy\" "
-            "content=\"default-src 'none'; style-src 'unsafe-inline'\">"
+            f"content=\"default-src 'none'; style-src 'unsafe-inline'{scripts}\">"
             f"<title>{name}</title><style>{_STYLE}</style></head>"
             f"<body>{body}</body></html>")
 
@@ -178,12 +232,12 @@ def go_to_script(anchor: str) -> str:
             "if(e){e.setAttribute('tabindex','-1');e.focus();e.scrollIntoView();}")
 
 
-def message_page(title: str, text: str, heading: str = "") -> str:
+def message_page(title: str, text: str, heading: str = "", cwd: str = "") -> str:
     """A message's markdown as a whole page. With ``heading`` (who wrote it,
     "Claude"), the page starts with it as heading 1 and the message's own
     headings move down a level under it (#341), so H finds the top of the
     message and the outline reads speaker, then the message's sections."""
-    body = markdown_to_html(text)
+    body = markdown_to_html(text, cwd, file_links=True)
     if heading:
         body = f"<h1>{html.escape(heading)}</h1>\n{shift_html_headings(body)}"
     return html_page(title, body)

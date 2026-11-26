@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  938
+  1003
  ],
  "client": [
   664,
-  899
+  964
  ],
  "dpi": [
   96,
@@ -23,10 +23,10 @@
     0,
     0,
     664,
-    860
+    925
    ],
    "best": [
-    644,
+    663,
     16
    ],
    "depth": 0,
@@ -535,10 +535,48 @@
   {
    "class": "CheckBox",
    "name": "check",
-   "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
+   "label": "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in Chrome extension; from the next\nturn)",
    "rect": [
     10,
     570,
+    643,
+    30
+   ],
+   "best": [
+    643,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)",
+   "rect": [
+    10,
+    610,
+    547,
+    15
+   ],
+   "best": [
+    547,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Include Code&x chats (restart required). Codex isn't installed on this computer; install the Codex app or CLI, then\nrestart.",
+   "rect": [
+    10,
+    635,
     619,
     30
    ],
@@ -557,7 +595,7 @@
    "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
-    610,
+    675,
     325,
     15
    ],
@@ -576,7 +614,7 @@
    "label": "Check for up&dates when The Chat Place starts",
    "rect": [
     10,
-    631,
+    696,
     263,
     15
    ],
@@ -595,7 +633,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    656,
+    721,
     382,
     15
    ],
@@ -614,7 +652,7 @@
    "label": "Histor&y retention and kept copies:",
    "rect": [
     10,
-    691,
+    756,
     179,
     16
    ],
@@ -633,7 +671,7 @@
    "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
    "rect": [
     12,
-    709,
+    774,
     644,
     110
    ],
@@ -653,7 +691,7 @@
    "label": "Open Claude's retention settings",
    "rect": [
     10,
-    827,
+    892,
     193,
     23
    ],
@@ -672,7 +710,7 @@
    "label": "OK",
    "rect": [
     494,
-    868,
+    933,
     75,
     23
    ],
@@ -691,7 +729,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    868,
+    933,
     75,
     23
    ],

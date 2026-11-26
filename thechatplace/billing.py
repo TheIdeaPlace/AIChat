@@ -80,7 +80,7 @@ FIRST_PARTY = "firstParty"
 #: added, and what the scrubber hides.
 KEY_PREFIX = "sk-ant-"
 _KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]{20,300}")
-_KEY_ANYWHERE = re.compile(r"sk-ant-[A-Za-z0-9_\-]*", re.IGNORECASE)
+_KEY_ANYWHERE = re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}", re.IGNORECASE)
 HIDDEN_KEY = "sk-ant-(hidden)"
 
 #: Where to add credit or see what's been spent.
@@ -140,14 +140,21 @@ def save_api_key(key: str, now: Optional[float] = None) -> None:
     won't keep it. The key's ending and today's date go in the info file; a
     failure to write that is let go, as the status then says "key added"."""
     from . import platform_paths
+    save_named_api_key(key, platform_paths.CLAUDE_API_KEY_SECRET, _info_path(),
+                       looks_like_key, 'Claude', KEY_PREFIX, now)
+
+
+def save_named_api_key(key, secret_name, info_path, validate, label, prefix, now=None):
+    """Both providers use the same protected secret and non-secret metadata path."""
+    from . import platform_paths
     key = (key or "").strip()
-    if not looks_like_key(key):
-        raise ValueError(f"A Claude API key starts with {KEY_PREFIX}.")
-    platform_paths.save_secret(platform_paths.CLAUDE_API_KEY_SECRET, key)
+    if not validate(key):
+        raise ValueError(f"A {label} API key starts with {prefix}.")
+    platform_paths.save_secret(secret_name, key)
     day = datetime.date.fromtimestamp(time.time() if now is None else now)
     try:
         from .provider_storage import atomic_write_json
-        atomic_write_json(_info_path(), {"ending": key_ending(key), "added": day.isoformat()})
+        atomic_write_json(info_path, {"ending": key_ending(key), "added": day.isoformat()})
     except OSError:
         pass
 
@@ -162,11 +169,11 @@ def remove_api_key() -> None:
         pass
 
 
-def _key_info() -> Optional[tuple]:
+def _key_info(path=None) -> Optional[tuple]:
     """(ending, date added) from the info file, or None if it's missing or
     damaged."""
     try:
-        raw = json.loads(_info_path().read_text(encoding="utf-8"))
+        raw = json.loads((path if path is not None else _info_path()).read_text(encoding="utf-8"))
         ending, added = raw["ending"], datetime.date.fromisoformat(raw["added"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -182,24 +189,29 @@ def api_key_status(now: Optional[float] = None) -> str:
     Never the key."""
     if not has_api_key():
         return "Claude: No key"
-    info = _key_info()
+    return named_key_status('Claude', _key_info(), now)
+
+
+def named_key_status(label, info, now=None):
     if info is None:
-        return "Claude: key added"
+        return f"{label}: key added"
     ending, added = info
     today = datetime.date.fromtimestamp(time.time() if now is None else now)
     day = f"{_MONTHS[added.month - 1]} {added.day}"
     if added.year != today.year:
         day += f", {added.year}"
-    return f"Claude: key ending in {ending}, added {day}"
+    return f"{label}: key ending in {ending}, added {day}"
 
 
 def scrub(text):
     """``text`` with anything that looks like an API key hidden. Applied to
     Claude Code's stderr and error text before it reaches the window, a log or
     a bug report. Anything but a string is given back as it is."""
-    if not isinstance(text, str) or "sk-ant-" not in text.lower():
+    if not isinstance(text, str):
         return text
-    return _KEY_ANYWHERE.sub(HIDDEN_KEY, text)
+    text = _KEY_ANYWHERE.sub(HIDDEN_KEY, text)
+    return re.sub(r'\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}',
+                  'sk-(hidden)', text, flags=re.IGNORECASE)
 
 
 # -- The settings an API chat's turns get --------------------------------------
@@ -454,15 +466,32 @@ def key_refused(retry: Optional[dict]) -> bool:
     return isinstance(error, str) and bool(_AUTH_WORDS.search(error))
 
 
+def overall_limit_text(provider: str, limit: Optional[float], others_held: bool) -> str:
+    """What's said when a message used up what was left of the overall limit
+    (``Reservation.overall_cap``), for Claude and Codex alike. Other chats'
+    messages holding part of it may give some back when they finish."""
+    said = f"; {money(limit)} of it was left for this message" if limit is not None else ""
+    if others_held:
+        return (f"Your overall limit for {provider} API credits ran out{said}, as other "
+                "chats' messages were holding the rest. Send again once they finish, or "
+                "raise the limit or reset the total in Tools, API Keys.")
+    return (f"Your overall limit for {provider} API credits ran out{said}. Raise the limit "
+            "or reset the total in Tools, API Keys to send more on API credits.")
+
+
 def failure_text(subtype: str, text: str, cost_usd: Optional[float] = None,
-                 limit: Optional[float] = None) -> Optional[str]:
+                 limit: Optional[float] = None, overall: bool = False,
+                 others_held: bool = False) -> Optional[str]:
     """A plain message for an API chat's turn that ended on a budget, credit
-    or key problem, or None for any other ending."""
+    or key problem, or None for any other ending. ``overall``: the limit was
+    what was left of the overall one (``Reservation.overall_cap``)."""
     text = text or ""
     if subtype == "error_max_budget_usd":
-        said = f" of {money(limit)}" if limit is not None else ""
         cost = (f" It cost {money(cost_usd)}, as a message can run over the limit by one "
                 "request." if cost_usd else "")
+        if overall:
+            return f"Claude stopped.{cost} {overall_limit_text('Claude', limit, others_held)}"
+        said = f" of {money(limit)}" if limit is not None else ""
         return (f"Claude stopped at your per-message limit{said} for API credits.{cost} "
                 "Send another message to carry on, or change the limit in Tools, API Keys.")
     if _CREDIT_LOW.search(text):
@@ -504,7 +533,15 @@ def cost_sentence(words: str, title: str = "") -> str:
     cents.", "Budget: cost not known.")."""
     if words == COST_NOT_KNOWN:
         return f"{title}: {COST_NOT_KNOWN}." if title else "Cost not known."
-    return f"{title}: it cost {words}." if title else f"It cost {words}."
+    if words == "nothing was charged":
+        return f"{title}: nothing was charged." if title else "Nothing was charged."
+    if words.startswith("estimated, at most "):
+        text = "The cost is " + words
+    elif words.startswith("estimated "):
+        text = "The cost is estimated at " + words[len("estimated "):]
+    else:
+        text = "It cost " + words
+    return f"{title}: {text[0].lower() + text[1:]}." if title else text + "."
 
 
 def money(amount: Optional[float]) -> str:

@@ -114,6 +114,14 @@ STEPS = [
     Step("open it", ["Return"], expect=["Messages in Visual probe", "What changed"],
          expect_dbus=["Loaded Visual probe"]),
     Step("previous message", ["Up"], expect=["Make the uploader flush before it signals"]),
+    # Prompt suggestions (#474): the reply came with one, put in the empty
+    # message box and selected. Tab there reads it. Then the box is emptied
+    # and the focus put back on that message, so the steps after this one
+    # start where they always have.
+    Step("a suggestion, then Tab to the message box", ["Tab"], trigger="suggestion",
+         after_trigger=True, expect=["Your message", "Write the script"]),
+    Step("back to the message", [], trigger="suggestion-done",
+         expect=["Make the uploader flush before it signals"]),
     # Retry from Here (#468, #596) on that message of yours: it opens on the
     # chosen option of What Goes Back, Tab reads What Happens, Shift+Tab goes
     # back to the option, Escape comes back. The option is checked after
@@ -174,10 +182,15 @@ STEPS = [
          expect=["New Session, Ctrl+N, File menu"]),
     Step("Customize Keyboard Shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
-    # Tools, API Keys (#658), by its access key. The probe's world has no key,
-    # so it opens on the key box, and Test Key and Remove Key are off: Tab
-    # goes past them, through every other control in turn, to Close.
-    Step("API Keys", ["alt+t", "p"], expect=["API Keys", "Claude API key"],
+    # Tools, API Keys (#658), by its access key. It opens on Provider, which
+    # says whether each provider has a key. The probe's world has no key, so
+    # Test Key and Remove Key are off: Tab goes past them, through every
+    # other control in turn, to Close.
+    Step("API Keys", ["alt+t", "p"],
+         expect=["API Keys", "Provider", "Claude (Anthropic), no key"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("API Keys, key status", ["Tab"], expect=["Key status", "Claude: No key"]),
+    Step("API Keys, key box", ["Tab"], expect=["Claude API key"],
          refuse=["unlabeled", "unlabelled"]),
     Step("API Keys, Add Key", ["Tab"], expect=["Add Key", "push button"]),
     Step("API Keys, test result", ["Tab"], expect=["Test result"],
@@ -195,11 +208,31 @@ STEPS = [
          refuse=["Release Held push button"]),
     Step("API Keys, Billing Page", ["Tab"], expect=["Billing Page", "push button"]),
     Step("API Keys, Close", ["Tab"], expect=["Close", "push button"]),
-    # Round to the top: the key status, a read-only box, then the key box.
-    Step("API Keys, key status", ["Tab"], expect=["Key status", "Claude: No key"]),
-    Step("API Keys, round to the key box", ["Tab"], expect=["Claude API key"]),
+    # Round to Provider, then verify the separate OpenAI state with no key.
+    Step('API Keys, Provider', ['Tab'], expect=['Provider', 'Claude']),
+    Step('API Keys, OpenAI provider', ['Down'], expect=['OpenAI']),
+    Step('API Keys, OpenAI key status', ['Tab'], expect=['Key status', 'OpenAI: No key']),
+    Step('API Keys, OpenAI key box', ['Tab'], expect=['OpenAI API key'], refuse=['unlabeled', 'unlabelled']),
+    Step('API Keys, OpenAI Add Key', ['Tab'], expect=['Add Key', 'push button']),
+    Step('API Keys, OpenAI test result', ['Tab'], expect=['Test result']),
+    Step('API Keys, OpenAI overall limit', ['Tab'], expect=['Stop API chats once The Chat Place has spent', '20.00']),
+    Step('API Keys, OpenAI message limit', ['Tab'], expect=['Stop any one message at about', '2.00']),
+    Step('API Keys, OpenAI total', ['Tab'], expect=['Total', 'Estimated OpenAI costs']),
     Step("API Keys closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
+    Step('Price unknown question', [], trigger='openai-unpriced-confirm',
+         expect=['Price unknown warning', 'This spends OpenAI API credits'],
+         refuse=['unlabeled', 'unlabelled']),
+    # Re-focus the read-only warning: selecting it only says document selected.
+    Step('Read the price unknown warning by focus', ['Tab', 'shift+Tab'],
+         expect=['Price unknown warning', 'This spends OpenAI API credits']),
+    Step('Price unknown Cancel button', ['Tab'], expect=['Cancel', 'push button']),
+    Step('Price unknown Send button', ['Tab'], expect=['Send on API credits', 'push button']),
+    Step('Price unknown back to Cancel', ['shift+Tab'], expect=['Cancel']),
+    Step('Price unknown Escape cancels', ['Escape'], expect=['Messages in Visual probe']),
+    Step('Price unknown asks again', [], trigger='openai-unpriced-confirm',
+         expect=['Price unknown warning', 'This spends OpenAI API credits']),
+    Step('Price unknown Enter cancels', ['Return'], expect=['Messages in Visual probe']),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -403,6 +436,16 @@ STEPS = [
     # Orca says the window and the message you were on, not the list's name.
     Step("Lists closed, back in the messages", ["Escape"],
          expect=["Fix the flaky upload test", "Which branch name should the release use"]),
+    # Local file links (#253): native buttons supply their roles/states;
+    # no extra announcement should repeat them. Never activate a file here.
+    Step('Local file links', [], trigger='local-file-links',
+         expect=['Lists: Local files', 'notes.txt', 'file'],
+         refuse=['unlabeled', 'unlabelled']),
+    Step('Local file details', ['Tab'], expect=['notes.txt']),
+    Step('Local file Open', ['Tab'], expect=['Open', 'push button']),
+    Step('Local file containing folder', ['Tab'], expect=['Open containing folder']),
+    Step('Local file Copy', ['Tab'], expect=['Copy', 'push button']),
+    Step('Local file links closed', ['Escape'], expect=['Fix the flaky upload test']),
     Step('Codex command and skill picker', [], trigger='codex-commands',
          expect=['Insert Command or Skill'], refuse=['unlabeled', 'unlabelled']),
     Step('Codex commands, into the list', ['Tab'], expect=['Codex']),
@@ -804,8 +847,26 @@ def refresh(frame) -> None:
                   timeout=10)
 
 
+def suggestion(frame) -> None:
+    """The open chat's last reply came with a suggested next message (#474)."""
+    frame._suggestions[frame._open_claude_id()] = "Write the script"
+    frame._place_suggestion(sound=False)
+
+
+def suggestion_done(frame) -> None:
+    """Put things back as they were before ``suggestion``: no draft, no
+    suggestion, and the focus on the message it started from."""
+    frame._suggestions.clear()
+    frame.reply_text.ChangeValue("")
+    frame.chat_list.SetFocus()
+
+
 #: What each step's trigger does in ``serve`` (Step.trigger).
 TRIGGERS = {
+    "suggestion": lambda frame, env: suggestion(frame),
+    "suggestion-done": lambda frame, env: suggestion_done(frame),
+    'local-file-links': lambda frame, env: _codex_dialog('d_local_file_links', frame, env),
+    'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),

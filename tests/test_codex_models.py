@@ -79,3 +79,10 @@ def test_provider_catalog_discovery_never_starts_owned_execution():
     assert provider.model_choices()[0].model == 'model-one'
     assert provider.runtime is None
     assert [method for method, _ in connection.calls] == ['model/list']
+
+
+def test_model_without_reasoning_efforts_is_retained():
+    row = model()
+    row.update(supportedReasoningEfforts=[], defaultReasoningEffort=None)
+    choice, = read_models(Catalog([{'data': [row]}]))
+    assert choice.efforts == () and choice.default_effort == ''

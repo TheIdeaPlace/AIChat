@@ -184,7 +184,8 @@ def test_list_line_reads_every_part():
     info = SessionInfo(source=OWN, key="own:x", title="Probe", cwd="C:\\G\\Repo",
                        cli_session_id="x", state=NEEDS_YOU, detail="2 tools were refused",
                        last_activity_ms=NOW - 120_000, unread=True)
-    assert info.list_line(NOW) == ("Probe, Claude, Repo, needs you: 2 tools were refused, new reply, "
+    assert info.list_line(NOW) == ("Probe, Claude, Claude subscription, Repo, needs you: "
+                                   "2 tools were refused, new reply, "
                                    "active 2 minutes ago, Chat Place session")
 
 

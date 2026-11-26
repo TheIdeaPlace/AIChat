@@ -18,10 +18,49 @@
   {
    "class": "StaticText",
    "name": "staticText",
-   "label": "Key status:",
+   "label": "&Provider:",
    "rect": [
     8,
     8,
+    82,
+    31
+   ],
+   "best": [
+    82,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Choice",
+   "name": "Provider",
+   "label": "",
+   "rect": [
+    8,
+    39,
+    1010,
+    38
+   ],
+   "best": [
+    214,
+    38
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Claude (Anthropic)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Key status:",
+   "rect": [
+    8,
+    85,
     100,
     31
    ],
@@ -40,7 +79,7 @@
    "label": "Claude: No key",
    "rect": [
     10,
-    41,
+    118,
     1010,
     53
    ],
@@ -60,7 +99,7 @@
    "label": "Claude API &key:",
    "rect": [
     8,
-    100,
+    177,
     145,
     31
    ],
@@ -79,7 +118,7 @@
    "label": "",
    "rect": [
     10,
-    135,
+    212,
     871,
     38
    ],
@@ -99,7 +138,7 @@
    "label": "&Add Key",
    "rect": [
     885,
-    131,
+    208,
     133,
     42
    ],
@@ -118,7 +157,7 @@
    "label": "&Test Key",
    "rect": [
     8,
-    181,
+    258,
     133,
     42
    ],
@@ -137,7 +176,7 @@
    "label": "Re&move Key...",
    "rect": [
     147,
-    181,
+    258,
     165,
     42
    ],
@@ -156,7 +195,7 @@
    "label": "Test result:",
    "rect": [
     8,
-    231,
+    308,
     101,
     31
    ],
@@ -175,9 +214,9 @@
    "label": "Test Key sends one short request on your key to check that it works, and counts what it cost in the total.",
    "rect": [
     10,
-    264,
+    341,
     1010,
-    105
+    95
    ],
    "best": [
     222,
@@ -195,7 +234,7 @@
    "label": "Spending limits",
    "rect": [
     8,
-    375,
+    442,
     1010,
     315
    ],
@@ -214,7 +253,7 @@
    "label": "Stop API chats once The Chat Place has &spent $",
    "rect": [
     23,
-    416,
+    483,
     443,
     31
    ],
@@ -233,7 +272,7 @@
    "label": "190.00",
    "rect": [
     812,
-    415,
+    482,
     193,
     38
    ],
@@ -253,7 +292,7 @@
    "label": "Stop any &one message at about $",
    "rect": [
     23,
-    460,
+    527,
     311,
     31
    ],
@@ -272,7 +311,7 @@
    "label": "5.00",
    "rect": [
     812,
-    459,
+    526,
     193,
     38
    ],
@@ -292,7 +331,7 @@
    "label": "Total:",
    "rect": [
     23,
-    501,
+    568,
     52,
     31
    ],
@@ -311,7 +350,7 @@
    "label": "",
    "rect": [
     25,
-    534,
+    601,
     980,
     95
    ],
@@ -331,7 +370,7 @@
    "label": "Sa&ve Limits",
    "rect": [
     23,
-    633,
+    700,
     139,
     42
    ],
@@ -350,7 +389,7 @@
    "label": "R&eset Total...",
    "rect": [
     168,
-    633,
+    700,
     154,
     42
    ],
@@ -369,7 +408,7 @@
    "label": "Release &Held...",
    "rect": [
     328,
-    633,
+    700,
     171,
     42
    ],
@@ -388,7 +427,7 @@
    "label": "About spending:",
    "rect": [
     8,
-    698,
+    765,
     154,
     31
    ],
@@ -407,9 +446,9 @@
    "label": "The Chat Place counts only its own spending. Your Anthropic account may have less left if other apps use the same key, and a limit can be passed by one request.",
    "rect": [
     10,
-    731,
+    798,
     1010,
-    105
+    38
    ],
    "best": [
     222,

@@ -59,7 +59,7 @@ def row_label(entry: shared.Entry, schemes: Iterable[sound_events.Scheme]) -> st
 
 def details(entry: shared.Entry) -> str:
     text = f"{entry.description} " if entry.description else ""
-    return text + f"By {entry.author}. Licence: {entry.license}."
+    return text + f"By {entry.author}. License: {entry.license}."
 
 
 def check() -> bool:

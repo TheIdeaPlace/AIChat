@@ -108,28 +108,34 @@ def _shown_text(dialog):
 # -- how it opens ---------------------------------------------------------------------
 
 
-def test_with_no_key_it_opens_on_the_key_box_with_test_and_remove_off(dialog):
+def test_with_no_key_it_opens_on_provider_with_test_and_remove_off(dialog):
     from thechatplace.ui import api_keys_dialog as akd
     assert dialog.GetTitle() == "API Keys"
     assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
-    assert dialog.first_control() is dialog.key_box
+    assert dialog.first_control() is dialog.provider_choice
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), no key"
+    assert dialog.provider_choice.GetString(1) == "Codex (OpenAI), no key"
     assert dialog.key_box.GetWindowStyle() & wx.TE_PASSWORD
     assert dialog.result.GetValue() == akd.TEST_INTRO
     assert dialog.about.GetValue() == akd.ABOUT_SPENDING
-    assert dialog.overall.GetValue() == "190.00"
-    assert dialog.per_message.GetValue() == "5.00"
+    assert dialog.overall.GetValue() == "20.00"
+    assert dialog.per_message.GetValue() == "2.00"
     assert dialog.totals.GetValue() == ("Spent since the total was reset: nothing. Held for "
-                                        "running messages: nothing. Left: $190.00.")
+                                        "running messages: nothing. Left: $20.00.")
     assert not dialog.limits_edited()
 
 
-def test_with_a_key_it_opens_on_test_key(parent, ledger, env):
+def test_with_a_key_it_opens_on_provider_saying_so(parent, ledger, env):
+    # Not on Test Key: which key it would test wasn't said (bld05 feedback).
     billing.save_api_key(KEY)
     window = make(parent, ledger)
     try:
-        assert window.first_control() is window.test_btn
+        assert window.first_control() is window.provider_choice
+        assert window.provider_choice.GetSelection() == 0
+        assert window.provider_choice.GetString(0) == "Claude (Anthropic), key added"
+        assert window.provider_choice.GetString(1) == "Codex (OpenAI), no key"
         assert window.add_btn.GetLabel() == "&Replace Key"
         assert window.test_btn.IsEnabled() and window.remove_btn.IsEnabled()
         assert window.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")
@@ -197,6 +203,9 @@ def test_adding_a_key_keeps_it_empties_the_box_and_says_so(dialog, env):
     assert dialog.status.GetValue().startswith("Claude: key ending in 7Q2x, added ")
     assert dialog.add_btn.GetLabel() == "&Replace Key"
     assert dialog.test_btn.IsEnabled() and dialog.remove_btn.IsEnabled()
+    # Provider says so now, and stays on Claude.
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), key added"
+    assert dialog.provider_choice.GetSelection() == 0
     assert dialog.said == ["Key saved."]
     assert env["boxes"] == []
     # The key is nowhere in the dialog, nor in the plain file beside it.
@@ -276,6 +285,8 @@ def test_removing_the_key_asks_first(dialog, env, monkeypatch):
     assert dialog.status.GetValue() == "Claude: No key"
     assert dialog.add_btn.GetLabel() == "&Add Key"
     assert not dialog.test_btn.IsEnabled() and not dialog.remove_btn.IsEnabled()
+    assert dialog.provider_choice.GetString(0) == "Claude (Anthropic), no key"
+    assert dialog.provider_choice.GetSelection() == 0
     assert dialog.said[-1] == "Key removed."
 
 
@@ -404,9 +415,9 @@ def test_saving_limits(dialog, ledger):
 
 
 @pytest.mark.parametrize("overall,per_message,said", [
-    ("lots", "5", "Type the overall limit as a number of dollars, such as 190."),
-    ("190", "", "Type the per-message limit as a number of dollars, such as 5."),
-    ("190", "nan", "Type the per-message limit as a number of dollars, such as 5."),
+    ("lots", "5", "Type the overall limit as a number of dollars, such as 20."),
+    ("190", "", "Type the per-message limit as a number of dollars, such as 2."),
+    ("190", "nan", "Type the per-message limit as a number of dollars, such as 2."),
     ("0", "5", "A limit must be at least 1 cent and at most $100,000."),
     ("190", "-2", "A limit must be at least 1 cent and at most $100,000."),
     ("200000", "5", "A limit must be at least 1 cent and at most $100,000."),
@@ -426,11 +437,11 @@ def test_the_tally_line_says_spent_held_and_left(parent, ledger):
     done = ledger.reserve("chat-1")
     ledger.settle(done, 3.21)
     ledger.close(done, complete=True)
-    ledger.reserve("chat-2")  # still running: its $5.00 is held
+    ledger.reserve("chat-2")  # still running: its $2.00 is held
     window = make(parent, ledger)
     try:
         assert window.totals.GetValue() == ("Spent since the total was reset: $3.21. Held for "
-                                            "running messages: $5.00. Left: $181.79.")
+                                            "running messages: $2.00. Left: $14.79.")
     finally:
         window.Destroy()
 
@@ -462,7 +473,7 @@ def test_resetting_the_tally_asks_first(parent, ledger, monkeypatch):
         assert window.on_reset()
         assert ledger.totals().spent == 0
         assert window.totals.GetValue() == ("Spent since the total was reset: nothing. Held "
-                                            "for running messages: nothing. Left: $190.00.")
+                                            "for running messages: nothing. Left: $20.00.")
         assert window.said == ["Total reset."]
     finally:
         window.Destroy()
@@ -480,30 +491,30 @@ def test_release_held_lets_go_of_old_holds_after_asking(parent, ledger, env, mon
     from thechatplace.ui import api_keys_dialog as akd
     crashed = spend_ledger.SpendLedger(ledger.folder)       # an earlier run that crashed
     old = crashed.reserve("old")
-    crashed.settle(old, 1.5)
+    crashed.settle(old, 1.0)                                # $1.00 of its $2.00 hold left
     running = ledger.reserve("running")
     window = make(parent, ledger)
     try:
         assert window.release_btn.IsEnabled()
         assert window.totals.GetValue() == (
-            "Spent since the total was reset: $1.50. Held: $8.50, $3.50 of it for messages "
-            "no longer running. Left: $180.00.")
+            "Spent since the total was reset: $1.00. Held: $3.00, $1.00 of it for messages "
+            "no longer running. Left: $16.00.")
         asked = []
         monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.NO)
         assert not window.on_release_held()
-        assert asked[0][0] == akd.RELEASE_QUESTION.format(amount="$3.50")
-        assert "may have spent up to $3.50 that won't be counted" in asked[0][0]
+        assert asked[0][0] == akd.RELEASE_QUESTION.format(amount="$1.00")
+        assert "may have spent up to $1.00 that won't be counted" in asked[0][0]
         assert asked[0][2] & wx.YES_NO and asked[0][2] & wx.NO_DEFAULT
-        assert ledger.totals().held == pytest.approx(8.5)
+        assert ledger.totals().held == pytest.approx(3.0)
         monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.YES)
         assert window.on_release_held()
         totals = ledger.totals()
-        assert totals.held == pytest.approx(5.0) and totals.spent == pytest.approx(1.5)
+        assert totals.held == pytest.approx(2.0) and totals.spent == pytest.approx(1.0)
         assert not window.release_btn.IsEnabled()
         assert window.totals.GetValue() == (
-            "Spent since the total was reset: $1.50. Held for running messages: $5.00. "
-            "Left: $183.50.")
-        assert window.said == ["Released $3.50."]
+            "Spent since the total was reset: $1.00. Held for running messages: $2.00. "
+            "Left: $17.00.")
+        assert window.said == ["Released $1.00."]
         ledger.close(running, complete=False)  # a Stop whose cost wasn't known
         window._refresh()
         assert window.release_btn.IsEnabled()
@@ -538,7 +549,7 @@ def test_close_asks_about_limits_typed_and_not_saved(dialog, ledger, monkeypatch
     assert asked[-1][0] == akd.SAVE_LIMITS_QUESTION and asked[-1][2] & wx.CANCEL
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.NO)
     assert dialog.on_close()
-    assert ledger.limits().overall == 190.0
+    assert ledger.limits().overall == 20.0
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: asked.append(a) or wx.YES)
     assert dialog.on_close()
     assert ledger.limits().overall == 300.0
@@ -548,7 +559,7 @@ def test_close_stays_open_when_the_limits_it_was_asked_to_save_cant_be(dialog, l
     dialog.overall.SetValue("lots")
     assert not dialog.on_close()  # fake_env answers Yes, then the number is refused
     assert env["boxes"] == ["Save the new spending limits?",
-                            "Type the overall limit as a number of dollars, such as 190."]
+                            "Type the overall limit as a number of dollars, such as 20."]
 
 
 def test_close_with_nothing_changed_asks_nothing(dialog, env):
@@ -569,3 +580,130 @@ def test_enter_in_a_limit_box_saves_the_limits(dialog, ledger, monkeypatch):
 def test_billing_page_opens_the_console(dialog, env):
     dialog.on_billing_page()
     assert env["opened"] == [billing.CONSOLE_BILLING_URL]
+
+
+def test_openai_has_separate_key_limits_total_and_release(parent, env, monkeypatch):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    claude = spend_ledger.SpendLedger(env['tmp'] / 'claude')
+    openai = spend_ledger.SpendLedger(env['tmp'] / 'openai')
+    # Both start at the same defaults, so OpenAI's are set apart here to show
+    # the boxes follow the provider.
+    openai.set_limits(5, .5)
+    held = openai.reserve('codex-api:test')
+    openai.close(held, complete=False)
+    window = ApiKeysDialog(parent, ledger=claude, openai_ledger=openai)
+    try:
+        window.provider_choice.SetSelection(1)
+        assert window.on_provider()
+        assert window.status.GetValue() == 'OpenAI: No key'
+        assert window.key_box.GetName() == 'OpenAI API key'
+        assert window.overall.GetValue() == '5.00' and window.per_message.GetValue() == '0.50'
+        assert 'Estimated' in window.totals.GetValue() and window.release_btn.IsEnabled()
+        window.key_box.SetValue('sk-proj-' + '0' * 30)
+        assert window.on_add() and window.key_box.GetValue() == ''
+        assert fake_env.pump(lambda: not window._key_change_pending)
+        assert openai_billing.has_api_key() and not billing.has_api_key()
+        # Saved in the background; Provider then says so, still on Codex.
+        assert window.provider_choice.GetString(1) == 'Codex (OpenAI), key added'
+        assert window.provider_choice.GetString(0) == 'Claude (Anthropic), no key'
+        assert window.provider_choice.GetSelection() == 1
+        monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.YES)
+        assert window.on_release_held() and openai.totals().held == 0
+        window.on_billing_page()
+        assert env['opened'][-1] == openai_billing.CONSOLE_BILLING_URL
+        window.provider_choice.SetSelection(0)
+        assert window.on_provider()
+        assert window.overall.GetValue() == '20.00' and window.status.GetValue() == 'Claude: No key'
+    finally:
+        window.Destroy()
+
+
+def test_provider_switch_cancel_preserves_limits_and_clears_no_secret(dialog, monkeypatch):
+    dialog.overall.SetValue('12')
+    monkeypatch.setattr(wx, 'MessageBox', lambda *a, **k: wx.CANCEL)
+    dialog.provider_choice.SetSelection(1)
+    assert not dialog.on_provider()
+    assert dialog.provider_choice.GetSelection() == 0 and dialog.overall.GetValue() == '12'
+
+
+def test_openai_test_result_is_estimated_and_late_event_is_ignored(parent, env):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    openai_billing.save_api_key('sk-proj-' + '0' * 30)
+    made = []
+    class Runner:
+        def __init__(self, done, **kwargs):
+            self.done, self.cancelled = done, False
+            made.append(self)
+        def start(self):
+            pass
+        def cancel(self):
+            self.cancelled = True
+    window = ApiKeysDialog(parent, openai_runner_factory=Runner)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        assert window.on_test() and window.testing
+        token = window._test_token
+        window._test_done(token, TurnEvent('finished', data={'cost_usd': .00001, 'cost_words': 'estimated less than a cent'}))
+        assert window.result.GetValue() == 'Your key works. That test was estimated at less than a cent.'
+        assert window.on_test()
+        token = window._test_token
+        window.provider_choice.SetSelection(0)
+        window.on_provider()
+        assert made[-1].cancelled
+        before = window.result.GetValue()
+        window._test_done(token, TurnEvent('failed', text='late failure'))
+        assert window.result.GetValue() == before
+    finally:
+        window.Destroy()
+
+
+def test_openai_key_save_does_not_wait_on_the_ui_thread(parent, env, monkeypatch):
+    from thechatplace import openai_billing
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog
+    window = ApiKeysDialog(parent)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        focus = []
+        monkeypatch.setattr(window.result, 'SetFocus', lambda: focus.append('result'))
+        sync = window._sync
+        def checked_sync():
+            if window._key_change_pending:
+                assert focus == ['result']
+            sync()
+        monkeypatch.setattr(window, '_sync', checked_sync)
+        with openai_billing.credentials_lock:
+            window.key_box.SetValue('sk-proj-' + '0' * 30)
+            assert window.on_add()
+            assert window._key_change_pending and not window.provider_choice.IsEnabled()
+            assert not openai_billing.has_api_key()
+        assert fake_env.pump(lambda: not window._key_change_pending)
+        assert openai_billing.has_api_key()
+    finally:
+        window.Destroy()
+
+
+def test_openai_release_held_warns_cost_unknown_and_keeps_token_history(parent, env, monkeypatch):
+    from thechatplace.ui.api_keys_dialog import ApiKeysDialog, totals_text
+    window = ApiKeysDialog(parent)
+    try:
+        window.provider_choice.SetSelection(1)
+        window.on_provider()
+        ledger = spend_ledger.default_ledger('openai')
+        r = ledger.reserve('codex-api:unknown', unpriced=True)
+        ledger.record_openai_tokens(r, 'future', dict(inputTokens=100, cachedInputTokens=0,
+            cacheWriteInputTokens=0, outputTokens=10, reasoningOutputTokens=0), unpriced=True)
+        ledger.close(r, complete=False)
+        assert 'of it for messages no longer running' in totals_text(ledger.totals(), openai=True)
+        questions = []
+        monkeypatch.setattr(window, '_ask', lambda text: questions.append(text) or True)
+        assert window.on_release_held()
+        assert 'cost is unknown and may be more' in questions[0]
+        assert 'up to' not in questions[0]
+        assert ledger.totals().held == 0
+        assert ledger.totals().unpriced_all_time[r.chat_id]['inputTokens'] == 100
+    finally:
+        window.Destroy()

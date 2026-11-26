@@ -205,6 +205,72 @@ def test_store_rename_and_remove(tmp_path):
     assert OwnSessionStore(tmp_path / "s.json").all() == []
 
 
+def test_store_keeps_the_chrome_note_a_chat_last_had(tmp_path):
+    # #319: which Claude in Chrome note the chat's prompt was made with.
+    store = OwnSessionStore(tmp_path / "s.json")
+    store.add(OwnSession("id-1", "T", "C:\\a", prompt_note="chrome"))
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "chrome"
+    store.update("id-1", prompt_note="no-chrome-api")
+    assert OwnSessionStore(tmp_path / "s.json").get("id-1").prompt_note == "no-chrome-api"
+
+
+def test_store_drops_an_unknown_chrome_note(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"sessions": [
+        {"cli_session_id": "a", "title": "T", "cwd": "C:\\", "prompt_note": "--chrome yes"},
+        {"cli_session_id": "b", "title": "T", "cwd": "C:\\", "prompt_note": 3},
+        {"cli_session_id": "c", "title": "T", "cwd": "C:\\"}]}), encoding="utf-8")
+    store = OwnSessionStore(path)
+    assert [store.get(i).prompt_note for i in "abc"] == ["", "", ""]
+
+
+def test_whether_claude_code_offers_suggestions_comes_from_its_flag(tmp_path, monkeypatch):
+    # #709: suggestions came on a PC whose cached flags had this true, and
+    # never on one whose didn't.
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    offered = platform_paths.claude_offers_prompt_suggestions
+    assert offered() is None  # no file: not known, not "off"
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"other": True}}), encoding="utf-8")
+    os.utime(config, (1_700_000_001, 1_700_000_001))
+    assert offered() is None
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": False}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_002, 1_700_000_002))
+    assert offered() is False
+    config.write_text(json.dumps({"cachedGrowthBookFeatures": {"tengu_prompt_suggestion": True}}),
+                      encoding="utf-8")
+    os.utime(config, (1_700_000_003, 1_700_000_003))
+    assert offered() is True
+
+
+def test_chrome_extension_installed_reads_claude_codes_record(tmp_path, monkeypatch):
+    config = tmp_path / ".claude.json"
+    monkeypatch.setattr(platform_paths, "claude_config_file", lambda: config)
+    installed = platform_paths.claude_chrome_extension_installed
+    stamp = [1_700_000_000]
+
+    def write(text):
+        # Each write a second later, as Claude Code's own are.
+        config.write_text(text, encoding="utf-8")
+        stamp[0] += 1
+        os.utime(config, (stamp[0], stamp[0]))
+    assert installed() is False  # no file
+    write(json.dumps({"projects": {}}))
+    assert installed() is False  # not looked for yet
+    write(json.dumps({"cachedChromeExtensionInstalled": "yes"}))
+    assert installed() is False
+    write(json.dumps({"projects": {}, "cachedChromeExtensionInstalled": True}, indent=2))
+    assert installed() is True
+    # Caught mid-rewrite: the last answer stands, not a turn without Chrome.
+    write('{"projects": {"C:/a": {"allowedTools": []')
+    assert installed() is True
+    write(json.dumps({"cachedChromeExtensionInstalled": False}))
+    assert installed() is False
+    config.unlink()
+    assert installed() is False
+
+
 def test_store_rejects_unsafe_id(tmp_path):
     store = OwnSessionStore(tmp_path / "s.json")
     with pytest.raises(ValueError):
@@ -290,10 +356,11 @@ def test_store_keeps_the_model(tmp_path):
     assert OwnSessionStore(path).get("id-1").model == "opus"
 
 
-@pytest.mark.parametrize("stored", [None, 5, "fable", "sonnet[1m]", "--help", "made-up"])
+@pytest.mark.parametrize("stored", [None, 5, "sonnet[1m]", "--help", "made-up"])
 def test_store_loads_an_unoffered_model_as_the_default(tmp_path, stored):
-    # Older stores have no model; anything the picker doesn't offer (a hand
-    # edit, or a model that bills usage credits) is never passed on.
+    # Older stores have no model; anything the picker can't offer (a hand
+    # edit, or a 1M context model, which bills usage credits) is never
+    # passed on. Fable is kept (#722): test_fable_is_offered_on_api_credits_….
     entry = {"cli_session_id": "id-1", "title": "Old", "cwd": "C:\a"}
     if stored is not None:
         entry["model"] = stored
