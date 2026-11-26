@@ -54,7 +54,7 @@ class Window(AgentChats):
         self._agent_codex_preparing, self._agent_answered_early = set(), set()
         self._agent_turn_files = {}
         self._agent_refused, self._agent_spoke = set(), {}
-        self._agent_unseen, self._agent_planning = {}, set()
+        self._agent_unseen, self._agent_planning, self._agent_plan_held = {}, set(), set()
         self._codex_send_pending, self._queued = {}, {}
         self._open = agents.rows([], [self.conversation])[-1]
         self.reply_text = Text()
@@ -1510,6 +1510,27 @@ def test_keep_planning_pauses_with_its_own_reason(tmp_path):
     w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
     w.send('Plan it.')
     w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False, planning=True)
+    w._agent_turn_ended('claude', 'c1', 'Revised plan.', False)
+    assert w.saved.stop_reason == "Paused: Claude's plan isn't approved yet."
+
+
+def test_a_plan_approved_but_not_started_pauses_saying_so(tmp_path):
+    """#738: Approve, Don't Start is a deny underneath, but the plan is
+    approved; the relay waits for you to say when to start."""
+    w = Window(tmp_path, mode=MODE_AUTO, auto_setting=True)
+    w.send('Plan it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False, planning=True, held=True)
+    w._agent_turn_ended('claude', 'c1', 'The plan is done.', False)
+    assert w.saved.stop_reason == "Paused: Claude's plan is approved, but not to be started yet."
+    # It doesn't carry over to a later turn.
+    assert not w._agent_plan_held and not w._agent_planning
+    # Keep Planning on a later plan in the same turn: the last answer counts.
+    w = Window(tmp_path / 'again', mode=MODE_AUTO, auto_setting=True)
+    w.send('Plan it.')
+    w._agent_member_asked('claude', 'c1')
+    w._agent_member_answered('claude', 'c1', False, planning=True, held=True)
     w._agent_member_answered('claude', 'c1', False, planning=True)
     w._agent_turn_ended('claude', 'c1', 'Revised plan.', False)
     assert w.saved.stop_reason == "Paused: Claude's plan isn't approved yet."

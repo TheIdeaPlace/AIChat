@@ -766,9 +766,12 @@ Copilot chats don't have these yet.
     new line, and Enter or Ctrl+Enter sends the answers. A secret answer is a one-line box,
     where Shift+Enter does nothing but beep: Shift+Enter never sends an answer.
   - **Plan:** the plan to read (Read Formatted shows it as a page, by heading), then **Approve**, choosing the mode to carry on in (accept
-    edits, auto or manual), or **Keep Planning** with what to change, which is the default. In
-    the What to Change box, and in a permission's reason for Deny, Shift+Enter starts a new
-    line, and Enter or Ctrl+Enter presses the default button.
+    edits, auto or manual); **Approve, Don't Start** (Alt+D, #738), when the plan is right but
+    you'll build it another day: Claude stays in plan mode, makes no changes and stops; or
+    **Keep Planning** with what to change, which is the default. The Note box goes with Keep
+    Planning or Approve, Don't Start ("file it as an issue"). In the Note box, and in a
+    permission's reason for Deny, Shift+Enter starts a new line, and Enter or Ctrl+Enter presses
+    the default button.
   - **A connected tool asks** (#468): an MCP server or claude.ai connector can ask for input while
     it works ("Plan trip needs you. Trip planner asks: Where would you like to go?"). Answer
     opens on its message, read-only, then a form with one labeled control per thing it asks for
@@ -2339,7 +2342,10 @@ Checked with Claude Code 2.1.286 (issues #187 and #188):
   is approved by allowing it with a switch of permission mode, and Keep Planning denies it with
   your note. Each was checked against the real CLI: an allowed Write wrote its file; a denied
   one didn't, and Claude quoted the reason it was given; an approved plan carried on in accept
-  edits without asking again.
+  edits without asking again. Approve, Don't Start (#738), added later, denies the plan too,
+  since allowing it starts the work, with a message saying the plan is approved and not to be
+  started, then your note; the mode stays plan. Checked the same way with Claude Code 2.1.331: Claude
+  said the plan was approved, changed nothing and stopped, and answered the note.
 - **Refusals still happen without asking** where Claude Code's own rules say so (a write outside
   the session's folder, say, or auto mode's safety check). The Chat Place adds those to the
   announcement ("1 tool was refused: ..."), marks the session "needs you", and the chat shows a
