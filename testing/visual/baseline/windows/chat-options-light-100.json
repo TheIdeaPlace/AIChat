@@ -3,11 +3,11 @@
  "class": "ChatOptionsDialog",
  "size": [
   620,
-  600
+  670
  ],
  "client": [
   604,
-  561
+  631
  ],
  "dpi": [
   96,
@@ -39,20 +39,59 @@
    "name": "Run as agent",
    "label": "",
    "rect": [
-    90,
+    116,
     10,
-    504,
+    478,
     23
    ],
    "best": [
-    425,
+    247,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "code-reviewer (uses its own model, opus): Independent review of a change."
+   "value": "code-reviewer (uses its own model, opus)"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Agent descri&ption:",
+   "rect": [
+    10,
+    41,
+    98,
+    16
+   ],
+   "best": [
+    98,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Agent description",
+   "label": "",
+   "rect": [
+    118,
+    43,
+    478,
+    60
+   ],
+   "best": [
+    127,
+    60
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Independent review of a change."
   },
   {
    "class": "StaticText",
@@ -60,7 +99,7 @@
    "label": "Output &style:",
    "rect": [
     10,
-    44,
+    112,
     69,
     16
    ],
@@ -78,9 +117,9 @@
    "name": "Output style",
    "label": "",
    "rect": [
-    90,
-    41,
-    504,
+    116,
+    109,
+    478,
     23
    ],
    "best": [
@@ -99,7 +138,7 @@
    "label": "&Instructions for this chat:",
    "rect": [
     10,
-    74,
+    142,
     132,
     16
    ],
@@ -118,9 +157,9 @@
    "label": "Answer in British English.\r\nNever change the tests.",
    "rect": [
     12,
-    92,
+    160,
     584,
-    187
+    189
    ],
    "best": [
     127,
@@ -138,7 +177,7 @@
    "label": "More &folders:",
    "rect": [
     10,
-    287,
+    357,
     71,
     16
    ],
@@ -157,7 +196,7 @@
    "label": "",
    "rect": [
     12,
-    305,
+    375,
     584,
     70
    ],
@@ -180,7 +219,7 @@
    "label": "A&dd Folder...",
    "rect": [
     10,
-    383,
+    453,
     88,
     23
    ],
@@ -199,7 +238,7 @@
    "label": "&Remove",
    "rect": [
     104,
-    383,
+    453,
     75,
     23
    ],
@@ -218,7 +257,7 @@
    "label": "A&bout these options:",
    "rect": [
     10,
-    416,
+    486,
     111,
     16
    ],
@@ -237,7 +276,7 @@
    "label": "Run as agent runs the chat as one of the agents Claude Code knows for its folder, with that agent's instructions and tools. Instructions are added to Claude's own for every turn in this chat. Output style changes how Claude writes its replies. More folders lets Claude work in other folders too; they show in Chat Permissions, where you can take one back. Changes apply from the chat's next turn.",
    "rect": [
     12,
-    434,
+    504,
     584,
     90
    ],
@@ -257,7 +296,7 @@
    "label": "OK",
    "rect": [
     434,
-    530,
+    600,
     75,
     23
    ],
@@ -276,7 +315,7 @@
    "label": "Cancel",
    "rect": [
     517,
-    530,
+    600,
     75,
     23
    ],
