@@ -312,6 +312,29 @@ _HEADING = re.compile(r"^#{1,6}\s+", re.M)
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1")
 _CODE = re.compile(r"`([^`]+)`")
+#: A Markdown heading line, up to three spaces in, with any closing #s
+#: (which need a space before them, so "C#" keeps its #).
+_HEADING_LINE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$", re.M)
+#: What a heading may already end with, so it isn't given a second stop.
+_ENDS_SENTENCE = (".", "?", "!", ":", "…")
+
+
+def headings_as_sentences(text: str) -> str:
+    """Each Markdown heading line as a sentence, without its #s: "## What
+    changed" is "What changed." (#744). Flattened to one line, a heading
+    otherwise runs into the text after it ("What changed The upload test…"),
+    and a screen reader reads the two as one sentence. A heading already
+    ending in a stop, a question mark or a colon is left as it is. Lines
+    keep their places, so what reads by line still does."""
+    def sentence(match: "re.Match[str]") -> str:
+        words = match.group(1).rstrip()
+        # Its emphasis marks, if it's all bold, go first: the stop goes
+        # after the words, not after "**".
+        plain = words.rstrip("*_`").rstrip()
+        if not plain or plain.endswith(_ENDS_SENTENCE):
+            return words
+        return words + "."
+    return _HEADING_LINE.sub(sentence, text)
 
 
 def markdown_as_text(text: str) -> str:
@@ -412,7 +435,9 @@ def one_line(text: str, limit: int = LAST_MESSAGE_LIMIT) -> str:
     """Markdown as one plain line of about ``limit`` characters: no marks,
     bullets, quote signs or code fences, all whitespace one space, and a
     long one cut at a word with "…", so a screen reader reads words, not
-    stars and pipes."""
+    stars and pipes. A heading ends with a stop, so it doesn't run into the
+    text after it (#744)."""
+    text = headings_as_sentences(text)
     text = _FENCE.sub("", text)
     text = _TABLE_RULE.sub("", text)
     # A link is its words, and a bare address its site: a screen reader

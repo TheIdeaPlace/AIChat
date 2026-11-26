@@ -56,3 +56,43 @@ def test_messages_given_back_say_what_they_were_and_whether_thats_certain():
     assert untaken_text('Budget', ['now', 'now'], sure=False) == (
         "Your 2 messages for Budget may not have been taken in. They're back in the message box.")
     assert API_SENDING == "Sending on API credits…"
+
+
+REPLY_WITH_HEADING = ("## What changed\nThe upload test failed one run in ten. It retries now.\n\n"
+                      "## Next\nShip it.")
+
+
+def test_a_reply_starting_with_a_heading_is_announced_with_a_stop_after_it():
+    """#744: the heading ran into the text after it, and its #s were said."""
+    from thechatplace.announce import reply_text, turn_end_text, aside_text, peer_text
+    from thechatplace.speech import strip_for_speech
+    summary = reply_text('Uploads', REPLY_WITH_HEADING, 'summary')
+    assert summary == ('Uploads replied: What changed. The upload test failed one run in ten. '
+                       '16 words.')  # the #s aren't words
+    full = reply_text('Uploads', REPLY_WITH_HEADING, 'full')
+    assert '#' not in full
+    assert ' '.join(strip_for_speech(full).split()) == (
+        'Uploads replied. What changed. The upload test failed one run in ten. It retries now. '
+        'Next. Ship it.')
+    assert turn_end_text('Uploads', 'idle', '', REPLY_WITH_HEADING, 'summary') == (
+        'Uploads finished. What changed. The upload test failed one run in ten.')
+    assert '#' not in turn_end_text('Uploads', 'idle', '', REPLY_WITH_HEADING, 'full')
+    assert aside_text(REPLY_WITH_HEADING, 'summary').startswith('Answer: What changed. The upload')
+    assert peer_text('Uploads', 'Laptop', REPLY_WITH_HEADING, 'summary') == (
+        'Uploads: message from Laptop: What changed. The upload test failed one run in ten.')
+
+
+def test_first_sentence_with_a_heading():
+    from thechatplace.announce import first_sentence
+    # The first sentence after a heading comes with it, if there's room.
+    assert first_sentence(REPLY_WITH_HEADING) == (
+        'What changed. The upload test failed one run in ten.')
+    assert first_sentence('## What changed\n\n## Details\nAll of it.') == (
+        'What changed. Details. All of it.')
+    assert first_sentence('# Done!') == 'Done!'
+    assert first_sentence('## \nJust text.') == 'Just text.'  # an empty heading
+    # No room for the next sentence: the heading alone, then cut if too long.
+    assert first_sentence('## What changed\nThe upload test.', limit=30) == 'What changed.'
+    assert first_sentence('## ' + 'word ' * 60, limit=40).endswith('…')
+    # Not a heading: as before.
+    assert first_sentence('#744 is fixed. More.') == '#744 is fixed.'

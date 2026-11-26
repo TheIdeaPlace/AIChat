@@ -497,6 +497,10 @@ STEPS = [
     Step("Enter opens Express", ["Return"], expect=["Messages in Express"],
          refuse=["No session loaded"]),
     Step("Down, the next chat", ["Down"], expect=["active"]),
+    # Tab reaches the one-line note in the reply box's place, and comes back.
+    Step("Tab, the note on replying", ["Tab"], expect=["About replying", "Press R"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Shift+Tab, back to the chat", ["shift+Tab"], expect=["active"]),
     Step("R, the reply box for that chat", ["r"], expect=["Reply to"],
          refuse=["unlabeled", "unlabelled"]),
     Step("reply box closed, back in Express", ["Escape"], expect=["Express"]),

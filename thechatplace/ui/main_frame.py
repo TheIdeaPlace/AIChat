@@ -1017,6 +1017,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # messages list has the rest.
         vsizer.Add(self.own_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         vsizer.Add(self.desktop_reply, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        # Express's one-line note in their place (#737), not growing.
+        self._express_build_note(root, vsizer)
 
         crow = wx.BoxSizer(wx.HORIZONTAL)
         self.activity_check = wx.CheckBox(root, label="Show tool &activity")
@@ -2133,6 +2135,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._update_status_context()
         self.own_reply.Hide()
         self.desktop_reply.Hide()
+        if not getattr(self, "_express_open", False) and hasattr(self, "express_reply"):
+            self.express_reply.Hide()  # (#737) open_express shows it after unloading
         self.session_view.Layout()
 
     def focus_sessions(self):
@@ -2145,7 +2149,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def focus_reply(self):
         if self._open is None and self._express_open:
-            self.desktop_note.SetFocus()  # "Press R to reply to the chat you're on." (#737)
+            self.express_note.SetFocus()  # "Press R to reply to the chat you're on." (#737)
         elif self._open is None:
             self._feedback("No session loaded.")
             self.session_list.SetFocus()

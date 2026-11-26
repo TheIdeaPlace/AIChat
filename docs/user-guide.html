@@ -1777,7 +1777,8 @@ editable.</p>
   reply box and sends the skill with your next message. Controls include <code>/model</code>, <code>/reasoning</code>,
   <code>/plan</code>, <code>/compact</code>, <code>/goal</code>, <code>/goal pause</code>, <code>/goal clear</code>, <code>/memories on</code>, <code>/memories off</code> and
   <code>/background</code>. Send a control on its own first line; any draft below it stays in the reply
-  box. These controls are handled here rather than sent as prompts.</li>
+  box. These controls are handled here rather than sent as prompts, and the same goes for a
+  message to a Codex chat from Express (R) or Send Reply to Another Chat (Ctrl+Shift+E).</li>
 <li><strong>Plan mode.</strong> <code>/plan</code> opens <strong>Plan Mode</strong>, where you choose Codex's <strong>Plan</strong> or <strong>Default</strong> mode
   for later turns. <strong>Plan</strong> is also the last choice in <strong>Change Permission Mode</strong>
   (Ctrl+Shift+O; Chat, Chat Settings), as for Claude, and the two always agree. The chat's heading says when Plan is
@@ -2981,8 +2982,9 @@ running has taken is in Turn Status (Ctrl+Shift+T). <strong>Started</strong> ("s
 the chat began.</p>
 <p><strong>Last message</strong> tells you where each conversation ended without loading it: the provider's
 name ("Claude:" or "Codex:") or "You:" and the start of the last message either of you wrote, as
-plain text on one line, cut at about 150 characters with "…". A link reads as its words, and a
-bare web address as its site. Tool calls and their results don't count. To read the whole
+plain text on one line, cut at about 150 characters with "…". A link reads as its words, a
+bare web address as its site, and a heading ends with a full stop ("What changed. The upload
+test…"). Tool calls and their results don't count. To read the whole
 message, press Enter to load the chat, then Enter on the message. A chat whose conversation is
 missing or can't be read says nothing in this column. While a chat is working, the line you're
 on keeps its last message until the status changes, so you don't hear the line again each time

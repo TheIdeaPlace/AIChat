@@ -11,6 +11,7 @@ from __future__ import annotations
 from ..imported_store import ImportedStore
 from ..sessions import IDLE, SessionInfo
 from ..transcript import Transcript
+from ..ui_text import one_line
 from .base import SessionCapabilities, Snapshot
 
 IMPORTED = "imported"
@@ -65,14 +66,25 @@ class ImportedChats:
         """The Last message column (discovery asks on every refresh while it's
         shown): from the index, never by reading each history (#449 review)."""
         for info in sessions:
-            # The index keeps only the last reply, so it's both (Express, #737).
-            info.last_message = info.last_reply = self.last_reply(info)
+            # The index keeps only the last reply's first line, so it's both
+            # (Express, #737), as one plain line: a heading's #s go, and it
+            # ends with a stop (#744).
+            info.last_message = info.last_reply = one_line(self._indexed_reply(info))
 
-    def last_reply(self, session: SessionInfo) -> str:
+    def _indexed_reply(self, session: SessionInfo) -> str:
         try:
             return self.store.last_reply(session.key)
         except Exception:  # noqa: BLE001 - one chat mustn't hide the others
             return ""
+
+    def last_reply(self, session: SessionInfo) -> str:
+        """The whole latest reply (Express's Shift+Enter, #737), from the
+        chat's history; the index's first line if that can't be read."""
+        try:
+            reply = self.store.load(session.key).last_reply()
+        except Exception:  # noqa: BLE001 - the index's line will do
+            reply = None
+        return reply.text if reply is not None else self._indexed_reply(session)
 
     def capabilities(self, session: SessionInfo) -> SessionCapabilities:
         # Read only: no send, steer, fork, attachments, approvals or links.

@@ -29,7 +29,7 @@ from ..sessions import (EXPRESS_FIELD_IDS, EXPRESS_FIELDS, DEFAULT_EXPRESS_FIELD
                         clean_express_fields,
                         field_short_name)
 from ..transcript import ASSISTANT, ChatMessage
-from .a11y import refresh_list_item
+from .a11y import refresh_list_item, set_accessible_name
 from .dialogs import ExpressReplyDialog, SessionColumnsDialog
 
 #: Not a chat's open generation (they count up from 0): a chat Express got
@@ -51,6 +51,24 @@ class ExpressView:
         #: The selected row's text without its clock, so a tick doesn't make
         #: a screen reader read it again (as the session list does).
         self._express_steady = {}
+
+    def _express_build_note(self, parent, sizer):
+        """Where the reply box would be while Express is open: "About
+        replying:" and a one-line read-only box saying how to reply. A box,
+        not a label, so Tab and F6 stop on it and a screen reader reads it,
+        as the desktop chats' note; one line, as that's all it says, so the
+        list keeps the room (#737)."""
+        self.express_reply = wx.Panel(parent)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(wx.StaticText(self.express_reply, label="About replying:"), 0,
+                wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.express_note = wx.TextCtrl(self.express_reply, value=express.REPLY_NOTE,
+                                        style=wx.TE_READONLY)
+        set_accessible_name(self.express_note, "About replying")
+        row.Add(self.express_note, 1, wx.ALIGN_CENTER_VERTICAL)
+        self.express_reply.SetSizer(row)
+        sizer.Add(self.express_reply, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.express_reply.Hide()
 
     # -- the session list's row -----------------------------------------------
 
@@ -93,11 +111,8 @@ class ExpressView:
         self._express_rows = {}
         self._express_steady = {}
         self.own_reply.Hide()
-        self.desktop_note.SetValue(express.REPLY_NOTE)
-        self.reply_claude_btn.Hide()
-        self.continue_btn.Hide()
-        self.desktop_reply.Show()
-        self.desktop_reply.Layout()
+        self.desktop_reply.Hide()
+        self.express_reply.Show()
         self.session_heading.set_text("Express: the latest reply from each chat. "
                                       "Enter opens a chat, R replies to it.")
         self.SetTitle(f"Express — {self._app_name()}")
@@ -123,6 +138,7 @@ class ExpressView:
         self._express_keys = []
         self._express_rows = {}
         self._express_steady = {}
+        self.express_reply.Hide()  # the chat opening lays the window out
         if show_nothing:
             self.SetTitle(self._app_name())
             self._show_no_session()
@@ -330,9 +346,15 @@ class ExpressView:
             self._express_cannot_reply(info)
             return
         key = info.key
+        # The dialog's box, as the reply box is to on_send: a Codex chat
+        # control typed in it leaves the rest there, its pickers open over
+        # the dialog, and a skill picked with /skills goes with this message
+        # (#742).
+        where = SimpleNamespace(box=None, over=None, skills={})
         dialog = ExpressReplyDialog(self, express.reply_title(info),
-                                    lambda text: self._express_send(key, text),
+                                    lambda text: self._express_send(key, text, where),
                                     say=self._feedback)
+        where.box, where.over = dialog.text, dialog
         try:
             dialog.ShowModal()
         finally:
@@ -363,10 +385,12 @@ class ExpressView:
         elif self._express_open:
             self.chat_list.SetFocus()
 
-    def _express_send(self, key, text) -> bool:
+    def _express_send(self, key, text, where=None) -> bool:
         """Send ``text`` to the chat ``key`` through the reply box's own
         sends, with its checks. True once it's on its way (the dialog
-        closes); False keeps it in the dialog, with why already said."""
+        closes); False keeps it in the dialog, with why already said, or
+        what's left of it after a Codex chat control was done (#742).
+        ``where``: the dialog's box (``_typed_elsewhere``)."""
         info = self._current_info(key)
         if info is None:
             self._feedback("That chat is no longer in the list, so nothing was sent.")
@@ -381,7 +405,8 @@ class ExpressView:
         if info.provider == AGENTS:
             return bool(self._agent_send_from_box(info, text))
         if info.provider in RUNTIME_PROVIDERS:
-            return self._express_send_runtime(info, text)
+            return self._express_send_runtime(
+                info, text, where or SimpleNamespace(box=None, over=None, skills={}))
         if info.provider != "claude" or not info.is_own:
             # Only Claude's runner is left, and another provider's ID must
             # never reach it (CLAUDE.md).
@@ -389,25 +414,43 @@ class ExpressView:
             return False
         return bool(self._send_claude(info, text, []))
 
-    def _express_send_runtime(self, info, text) -> bool:
+    def _express_send_runtime(self, info, text, where) -> bool:
+        """A Codex, Codex API or Copilot chat: handled as its reply box
+        handles a message (``_typed_elsewhere``, #742), then sent, or sent
+        once the chat is ready."""
         record = self.store.get(info.cli_session_id, provider=info.provider)
         if record is None:
             self._feedback(f"Couldn't find {info.title} in The Chat Place's chats, so the "
                            "message wasn't sent.")
             return False
-        if self._files_going_back_in(getattr(record, 'cwd', '')):
-            self._feedback('Still putting files back in this folder. Send again in a moment.')
-            return False
         try:
             ready = bool(self.sessions.owned_action("ready", record))
         except Exception:  # noqa: BLE001 - not known to be ready
             ready = False
-        if ready and info.key not in self._codex_preparation_running:
+        ready = ready and info.key not in self._codex_preparation_running
+        typed = self._typed_elsewhere(info, text, where, ready=ready)
+        if typed.not_ready:
+            # A chat control needs the chat ready, as in its reply box: it's
+            # got ready now, and the command stays here to send again.
+            self._express_get_ready(info)
+            self._feedback(f"Getting {info.title} ready. Send the command again once it is.")
+            return False
+        if typed.problem:
+            self._feedback(typed.problem)
+            return False
+        if typed.message is None:
+            return False  # a chat control was done; what followed it stays here
+        message = typed.message
+        # After a chat control, as in on_send: those don't change files.
+        if self._files_going_back_in(getattr(record, 'cwd', '')):
+            self._feedback('Still putting files back in this folder. Send again in a moment.')
+            return False
+        if ready:
             # On API credits, a refusal before anything goes (no key, a
             # limit, Cancel at "Send on API credits?") keeps the text here,
             # in the reply dialog, as a Claude chat's does.
             refusals = []
-            self._send_codex_owned(record, text, refused=refusals.append)
+            self._send_codex_owned(record, message, refused=refusals.append)
             if refusals:
                 self._feedback(refusals[0] or "Not sent.")
                 return False
@@ -419,11 +462,15 @@ class ExpressView:
         # Got ready first, as a chat opened in the window is; the message
         # waits for it (_relay_prepared sends it, or puts it in the chat's
         # reply box if that fails).
-        self._relay_waiting[info.key] = text
-        self._codex_preparing.setdefault(info.key, _EXPRESS_PREPARING)
-        self._prepare_runtime_chat(info)
+        self._relay_waiting[info.key] = message
+        self._express_get_ready(info)
         self._feedback(f"Getting {info.title} ready. The message goes as soon as it is.")
         return True
+
+    def _express_get_ready(self, info):
+        """Get a chat that isn't open ready to take a message (or a command)."""
+        self._codex_preparing.setdefault(info.key, _EXPRESS_PREPARING)
+        self._prepare_runtime_chat(info)
 
     # -- turning it on and off, and its columns -----------------------------------
 

@@ -116,8 +116,9 @@ def test_enter_opens_the_list_on_the_newest_chat(frame, env):
     quiet = frame._express_rows[next(k for k in frame._express_keys
                                      if frame._express_rows[k].title == "Quiet one")]
     assert quiet.last_reply == "Tidied."  # the reply, not "Thanks"
-    assert not frame.own_reply.IsShown() and frame.desktop_reply.IsShown()
-    assert frame.desktop_note.GetValue() == "Press R to reply to the chat you're on."
+    assert not frame.own_reply.IsShown() and not frame.desktop_reply.IsShown()
+    assert frame.express_reply.IsShown()
+    assert frame.express_note.GetValue() == "Press R to reply to the chat you're on."
     # Alt+M still reaches the list (it's "Messages in ...", as a chat's is).
     assert frame.messages_label.GetLabel() == "&Messages in Express, 3 chats:"
     assert status_field(frame.GetStatusBar(), 1) == "Express, 3 chats"
@@ -135,6 +136,32 @@ def test_commands_in_express_act_on_the_row_you_are_on(frame, env):
     row_of(frame, "Blocked one")
     frame.chat_list.SetFocus()
     assert frame._selected_session().title == "Blocked one"
+
+
+def test_the_note_on_replying_is_one_line_named_and_go_to_reply_box_lands_on_it(frame, env,
+                                                                                monkeypatch):
+    """Where the reply box would be: a one-line read-only box, sized to what
+    it says (it was a box of several lines holding one), named for screen
+    readers, and where Go to Reply Box (F6's reply stop) lands."""
+    replies(env)
+    turn_on(frame)
+    open_express(frame)
+    note = frame.express_note
+    assert not note.IsMultiLine() and not note.IsEditable()
+    assert note.GetName() == "About replying"
+    # One line high: no taller than the reply box's one-line neighbours.
+    assert note.GetSize().height < frame.FromDIP(60)
+    # The messages list has the room the reply area had.
+    assert frame.chat_list.GetSize().height > frame.express_reply.GetSize().height * 4
+    focused = []
+    monkeypatch.setattr(note, "SetFocus", lambda: focused.append(note))
+    frame.focus_reply()
+    assert focused == [note]
+    assert frame.PANE_REPLY in frame._panes()  # F6 stops there too
+    # Opening a chat puts the reply area back, and the note goes.
+    row_of(frame, "Hub probe")
+    frame.express_open_chat()
+    assert not frame.express_reply.IsShown() and frame.own_reply.IsShown()
 
 
 def test_enter_on_a_row_opens_that_chat(frame, env):
@@ -211,7 +238,8 @@ def test_a_failed_send_keeps_the_text(frame, env, dialog, monkeypatch):
     monkeypatch.setattr(wx, "MessageBox", lambda text, *a, **k: boxes.append(text))
     sent = []
     real = frame._express_send
-    monkeypatch.setattr(frame, "_express_send", lambda key, text: sent.append(real(key, text))
+    monkeypatch.setattr(frame, "_express_send",
+                        lambda key, text, where=None: sent.append(real(key, text, where))
                         or sent[-1])
     frame.express_reply()
     # The send said why and returned False: the dialog keeps the text.
@@ -232,6 +260,53 @@ def test_the_order_holds_while_you_are_in_the_list(frame, env):
     assert frame._express_keys == before
     frame._express_fill(frozen=False)
     assert frame._express_keys[0] == last.key
+
+
+def test_a_chat_finishing_while_you_are_in_the_list_doesnt_move_your_row(frame, env,
+                                                                          monkeypatch):
+    """The order is frozen while the list has focus, through the window's own
+    refresh, when a chat works and finishes: its row says the new reply where
+    it is, the row you're on stays yours, and coming back puts it in order."""
+    import json
+    from fake_env import add_desktop
+    from thechatplace import hub
+    replies(env)
+    turn_on(frame)
+    open_express(frame)
+    before = list(frame._express_keys)
+    quiet = next(k for k in before if frame._express_rows[k].title == "Quiet one")
+    assert before[0] != quiet  # not the newest yet
+    on = row_of(frame, "Blocked one")
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.chat_list))
+    original = hub.load_live_status
+    monkeypatch.setattr(hub, "load_live_status",
+                        lambda directory=None, alive=None, started=None: original(
+                            directory, alive=lambda pid: True, started=lambda pid: None))
+    live = env["live"] / "4242.json"
+    # Quiet one starts a turn, then finishes it, newer than every other chat.
+    live.write_text(json.dumps({"pid": 4242, "sessionId": "cli-a", "status": "busy"}))
+    frame.refresh_sessions()
+    settle(frame)
+    add_desktop(env, "local_a", "cli-a", "Quiet one", ago=-60_000)
+    add_transcript(env, "C:\\G\\Repo", "cli-a", [user_text("Tidy it"),
+                                                 assistant_block(text_block("Tidied."), "a1"),
+                                                 user_text("And the rest"),
+                                                 assistant_block(text_block("All tidy now."), "a2")])
+    live.unlink()
+    frame.refresh_sessions()
+    settle(frame)
+    assert pump(lambda: frame._express_rows[quiet].last_reply == "All tidy now.")
+    newest = max(frame._snapshot.sessions, key=lambda s: s.last_activity_ms)
+    assert newest.key == quiet
+    assert frame._express_keys == before  # frozen while you're in the list
+    assert frame.chat_list.GetSelection() == on  # still on Blocked one
+    assert "All tidy now." in frame.chat_list.GetString(before.index(quiet))
+    # Escape, then Enter on the Express row: in order again, newest first.
+    monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: frame.session_list))
+    frame._express_back_to_list()
+    frame.on_open_session()
+    assert frame._express_keys[0] == quiet
+    assert frame.chat_list.GetSelection() == 0
 
 
 def test_turning_it_off_while_open_empties_the_messages(frame, env):

@@ -144,6 +144,144 @@ def test_refusals_keep_the_text(why):
     assert w.said  # why it didn't go was said
 
 
+# -- Codex chat controls and skills, as the reply box handles them (#742) ---------------
+
+
+class Dialog:
+    """The reply dialog, as far as a picker opening over it can tell."""
+    open = True
+
+    def IsModal(self):
+        return self.open
+
+
+@pytest.fixture
+def where(monkeypatch):
+    import wx
+    from test_relay_chats import Text
+    monkeypatch.setattr(wx.Window, 'FindFocus', staticmethod(lambda: None))
+    monkeypatch.setattr(wx, 'GetTopLevelWindows', lambda: [])
+    return SimpleNamespace(box=Text(), over=Dialog(), skills={})
+
+
+def _typed(where, text):
+    where.box.SetValue(text)  # the dialog's box holds what's sent from it
+    return text
+
+
+def _actions(w):
+    calls = []
+    w.sessions.owned_action = lambda action, record, *a: (
+        w.ready if action == 'ready' else calls.append((action, a)) or True)
+    return calls
+
+
+def test_a_codex_chat_control_is_done_and_what_follows_stays_in_the_dialog(where):
+    w = ExpressWindow()
+    w.ready = True
+    calls = _actions(w)
+    text = _typed(where, '/compact\nThen check the tests.')
+    assert w._express_send(w.reviewer.key, text, where) is False  # the dialog stays
+    assert where.box.value == 'Then check the tests.'
+    w.work.pop()[0]()
+    assert calls == [('feature', ('thread/compact/start', {}))]
+    assert w.said[-1] == 'Asking Codex to compact this chat.'
+    assert w.opened == [] and w._relay_waiting == {}
+
+
+def test_a_codex_chat_control_for_a_chat_not_ready_gets_it_ready_and_keeps_the_text(where):
+    w = ExpressWindow()
+    text = _typed(where, '/compact')
+    assert w._express_send(w.reviewer.key, text, where) is False
+    assert where.box.value == '/compact'  # still there, to send again
+    assert w._relay_waiting == {}
+    assert w.reviewer.key in w._codex_preparation_running
+    assert w.said[-1] == 'Getting Reviewer ready. Send the command again once it is.'
+
+
+def test_skills_picks_a_skill_into_the_dialog_and_it_goes_with_the_message(where, monkeypatch,
+                                                                            tmp_path):
+    from thechatplace.ui import codex_extras
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('x', encoding='utf-8')
+    opened_over = []
+
+    class Picker:
+        def __init__(self, parent, rows):
+            opened_over.append(parent)
+            self.chosen = dict(rows[0])
+
+        def ShowModal(self):
+            import wx
+            return wx.ID_OK
+
+        def Destroy(self):
+            pass
+    monkeypatch.setattr(codex_extras, 'CommandPickerDialog', Picker)
+    w = ExpressWindow()
+    w.ready = True
+    sent = []
+    w.sessions.owned_action = lambda action, record, *a: (
+        w.ready if action == 'ready' else sent.append(a[0]) or True)
+    w.sessions.skills = lambda info: [{'name': 'review', 'path': str(skill),
+                                       'description': 'Review it'}]
+    text = _typed(where, '/skills\nthe upload code')
+    assert w._express_send(w.reviewer.key, text, where) is False
+    assert where.box.value == 'the upload code'
+    action, loaded = w.work.pop()
+    loaded(action(), False)
+    assert opened_over == [where.over]  # over the reply dialog, not the window
+    assert where.box.value == '$review the upload code'
+    assert where.skills == {'review': str(skill)}
+    assert getattr(w, '_codex_skills', {}) == {}  # not the chat's reply box's
+    assert w._express_send(w.reviewer.key, where.box.value, where) is True
+    w.work.pop()[0]()
+    assert sent[-1].items()[1] == {'type': 'skill', 'name': 'review', 'path': str(skill.resolve())}
+
+
+def test_a_picker_doesnt_open_once_the_dialog_has_closed(where):
+    w = ExpressWindow()
+    w.ready = True
+    w.sessions.skills = lambda info: [{'name': 'review', 'path': 'x', 'description': ''}]
+    w._express_send(w.reviewer.key, _typed(where, '/skills'), where)
+    where.over.open = False  # Escape, before Codex answered
+    action, loaded = w.work.pop()
+    loaded(action(), False)
+    assert w.said[-1].startswith("The Codex commands are ready, but you've moved on")
+    assert where.box.value == ''
+
+
+def test_the_chats_own_skills_and_files_stay_with_its_reply_box(where, tmp_path):
+    w = ExpressWindow()
+    w.ready = True
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('x', encoding='utf-8')
+    w._codex_skills = {w.reviewer.key: {'review': str(skill)}}
+    w._attachments = {w.reviewer.key: [str(skill)]}
+    sent = []
+    w.sessions.owned_action = lambda action, record, *a: (
+        w.ready if action == 'ready' else sent.append(a[0]) or True)
+    assert w._express_send(w.reviewer.key, _typed(where, 'Use $review'), where) is True
+    w.work.pop()[0]()
+    assert sent[-1].items() == [{'type': 'text', 'text': 'Use $review'}]
+
+
+def test_a_message_waiting_for_a_chat_to_get_ready_keeps_its_skill(where, tmp_path):
+    w = ExpressWindow()
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('x', encoding='utf-8')
+    where.skills['review'] = str(skill)
+    assert w._express_send(w.reviewer.key, _typed(where, 'Use $review'), where) is True
+    waiting = w._relay_waiting[w.reviewer.key]
+    assert waiting.items()[1]['type'] == 'skill'
+
+
+def test_a_claude_slash_command_goes_to_claude_as_typed(where):
+    w = ExpressWindow()
+    assert w._express_send(w.builder.key, _typed(where, '/compact'), where) is True
+    assert w.claude_sent == [('Builder', '/compact', [])]
+
+
 def test_an_agent_conversation_is_sent_to_as_its_reply_box_would():
     from thechatplace.agents import AGENTS
     from thechatplace.sessions import SessionInfo

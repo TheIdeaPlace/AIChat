@@ -94,7 +94,8 @@ too).
   says when the session began ("started 2 days ago"). Last message says
   where each conversation ended without loading it: the provider's name ("Claude:" or "Codex:") or "You:" and the start of the
   last message either of you wrote, as plain text on one line (about 150 characters, cut at a
-  word with "…"; a link reads as its words, a bare web address as its site). Tool calls and their results don't count. Press Enter to load the session and
+  word with "…"; a link reads as its words, a bare web address as its site, and a heading ends
+  with a full stop: "What changed. The upload test…"). Tool calls and their results don't count. Press Enter to load the session and
   read the whole message. A session whose conversation is missing or can't be read says nothing
   there. For Claude chats, only the end of each conversation file is read, in the background, and again only when
   the file has changed. Codex reads its supported history API in cached background batches;
@@ -159,7 +160,10 @@ kind of chat: Claude, Codex, Copilot and agent conversations.
   isn't ready yet is got ready first, and the message goes as soon as it is; if that fails, it's
   put in that chat's reply box. On a chat you can't reply to here (a desktop app, Cowork or
   terminal session, or one The Chat Place only lists), R says why and, where the chat allows it,
-  offers Continue Here.
+  offers Continue Here. In a Codex chat's reply, a chat control on the first line (`/model`,
+  `/compact`, `/skills` and the rest) is done as in its reply box: anything below it stays in
+  the box, and a skill chosen with `/skills` goes with the message. A control needs the chat
+  ready; if it isn't, it's got ready and the control stays in the box to send again.
 - **Live.** Rows change as chats finish. While you're in Express its rows don't move, so the one
   you're on stays put (a chat that has something new is updated where it is, and a new chat is
   added at the end); they're put back in order when you come back to Express.
@@ -1002,7 +1006,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   Codex controls. A selected skill inserts `$name` and sends the skill with the next
   message. Built-in controls include `/model`, `/reasoning`, `/plan`, `/compact`, `/goal`, `/goal pause`,
   `/goal clear`, `/memories on`, `/memories off` and `/background`. Send a control on its own
-  first line; any draft below it stays in the reply box. These controls aren't sent as prompts.
+  first line; any draft below it stays in the reply box. These controls aren't sent as prompts,
+  from Express's reply (R) or Send Reply to Another Chat either.
   Compaction requires an idle chat. After changing its settings, send a normal message before
   compacting, so Codex has applied those settings to the loaded chat. You hear "context
   compacted" when it's done.
@@ -1417,7 +1422,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
   as if you'd typed it: queued if that chat is working, and after Codex or Copilot has got the
   chat ready if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
-  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
+  If it can't be sent, it's left in that chat's reply box. Changed to start with a Codex chat
+  control (`/compact`, `/model` and the rest), it's done as in that chat's reply box, with
+  anything below it left there. While the chat it comes from is
   still working, the dialog's title says so: the reply may be a step on the way. The chat it
   came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
   Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded

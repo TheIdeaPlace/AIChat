@@ -13,6 +13,7 @@ from thechatplace.sessions import OWN, SessionInfo
 from thechatplace.transcript import ASSISTANT, USER, ChatMessage
 from thechatplace.ui import relay_chats
 from thechatplace.ui.codex_chats import CodexChats
+from thechatplace.ui.codex_extras import CodexExtras
 from thechatplace.ui.relay_chats import RelayChats
 
 
@@ -29,15 +30,19 @@ class Text:
     def SetFocus(self):
         self.focused = True
 
+    def SetInsertionPointEnd(self):
+        pass
+
 
 def _own(native, title, provider):
     return SessionInfo(source=OWN, key=f'{provider}:{native}' if provider != 'claude' else native,
                        title=title, cwd='/work', cli_session_id=native, provider=provider)
 
 
-class Window(CodexChats, RelayChats):
+class Window(CodexChats, CodexExtras, RelayChats):
     """Just enough of MainFrame: the chats, the reply box, and records of
-    what was sent and said."""
+    what was sent and said. CodexExtras for the reply box's handling of
+    Codex chat controls and skills (#742)."""
 
     def __init__(self):
         self.builder = _own('claude-1', 'Builder', 'claude')
@@ -468,6 +473,91 @@ def test_a_message_that_fails_to_go_to_codex_is_a_draft_not_work(dialog):
     w.work.pop()[1]('Codex connection interrupted.', True)
     assert MainFrame._active_owned_turn_count(w) == 0
     assert MainFrame._unsent_text(w)  # it's that chat's draft now
+
+
+# -- Codex chat controls and skills, as the reply box handles them (#742) ---------------
+
+
+@pytest.fixture
+def no_window(monkeypatch):
+    """Where the keyboard is and which dialogs are up, without a wx.App."""
+    import wx
+    monkeypatch.setattr(wx.Window, 'FindFocus', staticmethod(lambda: None))
+    monkeypatch.setattr(wx, 'GetTopLevelWindows', lambda: [])
+
+
+def _recording_actions(w):
+    calls = []
+    w.sessions.owned_action = lambda action, record, *a: calls.append((action, a)) or True
+    return calls
+
+
+def test_a_codex_chat_control_sent_on_is_done_not_sent(dialog, no_window):
+    w = Window()
+    calls = _recording_actions(w)
+    w._codex_drafts['codex:codex-1'] = 'Typed earlier'
+    dialog.choose = lambda text: (0, '/compact\nThen check the tests.')
+    w.on_send_reply_to()
+    assert w.opened == ['Reviewer']
+    action, done = w.work.pop()
+    action()
+    assert calls == [('feature', ('thread/compact/start', {}))]  # never 'send'
+    assert w.said[-1] == 'Asking Codex to compact this chat.'
+    # What followed the command goes in front of what was typed there.
+    assert w.reply_text.value == 'Then check the tests.\n\nTyped earlier'
+    assert w._relay_waiting == {}
+
+
+def test_a_codex_chat_control_alone_leaves_the_reply_box_as_it_was(dialog, no_window):
+    w = Window()
+    _recording_actions(w)
+    w._codex_drafts['codex:codex-1'] = 'Typed earlier'
+    dialog.choose = lambda text: (0, '/memories off')
+    w.on_send_reply_to()
+    assert w.reply_text.value == 'Typed earlier'
+    assert len(w.work) == 1
+
+
+def test_a_codex_chat_control_for_a_chat_getting_ready_waits_in_its_reply_box(dialog, no_window):
+    w = Window()
+    w.codex_ready = False
+    dialog.choose = lambda text: (0, '/compact')
+    w.on_send_reply_to()
+    assert w.work == [] and w._relay_waiting == {}
+    assert w.reply_text.value == '/compact'
+    assert w.said[-1] == ("Reviewer is still getting ready, so the command wasn't done. "
+                          "It's in that chat's reply box.")
+
+
+def test_a_relayed_message_takes_none_of_the_chats_own_skills_or_files(dialog, tmp_path):
+    w = Window()
+    skill = tmp_path / 'SKILL.md'
+    skill.write_text('x', encoding='utf-8')
+    # Picked in Reviewer's reply box for its own draft: they stay there.
+    w._codex_skills = {'codex:codex-1': {'review': str(skill)}}
+    w._attachments = {'codex:codex-1': [str(skill)]}
+    sent = []
+    w.sessions.owned_action = lambda action, record, *a: sent.append(a[0]) or True
+    dialog.choose = lambda text: (0, 'Use $review on it.')
+    w.on_send_reply_to()
+    action, done = w.work.pop()
+    action()
+    assert sent == ['Use $review on it.']
+    assert sent[0].items() == [{'type': 'text', 'text': 'Use $review on it.'}]
+    assert w._codex_skills == {'codex:codex-1': {'review': str(skill)}}
+
+
+def test_a_copilot_slash_command_goes_as_typed(dialog, no_window):
+    w = Window()
+    pilot = _with_copilot(w)
+    sent = []
+    w.sessions.owned_action = lambda action, record, *a: sent.append((action, a[0])) or True
+    dialog.choose = lambda text: (
+        next(i for i, c in enumerate(dialog.seen.choices) if c.startswith('Pilot')), '/compact')
+    w.on_send_reply_to()
+    w.work.pop()[0]()
+    assert sent == [('send', '/compact')]
+    assert pilot.key not in w._relay_waiting
 
 
 # -- a new chat, or an agent conversation (#378) --------------------------------------
