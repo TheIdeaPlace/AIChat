@@ -1360,3 +1360,28 @@ def test_a_failed_turn_doesnt_lock_the_chat(server, scenario, tmp_path, monkeypa
             assert 'still working on a turn' in codex_diagnostics.last_failure()
     finally:
         service.close()
+
+
+def test_slow_app_inventory_keeps_its_wait_without_extending_history_timeout(server):
+    start, _ = server
+    queued = threading.Event()
+    with ReadOnlyCodexConnection(start=start, timeout=1) as connection, ThreadPoolExecutor(2) as pool:
+        apps = pool.submit(connection.request, "app/list", {"mode": "hang"}, on_sent=queued.set)
+        assert queued.wait(5)
+        app_id = connection._next_id
+        history = pool.submit(connection.request, "thread/read", {"mode": "hang"})
+        with pytest.raises(CodexRpcError, match="timed out"):
+            history.result(timeout=5)
+        assert not apps.done()
+        connection._receive({"id": app_id, "result": {"data": []}})
+        assert apps.result(timeout=5) == {"data": []}
+        assert not connection.closed
+
+
+def test_app_inventory_still_has_a_bounded_wait(server):
+    start, _ = server
+    with ReadOnlyCodexConnection(start=start, timeout=0.1) as connection:
+        with pytest.raises(CodexRpcError, match="timed out"):
+            connection.request("app/list", {"mode": "hang"})
+        assert not connection.closed
+        assert connection.request("thread/list", {}) == {"echo": {}}

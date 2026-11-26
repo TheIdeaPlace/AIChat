@@ -153,7 +153,7 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
     from .codex_rpc import CodexRpcError
     rows, seen, cursor = [], set(), None
     for _ in range(100):
-        params = {'limit': 100, 'forceRefetch': True}
+        params = {'limit': 100, 'forceRefetch': cursor is None}
         if cursor:
             params['cursor'] = cursor
         page = connection.request('app/list', params)

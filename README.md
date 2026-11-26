@@ -1096,6 +1096,9 @@ To use an available connection in a ChatGPT-subscription Codex chat:
 5. Check the service's actual result. To remove the connection from the conversation, use
    **Copy with Tool Off** and continue in that copy.
 
+Listing account apps can take up to a minute per page while Codex fetches its catalog.
+The lookup runs in the background; you can close the dialog while it is waiting.
+
 An empty list can mean no services have been configured. **Apps unavailable** means the app
 inventory could not be retrieved; it does not establish that your account has no apps. That
 entry is information, not a server to sign into. Its message distinguishes a timeout or an

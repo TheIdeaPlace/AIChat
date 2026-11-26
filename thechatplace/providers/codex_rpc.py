@@ -529,7 +529,10 @@ class ReadOnlyCodexConnection:
         # request half-registered if it raises.
         if on_sent is not None:
             on_sent()
-        if not pending.ready.wait(self._timeout):
+        # Account app discovery can spend longer fetching the remote catalog.
+        # Keep the ordinary budget for chat/history requests on this connection.
+        timeout = self._timeout * 3 if method == "app/list" else self._timeout
+        if not pending.ready.wait(timeout):
             with self._lock:
                 expired = self._pending.pop(request_id, None) is pending
                 if expired:

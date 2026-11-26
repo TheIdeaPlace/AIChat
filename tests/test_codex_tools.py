@@ -254,3 +254,16 @@ def test_app_inventory_failure_is_information_not_a_configured_server(failure, e
     summary = tools_summary(rows)
     assert "2 connected tools" in summary and notice.text() in summary
     assert tools_summary([notice]).startswith("No configured tools listed.")
+
+
+def test_app_pagination_refetches_catalog_only_on_the_first_page():
+    from thechatplace.providers.codex_tools import app_inventory
+    calls = []
+    class Connection:
+        def request(self, method, params):
+            assert method == "app/list"
+            calls.append(params)
+            return {"data": [], "nextCursor": "page-two" if len(calls) == 1 else None}
+    assert app_inventory(Connection(), INFO) == []
+    assert calls == [{"limit": 100, "forceRefetch": True},
+                     {"limit": 100, "forceRefetch": False, "cursor": "page-two"}]
