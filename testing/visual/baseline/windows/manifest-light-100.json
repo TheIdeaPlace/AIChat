@@ -2120,6 +2120,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "New Session on a Max plan, with Fable chosen and its note (#722)"
+  },
+  "main-express": {
+   "kind": "window",
+   "png": "main-express-light-100.png",
+   "json": "main-express-light-100.json",
+   "title": "Express — The Chat Place",
+   "class": "MainFrame",
+   "size": [
+    1000,
+    720
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Express (#737): its row first, and each chat's latest reply"
+  },
+  "express-reply": {
+   "kind": "dialog",
+   "png": "express-reply-light-100.png",
+   "json": "express-reply-light-100.json",
+   "title": "Reply to Visual probe (Claude)",
+   "class": "ExpressReplyDialog",
+   "size": [
+    560,
+    320
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Express's reply box (R), named for its chat"
   }
  },
  "seconds": 278.6
