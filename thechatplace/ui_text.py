@@ -332,11 +332,17 @@ def headings_as_sentences(text: str) -> str:
     def sentence(match: "re.Match[str]") -> str:
         words, end = match.group(1).rstrip(), match.group(2)
         # A heading that's all bold: the stop goes inside the marks
-        # ("**What changed.**"), so taking the marks off leaves it.
+        # ("**What changed.**"), so taking the marks off leaves it. Marks
+        # that only end it (inline code, "*args*", "snake_case_") keep the
+        # stop after them, never inside a code span.
         plain = words.rstrip("*_`").rstrip()
         if not plain or plain.endswith(_ENDS_SENTENCE):
             return words + end
-        return plain + "." + words[len(plain):] + end
+        marks = words[len(plain):]
+        if marks and "`" not in marks and marks == marks.strip() \
+                and words.startswith(marks) and len(words) > 2 * len(marks):
+            return plain + "." + marks + end
+        return words + "." + end
 
     lines = text.split("\n")
     fence = None

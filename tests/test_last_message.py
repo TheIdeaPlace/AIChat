@@ -271,6 +271,10 @@ def test_one_plain_line(markdown, plain):
     ("#744 is fixed\nnow", "#744 is fixed now"),
     ("A line with ## in it\nmore", "A line with ## in it more"),
     ("    ## indented code\nmore", "## indented code more"),
+    # Marks that only end the heading keep the stop after them.
+    ("## Run `pytest`\nThen.", "Run pytest. Then."),
+    ("## Use *args*\nThen.", "Use args. Then."),
+    ("## snake_case_\nThen.", "snake_case_. Then."),
     # Windows line ends: closing #s still go.
     ("## Title ##\r\nBody", "Title. Body"),
     ("## What changed\r\nThe test.", "What changed. The test."),
