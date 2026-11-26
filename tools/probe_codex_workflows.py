@@ -29,9 +29,17 @@ class Model(BaseHTTPRequestHandler):
    parsed=urllib.parse.urlsplit(redirect)
    if '\r' in redirect or '\n' in redirect or parsed.scheme!='http' or parsed.hostname not in ('127.0.0.1','localhost','::1') or parsed.username or parsed.password:
     return self.send_json({},400)
-   target=redirect+'?'+urllib.parse.urlencode({'code':'local-test-code','state':params['state'][0]})
-   if '\r' in target or '\n' in target: return self.send_json({},400)
-   self.send_response(302);self.send_header('Location',urllib.parse.quote(target,safe=':/?=&%'));self.end_headers();return
+   # Rebuild the header from literal loopback hosts, a numeric port and
+   # an ASCII whitelist. Native callbacks include a per-login path nonce.
+   hosts={'127.0.0.1':'127.0.0.1','localhost':'localhost','::1':'[::1]'}
+   path_chars={char:char for char in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/-'}
+   try:
+    callback=''.join(path_chars[char] for char in parsed.path)
+    port=int(parsed.port)
+   except (KeyError,TypeError,ValueError): return self.send_json({},400)
+   if not callback.startswith('/') or len(callback)>256 or not 1<=port<=65535 or parsed.query or parsed.fragment: return self.send_json({},400)
+   target='http://'+hosts[parsed.hostname]+':'+str(port)+callback+'?'+urllib.parse.urlencode({'code':'local-test-code','state':params['state'][0]})
+   self.send_response(302);self.send_header('Location',target);self.end_headers();return
   return self.send_json({},404)
  def do_POST(self):
   if self.path=='/register':

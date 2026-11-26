@@ -432,11 +432,27 @@ def test_probe_rejects_external_and_header_injection_redirects():
     server = ThreadingHTTPServer(('127.0.0.1', 0), probe.Model)
     worker = threading.Thread(target=server.serve_forever); worker.start()
     try:
-        for redirect in ('https://example.com/callback', 'http://127.0.0.1/callback\r\nInjected: yes'):
+        for redirect in ('https://example.com/callback', 'http://127.0.0.1/callback\r\nInjected: yes', 'http://127.0.0.1:1455/callback/%0d%0aInjected'):
             query = urllib.parse.urlencode({'redirect_uri': redirect, 'state': 'probe'})
             with pytest.raises(urllib.error.HTTPError) as error:
                 urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/authorize?{query}', timeout=3)
             assert error.value.code == 400
             assert error.value.headers.get('Location') is None
+        import http.client
+        state = 'probe\r\nInjected: yes'
+        for redirect in ('http://127.0.0.1:1455/callback/nonce_abc-123', 'http://[::1]:1455/callback/nonce'):
+            query = urllib.parse.urlencode({'redirect_uri': redirect, 'state': state})
+            client = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=3)
+            try:
+                client.request('GET', '/authorize?' + query)
+                response = client.getresponse()
+                assert response.status == 302
+                location = response.getheader('Location')
+                assert location.startswith(redirect + '?')
+                assert '\r' not in location and '\n' not in location
+                assert response.getheader('Injected') is None
+                assert urllib.parse.parse_qs(urllib.parse.urlsplit(location).query)['state'] == [state]
+            finally:
+                client.close()
     finally:
         server.shutdown(); server.server_close(); worker.join(3)
