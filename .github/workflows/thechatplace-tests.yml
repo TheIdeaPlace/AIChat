@@ -75,7 +75,7 @@ jobs:
           git show FETCH_HEAD:tests/test_ui_hidden.py > tests/test_ui_hidden_before736.py
           Xvfb :99 -screen 0 1920x1080x24 & sleep 3
           export DISPLAY=:99
-          for n in $(seq $(nproc)); do (while :; do :; done) & done
+          for n in $(seq $(nproc)); do nice -n 19 sh -c 'while :; do :; done' & done
           K="refused_new_codex_chat_puts or refused_new_codex_chat_while"
           for i in $(seq 40); do
             .venv/bin/python -m pytest -q -rfE -p no:cacheprovider tests/test_ui_hidden_before736.py -k "$K" >> before.txt 2>&1 || true
@@ -88,7 +88,7 @@ jobs:
             echo "== $f: $(grep -c ' passed' $f) runs reported"
             grep -E '^(FAILED|ERROR) ' $f | cut -c1-200 | sort | uniq -c
           done
-          echo "== the fix's failures:"; grep -B30 -E '^(FAILED|ERROR) ' after.txt | head -150 || true
+          echo "== the fix's failures:"; grep -v -E 'Gtk-|GLib-|xkbcomp|Warning: |^> ' after.txt | grep -A40 -E '^_+ (ERROR at|test_)' | head -300 || true
           ! grep -qE '^(FAILED|ERROR) ' after.txt
 
   # What Orca says and reaches, with real Orca in a desktop of its own
