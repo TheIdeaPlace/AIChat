@@ -2328,16 +2328,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """ "Use usage credits?" (#722): "credits", "model" (Change Model) or
         "cancel". Only ever asked when you send, never popped up by itself,
         and never remembered. The button that spends has no access key, and
-        Cancel is the default, so a stray key can't spend."""
+        Cancel is the default and has the focus on every platform, so a stray
+        key can't spend (UsageCreditsDialog)."""
+        from .dialogs import UsageCreditsDialog
+        return self._overage_answer(self._modal(  # _modal destroys it
+            UsageCreditsDialog(self, self._overage_question(title, model, aside))))
+
+    @staticmethod
+    def _overage_question(title: str, model: str, aside: bool = False) -> str:
+        """What "Use usage credits?" asks (#722)."""
         name = model_label(paused_family(model))  # "Fable", not claude-fable-5-2
         what = (f"Ask this question about {title}" if aside
                 else f"Send this message to {title}")
-        text = (f"Turns on {name} are now charged to usage credits, past your plan's {name} "
+        return (f"Turns on {name} are now charged to usage credits, past your plan's {name} "
                 f"allowance. {what} on usage credits, change the model, or cancel?")
-        dialog = wx.MessageDialog(self, text, "Use usage credits?",
-                                  wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION)
-        dialog.SetYesNoCancelLabels("Use Usage Credits", "Change &Model", "Cancel")
-        return self._overage_answer(self._modal(dialog))  # _modal destroys it
 
     @staticmethod
     def _overage_answer(answer: int) -> str:

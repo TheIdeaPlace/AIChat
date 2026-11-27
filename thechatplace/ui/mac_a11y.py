@@ -170,6 +170,40 @@ def set_label(window, label: str) -> bool:
         return False
 
 
+def set_help(window, text: str) -> bool:
+    """Give `window` help VoiceOver reads after its name, after a pause, as
+    the hint it reads for an AppKit control. True if it was applied.
+
+    VoiceOver reads a window's title and the focused control, never the
+    text beside it, where JAWS and NVDA read a dialog's text as it opens:
+    "Use usage credits?" starts on Cancel, so its question is Cancel's help
+    on a Mac (#722)."""
+    if not IS_MACOS or not text:
+        return False
+    try:
+        view = _target_view(window)
+        if view is None or not _responds(view, "setAccessibilityHelp:"):
+            return False
+        _send(view, "setAccessibilityHelp:", ctypes.c_void_p(_nsstring(text)),
+              argtypes=(ctypes.c_void_p,))
+        return True
+    except Exception:  # noqa: BLE001 - never break the window over a hint
+        return False
+
+
+def get_help(window) -> str | None:
+    """The help VoiceOver reads for `window`, or None. For tests."""
+    if not IS_MACOS:
+        return None
+    try:
+        view = _target_view(window)
+        if view is None or not _responds(view, "accessibilityHelp"):
+            return None
+        return _to_str(_send(view, "accessibilityHelp"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def set_static_text(window, text: str) -> bool:
     """Make `window`, a view wx draws itself, text VoiceOver can land on and
     read: its words as its value, as for an AppKit label. True if applied.
