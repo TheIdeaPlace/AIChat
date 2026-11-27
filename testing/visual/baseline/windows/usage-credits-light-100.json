@@ -1,0 +1,96 @@
+{
+ "title": "Use usage credits?",
+ "class": "UsageCreditsDialog",
+ "size": [
+  520,
+  129
+ ],
+ "client": [
+  504,
+  90
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Turns on Fable are now charged to usage credits, past your plan's Fable allowance. Send this message to Visual probe on usage credits, change the model, or cancel?",
+   "rect": [
+    12,
+    12,
+    480,
+    31
+   ],
+   "best": [
+    464,
+    31
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Use Usage Credits",
+   "rect": [
+    187,
+    55,
+    115,
+    23
+   ],
+   "best": [
+    115,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Change &Model",
+   "rect": [
+    310,
+    55,
+    99,
+    23
+   ],
+   "best": [
+    99,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    417,
+    55,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

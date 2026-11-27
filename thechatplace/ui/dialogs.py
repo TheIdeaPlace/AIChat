@@ -82,6 +82,64 @@ class UnpricedApiDialog(wx.Dialog):
         wx.CallAfter(self.warning.SetFocus)
 
 
+class UsageCreditsDialog(wx.Dialog):
+    """ "Use usage credits?" (#722): asked when you send to a subscription
+    chat on Fable once its turns are charged to usage credits. Ends with
+    wx.ID_YES for Use Usage Credits, wx.ID_NO for Change Model, and
+    wx.ID_CANCEL for Cancel, Escape or closing it.
+
+    The app's own dialog, not a native message box, so that Cancel is the
+    default button and has the focus on every platform: nobody could confirm
+    that a Mac honors CANCEL_DEFAULT on a Yes/No/Cancel box, and Return there
+    would have spent. Use Usage Credits has no access key, so a stray key
+    can't spend either. The question is the dialog's text, which JAWS and
+    NVDA read as it opens; VoiceOver and Orca read only the focused control,
+    so on a Mac it's Cancel's help as well, and on Linux its description."""
+
+    TITLE = "Use usage credits?"
+    CREDITS_LABEL = "Use Usage Credits"  # no "&", on purpose
+    MODEL_LABEL = "Change &Model"
+
+    def __init__(self, parent, question: str):
+        super().__init__(parent, title=self.TITLE, size=dialog_size(parent, 520, 200),
+                         style=wx.DEFAULT_DIALOG_STYLE)
+        margin = dip_width(self, 12)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.question = WrappingText(self, question)
+        sizer.Add(self.question, 0, wx.EXPAND | wx.ALL, margin)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.credits = wx.Button(self, wx.ID_YES, self.CREDITS_LABEL)
+        row.Add(self.credits, 0, wx.RIGHT, dip_width(self, 8))
+        self.change_model = wx.Button(self, wx.ID_NO, self.MODEL_LABEL)
+        row.Add(self.change_model, 0, wx.RIGHT, dip_width(self, 8))
+        self.cancel = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        row.Add(self.cancel, 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, margin)
+        self.SetSizer(sizer)
+        _fit_width(self)
+        _fit_height(self)
+        self.cancel.SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL)
+        mac_a11y.set_help(self.cancel, question)
+        # Orca too read only the title and Cancel as it opened, even with the
+        # dialog given the alert role GTK's message boxes have (CI on #745),
+        # so there the question is Cancel's description.
+        gtk_a11y.set_description(self.cancel, question)
+        for button in (self.credits, self.change_model):
+            button.Bind(wx.EVT_BUTTON, lambda e, code=button.GetId(): _end_modal(self, code))
+        # No press_focused_button_on_a_mac here: on a Mac, AppKit gives Return
+        # to the default button's key equivalent before any control sees it,
+        # so Return always cancels there, even on Use Usage Credits, which
+        # only Space presses. The safe way round, and left so.
+        self.CentreOnParent()
+        self.cancel.SetFocus()
+        wx.CallAfter(self._focus_cancel)
+
+    def _focus_cancel(self):
+        if self:
+            self.cancel.SetFocus()
+
+
 class ShortcutsDialog(wx.Dialog):
     def __init__(self, parent, keys=None):
         super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),

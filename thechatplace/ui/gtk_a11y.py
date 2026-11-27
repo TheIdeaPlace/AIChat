@@ -176,6 +176,36 @@ def set_label(window, label: str) -> bool:
         return False
 
 
+def set_description(window, text: str) -> bool:
+    """Give `window` a description Orca reads after its name and role. True
+    if it was applied. False, never an exception, off Linux or without a
+    native widget."""
+    if not IS_LINUX or not text:
+        return False
+    try:
+        accessible = _accessible(window)
+        if accessible is None:
+            return False
+        _load()[1].atk_object_set_description(accessible, text.encode("utf-8"))
+        return True
+    except Exception:  # noqa: BLE001 - never break the window over a description
+        return False
+
+
+def get_description(window) -> str | None:
+    """The description Orca would read for `window`, or None. For tests."""
+    if not IS_LINUX:
+        return None
+    try:
+        accessible = _accessible(window)
+        if accessible is None:
+            return None
+        text = _load()[1].atk_object_get_description(accessible)
+        return text.decode("utf-8", "replace") if text is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def get_label(window) -> str | None:
     """The name Orca would read for `window`, or None. For tests."""
     if not IS_LINUX:
