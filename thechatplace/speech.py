@@ -231,10 +231,11 @@ class SpeechSettings:
     #: The version that last started, recorded by installed copies only, so
     #: the first start after an update can say so (#141).
     last_run_version: str = ""
-    #: The version an update was downloaded to, recorded before it's applied,
-    #: so the portable zip can tell its own update from someone unzipping
-    #: another copy (#747). Cleared once that version starts.
-    update_applied_version: str = ""
+    #: Each portable copy's folder, with the version an update to it was
+    #: downloaded to, recorded before it's applied, so that copy can tell its
+    #: own update from someone unzipping another (#747). Cleared once that
+    #: copy starts on that version or a newer one.
+    portable_updates: Dict[str, str] = field(default_factory=dict)
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
     #: Claude connected tools that new chats start without and that are never
@@ -377,8 +378,8 @@ class SpeechSettings:
         settings.update_installed_notice = raw.get("update_installed_notice") is not False
         last = raw.get("last_run_version", "")
         settings.last_run_version = last.strip() if isinstance(last, str) else ""
-        applied = raw.get("update_applied_version", "")
-        settings.update_applied_version = applied.strip() if isinstance(applied, str) else ""
+        from .updater import portable_update_records
+        settings.portable_updates = portable_update_records(raw.get("portable_updates"))
         from .workplaces import RECENT_LIMIT, RECENT_MAX
         limit = raw.get("recent_folder_limit", RECENT_LIMIT)
         settings.recent_folder_limit = limit if isinstance(limit, int) \

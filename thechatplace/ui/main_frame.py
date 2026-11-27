@@ -105,7 +105,7 @@ from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, 
                           ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
-                       release_notes_url)
+                       portable_update_record, portable_update_started, release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
 from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
@@ -8827,28 +8827,35 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 installed = bool(self.updates.installed_copy)
             except Exception:  # noqa: BLE001 - can't tell: not an installed copy
                 installed = False
-            wx.CallAfter(self._on_update_installed_known, installed)
+            try:
+                folder = str(self.updates.portable_folder or "")
+            except Exception:  # noqa: BLE001 - can't tell: not a portable copy
+                folder = ""
+            wx.CallAfter(self._on_update_installed_known, installed, folder)
         try:
             self._pool.submit(work)
         except RuntimeError:
             pass  # closing
 
-    def _on_update_installed_known(self, installed: bool):
+    def _on_update_installed_known(self, installed: bool, folder: str = ""):
+        """``folder``: this copy's, if it's a portable zip that updates
+        itself, whose own update record (#747) is the only one it reads."""
         if not self or self._closing:
             return
+        updated_here, done = portable_update_started(self.speech.portable_updates, folder,
+                                                     __version__)
         decision = installed_notice(self.speech.last_run_version, __version__, installed,
-                                    self.speech.update_installed_notice,
-                                    self.speech.update_applied_version)
-        # The update this copy applied (#747) has now started: told once.
-        applied_started = self.speech.update_applied_version == __version__
-        if (decision.record or applied_started) and not self.speech.unreadable:
+                                    self.speech.update_installed_notice, updated_here)
+        if (decision.record or done) and not self.speech.unreadable:
             # Never over a settings file that couldn't be read: that would
             # replace every setting with the defaults. Recorded before anything is shown, so it's shown once even if
             # The Chat Place is closed before the dialog appears.
             if decision.record:
                 self.speech.last_run_version = __version__
-            if applied_started:
-                self.speech.update_applied_version = ""
+            if done:
+                self.speech.portable_updates = {
+                    where: version for where, version in self.speech.portable_updates.items()
+                    if where.casefold() != folder.casefold()}
             try:
                 self.speech.save()
             except OSError:
@@ -8961,10 +8968,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _record_update_applied(self, version: str):
         """Record the version about to be applied, now or at the next start,
-        so the portable zip's first start on it says it was updated (#747)."""
+        so the portable zip's first start on it says it was updated (#747).
+        Only a portable copy that updates itself keeps one, under its folder;
+        the check that found the update has already worked that out."""
         if self.speech.unreadable:
             return  # never over a settings file that couldn't be read
-        self.speech.update_applied_version = version
+        try:
+            folder = str(self.updates.portable_folder or "")
+        except Exception:  # noqa: BLE001 - can't tell: not a portable copy
+            folder = ""
+        if not folder:
+            return
+        self.speech.portable_updates = portable_update_record(self.speech.portable_updates,
+                                                              folder, version)
         try:
             self.speech.save()
         except OSError:

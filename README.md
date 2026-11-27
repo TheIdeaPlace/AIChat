@@ -1974,9 +1974,9 @@ open (a warning about a damaged file, say), so it never lands on top of another 
 doesn't happen within half an hour, the status bar says it instead. An installed copy shows it
 only when the version is newer than the one that last started (recorded as `last_run_version` in
 `speech.json` in the data folder), and never on a first run or after a downgrade. The portable zip
-shows it only when it's running the version it updated itself to (recorded as
-`update_applied_version` just before the update is installed), never because you unzipped a
-different copy. It's never shown from source. Turn it off in Settings with "Tell me when an
+shows it only when that copy is running the version it updated itself to (recorded with its
+folder, in `portable_updates`, just before the update is installed), never because you unzipped
+a different copy, and a test build never shows it. It's never shown from source. Turn it off in Settings with "Tell me when an
 update has been installed, with a link to what's new" (Alt+T).
 
 From Help, a new version is offered in a Yes/No dialog where No is the default. If you choose Yes,
@@ -1992,9 +1992,13 @@ it is (asking for your password, through pkexec, only if it's in a folder you ca
 **The Windows portable zip** updates the same way too: Velopack replaces the `current` folder
 inside the folder you unzipped it into. Help, Check for Updates says so instead of offering an
 update when it can't change that folder (a read-only drive, say, or one in Program Files): unzip
-it somewhere you can change, such as a folder in Documents. A test build (one whose Help, About
-names a build, such as "build bld05") never updates itself from the portable zip, so its folder
-and its About box keep matching; Check for Updates says it's a test build.
+it somewhere you can change, such as a folder in Documents. It says so too when the data folder
+is inside that folder (the zip unzipped straight into your profile folder, say), as an update
+would replace it, and when the copy is missing the updater it came with (only `current` was
+copied, say): download it again. A test build (one whose Help, About names a build, such as
+"build bld05") never updates itself from the portable zip, so its folder and its About box keep
+matching; Check for Updates says it's a test build. An installed test build still updates to the
+release.
 
 **Updating never touches your sessions or settings.** On Windows the app lives in
 `%LOCALAPPDATA%\TheChatPlace`, which Velopack replaces on update and removes on uninstall (the

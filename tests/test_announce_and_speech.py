@@ -293,16 +293,17 @@ def test_update_notice_settings_round_trip_and_default(tmp_path):
     again = SpeechSettings.load(path)
     assert again.update_installed_notice is False
     assert again.last_run_version == "0.1.4"
-    assert again.update_applied_version == ""
-    again.update_applied_version = "0.1.5"   # the update being applied (#747)
+    assert again.portable_updates == {}
+    # Each portable copy's update being applied, under its folder (#747).
+    again.portable_updates = {r"D:\Tools\TheChatPlace": "0.1.5"}
     again.save(path)
-    assert SpeechSettings.load(path).update_applied_version == "0.1.5"
+    assert SpeechSettings.load(path).portable_updates == {r"D:\Tools\TheChatPlace": "0.1.5"}
     path.write_text('{"update_installed_notice": "no", "last_run_version": 7, '
-                    '"update_applied_version": ["0.1.5"]}', encoding="utf-8")
+                    '"portable_updates": "0.1.5"}', encoding="utf-8")
     odd = SpeechSettings.load(path)
     assert odd.update_installed_notice is True
     assert odd.last_run_version == ""
-    assert odd.update_applied_version == ""
+    assert odd.portable_updates == {}
 
 
 def test_startup_update_check_setting_round_trip_and_default(tmp_path):

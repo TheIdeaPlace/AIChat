@@ -28,8 +28,10 @@ is Windows-only (``PORTABLE_COPIES_EXIST``).
 
 On Windows the portable zip updates itself too (#747): it carries Velopack's
 Update.exe beside ``current\\``, which an update replaces. It doesn't when it
-can't write that folder, or when it's a test build (``portable_update_blocker``).
-It still never registers links, and bug reports call it portable.
+can't write that folder or holds the data folder (``portable_update_blocker``),
+or when it's a test build. It still never registers links, its What's New
+notice goes by its own record (``portable_update_started``), and bug reports
+call it portable.
 
 On Linux the app is one AppImage file, and Velopack updates it by replacing
 that file (asking for a password through pkexec only if it's somewhere you
@@ -50,9 +52,9 @@ import os
 import re
 import ssl
 import sys
-import tempfile
 import threading
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
@@ -128,34 +130,72 @@ class InstalledNotice:
 
 
 def installed_notice(previous: str, current: str, installed: bool,
-                     enabled: bool = True, applied: str = "") -> InstalledNotice:
+                     enabled: bool = True, updated_here: bool = False) -> InstalledNotice:
     """Whether this start is the first since an update was installed, as
     QuickMail's MaybeShowUpdateInstalledNotice decides it.
 
     ``previous`` is the version recorded at the last start ("" if none),
     ``installed`` whether this copy is one Velopack installed and updates,
-    ``enabled`` the setting that turns the notice off, ``applied`` the
-    version an update was downloaded to, recorded before it's applied.
+    ``enabled`` the setting that turns the notice off, ``updated_here``
+    whether this portable copy is starting on the update it applied itself
+    (``portable_update_started``).
 
     * Only an installed copy records anything: a source run or the portable
       zip changing version is usually someone swapping copies, not an
       update, and recording it would announce updates that never happened
       when an installed copy next starts.
-    * The portable zip tells only when it runs the version it updated itself
-      to (``applied``, #747). Unzipping another copy leaves no such record.
+    * The portable zip tells only when it starts on the update it applied
+      itself (#747). Unzipping another copy leaves no such record.
     * Nothing on a first run (no record): nothing was updated as far as the
       user knows. Nothing on a downgrade, or when either version can't be
       read: the notice fails closed.
     * The version is recorded even when the setting is off, so turning it
       back on doesn't announce an old update."""
     if not installed:
-        updated_here = bool(current) and str(applied or "").strip() == current
-        return InstalledNotice(record=False, show=updated_here and enabled)
+        return InstalledNotice(record=False, show=bool(updated_here and enabled))
     if str(previous or "").strip() == current:
         return InstalledNotice(record=False, show=False)
     old, new = parse_version(previous), parse_version(current)
     newer = old is not None and new is not None and new > old
     return InstalledNotice(record=True, show=bool(newer and enabled))
+
+
+def portable_update_record(records, folder: str, version: str) -> dict:
+    """``records`` (the ``portable_updates`` setting) with this portable
+    copy's update to ``version`` in it: recorded before it's applied (#747).
+    Keyed by the copy's folder, as the data folder is shared by every copy."""
+    kept = {where: was for where, was in portable_update_records(records).items()
+            if where.casefold() != folder.casefold()}
+    kept[folder] = version
+    return kept
+
+
+def portable_update_started(records, folder: str, current: str) -> Tuple[bool, bool]:
+    """``(show, clear)`` for the portable copy in ``folder`` starting on
+    ``current``: whether it's the update this copy applied, and whether its
+    record is done with (that version or a newer one has started). Another
+    copy's record is left alone, and "" (not a portable copy) never matches."""
+    if not folder:
+        return False, False
+    for where, version in portable_update_records(records).items():
+        if where.casefold() != folder.casefold():
+            continue
+        wanted, now = parse_version(version), parse_version(current)
+        if now is None:
+            return False, False
+        if wanted is None or now > wanted:
+            return False, True       # unreadable, or long since passed
+        return now == wanted, now == wanted
+    return False, False
+
+
+def portable_update_records(records) -> dict:
+    """The readable part of the ``portable_updates`` setting: anything else
+    (a bare version string, say) counts as no record."""
+    if not isinstance(records, dict):
+        return {}
+    return {where: version for where, version in records.items()
+            if isinstance(where, str) and where and isinstance(version, str)}
 
 
 def configure_logging() -> None:
@@ -189,23 +229,26 @@ def mac_update_blocker(executable: Optional[str] = None) -> str:
             "Place to Applications and open it from there, and it will update itself")
 
 
-def portable_update_blocker(executable: Optional[str] = None,
-                            label: Optional[str] = None) -> str:
-    """Why this portable copy (the Windows zip) can't update itself, or "" if
-    it can (#747).
+def portable_folder(executable: Optional[str] = None) -> Path:
+    """The portable copy's folder: the one holding Update.exe and ``current\\``."""
+    return Path(executable or sys.executable).resolve().parent.parent
 
-    A test build ("bld05", ``build_info``) never does: it's run from the
-    numbered folder it was unzipped into, and updating it to the release
-    would leave the folder and Help, About disagreeing. Otherwise Velopack
-    replaces ``current\\`` in the folder holding Update.exe, so it needs to
-    write there, which it can't on a read-only drive or under Program Files.
-    Better said now than when the downloaded update fails to apply."""
-    if label is None:
-        from . import build_info
-        label = build_info.current().label
-    if label:
-        return f"it's test build {label}, and a test build never updates itself"
-    root = Path(executable or sys.executable).resolve().parent.parent
+
+def portable_update_blocker(executable: Optional[str] = None) -> str:
+    """Why this portable copy (the Windows zip) can't update itself where it
+    is, or "" if it can (#747). Said before an update is offered, rather
+    than after it's downloaded, and a blocked copy never applies one at start.
+
+    Velopack replaces ``current\\`` in the folder holding Update.exe, so it
+    needs to write there, which it can't on a read-only drive or under
+    Program Files. And the data folder mustn't be inside it, as it can be
+    when the zip is unzipped straight into the profile folder. (A test build
+    never updates either: ``UpdateService`` checks its label.)"""
+    root = portable_folder(executable)
+    if not data_is_outside_install_dir(install_root=root):
+        return ("its settings and sessions are inside the folder it's running from, which an "
+                "update replaces. Unzip it to a folder of its own, such as one in Documents, "
+                "and it will update itself")
     if _can_write(root) and _can_write(root / "current"):
         return ""
     return ("it can't change the folder it's running from (a read-only drive, say, or one in "
@@ -214,13 +257,20 @@ def portable_update_blocker(executable: Optional[str] = None,
 
 
 def _can_write(folder: Path) -> bool:
-    """Whether a file can be made in ``folder``. os.access can't tell on
-    Windows, where it reads only a folder's read-only attribute."""
+    """Whether a file can be made in ``folder``: one try, with a name no
+    other file has. (os.access can't tell on Windows, where it reads only a
+    folder's read-only attribute, and tempfile retries a refused name about
+    two billion times there, believing it was taken.)"""
+    probe = Path(folder) / f".tcp-write-check-{uuid.uuid4().hex}"
     try:
-        with tempfile.TemporaryFile(dir=folder):
-            return True
+        os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
     except OSError:
         return False
+    try:
+        probe.unlink()
+    except OSError:
+        pass
+    return True
 
 
 def bootstrap(argv: Optional[list] = None) -> None:
@@ -241,8 +291,13 @@ def bootstrap(argv: Optional[list] = None) -> None:
     try:
         # A package Kelly agreed to, downloaded but not yet applied (say the
         # restart failed), is applied here before any window appears; never
-        # where it can't be, or every start would try again.
-        app = velopack.App().set_auto_apply_on_startup(not mac_update_blocker())
+        # where it can't be, or every start would try again. On Windows, never
+        # where the data folder is inside what it replaces (the portable zip
+        # unzipped into the profile folder, #747); apply_and_restart refuses
+        # that too.
+        auto_apply = not mac_update_blocker() and (sys.platform != "win32"
+                                                   or data_is_outside_install_dir())
+        app = velopack.App().set_auto_apply_on_startup(auto_apply)
         if links.link_argument(sys.argv[1:] if argv is None else argv) is not None:
             app = app.set_args([])
         # Windows: thechatplace:// is registered for this user when the app
@@ -264,11 +319,13 @@ def bootstrap(argv: Optional[list] = None) -> None:
 
 def _register_links(*_version) -> None:
     """Velopack's install and update hooks: register thechatplace:// links
-    for this installed copy. Never raises (a failed hook fails the install)."""
+    for this installed copy, never for the portable zip, which Velopack now
+    updates too (#747). Never raises (a failed hook fails the install)."""
     try:
-        from . import links
+        from . import __version__, links
 
-        logger.info("link registration: %s", links.ensure_registered(True, sys.executable))
+        logger.info("link registration: %s",
+                    links.ensure_registered(is_installed_copy(__version__), sys.executable))
     except Exception as exc:  # noqa: BLE001
         logger.error("link registration failed: %s", exc)
 
@@ -328,6 +385,7 @@ class CheckResult:
     current: str
     version: str = ""          # the newer version, or the latest published one
     detail: str = ""
+    label: str = ""            # a portable test build's label ("bld05"), which never updates
 
     def describe(self) -> str:
         """The result in words, for the status bar and speech."""
@@ -341,7 +399,10 @@ class CheckResult:
         if self.status == NOT_INSTALLED:
             latest = (f" The latest release is {self.version}." if self.version else
                       " No release has been published yet.")
-            if self.detail:  # can't replace itself where it is, or a test build
+            if self.label:
+                return (f"This is test build {self.label}, and test builds don't update "
+                        f"themselves.{latest}")
+            if self.detail:  # can't replace itself where it is, or has no updater
                 return f"The Chat Place can't update itself here: {self.detail}.{latest}"
             return ("This copy of The Chat Place is running from source, so it can't update "
                     f"itself.{latest}")
@@ -426,6 +487,7 @@ class UpdateService:
         self._pending = None
         self._downloaded = False
         self._lock = threading.Lock()
+        self._copy: Optional[_Copy] = None   # worked out once (_this_copy)
 
     # -- the manager --------------------------------------------------------------
 
@@ -439,30 +501,55 @@ class UpdateService:
         return self._manager_and_blocker(url)[0]
 
     def _manager_and_blocker(self, url: str):
-        """``(manager, "")``, or ``(None, why)`` when this copy can't update
-        itself: why in words, or "" for a source run or a missing Velopack."""
+        """``(manager, "", "")``, or ``(None, why, label)`` when this copy
+        can't update itself: why in words ("" for a source run), or a
+        portable test build's label."""
         if not self._installed():
-            return None, ""
+            return None, "", ""
         blocker = mac_update_blocker()
         if blocker:
-            return None, blocker
+            return None, blocker, ""
         try:
             manager = self._factory(url)
         except Exception as exc:  # noqa: BLE001 - not installed, or no velopack
             logger.info("update manager unavailable: %s", exc)
-            return None, ""
+            return None, _missing_updater(), ""
         if not PORTABLE_COPIES_EXIST:
-            return manager, ""
+            return manager, "", ""
+        copy = self._this_copy(manager)
+        if copy is None:
+            return None, _missing_updater(), ""
+        if copy.label or copy.blocker:
+            return None, copy.blocker, copy.label
+        return manager, "", ""
+
+    def _this_copy(self, manager) -> Optional["_Copy"]:
+        """Whether this Windows copy is the portable zip, and if so what stops
+        it updating, worked out once (a write check, a Velopack call). None
+        when Velopack can't say."""
+        with self._lock:
+            if self._copy is not None:
+                return self._copy
         try:
-            portable = manager.get_is_portable()
+            portable = bool(manager.get_is_portable())
         except Exception as exc:  # noqa: BLE001
             logger.info("couldn't tell whether this copy is installed: %s", exc)
-            return None, ""
-        blocker = portable_update_blocker() if portable else ""
-        if blocker:
-            logger.info("portable copy; updates disabled: %s", blocker)
-            return None, blocker
-        return manager, ""
+            return None
+        copy = _Copy(portable=False)
+        if portable:
+            from . import build_info
+            label = build_info.current().label
+            # A test build is run from the numbered folder it was unzipped
+            # into; updating it to the release would leave the folder and
+            # Help, About disagreeing. An installed one still takes it.
+            copy = _Copy(portable=True, label=label,
+                         blocker="" if label else portable_update_blocker())
+            if copy.label or copy.blocker:
+                logger.info("portable copy; updates disabled: %s",
+                            copy.blocker or f"test build {copy.label}")
+        with self._lock:
+            self._copy = copy
+        return copy
 
     @property
     def can_update(self) -> bool:
@@ -478,10 +565,21 @@ class UpdateService:
             return False
         if not PORTABLE_COPIES_EXIST:
             return True
-        try:
-            return not manager.get_is_portable()
-        except Exception:  # noqa: BLE001 - can't tell: not an installed copy
-            return False
+        copy = self._this_copy(manager)
+        return copy is not None and not copy.portable
+
+    @property
+    def portable_folder(self) -> str:
+        """This copy's folder if it's a built portable zip that updates
+        itself, the key of its What's New record (#747); "" for any other
+        copy: installed, a test build, blocked or a source run."""
+        if not getattr(sys, "frozen", False) or not PORTABLE_COPIES_EXIST:
+            return ""
+        manager = self._make_manager(feed_url(self.current_version))
+        copy = self._this_copy(manager) if manager is not None else None
+        if copy is None or not copy.portable:
+            return ""
+        return str(portable_folder())
 
     # -- checking ------------------------------------------------------------------
 
@@ -496,9 +594,10 @@ class UpdateService:
             logger.error("couldn't list releases: %s", exc)
             return CheckResult(FAILED, self.current_version,
                                detail=_short(f"GitHub couldn't be reached ({exc})"))
-        manager, blocker = self._manager_and_blocker(feed_url(latest or self.current_version))
+        manager, blocker, label = self._manager_and_blocker(
+            feed_url(latest or self.current_version))
         if manager is None:
-            return CheckResult(NOT_INSTALLED, self.current_version, latest or "", blocker)
+            return CheckResult(NOT_INSTALLED, self.current_version, latest or "", blocker, label)
         if latest is None:
             logger.info("no releases published yet")
             return CheckResult(NO_RELEASES, self.current_version)
@@ -558,6 +657,25 @@ class UpdateService:
         except Exception as exc:  # noqa: BLE001
             logger.error("apply and restart failed: %s", exc)
             return False
+
+
+@dataclass(frozen=True)
+class _Copy:
+    """What kind of Windows copy this is, for ``UpdateService``."""
+    portable: bool        # Velopack's portable zip
+    label: str = ""       # a test build's label: it never updates itself
+    blocker: str = ""     # why it can't update where it is (portable_update_blocker)
+
+
+def _missing_updater() -> str:
+    """Why a built copy whose Velopack can't be reached doesn't update:
+    copied without its updater (``current\\`` alone, say). "" from source,
+    where that's expected."""
+    if not getattr(sys, "frozen", False):
+        return ""
+    again = ("the installer or the portable zip" if sys.platform == "win32"
+             else "The Chat Place")
+    return f"it's missing the updater it came with. Download {again} again"
 
 
 def _velopack_manager(url: str):
