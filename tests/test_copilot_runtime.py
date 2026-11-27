@@ -2141,12 +2141,15 @@ def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
     """A second Stop while the first cancel is pending sends nothing more and
     keeps the first timer, so pressing Stop again can't keep Copilot open.
     A Copilot that ignores the cancel ("deaf"), so the turn is still going
-    when the second Stop comes, however slow the machine."""
+    when the second Stop comes, however slow the machine. The grace gives
+    the two Stops 5 seconds, not 1.5: beside the whole suite, #753's runs
+    saw a round trip to the fake take up to 1.3 seconds, and the forced
+    close still comes well inside wait()'s 10."""
     env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
     runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),
                                  sessions_dir=tmp_path / "sessions", billing_wait=0.5,
-                                 cancel_grace=1.5)
+                                 cancel_grace=5.0)
     try:
         chat = runtime.create(str(tmp_path))
         runtime.send(chat, "Long job")
@@ -2206,9 +2209,9 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
     """The prompt is written, but the turn hasn't yet heard it's queued: the
     Stop leaves the cancel to the turn, which sends it after the prompt.
 
-    The grace is longer than any wait here (STRICT_GRACE): with half a
-    second, a runner busy with the rest of the suite sometimes took longer
-    than that for the fake to answer the cancel, so the timer closed it and
+    The grace is longer than any wait here (STRICT_GRACE). With half a
+    second, the fake sometimes took longer than that to answer the cancel
+    on a runner busy with the rest of the suite, so the timer closed it and
     the turn failed (#753). How fast Copilot answers isn't what's tested."""
     env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
@@ -2222,8 +2225,10 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
         real_cancel, cancels = runtime._cancel, []
 
         def cancel(*args):
-            cancels.append(real_cancel(*args))
-            return cancels[-1]
+            # How many Stops had returned when it was sent: 0 means Stop
+            # sent it itself, 1 that the turn did once the Stop returned.
+            cancels.append((len(stops), real_cancel(*args)))
+            return cancels[-1][1]
         runtime._cancel = cancel
 
         def stop_once_written(method, params, *args, on_queued=None, **kwargs):
@@ -2239,7 +2244,7 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
             runtime.snapshot(chat)
         assert stops == [Stopped((), cancelled=True)]
         # The turn sent the cancel itself, once, and started the clock on it.
-        assert cancels == [copilot_runtime.CANCEL_SENT]
+        assert cancels == [(1, copilot_runtime.CANCEL_SENT)]
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]
