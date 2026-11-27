@@ -405,6 +405,9 @@ class FakeRunner:
     def held_waits(self):
         return list(self.held)
 
+    def waits_to_lose(self):
+        return list(self.pending_waits or self.held)
+
     def send_follow_up(self, prompt, images=None):
         if not (self.waiting_on_background or self.waiting_for_waits):
             return False

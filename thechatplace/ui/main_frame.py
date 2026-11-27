@@ -4755,7 +4755,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         data = getattr(event, "data", None) or {}
         waits = scheduled_waits.from_dicts(data.get(field))
         if start is None:
-            start = (scheduled_waits.ENDED_START if data.get("held")
+            start = (scheduled_waits.USAGE_START
+                     if data.get("waits_stop") == scheduled_waits.STOP_USAGE
+                     else scheduled_waits.ENDED_START if data.get("held")
                      else scheduled_waits.LOST_START)
         now = scheduled_waits.local_now()
         lost = scheduled_waits.lost_sentence(waits, now, start=start)
@@ -5091,9 +5093,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _from_next_turn(self, own: OwnSession) -> str:
         """When a change to a session's setting starts to count."""
-        if own.cli_session_id in self._runners:
-            return "from its next turn; the turn running now carries on as it started"
-        return "from its next turn"
+        return "from its next turn" + self._running_turn_note(own)
+
+    def _running_turn_note(self, own: OwnSession) -> str:
+        """What a settings change says of the chat's turn still running: a
+        chat kept open for Claude's checks for later (#749) keeps its old
+        settings for them, and for what you send meanwhile, until Stop."""
+        runner = self._runners.get(own.cli_session_id)
+        if runner is None:
+            return ""
+        if getattr(runner, "held_for_waits", False) or getattr(runner, "waiting_for_waits",
+                                                              False):
+            return ("; it's waiting for checks Claude set, and until they end, they and what "
+                    "you send keep the old settings. Stop ends them")
+        return "; the turn running now carries on as it started"
 
     def _copilot_models(self):
         """The models a new Copilot chat can start with: a small file read,
@@ -5422,12 +5435,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self._runners:
             self._feedback(f"No turns are running.{loaded}")
             return
-        parts = []
+        parts, kept = [], []
         for session_id, other in self._runners.items():
             own = self.store.get(session_id)
             name = own.title if own else "A session"
-            parts.append(f"{name}, {describe_elapsed(other.elapsed())}")
-        self._feedback("Working: " + "; ".join(parts) + f".{loaded}")
+            if getattr(other, "waiting_for_waits", False):
+                # Idle, open for Claude's checks for later (#749).
+                detail = scheduled_waits.row_detail(self._held_waits(other),
+                                                    scheduled_waits.local_now())
+                kept.append(f"{name}, {detail}" if detail else name)
+            else:
+                parts.append(f"{name}, {describe_elapsed(other.elapsed())}")
+        said = []
+        if parts:
+            said.append("Working: " + "; ".join(parts) + ".")
+        if kept:
+            said.append("Waiting for checks Claude set: " + "; ".join(kept) + ".")
+        self._feedback(" ".join(said) + loaded)
 
     # ------------------------------------------- answering Claude (#187, #188)
 
@@ -6973,7 +6997,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 lost = ""
             lost_said = False
             self._note_worktree_move(session_id, title)
-            quiet = self._agent_quiet("claude", session_id)
+            # A check Claude set for later is said in the chat's own name,
+            # even for an agent conversation's member (#749).
+            quiet = (self._agent_quiet("claude", session_id)
+                     and not (event.data or {}).get("woke"))
             self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
                                         quiet)
             if not quiet:
@@ -7193,9 +7220,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._clear_activity()
         self._store_write(self.store.update, session_id, unread=not is_open,
                           last_activity_ms=int(time.time() * 1000))
-        if quiet:
+        if quiet and not woke:
             pass  # its conversation says it when the turn ends (#248)
         elif event.is_error:
+            # A check Claude set for later is said in the member's name even
+            # in an agent conversation, which isn't waiting for it (#749).
             self._notify(key, f"{title}: something failed",
                          f"{usage.friendly_error(event.text)} {background}", needs_you=True)
             self._say_turn_end(self._with_cost(
@@ -7796,7 +7825,14 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Stop ends the process, and every check Claude set in it (#749):
         # said first, and not again when the turn ends. There's no stopping
         # one check alone: that would take a turn asking Claude to.
-        ends = scheduled_waits.stop_words(self._held_waits(runner), scheduled_waits.local_now())
+        # Every wait the turn's end would name, so not saying it then loses
+        # nothing (read without the runner's lock: Stop must never wait).
+        to_lose = getattr(runner, "waits_to_lose", None)
+        try:
+            losing = list(to_lose()) if callable(to_lose) else []
+        except Exception:  # noqa: BLE001 - Stop must still stop
+            losing = []
+        ends = scheduled_waits.stop_words(losing, scheduled_waits.local_now())
         if ends:
             self._stop_said_waits.add(info.cli_session_id)
         runner.cancel()
@@ -8944,7 +8980,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._say(f"{text} Help, {item} installs it, or the Update "
                       "button on the status bar.")
             return
-        if self._running_turn_count():
+        scheduled = self._scheduled_chat_count()
+        if self._running_turn_count() - scheduled:
             self._say(f"{text} It can be installed once the running turns finish; use Help, "
                       f"{item} then.", force=True)
             return
@@ -8959,6 +8996,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._unsent_text():
             question += ("\n\nText you haven't sent in a reply box will be lost, so "
                          "you may want to send or copy it first.")
+        if scheduled:
+            # A chat kept open for Claude's checks can wait for days (#749):
+            # it doesn't hold the update back, but you're told it ends.
+            question += "\n\n" + scheduled_waits.quit_words(scheduled, "install it now")
         answer = wx.MessageBox(question, "Update The Chat Place",
                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
         if answer != wx.YES:
@@ -9090,6 +9131,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _running_turn_count(self) -> int:
         return len(self._runners) + len(self._running_codex_keys())
 
+    def _scheduled_chat_count(self) -> int:
+        """Claude chats kept open only for Claude's checks for later (#749):
+        among the running turns, but idle, and able to wait for days."""
+        return sum(1 for runner in self._runners.values()
+                   if getattr(runner, "waiting_for_waits", False))
+
     def _active_owned_turn_count(self) -> int:
         """Protect quits and updates for every currently supported runtime.
         A reply forwarded to a Codex chat that is still getting ready (#248)
@@ -9118,7 +9165,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         later = self._install_later_text(result)
         # The download took a while; things may have changed since the yes.
-        if self._active_owned_turn_count() or self._modal_open():
+        # Chats only waiting for Claude's checks were in the question (#749).
+        if self._active_owned_turn_count() - self._scheduled_chat_count() or self._modal_open():
             self._say(later, force=True)
             return
         if self._unsent_text():
@@ -9126,7 +9174,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 f"The Chat Place {result.version} is downloaded. Restart now to install it? "
                 "Text you haven't sent in a reply box will be lost.",
                 "Update The Chat Place", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
-            if answer != wx.YES or self._active_owned_turn_count():
+            if answer != wx.YES or (self._active_owned_turn_count()
+                                    - self._scheduled_chat_count()):
                 self._say(later, force=True)
                 return
         self._say(f"Installing The Chat Place {result.version} and restarting.", force=True)
@@ -9157,7 +9206,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_busy = False
         # Applying exits at once; a turn sent, a dialog opened or a reply begun
         # while the announcement played would be lost.
-        if self._active_owned_turn_count() or self._modal_open() or self._unsent_text():
+        if (self._active_owned_turn_count() - self._scheduled_chat_count() or self._modal_open()
+                or self._unsent_text()):
             self._restart_timers()
             self._say(self._install_later_text(result), force=True)
             return
@@ -9980,8 +10030,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Chats kept open only for Claude's checks for later (#749) aren't
         # work running: they're named apart, in the same question, with the
         # same answers and default.
-        scheduled = sum(1 for runner in self._runners.values()
-                        if getattr(runner, "waiting_for_waits", False))
+        scheduled = self._scheduled_chat_count()
         count = self._running_turn_count() - scheduled
         waiting = self._relay_waiting_text()
         if (count or waiting or scheduled) and event.CanVeto():

@@ -272,12 +272,30 @@ if mode == "cron":
         out(type="rate_limit_event", session_id="abc-1", rate_limit_info={
             "status": "allowed_warning", "isUsingOverage": True,
             "overageStatus": "allowed", "rateLimitType": "five_hour"})
-    out(type="assistant", parent_tool_use_id=None, uuid="rec-tool", message={
-        "id": "msg_tool", "model": cron_model, "content": [{
-            "type": "tool_use", "id": "toolu_cron1", "name": "CronCreate",
-            "input": {"cron": expression, "prompt": "Check the pull request's checks.",
-                      "recurring": recurring}}]})
-    if then == "refused":
+    # FAKE_CLAUDE_WAKEUP=1: a ScheduleWakeup instead of the timer, shaped as
+    # the probe of 2026-11-27 saw it; its wake is a loop_wakeup.
+    wakeup_mode = os.environ.get("FAKE_CLAUDE_WAKEUP") == "1"
+    if wakeup_mode:
+        then = "wakeup"
+        out(type="assistant", parent_tool_use_id=None, uuid="rec-tool", message={
+            "id": "msg_tool", "model": cron_model, "content": [{
+                "type": "tool_use", "id": "toolu_wake1", "name": "ScheduleWakeup",
+                "input": {"delaySeconds": 60, "prompt": "Check the pull request's checks.",
+                          "reason": "check the PR"}}]})
+        out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+            "type": "tool_result", "tool_use_id": "toolu_wake1",
+            "content": "Next wakeup scheduled for 13:01:00 (in 60s). If you owe the user a "
+                       "status update this tick, write it now as ordinary response text; then "
+                       "end the turn."}]})
+    else:
+        out(type="assistant", parent_tool_use_id=None, uuid="rec-tool", message={
+            "id": "msg_tool", "model": cron_model, "content": [{
+                "type": "tool_use", "id": "toolu_cron1", "name": "CronCreate",
+                "input": {"cron": expression, "prompt": "Check the pull request's checks.",
+                          "recurring": recurring}}]})
+    if then == "wakeup":
+        pass
+    elif then == "refused":
         out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
             "type": "tool_result", "tool_use_id": "toolu_cron1", "is_error": True,
             "content": "<tool_use_error>Too many scheduled jobs (max 50). "
@@ -314,7 +332,13 @@ if mode == "cron":
         "content": [{"type": "text", "text": reply}]})
     out(type="result", subtype="success", is_error=False, result=reply, session_id="abc-1",
         **COST)
-    out(type="system", subtype="session_state_changed", state="idle")
+    # FAKE_CLAUDE_WAKE_ORDER: "no-idle" has the timer fire straight after
+    # this result, with no idle between; "lifecycle-first" sends the wake's
+    # command_lifecycle before its "running". Neither was seen in the probe;
+    # the app mustn't depend on the order it saw (#749 review).
+    order = os.environ.get("FAKE_CLAUDE_WAKE_ORDER", "")
+    if order != "no-idle":
+        out(type="system", subtype="session_state_changed", state="idle")
     log(waited=True)
     # Part 2 (#749): with FAKE_CLAUDE_WAKE=<seconds>, the timer fires that
     # long after idle, as the probe of 2026-11-27 saw it with Claude Code
@@ -347,9 +371,16 @@ if mode == "cron":
     def wake():
         for number in range(1, int(os.environ.get("FAKE_CLAUDE_WAKES", "1")) + 1):
             time.sleep(float(wake_after))
-            out(type="system", subtype="session_state_changed", state="running")
-            out(type="command_lifecycle", command_uuid=f"wake-{number}", state="started",
-                wakeup_source="schedule_wakeup", session_id="abc-1")
+            source = ({"wakeup_source": "loop_wakeup", "scheduled_for": 1795796460000}
+                      if wakeup_mode else {"wakeup_source": "schedule_wakeup"})
+            if order == "lifecycle-first":
+                out(type="command_lifecycle", command_uuid=f"wake-{number}", state="started",
+                    session_id="abc-1", **source)
+            if not (order == "no-idle" and number == 1):
+                out(type="system", subtype="session_state_changed", state="running")
+            if order != "lifecycle-first":
+                out(type="command_lifecycle", command_uuid=f"wake-{number}", state="started",
+                    session_id="abc-1", **source)
             out(type="system", subtype="init", session_id="abc-1",
                 apiKeySource=os.environ.get("FAKE_CLAUDE_WAKE_SOURCE") or init_source,
                 model=cron_model)

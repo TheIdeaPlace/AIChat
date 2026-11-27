@@ -120,8 +120,8 @@ def test_what_stop_and_quit_say():
         "(Watch PR 749) too.")
     assert sw.stop_words([], NOW) == ""
     assert sw.quit_words(0) == ""
-    assert sw.quit_words(1) == "1 chat has scheduled checks, which won't run if you quit."
-    assert sw.quit_words(2) == "2 chats have scheduled checks, which won't run if you quit."
+    assert sw.quit_words(1) == "1 chat is waiting for checks Claude set, which won't run if you quit."
+    assert sw.quit_words(2) == "2 chats are waiting for checks Claude set, which won't run if you quit."
 
 
 def test_the_lines_for_a_far_check_and_a_chat_that_stopped_waiting():
@@ -381,10 +381,57 @@ def test_a_check_that_never_comes_ends_the_turn_and_says_so(tmp_path, monkeypatc
     live = [t for t in timers.made
             if t.started and not t.cancelled and t.function == run.runner._recheck_waits]
     live[-1].function()
+    # Given one more grace first, from now: after a sleep, Claude Code
+    # fires a missed timer late, and this mustn't beat it.
+    assert run.runner.waiting_for_waits
+    regrace = [t for t in timers.made
+               if t.started and not t.cancelled and t.function == run.runner._recheck_waits]
+    assert regrace[-1].interval == sw.OVERDUE_GRACE_SECONDS
+    regrace[-1].function()
     final = run.done()
     assert final.kind == "finished" and final.data.get("after_background")
     assert final.data["held"] is True
     assert [w.cron for w in sw.from_dicts(final.data["waits"])] == [SOON]
+
+
+def test_a_wakeup_holds_the_turn_and_its_loop_wakeup_settles_it(tmp_path, monkeypatch):
+    run = Run(tmp_path, monkeypatch, FAKE_CLAUDE_WAKEUP="1", FAKE_CLAUDE_WAKE="0.3")
+    final = run.done()
+    [waiting] = run.waiting()
+    [wait] = sw.from_dicts(waiting.data["waits"])
+    assert wait.kind == WAKEUP and wait.fire_time() == NOW + timedelta(seconds=60)
+    assert final.kind == "finished" and final.data["woke"] == "loop_wakeup"
+    assert "waits" not in final.data
+
+
+def test_a_wake_announced_before_running_still_gets_its_answer(tmp_path, monkeypatch):
+    # command_lifecycle before "running": the timer leaving the list mustn't
+    # close the turn it just started.
+    run = Run(tmp_path, monkeypatch, FAKE_CLAUDE_WAKE="0.3",
+              FAKE_CLAUDE_WAKE_ORDER="lifecycle-first")
+    final = run.done()
+    assert final.kind == "finished" and final.text == "Scheduled check 1: the checks passed."
+    assert final.data["woke"] == "schedule_wakeup"
+
+
+def test_your_answer_is_said_even_when_the_check_fires_with_no_idle_between(tmp_path,
+                                                                           monkeypatch):
+    run = Run(tmp_path, monkeypatch, FAKE_CLAUDE_WAKE="0.3", FAKE_CLAUDE_WAKE_ORDER="no-idle")
+    final = run.done()
+    [waiting] = run.waiting()
+    assert waiting.text == "I'll check the pull request again at 2:00 PM."
+    assert "woke" not in waiting.data
+    assert final.text == "Scheduled check 1: the checks passed."
+    assert final.data["woke"] == "schedule_wakeup"
+
+
+def test_a_yes_to_usage_credits_isnt_kept_once_the_turn_waits(tmp_path, monkeypatch):
+    run = Run(tmp_path, monkeypatch, command_extra=("--model", "fable"),
+              FAKE_CLAUDE_MODEL="claude-fable-5-2", FAKE_CLAUDE_WAKE_OVERAGE="1")
+    run.wait_for(lambda events: run.runner.waiting_for_waits)
+    assert run.runner.allow_overage is False   # it was True for the message that set it
+    run.runner.cancel()
+    run.done()
 
 
 def test_a_watch_listed_as_ambient_holds_until_it_goes(tmp_path, monkeypatch):

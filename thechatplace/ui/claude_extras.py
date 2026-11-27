@@ -181,7 +181,8 @@ class ClaudeExtras:
             return
         said = change.said(info.title)
         if own.cli_session_id in self._runners:
-            said = said[:-1] + "; the turn running now carries on as it started."
+            # A chat kept open for Claude's checks says so (#749).
+            said = said[:-1] + self._running_turn_note(own) + "."
         self._feedback(said)
         self._update_heading()
 

@@ -396,7 +396,7 @@ def test_the_parser_takes_a_wake_turn_as_the_due_timer_having_run():
                   wakeup_source="schedule_wakeup", session_id="abc-1")
     assert woke.kind == "woke" and woke.data == {"source": "schedule_wakeup"}
     assert [w.kind for w in parser.waits.waits] == [WAKEUP]
-    event, woke = feed(parser, type="command_lifecycle", command_uuid="d", state="started",
+    woke, event = feed(parser, type="command_lifecycle", command_uuid="d", state="started",
                        wakeup_source="loop_wakeup", scheduled_for=1795796400000,
                        session_id="abc-1")
     assert event.kind == "waits" and event.data["waits"] == []

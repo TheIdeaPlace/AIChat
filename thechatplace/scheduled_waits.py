@@ -63,8 +63,12 @@ LOST_START = "This chat ends when Claude's reply does, so "
 ENDED_START = "This chat stopped waiting, so "
 #: Part 2: the start for a wait too far away to keep the chat open for.
 FAR_START = "That's more than {days} days away, too long to keep the chat open, so "
+#: Part 2: the start when the process ended because the chat went on to
+#: usage credits (the runner's ``waits_stop`` is ``STOP_USAGE``).
+USAGE_START = "This chat went on to usage credits, so The Chat Place ended it, and "
+STOP_USAGE = "usage"
 #: Every start a line kept after a reply may have (``clean_notes``).
-NOTE_STARTS = (LOST_START, ENDED_START, "That's more than ")
+NOTE_STARTS = (LOST_START, ENDED_START, USAGE_START, "That's more than ")
 
 # -- Part 2's limits, each Kelly's to change -------------------------------------
 #: The furthest away a wait can be and still keep the chat's process open.
@@ -960,13 +964,14 @@ def stop_words(held: Iterable[Wait], now: datetime) -> str:
     return f"Stopping ends {_clause(phrases)} too."
 
 
-def quit_words(count: int) -> str:
-    """For the "Work is running" question as you quit (#749)."""
+def quit_words(count: int, doing: str = "quit") -> str:
+    """For the "Work is running" question as you quit (#749), or ``doing``
+    something else that closes the app ("install the update now")."""
     if count <= 0:
         return ""
     if count == 1:
-        return "1 chat has scheduled checks, which won't run if you quit."
-    return f"{count} chats have scheduled checks, which won't run if you quit."
+        return f"1 chat is waiting for checks Claude set, which won't run if you {doing}."
+    return f"{count} chats are waiting for checks Claude set, which won't run if you {doing}."
 
 
 class WaitSlots:

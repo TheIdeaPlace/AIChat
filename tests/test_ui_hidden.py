@@ -9980,7 +9980,7 @@ def test_a_message_sent_while_kept_open_goes_straight_in(frame, env, fake_runner
     _kept_open(frame, runner)
     frame.reply_text.SetValue("Any news?")
     frame.on_send()
-    assert runner.follow_ups == [("Any news?", None)]
+    assert runner.follow_ups == [("Any news?", [])]
     assert len(fake_runner.instances) == 1  # the same process: Claude Code keeps its timer
 
 
@@ -10012,14 +10012,41 @@ def test_quitting_names_chats_kept_open_in_the_work_is_running_question(frame, e
     event.SetCanVeto(True)
     frame._on_close(event)
     text, style = asked[-1]
-    assert text == "1 chat has scheduled checks, which won't run if you quit. Quit anyway?"
+    assert text == "1 chat is waiting for checks Claude set, which won't run if you quit. Quit anyway?"
     assert style & wx.NO_DEFAULT and style & wx.YES_NO
     assert event.GetVeto() and not runner.cancelled
     # With work running too, it's added to the same question.
     frame._runners["own-2"] = fake_runner(["claude"], "C:\\G\\Scratch", "go", lambda e: None)
     frame._on_close(event)
     assert asked[-1][0].startswith("Work is running in 1 Chat Place session. Quit anyway?")
-    assert asked[-1][0].endswith(" 1 chat has scheduled checks, which won't run if you quit.")
+    assert asked[-1][0].endswith(" 1 chat is waiting for checks Claude set, which won't run if you quit.")
+
+
+def test_an_update_isnt_held_back_by_chats_kept_open_but_says_they_end(frame, env, fake_runner,
+                                                                       kept_now, monkeypatch):
+    from thechatplace.updater import AVAILABLE, CheckResult
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame.updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox",
+                        lambda text, caption, style, *a, **k: asked.append((text, style)) or wx.NO)
+    run_check(frame)
+    text, style = asked[-1]
+    assert text.endswith("1 chat is waiting for checks Claude set, which won't run if you "
+                         "install it now.")
+    assert style & wx.NO_DEFAULT
+
+
+def test_a_setting_changed_while_kept_open_says_it_waits_for_the_checks(frame, env, fake_runner,
+                                                                        kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    runner.held_for_waits = True
+    own = frame.store.get("own-1")
+    assert frame._from_next_turn(own) == (
+        "from its next turn; it's waiting for checks Claude set, and until they end, they and "
+        "what you send keep the old settings. Stop ends them")
 
 
 def test_the_limit_on_chats_kept_open_is_a_setting(frame, env):

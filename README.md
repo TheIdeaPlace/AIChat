@@ -2333,8 +2333,13 @@ with background work. Once nothing holds it, the process closes as before; one-t
 time passed 10 minutes ago with no wake stop holding it, checked by a timer. API-credit chats
 never keep waits: a process has one reservation and one `--max-budget-usd`, so a wake couldn't
 be given a fresh, checked budget. Stop ends the process and every wait, saying first "Stopping
-ends the check Claude set for 2:00 PM too."; quitting adds "1 chat has scheduled checks, which
-won't run if you quit." to the "Work is running" question (its answers and default unchanged).
+ends the check Claude set for 2:00 PM too."; quitting adds "1 chat is waiting for checks Claude
+set, which won't run if you quit." to the "Work is running" question (its answers and default
+unchanged), and Help, Check for Updates says the same in its question instead of waiting for them.
+A one-time check found past its time with no wake gets one more 10-minute grace, from then,
+before the chat stops waiting, as Claude Code fires a timer late after the computer sleeps.
+Settings changes that count "from the next turn" say that a chat kept open keeps its old settings
+for its checks, and what's sent before they end, until Stop.
 **Saying what won't happen.** When a wait can't be kept (an API-credit chat, the limit reached),
 the window says, once per turn, after however the turn ended: "This chat ends when Claude's reply
 does, so the check Claude set for 2:00 PM won't run." One more than 7 days away is said with the
