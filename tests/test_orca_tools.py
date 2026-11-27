@@ -69,6 +69,76 @@ def test_the_customization_writes_what_the_report_counts():
         assert any(text.startswith(marker) for text in strings), marker
 
 
+class GrowingLog:
+    """A clock and a debug log that grows by a line on each of the ticks
+    given, so OrcaLog.wait_idle is tested without waiting."""
+
+    def __init__(self, path, grows_at):
+        self.path, self.grows_at, self.now = path, set(grows_at), 0.0
+        path.write_text("", encoding="utf-8")
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now = round(self.now + seconds, 2)
+        if self.now in self.grows_at:
+            with self.path.open("a", encoding="utf-8") as log:
+                log.write(f"{self.now} - EVENT MANAGER: Dequeued an event\n")
+
+
+def test_orca_is_idle_only_once_its_log_stops_growing(tmp_path):
+    """#754: a key pressed while Orca still had the trigger's events queued
+    left the message box unsaid, so the keys wait for the log to go quiet."""
+    fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[0.1, 0.3, 0.6])
+    log = orca_speech.OrcaLog(fake.path)
+    assert log.wait_idle(quiet=0.5, timeout=5, clock=fake.clock, sleep=fake.sleep)
+    assert fake.now == 1.1  # half a second after the last line, not before
+
+
+def test_orca_that_never_goes_quiet_is_said_to_have_not(tmp_path):
+    fake = GrowingLog(tmp_path / "orca-debug.log",
+                      grows_at=[round(0.05 * n, 2) for n in range(1, 200)])
+    log = orca_speech.OrcaLog(fake.path)
+    assert not log.wait_idle(quiet=0.5, timeout=2, clock=fake.clock, sleep=fake.sleep)
+
+
+class StepLog:
+    """Stands in for OrcaLog in run_steps, noting when it was asked to wait."""
+
+    def __init__(self, events):
+        self.events = events
+
+    def mark(self):
+        pass
+
+    def size(self):
+        return 0
+
+    def wait_idle(self):
+        self.events.append("idle")
+        return True
+
+    def wait_quiet(self, done, timeout):
+        return ["Your message", "Write the script"]
+
+    def count_since(self, offset, needle):
+        return 0
+
+
+def test_keys_after_a_trigger_wait_for_orca_to_handle_it(tmp_path, monkeypatch):
+    """after_trigger: the keys go once the trigger is done and Orca has gone
+    quiet (#754); a step without it presses at once."""
+    events = []
+    monkeypatch.setattr(orca_speech, "STEP_TIMEOUT", 0.2)  # no serve to write .done
+    monkeypatch.setattr(orca_speech, "press", lambda keys: events.append(("press", keys)))
+    steps = [orca_speech.Step("after", ["Tab"], trigger="suggestion", after_trigger=True),
+             orca_speech.Step("at once", ["Tab"], trigger="suggestion-done")]
+    results = orca_speech.run_steps(StepLog(events), steps, (46, 1), record=False, world=tmp_path)
+    assert events == ["idle", ("press", ["Tab"]), ("press", ["Tab"])]
+    assert [r["settled"] for r in results] == [True, True]
+
+
 def _load_customizations(monkeypatch, keep_quiet_move=False):
     """Runs tools/orca-customizations.py against stand-ins for the parts of
     Orca 46 it touches, and returns them."""
