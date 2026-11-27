@@ -1,0 +1,198 @@
+{
+ "title": "Connected Tools: Codex review",
+ "class": "ConnectedToolsDialog",
+ "size": [
+  700,
+  540
+ ],
+ "client": [
+  684,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Connected tools:",
+   "rect": [
+    8,
+    8,
+    91,
+    16
+   ],
+   "best": [
+    91,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "ListBox",
+   "name": "Connected tools, 2",
+   "label": "",
+   "rect": [
+    10,
+    26,
+    668,
+    211
+   ],
+   "best": [
+    949,
+    170
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "items": [
+    "project-notes: connected, configured Codex MCP server, 1 tool",
+    "reference-search: off for this chat, configured Codex MCP server",
+    "Apps unavailable: Codex timed out while listing apps. This does not mean your account has no apps. Press Refresh to try again. Configured servers, if listed, can still be used."
+   ],
+   "selection": 2
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Sign In",
+   "rect": [
+    8,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Reconnect",
+   "rect": [
+    89,
+    243,
+    77,
+    23
+   ],
+   "best": [
+    77,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Change T&ool",
+   "rect": [
+    172,
+    243,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Re&fresh",
+   "rect": [
+    267,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "C&lose",
+   "rect": [
+    601,
+    243,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Details:",
+   "rect": [
+    8,
+    274,
+    39,
+    16
+   ],
+   "best": [
+    39,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Details",
+   "label": "",
+   "rect": [
+    10,
+    300,
+    668,
+    195
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Apps unavailable: Codex timed out while listing apps. This does not mean your account has no apps. Press Refresh to try again. Configured servers, if listed, can still be used.\n\nIn a Codex chat, a tool can't be turned on or off in the chat itself: Copy with Tool On or Off makes a new copy of the chat with that choice, and this chat stays as it is. These are the tools Codex can connect to: the serv"
+  }
+ ],
+ "capture": "PrintWindow"
+}

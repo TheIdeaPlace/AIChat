@@ -2148,6 +2148,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex tool-call consent with exact arguments and a one-time answer"
+  },
+  "codex-tools-apps-unavailable": {
+   "kind": "dialog",
+   "png": "codex-tools-apps-unavailable-hc-aquatic-100.png",
+   "json": "codex-tools-apps-unavailable-hc-aquatic-100.json",
+   "title": "Connected Tools: Codex review",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Connected Tools when Codex couldn't list apps"
   }
  },
  "seconds": 280.2

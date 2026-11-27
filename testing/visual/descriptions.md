@@ -1276,3 +1276,19 @@ light pictures retain the existing native text-control border #ABADB3 against
 white, 2.24:1 (1.97:1 against dialog gray), below the 3:1 border criterion.
 Accepting these baselines records the reviewed layout, without claiming this
 existing contrast defect is fixed.
+
+## codex-tools-apps-unavailable: Connected Tools when Codex can't list apps (#729)
+
+A 686 by 533 dialog titled "Connected Tools: Codex review". "Connected tools:" heads a list of
+three rows: "project-notes: connected, configured Codex MCP server, 1 tool", "reference-search:
+off for this chat, configured Codex MCP server", and the selected "Apps unavailable: Codex timed
+out while listing apps. This does not mean your account has no apps. Press Refresh to try
+again." The last row is longer than the list, so a horizontal scroll bar shows under it, as in
+other lists with long rows. Under the list, left to right: Sign In, Reconnect, "Change Tool"
+(the button that reads "Copy with Tool On" or "Off" for a real tool; neutral for this row) and
+Refresh, with Close at the right. "Details:" heads a read-only box with the whole message, then
+the usual paragraph about turning tools on or off in a Codex chat. Seen in light-100 and
+hc-aquatic-100 at commit 730f3cb4; in High Contrast Aquatic the selected row is aqua with dark
+text and everything else white on near-black.
+
+**What looks off:** Nothing beyond the long row's scroll bar.
