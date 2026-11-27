@@ -341,7 +341,20 @@ that makes the app replace many more objects shows. So:
   opened the chat twice, which no one does; an update and a refresh with the focus in the
   messages, which do happen, have a step of their own that checks the arrows still read the
   rows around it. A step with `after_trigger` presses its keys only once its trigger has
-  finished.
+  finished and Orca's debug log has been quiet for half a second (`OrcaLog.wait_idle`), so
+  Orca has handled the events the trigger made.
+- "a suggestion, then Tab to the message box" failed now and then (#754): Orca said "Write the
+  script, selected" but not "Your message". All five failures (in four runs) had the same
+  cause, and it isn't #751's. The trigger puts the suggestion in the message box and selects
+  it while the box isn't focused, and in those failures the Tab followed 6 to 13 ms later. Orca 46 handles
+  a key as soon as it comes, ahead of the events still in its queue, so it handled the Tab
+  before the box's caret move. By the time it got to the caret move, the Tab had focused the
+  box, and `default.onCaretMoved` checks whether the box is focused *now*. It found it was and
+  quietly took the box for its focus. When the box's own focus event came, Orca already had it
+  and said nothing. In passing runs the Tab came about 40 ms later, after Orca had handled the
+  caret move and passed over it because the box wasn't focused. The app's focus and names were
+  right every time. A person can't press Tab within milliseconds of a suggestion appearing, so
+  the check now waits for Orca to handle the trigger's events before the keys.
 - "answer the tool" and "answer Copilot" failed now and then (3 of about 45 runs looked at,
   #751): Orca said the Answer dialog's title and "frame", but not the box the focus was in. Orca
   46 asks which window is active as it handles each key. When the key opened a dialog that was
