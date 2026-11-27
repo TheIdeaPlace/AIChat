@@ -17949,7 +17949,8 @@ def test_repeat_last_announcement_says_when_theres_nothing_to_repeat_yet(frame, 
     sounds like a broken key (#729's acceptance test)."""
     from thechatplace.ui.main_frame import MainFrame
     frame._last_announcement = ""
-    frame.speech.enabled = False  # Repeat is asked for, so it speaks even so
+    from thechatplace.speech import ANNOUNCE_SILENT
+    frame.speech.announce = ANNOUNCE_SILENT  # Repeat is asked for, so it speaks even so
     repeat = frame._command_handlers()["repeat_last_announcement"]
     repeat(None)
     assert env["spoken"][-1] == MainFrame.NOTHING_TO_REPEAT == "Nothing to repeat yet."

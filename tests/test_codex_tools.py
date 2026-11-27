@@ -388,22 +388,26 @@ def test_a_finished_sign_in_refreshes_without_fetching_the_catalog_again(monkeyp
     wx = pytest.importorskip("wx")
     host = _host(True)
     refreshed = []
-    host.dialog = SimpleNamespace(on_refresh=lambda **k: refreshed.append(k))
+    # Waits for anything under way, not a "Still ..." box nobody asked for (#729's review).
+    host.dialog = SimpleNamespace(refresh_when_free=lambda: refreshed.append("refresh"))
     host.frame._feedback = lambda text: None
     host.frame._codex_work = lambda action, done: done(True, False)
     host.frame.sessions = SimpleNamespace(connected_tool_action=lambda *a: True)
     server = CodexTool("notes", "needs-auth", (), False)
     host._logins["notes"] = "login"
     host._poll_login(host.info, server, "login", 1)
-    assert refreshed == [{"read_again": False}]
+    assert refreshed == ["refresh"]
 
 
-def test_nothing_to_sign_in_notices_are_told_apart_from_a_started_sign_in():
+def test_sign_in_says_what_happened_so_focus_needs_no_guessing_from_the_words():
+    """The host says whether anything changed, rather than the dialog
+    comparing the words (#729's review): nothing to sign in to is UNCHANGED."""
+    from thechatplace.ui.dialogs import SIGN_IN_UNCHANGED
     host = _host(True)
     server = CodexTool("everything", "configured", auth="unsupported")
-    assert host.is_sign_in_notice(server, host.nothing_to_sign_in(server))
-    assert not host.is_sign_in_notice(server, "Finish signing in in your browser.")
-    assert not host.is_sign_in_notice(server, None)
+    calls = []
+    host.sign_in(server, lambda *a: calls.append(a))
+    assert calls == [(host.nothing_to_sign_in(server), "", SIGN_IN_UNCHANGED)]
 
 
 CATALOG = [
@@ -525,13 +529,14 @@ def test_sign_in_says_there_is_nothing_to_sign_in_to_without_asking_codex():
     said = []
     for server in (CodexTool("everything", "connected", (), False, auth="unsupported"),
                    CodexTool("tokened", "off", auth="bearerToken")):
-        host.sign_in(server, lambda text, error: said.append((text, error)))
+        host.sign_in(server, lambda text, error, outcome: said.append((text, error, outcome)))
     assert work == []
     assert said == [
         ("everything: This tool doesn't need signing in: Codex starts it on this computer "
-         "without an account.", ""),
+         "without an account.", "", "unchanged"),
         ("tokened: This tool signs in with a token set up in Codex's configuration, so there's "
-         "nothing to sign in to here. To change the token, change its environment variable.", "")]
+         "nothing to sign in to here. To change the token, change its environment variable.", "",
+         "unchanged")]
     assert host.nothing_to_sign_in(CodexTool("web", "needs-auth", (), False)) == ""
     # An app's Sign In is its page, whatever the field says.
     assert host.nothing_to_sign_in(CodexTool("app:x", "off", app_id="x", auth="unsupported")) == ""
@@ -544,7 +549,7 @@ def test_sign_in_says_there_is_nothing_to_sign_in_to_without_asking_codex():
     # A refusal from a chat whose rows had no auth status isn't a failure.
     ("This tool doesn't need signing in: Codex starts it on this computer without an account.",
      True, ("notes: This tool doesn't need signing in: Codex starts it on this computer "
-            "without an account.", "")),
+            "without an account.", "", "unchanged")),
     # No known reason: still a next step, as Details promises.
     (None, True, (None, "Codex could not start signing in to this tool. To see Codex's reason, "
                         "run codex mcp login followed by the tool's name in a terminal.")),

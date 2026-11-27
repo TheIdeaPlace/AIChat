@@ -470,12 +470,13 @@ def test_codex_sign_in_off_and_external_tools_shows_real_address_without_copy(fr
                     escape=dialog.GetEscapeId() == dialog.decline_btn.GetId())
         return wx.ID_CANCEL
     monkeypatch.setattr(ElicitationDialog, "ShowModal", cancel)
-    said, focused = [], []
-    dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    boxes = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, title, *a, **k: boxes.append((title, text)) or wx.OK)
+    focused = []
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
     monkeypatch.setattr(dialog.sign_in_btn, "SetFocus", lambda: focused.append("sign in"))
     monkeypatch.setattr(dialog.refresh_btn, "SetFocus", lambda: focused.append("refresh"))
     try:
-        boxes = len(env["boxes"])
         dialog.on_sign_in()
         assert calls == [(info, "notes", "login")]
         assert addresses == ["https://tools.example/authorize?state=probe"]
@@ -483,10 +484,10 @@ def test_codex_sign_in_off_and_external_tools_shows_real_address_without_copy(fr
         # nothing waiting for an answer later: Escape declines.
         assert seen == {"title": "Sign In to notes", "later": None, "escape": True,
                         "address": "Opens tools.example: https://tools.example/authorize?state=probe"}
-        # Declining is said without a box, and focus goes back to Sign In,
-        # not to Refresh as after a sign-in (#729's acceptance test).
-        assert len(env["boxes"]) == boxes
-        assert said == [SIGN_IN_NOT_OPENED] and focused == ["sign in"]
+        # Declining is said in a box of its own, and focus goes back to Sign
+        # In, not to Refresh as after a sign-in (#729's acceptance test).
+        assert boxes == [("Sign In: notes", SIGN_IN_NOT_OPENED)]
+        assert focused == ["sign in"]
         assert not dialog.busy
         assert not env["opened"]
         if record is not None:
@@ -512,14 +513,13 @@ def test_declining_an_apps_page_goes_back_to_sign_in_too(frame, env, monkeypatch
         return wx.ID_OK
     monkeypatch.setattr(ElicitationDialog, "ShowModal", decline)
     monkeypatch.setattr(ElicitationDialog, "EndModal", lambda self, code: None)
-    said, focused = [], []
-    dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    focused = []
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
     monkeypatch.setattr(dialog.sign_in_btn, "SetFocus", lambda: focused.append("sign in"))
     try:
-        boxes = len(env["boxes"])
         dialog.on_sign_in()
         assert titles == ["Connect Project documents"]
-        assert len(env["boxes"]) == boxes and said == [APP_PAGE_NOT_OPENED]
+        assert env["boxes"][-1] == APP_PAGE_NOT_OPENED
         assert focused == ["sign in"] and not env["opened"]
     finally:
         dialog.Destroy()
@@ -549,9 +549,37 @@ def test_each_box_is_titled_for_what_it_answers_not_the_dialog(frame, env, monke
         dialog.busy = ""
         dialog._fill([])
         dialog.on_sign_in()
-        assert titled == ["Sign In: everything", "Reconnect: notes", "Turn Off for This Chat: notes",
+        # Delete's box isn't titled for the Turn Off button, which a chat
+        # started elsewhere doesn't show (#729's review).
+        assert titled == ["Sign In: everything", "Reconnect: notes", "Tools: notes",
                           "Refresh", "Sign In"]
         assert dialog.GetTitle() not in titled
+    finally:
+        dialog.Destroy()
+
+
+def test_a_refresh_nobody_pressed_waits_rather_than_showing_a_box(frame, env):
+    """A sign-in finishing while something else was under way showed "Still
+    ..." in a box titled Refresh, which nobody had pressed (#729's review)."""
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    reads = []
+    def load(done):
+        reads.append(1)
+        done([CodexTool("notes", "configured", off_for_chat=False, read_only=True)], "")
+    host.load = load
+    said = []
+    dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    try:
+        boxes = len(env["boxes"])
+        dialog.busy = "Still asking for sign-in information. Try again in a moment."
+        dialog.refresh_when_free()
+        assert len(env["boxes"]) == boxes and len(reads) == 1
+        dialog.busy = ""
+        assert pump(lambda: len(reads) == 2, timeout=5)
+        assert len(env["boxes"]) == boxes and said  # read again, and said how it came out
     finally:
         dialog.Destroy()
 

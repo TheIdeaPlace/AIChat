@@ -786,8 +786,8 @@ Copilot chats don't have these yet.
     **Answer Later**: Decline tells the tool no, and Answer Later leaves the turn waiting until you
     come back and decline, or stop the turn. Enter in its boxes says "Tab to Decline". When it asks you to open a web page
     instead, Answer opens on an **Address**
-    box above the message, with the host on its own line ("Opens example.com") and then the whole
-    address, and **Open in Browser** opens it. Enter in either box says "Tab to Open in Browser, or
+    box above the message, whose one line gives the host and then the whole address ("Opens
+    example.com: https://example.com/…"), and **Open in Browser** opens it. Enter in either box says "Tab to Open in Browser, or
     to Decline", so it never opens a page by itself. Only plain web
     addresses are opened: https, or http to this computer, with no name or password before the
     host and no hidden characters, and a host in plain letters.

@@ -800,8 +800,10 @@ class CodexProvider:
         # alone left nothing to do.
         from .codex_rpc import (CodexConnectionFailure, CodexReconnectRefused, CodexRequestTimeout,
                                 CodexRpcError)
-        if not session.is_own or self.runtime is None:
+        if not session.is_own:
             raise CodexReconnectRefused('not_own')
+        if self.runtime is None:
+            raise CodexReconnectRefused('failed')
         connection, allowed = self.runtime.tools_context(session.cli_session_id)
         if name not in allowed:
             raise CodexReconnectRefused('not_enabled')

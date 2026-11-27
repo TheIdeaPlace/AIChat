@@ -6409,6 +6409,12 @@ class RewindDialog(wx.Dialog):
         _end_modal(self, wx.ID_OK)
 
 
+#: What a host's Sign In says happened (``done(text, error, outcome)``): a
+#: page opened, so Refresh is next; or nothing changed, so focus goes back
+#: to Sign In.
+SIGN_IN_OPENED = "opened"
+SIGN_IN_UNCHANGED = "unchanged"
+
 #: Why a chat started elsewhere can't change its tools here, Claude's or
 #: Codex's: said by Delete in the list, as there's no button for it there.
 READ_ONLY_TOOLS = ("This chat wasn't started in The Chat Place, so tools can't be turned on or "
@@ -6425,7 +6431,9 @@ class ConnectedToolsDialog(wx.Dialog):
     The window does the work through ``host`` (``mcp_host.ClaudeConnectedTools``:
     ``load(done)``, ``sign_in(server, done)``, ``reconnect(server, done)``,
     ``set_off(server, off, done)``, ``note()`` and ``can_turn_off``), whose
-    ``done`` comes back on the UI thread once the work is finished; whoever
+    ``done`` comes back on the UI thread once the work is finished (Sign In's
+    may add an outcome, SIGN_IN_OPENED or SIGN_IN_UNCHANGED, for where focus
+    goes next); whoever
     opens it closes the host afterwards. Delete turns the row's server off for this chat (or on again),
     unless the host's ``delete_toggles`` is False (Codex, whose change is a new copy): then Delete
     says ``host.delete_text(server)`` and changes nothing (#596).
@@ -6578,6 +6586,17 @@ class ConnectedToolsDialog(wx.Dialog):
         the catalog, and fetching it again takes most of a minute."""
         self.reload(self.list.GetSelection(), announce=True, read_again=read_again)
 
+    def refresh_when_free(self):
+        """A refresh nobody pressed (a sign-in finished, #729's review):
+        while something else is under way it waits for it, rather than
+        showing a "Still ..." box titled for a button nobody pressed."""
+        if not self._alive():
+            return
+        if self.busy:
+            wx.CallLater(1000, self.refresh_when_free)
+            return
+        self.on_refresh(read_again=False)
+
     def reload(self, select: int = 0, announce: bool = False, read_again: bool = False):
         from ..claude_mcp import tools_summary
         if self.busy:
@@ -6638,6 +6657,8 @@ class ConnectedToolsDialog(wx.Dialog):
 
     #: A message box's title when nothing more fitting is given.
     TITLE = "Connected Tools"
+    #: Delete's box, in a chat whose tools can't change here.
+    READ_ONLY_TITLE = "Tools"
 
     def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None, title: str = ""):
         """A message box, then focus on ``back_to`` (the list by default).
@@ -6649,11 +6670,11 @@ class ConnectedToolsDialog(wx.Dialog):
             (back_to or self.list).SetFocus()
 
     @staticmethod
-    def _title(button, server=None) -> str:
-        """A message box's title for ``button``'s action, on ``server``:
-        "Sign In: notion", or "Reconnect" with no tool to name."""
-        verb = (button.GetLabelText() if isinstance(button, wx.Button)
-                else ConnectedToolsDialog.TITLE)
+    def _title(button, server=None, verb: str = "") -> str:
+        """A message box's title for ``button``'s action (or ``verb``), on
+        ``server``: "Sign In: notion", or "Reconnect" with no tool to name."""
+        verb = verb or (button.GetLabelText() if isinstance(button, wx.Button)
+                        else ConnectedToolsDialog.TITLE)
         label = getattr(server, "label", "") if server is not None else ""
         return f"{verb}: {label}" if label and not getattr(server, "informational", False) else verb
 
@@ -6681,11 +6702,12 @@ class ConnectedToolsDialog(wx.Dialog):
         return (f"{server.label} isn't in this chat's folder. It's listed so you can change "
                 "whether new chats have it; nothing else applies to it here.")
 
-    def _not_here(self, server, back_to) -> bool:
+    def _not_here(self, server, back_to, title: str = "") -> bool:
         """Says why, on a row listed only for the new-chats setting."""
         if not getattr(server, "not_in_folder", False):
             return False
-        self._tell(self._not_here_text(server), back_to=back_to, title=self._title(back_to, server))
+        self._tell(self._not_here_text(server), back_to=back_to,
+                   title=title or self._title(back_to, server))
         return True
 
     def _off_text(self, server) -> str:
@@ -6719,21 +6741,20 @@ class ConnectedToolsDialog(wx.Dialog):
             return
         self.busy = "Still asking for sign-in information. Try again in a moment."
 
-        def done(text, error, declined=False):
-            """``declined``: you declined the page's question yourself, so
-            there's no box to dismiss: it's said, and focus goes back to Sign
-            In, not to Refresh as after a sign-in (#729's acceptance test)."""
+        def done(text, error, outcome=SIGN_IN_OPENED):
+            """``outcome``, from the host, says where focus goes after the
+            box: back to Sign In when nothing changed (the page declined,
+            nothing to sign in to) or it failed, to Refresh once a page
+            opened (#729's acceptance test). Said in a box, which screen
+            readers always read, where a spoken line could be lost as focus
+            moves back to this dialog."""
             if not self._alive():
                 return
             self.busy = ""
-            if declined:
-                self.sign_in_btn.SetFocus()
-                self._feedback(text)
-            elif error:
+            if error:
                 tell(f"Couldn't start signing in to {server.label}. {error}", wx.ICON_WARNING)
             else:
-                notice = getattr(self.host, 'is_sign_in_notice', None)
-                tell(text, back_to=self.sign_in_btn if notice and notice(server, text)
+                tell(text, back_to=self.sign_in_btn if outcome == SIGN_IN_UNCHANGED
                      else self.refresh_btn)
         self.host.sign_in(server, done)
 
@@ -6770,11 +6791,14 @@ class ConnectedToolsDialog(wx.Dialog):
     def on_toggle(self):
         # Reached by Delete in the list too; in a chat started elsewhere the
         # button isn't shown, so focus goes back to the list.
-        back = self.toggle_btn if self.toggle_btn.IsShown() else self.list
-        server = self._server_for("turn off", back, self.toggle_btn)
-        if server is None or self._not_here(server, back):
+        shown = self.toggle_btn.IsShown()
+        back = self.toggle_btn if shown else self.list
+        # A box isn't titled for a button that isn't there.
+        verb = "" if shown else self.READ_ONLY_TITLE
+        server = self._server_for("turn off", back, self.toggle_btn if shown else None)
+        title = self._title(self.toggle_btn, server, verb)
+        if server is None or self._not_here(server, back, title):
             return
-        title = self._title(self.toggle_btn, server)
         if not self.host.can_turn_off:
             self._tell(READ_ONLY_TOOLS, back_to=back, title=title)
             return
@@ -6896,8 +6920,12 @@ class ElicitationDialog(wx.Dialog):
         box_flags = wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM
         if request.is_url:
             outer.Add(wx.StaticText(self, label="&Address:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+            # Not wrapped: a long address has no spaces, so the box broke the
+            # line after "Opens host:", and a screen reader reads the line
+            # shown as the box gets focus, without the address (#729's
+            # review). It scrolls sideways instead.
             self.address_text = _read_only_text(self, request.address_text(), "Address",
-                                                min_height=60)
+                                                min_height=60, style=wx.TE_DONTWRAP)
             outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)

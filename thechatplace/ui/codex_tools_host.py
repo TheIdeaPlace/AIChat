@@ -42,9 +42,9 @@ COULD_NOT_START = ("Codex could not start signing in to this tool. To see Codex'
                    "codex mcp login followed by the tool's name in a terminal.")
 
 
-#: Said, without a box to dismiss, when you decline or close the sign-in
-#: page's question: you chose that yourself, so focus goes back to Sign In
-#: (#729's acceptance test: the box sent it to Refresh, as after a sign-in).
+#: Said when you decline or close the sign-in page's question; focus then
+#: goes back to Sign In (#729's acceptance test: it went to Refresh, as
+#: after a sign-in).
 SIGN_IN_NOT_OPENED = 'Sign-in page was not opened.'
 APP_PAGE_NOT_OPENED = 'App page was not opened.'
 
@@ -181,14 +181,6 @@ class CodexConnectedTools:
         code = NO_SIGN_IN.get(getattr(server, 'auth', '')) if not server.app_id else None
         return f"{server.label}: {CodexSignInRefused.REASONS[code]}" if code else ''
 
-    @staticmethod
-    def is_sign_in_notice(server, text):
-        """Whether Sign In's ``text`` says there's nothing to sign in to, so
-        the dialog puts focus back on Sign In, as for its own check, rather
-        than on Refresh, as after a sign-in (#729's review)."""
-        return isinstance(text, str) and any(text == f"{server.label}: {reason}"
-                                             for reason in _NOTHING_TO_SIGN_IN)
-
     def _ask_to_open(self, server, url):
         """Whether you chose Open in Browser for ``url`` (sign_in_dialog)."""
         dialog = sign_in_dialog(self.dialog or self.frame, server, url, feedback=self.frame._feedback)
@@ -198,9 +190,12 @@ class CodexConnectedTools:
             dialog.Destroy()
 
     def sign_in(self, server, done):
-        """``done(text, error)``, or ``done(text, '', declined=True)`` when
-        you declined the page: the dialog then says ``text`` without a box
-        and puts focus back on Sign In."""
+        """``done(text, error, outcome)``: ``outcome`` says what happened,
+        so the dialog knows where focus goes next without reading ``text``
+        (#729's acceptance test and review): UNCHANGED (you declined the
+        page, or there's nothing to sign in to) back to Sign In, OPENED (a
+        page opened) to Refresh. An error goes back to Sign In."""
+        from .dialogs import SIGN_IN_OPENED, SIGN_IN_UNCHANGED
         if server.app_id:
             from ..claude_mcp import is_web_url
             from ..platform_paths import open_url
@@ -208,18 +203,18 @@ class CodexConnectedTools:
                 done(None, 'Codex did not provide a sign-in or installation page for this app.')
                 return
             if not self._ask_to_open(server, server.install_url):
-                done(APP_PAGE_NOT_OPENED, '', declined=True)
+                done(APP_PAGE_NOT_OPENED, '', SIGN_IN_UNCHANGED)
                 return
             try:
                 open_url(server.install_url)
             except (OSError, ValueError):
                 done(None, 'Could not open the app page in your browser.')
                 return
-            done('Press Refresh after connecting the app.', '')
+            done('Press Refresh after connecting the app.', '', SIGN_IN_OPENED)
             return
         text = self.nothing_to_sign_in(server)
         if text:  # the dialog asks first; this is for any other caller
-            done(text, '')
+            done(text, '', SIGN_IN_UNCHANGED)
             return
         info = self.info
         attempt = object()
@@ -231,7 +226,7 @@ class CodexConnectedTools:
                 # Not a failure: there's nothing to sign in to. The row said
                 # otherwise only if Codex's configuration changed after the
                 # list was read.
-                done(f"{server.label}: {result}", '')
+                done(f"{server.label}: {result}", '', SIGN_IN_UNCHANGED)
                 return
             if error or not isinstance(result, dict):
                 # The app's own words for a known refusal (safe_reason gives
@@ -249,7 +244,7 @@ class CodexConnectedTools:
             if self.closed:
                 return  # nobody to tell, and no page opened
             if not accepted:
-                done(SIGN_IN_NOT_OPENED, '', declined=True)
+                done(SIGN_IN_NOT_OPENED, '', SIGN_IN_UNCHANGED)
                 return
             try:
                 open_url(url)
@@ -257,7 +252,8 @@ class CodexConnectedTools:
                 done(None, 'Could not open the sign-in page in your browser.')
                 return
             done('Finish signing in in your browser. ' + ('Keep Connected Tools open; the result will be announced.'
-                 if isinstance(login_id, str) and login_id else 'Press Refresh here when you have finished.'), '')
+                 if isinstance(login_id, str) and login_id else 'Press Refresh here when you have finished.'), '',
+                 SIGN_IN_OPENED)
             if isinstance(login_id, str) and login_id:
                 self._logins[server.name] = login_id
                 self._poll_login(info, server, login_id, 90)
@@ -274,8 +270,9 @@ class CodexConnectedTools:
             elif result is True:
                 self.frame._feedback('Signed in to ' + server.label + '. Reconnect an enabled tool to use the sign-in.')
                 if self.dialog:
-                    # Not a fresh app catalog: a sign-in can't change it (#729).
-                    self.dialog.on_refresh(read_again=False)
+                    # Not a fresh app catalog: a sign-in can't change it
+                    # (#729); and not over something else under way.
+                    self.dialog.refresh_when_free()
             elif remaining:
                 wx.CallLater(2000, self._poll_login, info, server, login_id, remaining - 1)
             else:

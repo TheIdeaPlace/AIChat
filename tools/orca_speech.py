@@ -503,6 +503,16 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # Sign In asks first, titled for what it is, on the address's line; Escape
+    # declines, a box says so, and focus goes back to Sign In, not Refresh
+    # (#729's acceptance test). A chat started elsewhere: no Turn Off button.
+    Step("Codex Connected Tools, chat started elsewhere", [], trigger="codex-tools-sign-in",
+         expect=["Connected Tools: Codex review", "notes"], refuse=["unlabeled", "unlabelled"]),
+    Step("Sign In asks before opening the page", ["alt+s"],
+         expect=["Sign In to notes", "Opens notes.example"]),
+    Step("Escape declines, and says so", ["Escape"], expect=["Sign-in page was not opened"]),
+    Step("back on Sign In", ["Return"], expect=["Sign In"], refuse=["Refresh"]),
+    Step("Codex Connected Tools closed again", ["Escape"], expect=["Fix the flaky upload test"]),
     # A GTK message box is read as "alert Warning" and its text, not its title
     # (CI on #634), so the question is checked, and No, the default, focused.
     Step("Codex tool-call approval", [], trigger="codex-tool-approval",
@@ -797,6 +807,38 @@ def codex_tools(frame, env) -> None:
         wx.MessageBox = stand_in
 
 
+def codex_tools_sign_in(frame, env) -> None:
+    """Connected Tools' Sign In on a server that needs it, through the host's
+    real path (#729's acceptance test): its sign-in question, Escape, the box
+    that says so, and focus back on Sign In. Codex is a stand-in that answers
+    with a sign-in address; nothing is opened. The boxes are real."""
+    from types import SimpleNamespace
+    import wx
+    import wx._core
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+
+    class Codex:
+        """The window, but Codex's sign-in answers at once."""
+        def __getattr__(self, name):
+            return getattr(frame, name)
+
+        def _codex_work(self, action, done):
+            wx.CallAfter(done, {"authorizationUrl": "https://notes.example/authorize?state=orca",
+                                "loginId": "orca-login"}, False)
+    host = CodexConnectedTools(Codex(), SimpleNamespace(cli_session_id="codex-orca", is_own=False,
+                                                        title="Codex review"))
+    host.load = lambda done: done([CodexTool("notes", "configured", off_for_chat=False,
+                                             read_only=True)], "")
+    stand_in = wx.MessageBox
+    wx.MessageBox = wx._core.MessageBox
+    try:
+        frame._modal(ConnectedToolsDialog(frame, "Codex review", host))
+    finally:
+        wx.MessageBox = stand_in
+
+
 def copilot_chat(frame, env) -> None:
     """A Copilot chat of the app's own (tools/ui_probe.py's made-up Copilot
     session), open in agent mode, with npm run lint allowed for it and Copilot
@@ -933,6 +975,7 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-tools-sign-in": codex_tools_sign_in,
     "codex-tool-approval": lambda frame, env: _codex_dialog("d_codex_tool_approval", frame, env),
     "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
