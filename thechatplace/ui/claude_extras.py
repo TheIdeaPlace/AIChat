@@ -180,7 +180,18 @@ class ClaudeExtras:
         if not self._store_write(self.store.update, own.cli_session_id, **changes):
             return
         said = change.said(info.title)
-        if own.cli_session_id in self._runners:
+        runner = self._runners.get(own.cli_session_id)
+        if change.removed_dirs and runner is not None and (
+                getattr(runner, "waiting_for_waits", False)
+                or getattr(runner, "held_for_waits", False)):
+            # A folder taken away counts at once (#749): a chat kept open
+            # for Claude's checks would keep reaching it for days, so its
+            # process ends, and the checks with it. The turn's end says
+            # which won't run, as for any chat that stops waiting.
+            runner.cancel()
+            said = (said[:-1] + "; it was open for checks Claude set, so it's stopped now, "
+                    "and they end with it.")
+        elif runner is not None:
             # A chat kept open for Claude's checks says so (#749).
             said = said[:-1] + self._running_turn_note(own) + "."
         self._feedback(said)

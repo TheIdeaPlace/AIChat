@@ -1604,7 +1604,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            "returns it to the list.")
             return
         if info.is_own and info.cli_session_id in self._runners:
-            self._feedback("A turn is running in that session. Stop it first.")
+            self._feedback(self._running_refusal(
+                info.cli_session_id, "A turn is running in that session. Stop it first."))
             return
         try:
             self.hidden.hide(info.key)
@@ -1763,7 +1764,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            "its files aren't deleted here. It can be hidden.")
             return
         if info.cli_session_id in self._runners:
-            self._feedback("A turn is running in that session. Stop it first.")
+            self._feedback(self._running_refusal(
+                info.cli_session_id, "A turn is running in that session. Stop it first."))
             return
         if info.cli_session_id in self._rewinding_files:
             # Claude Code has the transcript open, reading its checkpoints.
@@ -4779,6 +4781,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         work (#161) or for Claude's waits (#749). A message goes in at once."""
         return bool(getattr(runner, "waiting_on_background", False)
                     or getattr(runner, "waiting_for_waits", False))
+
+    def _running_refusal(self, session_id: str, default: str) -> str:
+        """Why Hide, Delete or Put Files Back can't go ahead while a chat has
+        a turn: ``default``, or for one waiting for Claude's checks for later
+        (#749), that, and that Stop ends it."""
+        runner = self._runners.get(session_id)
+        if getattr(runner, "waiting_for_waits", False):
+            return "That chat is waiting for a check Claude set. Stop ends it."
+        return default
 
     @staticmethod
     def _held_waits(runner) -> list:
