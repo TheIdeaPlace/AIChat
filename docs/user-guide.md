@@ -69,7 +69,8 @@ estimated. See Chats on API credits for setup and limits.
 **Windows:** download `TheChatPlace-windows-Setup.exe` from the newest release on the
 [releases page](https://github.com/TheIdeaPlace/AIChat/releases) and run it. It installs for you
 only, needs no administrator rights, adds The Chat Place to the Start menu, and starts it. The
-portable zip from the same release runs without installing, but doesn't update itself.
+portable zip from the same release runs without installing, and updates itself in the folder you
+unzip it into, as long as it can change that folder (see "Updates").
 
 **Mac:** download `TheChatPlace-macos-arm64.dmg`, open it, and drag The Chat Place onto
 Applications. The first time it speaks through VoiceOver, macOS asks whether The Chat Place may
@@ -3535,7 +3536,7 @@ shows up when it does.
 
 ## Updates
 
-The installed app checks for a new version shortly after it starts, and says so only if there is
+The app (installed, or the Windows portable zip) checks for a new version shortly after it starts, and says so only if there is
 one. **Help, Check for Updates** asks right away and offers to install it (No is the default). It
 won't install while any provider is working in one of its chats, and it warns you about a reply
 you haven't sent. Updating never touches your chats or settings.
@@ -3544,6 +3545,12 @@ The Help menu's update item always says which version you're running, such as
 **Check for Updates (running 0.1.4)**. When a newer version has been found, it says so instead,
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
+
+**The Windows portable zip** updates itself in the folder you unzipped it into. If it can't
+change that folder (a read-only drive, say, or one in Program Files), Check for Updates says so
+instead of offering the update: unzip it somewhere you can change, such as a folder in
+Documents. A test build (Help, About names its build, such as "build bld05") never updates
+itself from the zip, and Check for Updates says it's a test build.
 
 **Stay on the version you have.** In Settings (Ctrl+Comma), clear
 **Check for updates when The Chat Place starts** (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
@@ -3564,7 +3571,8 @@ This version does the same if you go back to it from a later one.
 
 The first time The Chat Place starts after an update, **The Chat Place Update Installed** says
 which version you now have. **See what's new** (Alt+W) opens that version's release notes in your
-browser; **Close** or Escape goes back to the app. To stop it appearing, clear "Tell me when an
+browser; **Close** or Escape goes back to the app. The portable zip says it only after it updated
+itself, not when you unzip a different version. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).
 
 ## Uninstalling

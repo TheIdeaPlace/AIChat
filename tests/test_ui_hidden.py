@@ -7954,7 +7954,7 @@ def test_help_update_item_names_the_running_version_then_the_update(frame, env, 
 
 class NoticeUpdates:
     def __init__(self, installed):
-        self.can_update = installed
+        self.installed_copy = installed
 
 
 def run_notice(frame, installed=True):
@@ -7994,6 +7994,48 @@ def test_update_installed_notice_decision(frame, env, notice, previous, installe
     assert frame.speech.last_run_version == recorded
     if recorded != previous:
         assert SpeechSettings.load(env["tmp"] / "speech.json").last_run_version == recorded
+
+
+@pytest.mark.parametrize("applied,shown,left", [
+    ("0.1.4", ["0.1.4"], ""),        # the portable zip updated itself to 0.1.4
+    ("", [], ""),                    # someone unzipped another copy
+    ("0.1.5", [], "0.1.5"),          # an update to another version, not this one
+])
+def test_portable_update_installed_notice_needs_its_own_update(frame, env, notice, applied,
+                                                                shown, left):
+    # #747: a portable copy tells only when it's running the update it applied.
+    from thechatplace.speech import SpeechSettings
+    frame.speech.last_run_version = "0.1.3"
+    frame.speech.update_applied_version = applied
+    run_notice(frame, installed=False)
+    assert notice == shown
+    assert frame.speech.last_run_version == "0.1.3"   # never recorded by the zip
+    assert frame.speech.update_applied_version == left
+    if applied == "0.1.4":   # told once: the record is gone from the file too
+        assert SpeechSettings.load(env["tmp"] / "speech.json").update_applied_version == ""
+
+
+def test_installed_copy_clears_the_record_of_the_update_it_applied(frame, env, notice):
+    frame.speech.last_run_version = "0.1.3"
+    frame.speech.update_applied_version = "0.1.4"
+    run_notice(frame, installed=True)
+    assert notice == ["0.1.4"]
+    assert frame.speech.update_applied_version == ""
+
+
+def test_downloaded_update_is_recorded_before_it_is_applied(frame, env, monkeypatch):
+    # Applied now or at the next start, the version is recorded first (#747).
+    from thechatplace.speech import SpeechSettings
+    from thechatplace.updater import AVAILABLE, CheckResult
+    result = CheckResult(AVAILABLE, "0.1.3", "0.1.4")
+    frame.updates = FakeUpdates(result)
+    monkeypatch.setattr(frame, "_active_owned_turn_count", lambda: 1)  # installs later
+    frame._on_update_downloaded(result, False)
+    assert frame.speech.update_applied_version == ""
+    frame._on_update_downloaded(result, True)
+    assert frame.speech.update_applied_version == "0.1.4"
+    assert SpeechSettings.load(env["tmp"] / "speech.json").update_applied_version == "0.1.4"
+    assert "installed the next time" in env["spoken"][-1]
 
 
 def test_update_installed_notice_survives_a_failed_settings_save(frame, env, notice,

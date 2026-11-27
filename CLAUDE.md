@@ -190,7 +190,8 @@ menu item goes there, with its handler in `MainFrame._command_handlers`, never s
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
 **Other modules:** `build_info.py` (which build this is, for About, bug reports and the smoke
-test), `updater.py` (Velopack updates for installed copies only, which refuse to run
+test), `updater.py` (Velopack updates for built copies, including the Windows portable zip
+unless it's a test build or can't write its folder (#747), which refuse to run
 if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
 WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachments.py`, `export.py`,
 `bugreport.py`, `signin.py`, `sound_events.py` (which sound for which event; `ui/sound_host.py` and

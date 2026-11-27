@@ -123,26 +123,25 @@ def test_github_is_checked_with_the_windows_certificate_store():
     assert isinstance(updater._ssl_context(), truststore.SSLContext)
 
 
-def test_portable_and_source_copies_say_they_cannot_update(monkeypatch):
-    monkeypatch.setattr(updater, "PORTABLE_COPIES_EXIST", True)  # Windows's zip
-    portable = service(FakeManager(Update("9.9.9"), portable=True), latest="0.3.0").check()
-    assert portable.status == NOT_INSTALLED and portable.version == "0.3.0"
-    assert "can't update itself" in portable.describe() and "0.3.0" in portable.describe()
+def not_installed(url):
+    raise RuntimeError("NotInstalled")  # what Velopack says from source
 
-    def broken(url):
-        raise RuntimeError("NotInstalled")
-    source = UpdateService("0.1.0", manager_factory=broken, latest=lambda: None).check()
+
+def test_source_copy_says_it_cannot_update():
+    source = UpdateService("0.1.0", manager_factory=not_installed, latest=lambda: "0.3.0").check()
+    assert source.status == NOT_INSTALLED and source.version == "0.3.0"
+    assert source.describe() == ("This copy of The Chat Place is running from source, so it "
+                                 "can't update itself. The latest release is 0.3.0.")
+    source = UpdateService("0.1.0", manager_factory=not_installed, latest=lambda: None).check()
     assert source.status == NOT_INSTALLED
     assert "No release has been published yet" in source.describe()
 
 
-def test_quiet_check_on_a_copy_that_cannot_update_asks_github_nothing(monkeypatch):
-    monkeypatch.setattr(updater, "PORTABLE_COPIES_EXIST", True)  # Windows's zip
+def test_quiet_check_on_a_copy_that_cannot_update_asks_github_nothing():
     def latest():
         raise AssertionError("GitHub was asked")
-    portable = UpdateService("0.1.0", manager_factory=lambda url: FakeManager(portable=True),
-                             latest=latest)
-    assert portable.check(manual=False).status == NOT_INSTALLED
+    source = UpdateService("0.1.0", manager_factory=not_installed, latest=latest)
+    assert source.check(manual=False).status == NOT_INSTALLED
 
 
 def test_source_run_never_touches_velopack(monkeypatch):
@@ -269,9 +268,79 @@ def test_mac_app_updates_although_velopack_calls_it_portable(monkeypatch):
     assert svc.check().status == AVAILABLE
 
 
-def test_windows_portable_zip_still_never_updates(monkeypatch):
+# -- the Windows portable zip, which updates itself where it can (#747) ------------------
+
+
+@pytest.fixture
+def portable_zip(tmp_path, monkeypatch):
+    """A release's portable zip, unzipped: Update.exe beside current\\."""
+    root = tmp_path / "TheChatPlace"
+    exe = root / "current" / "TheChatPlace.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("")
+    (root / "Update.exe").write_text("")
     monkeypatch.setattr(updater, "PORTABLE_COPIES_EXIST", True)
-    assert service(FakeManager(Update("0.2.0"), portable=True)).check().status == NOT_INSTALLED
+    monkeypatch.setattr(sys, "executable", str(exe))
+    from thechatplace import build_info
+    monkeypatch.setattr(build_info, "current", lambda: build_info.BuildInfo())
+    return root
+
+
+def test_windows_portable_zip_updates_itself(portable_zip):
+    manager = FakeManager(Update("0.2.0"), portable=True)
+    svc = service(manager)
+    assert updater.portable_update_blocker() == ""
+    assert svc.can_update
+    assert svc.check().status == AVAILABLE
+    assert svc.download() and svc.apply_and_restart()
+    assert manager.applied
+    # Still not an installed copy: no links, and What's New needs a record.
+    assert svc.installed_copy is False
+    assert service(FakeManager(Update("0.2.0"))).installed_copy is True
+
+
+def test_windows_portable_zip_in_a_folder_it_cannot_change_says_so(portable_zip, monkeypatch):
+    # A read-only drive, or a folder under Program Files.
+    real = updater._can_write
+    monkeypatch.setattr(updater, "_can_write",
+                        lambda folder: folder != portable_zip.resolve() and real(folder))
+    manager = FakeManager(Update("0.2.0"), portable=True)
+    svc = service(manager)
+    assert svc.can_update is False
+    result = svc.check()
+    assert result.status == NOT_INSTALLED and manager.downloaded == []
+    assert result.describe().startswith(
+        "The Chat Place can't update itself here: it can't change the folder it's running from")
+    assert "Unzip it to a folder you can change" in result.describe()
+    assert result.describe().endswith("The latest release is 0.2.0.")
+
+
+def test_a_folder_is_writable_only_if_a_file_can_be_made_in_it(tmp_path, monkeypatch):
+    assert updater._can_write(tmp_path)
+    assert list(tmp_path.iterdir()) == []      # the probe leaves nothing behind
+    assert not updater._can_write(tmp_path / "missing")
+
+    def refuse(*a, **k):
+        raise PermissionError("Access is denied")
+    monkeypatch.setattr(updater.tempfile, "TemporaryFile", refuse)
+    assert not updater._can_write(tmp_path)
+
+
+def test_portable_test_build_never_updates_itself(portable_zip, monkeypatch):
+    # Run from its numbered folder (testing\tcp\0.6.4\bld05): updating it to
+    # the release would leave the folder and Help, About disagreeing.
+    from thechatplace import build_info
+    monkeypatch.setattr(build_info, "current", lambda: build_info.BuildInfo(label="bld05"))
+    manager = FakeManager(Update("0.2.0"), portable=True)
+    svc = service(manager)
+    assert svc.can_update is False
+    result = svc.check()
+    assert result.status == NOT_INSTALLED and manager.downloaded == []
+    assert result.describe() == ("The Chat Place can't update itself here: it's test build "
+                                 "bld05, and a test build never updates itself. The latest "
+                                 "release is 0.2.0.")
+    # An installed test build still takes the release (build_info).
+    assert service(FakeManager(Update("0.2.0"))).check().status == AVAILABLE
 
 
 def test_each_platform_reads_its_own_feed():
@@ -398,6 +467,19 @@ def test_notice_is_never_shown_or_recorded_for_a_copy_that_is_not_installed():
     # A source run or the portable zip: swapping copies isn't an update.
     for previous in ("", "0.1.3", "0.1.5"):
         assert installed_notice(previous, "0.1.4", installed=False) == InstalledNotice(False, False)
+        # An update this copy applied to another version isn't this one (#747).
+        assert installed_notice(previous, "0.1.4", installed=False, applied="0.1.5") == \
+            InstalledNotice(False, False)
+
+
+def test_notice_is_shown_when_the_portable_zip_updated_itself():
+    # The version recorded before the update was applied (#747). Still never
+    # recorded as the last run, so an installed copy's own notice is unchanged.
+    assert installed_notice("0.1.3", "0.1.4", installed=False, applied="0.1.4") == \
+        InstalledNotice(False, True)
+    assert installed_notice("", "0.1.4", installed=False, applied="0.1.4").show
+    assert not installed_notice("0.1.3", "0.1.4", installed=False, applied="0.1.4",
+                                enabled=False).show
 
 
 def test_notice_turned_off_still_records_the_version():

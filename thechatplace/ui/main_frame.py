@@ -8824,7 +8824,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
         def work():
             try:
-                installed = bool(self.updates.can_update)
+                installed = bool(self.updates.installed_copy)
             except Exception:  # noqa: BLE001 - can't tell: not an installed copy
                 installed = False
             wx.CallAfter(self._on_update_installed_known, installed)
@@ -8837,12 +8837,18 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self or self._closing:
             return
         decision = installed_notice(self.speech.last_run_version, __version__, installed,
-                                    self.speech.update_installed_notice)
-        if decision.record and not self.speech.unreadable:
+                                    self.speech.update_installed_notice,
+                                    self.speech.update_applied_version)
+        # The update this copy applied (#747) has now started: told once.
+        applied_started = self.speech.update_applied_version == __version__
+        if (decision.record or applied_started) and not self.speech.unreadable:
             # Never over a settings file that couldn't be read: that would
             # replace every setting with the defaults. Recorded before anything is shown, so it's shown once even if
             # The Chat Place is closed before the dialog appears.
-            self.speech.last_run_version = __version__
+            if decision.record:
+                self.speech.last_run_version = __version__
+            if applied_started:
+                self.speech.update_applied_version = ""
             try:
                 self.speech.save()
             except OSError:
@@ -8930,6 +8936,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._say(f"Couldn't download The Chat Place {result.version}. Try Help, "
                       f"{self._update_item_spoken()} again later.", force=True)
             return
+        self._record_update_applied(result.version)
         later = self._install_later_text(result)
         # The download took a while; things may have changed since the yes.
         if self._active_owned_turn_count() or self._modal_open():
@@ -8951,6 +8958,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # speech process so nothing of ours is left running in the install
         # folder Velopack replaces. Applying exits the process.
         self._apply_update_when_quiet(time.monotonic() + APPLY_SPEECH_WAIT_S, result)
+
+    def _record_update_applied(self, version: str):
+        """Record the version about to be applied, now or at the next start,
+        so the portable zip's first start on it says it was updated (#747)."""
+        if self.speech.unreadable:
+            return  # never over a settings file that couldn't be read
+        self.speech.update_applied_version = version
+        try:
+            self.speech.save()
+        except OSError:
+            pass  # the update still installs; only its notice is lost
 
     @staticmethod
     def _install_later_text(result: CheckResult) -> str:
