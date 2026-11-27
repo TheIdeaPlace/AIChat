@@ -695,9 +695,7 @@ def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
         runtime.send(chat, "Long job")
         assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
             runtime.snapshot(chat)
-        [(thread, stops)] = stopping
-        thread.join(10)
-        assert stops == [Stopped((), cancelled=True)]  # its cancel follows the prompt
+        assert stopped(stopping) == Stopped((), cancelled=True)  # its cancel follows the prompt
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]
@@ -2220,7 +2218,10 @@ class _WatchedNews(threading.Condition):
 def stop_while_the_prompt_goes(runtime, chat):
     """Press Stop from another thread, as the window does, while the turn's
     prompt is on its way (#758). Returns once the Stop is waiting to hear
-    what became of it, with the thread and a list its Stopped goes in."""
+    what became of it: the thread, a list its Stopped goes in, and whether
+    it did wait. That's returned, not asserted, because this runs on the
+    turn's thread, where _run_turn would swallow a failed assert; the test
+    checks it."""
     news = runtime._turn_news
     if not isinstance(news, _WatchedNews):
         news = runtime._turn_news = _WatchedNews(runtime._lock)
@@ -2228,8 +2229,18 @@ def stop_while_the_prompt_goes(runtime, chat):
     stops = []
     thread = threading.Thread(target=lambda: stops.append(runtime.stop(chat)), daemon=True)
     thread.start()
-    assert wait(lambda: news.waits > before), "the Stop never waited on the turn"
-    return thread, stops
+    return thread, stops, wait(lambda: news.waits > before)
+
+
+def stopped(stopping):
+    """The one Stop stop_while_the_prompt_goes started: checked that it
+    waited on the turn, and its Stopped once it returns."""
+    assert wait(lambda: stopping), "the turn never reached its prompt"
+    [(thread, stops, waited)] = stopping
+    assert waited, "the Stop never waited on the turn"
+    thread.join(10)
+    assert len(stops) == 1, "the Stop never returned"
+    return stops[0]
 
 
 def strict_runtime(tmp_path):
@@ -2274,9 +2285,7 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
         runtime.send(chat, "Long job")
         assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
             runtime.snapshot(chat)
-        [(thread, stops)] = stopping
-        thread.join(10)
-        assert stops == [Stopped((), cancelled=True)]
+        assert stopped(stopping) == Stopped((), cancelled=True)
         # The turn sent the cancel itself, once, and started the clock on it.
         assert cancels == [("copilot-turn", copilot_runtime.CANCEL_SENT)]
         order = [m["method"] for m in received(tmp_path)
@@ -2312,9 +2321,7 @@ def test_a_stop_whose_cancel_meets_copilot_closing_doesnt_warn_of_a_close(tmp_pa
         connection.request = close_once_written
         runtime.send(chat, "Long job")
         assert wait(lambda: not runtime._chats[chat].busy), runtime.snapshot(chat)
-        [(thread, stops)] = stopping
-        thread.join(10)
-        assert stops == [Stopped((), cancelled=False)]
+        assert stopped(stopping) == Stopped((), cancelled=False)
         assert runtime._chats[chat].cancel_timer is None
         assert not sent_cancel(tmp_path)
         assert "didn't stop" not in runtime.snapshot(chat).notice
@@ -2322,10 +2329,10 @@ def test_a_stop_whose_cancel_meets_copilot_closing_doesnt_warn_of_a_close(tmp_pa
         runtime.close()
 
 
-def test_a_stop_whose_prompt_never_goes_says_it_wasnt_sent(tmp_path):
+def test_a_stop_whose_prompt_never_goes_doesnt_warn_of_a_close(tmp_path):
     """Stop came once the turn had decided to send, and the prompt then
     couldn't go (Copilot closed first): the message comes back unsent, and
-    Stop says so rather than warning of a close (#758)."""
+    Stop doesn't warn of a close (#758)."""
     runtime = strict_runtime(tmp_path)
     try:
         chat = runtime.create(str(tmp_path))
@@ -2340,13 +2347,74 @@ def test_a_stop_whose_prompt_never_goes_says_it_wasnt_sent(tmp_path):
         connection.request = close_first
         runtime.send(chat, "Long job")
         assert wait(lambda: not runtime._chats[chat].busy), runtime.snapshot(chat)
-        [(thread, stops)] = stopping
-        thread.join(10)
-        assert stops == [Stopped((), cancelled=False, before_sending=True)]
+        # Copilot closing kept it back, not Stop: said as "isn't answering",
+        # and the turn's own notice says the message wasn't sent.
+        assert stopped(stopping) == Stopped((), cancelled=False)
         assert runtime.snapshot(chat).unsent == ("Long job",)
         assert runtime._chats[chat].cancel_timer is None
         assert not [m for m in received(tmp_path)
                     if m.get("method") in ("session/prompt", "session/cancel")]
+    finally:
+        runtime.close()
+
+
+def test_a_cancel_that_breaks_in_the_turn_still_answers_the_stop(tmp_path):
+    """Review of #758: whatever goes wrong in the turn's own _cancel, the
+    Stop waiting on it hears at once, as a cancel that didn't go, rather
+    than waiting out its guard and then warning of a close."""
+    runtime = strict_runtime(tmp_path)
+    try:
+        chat = runtime.create(str(tmp_path))
+        connection = runtime._connection
+        real_request, stopping = connection.request, []
+
+        def broken(*args):
+            raise RuntimeError("no thread for the timer")
+        runtime._cancel = broken
+
+        def stop_once_written(method, params, *args, on_queued=None, **kwargs):
+            def queued():
+                if method == "session/prompt":
+                    stopping.append(stop_while_the_prompt_goes(runtime, chat))
+                if on_queued is not None:
+                    on_queued()
+            return real_request(method, params, *args, on_queued=queued, **kwargs)
+        connection.request = stop_once_written
+        started = time.monotonic()
+        runtime.send(chat, "Long job")
+        assert stopped(stopping) == Stopped((), cancelled=False)
+        assert time.monotonic() - started < copilot_runtime.OWN_CANCEL_WAIT_SECONDS
+    finally:
+        runtime.close()
+
+
+def test_a_stop_whose_turn_never_reports_falls_back_to_the_cancel_it_will_send(
+        tmp_path, monkeypatch):
+    """The guard on that wait (#758): should the turn ever not report, the
+    Stop gives up after OWN_CANCEL_WAIT_SECONDS and reports the cancel the
+    turn sends once its prompt is queued, as before. Here the turn is held
+    past the guard, then goes on and does send it."""
+    monkeypatch.setattr(copilot_runtime, "OWN_CANCEL_WAIT_SECONDS", 0.2)
+    runtime = strict_runtime(tmp_path)
+    try:
+        chat = runtime.create(str(tmp_path))
+        connection = runtime._connection
+        real_request, stopping = connection.request, []
+
+        def hold_past_the_guard(method, params, *args, on_queued=None, **kwargs):
+            def queued():
+                if method == "session/prompt":
+                    stopping.append(stop_while_the_prompt_goes(runtime, chat))
+                    stopping[0][0].join(10)  # the Stop gives up first
+                if on_queued is not None:
+                    on_queued()
+            return real_request(method, params, *args, on_queued=queued, **kwargs)
+        connection.request = hold_past_the_guard
+        runtime.send(chat, "Long job")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
+            runtime.snapshot(chat)
+        assert stopped(stopping) == Stopped((), cancelled=True)
+        assert wait(lambda: sent_cancel(tmp_path))
     finally:
         runtime.close()
 
@@ -2373,9 +2441,7 @@ def test_two_stops_as_the_prompt_goes_start_one_clock(tmp_path):
         runtime.send(chat, "Long job")
         assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
             runtime.snapshot(chat)
-        for thread, _stops in stopping:
-            thread.join(10)
-        said = sorted((stops[0] for _thread, stops in stopping), key=lambda s: s.already_asked)
+        said = sorted((stopped([one]) for one in stopping), key=lambda s: s.already_asked)
         assert said == [Stopped((), cancelled=True),
                         Stopped((), cancelled=True, already_asked=True)]
         assert wait(lambda: sent_cancel(tmp_path))

@@ -369,8 +369,7 @@ class Stopped(NamedTuple):
     #: refusal or its process ending return the prompt too.
     answered: bool = False
     #: The turn hadn't decided to send its message: it sees the stop and
-    #: gives the message back unsent, so nothing went to Copilot (#405). Or
-    #: it had, but the message never went out (#758).
+    #: gives the message back unsent, so nothing went to Copilot (#405).
     before_sending: bool = False
     #: A cancel had already gone for this turn, with its timer running: this
     #: Stop sent nothing and left the timer alone, so the forced close comes
@@ -2077,11 +2076,15 @@ class CopilotChatRuntime:
                     chat.preamble = ""  # gone with this prompt
                 cancel = chat.stopping and not chat.answered and chat.turns == turn
             if cancel:
-                sent = self._cancel(chat, connection, turn)
-                with self._lock:
-                    # That Stop is waiting to say whether it went (#758).
-                    chat.own_cancel = (turn, sent)
-                    self._turn_news.notify_all()
+                sent = NOT_SENT  # unless _cancel says otherwise
+                try:
+                    sent = self._cancel(chat, connection, turn)
+                finally:
+                    with self._lock:
+                        # That Stop is waiting to say whether it went (#758),
+                        # whatever happened in _cancel.
+                        chat.own_cancel = (turn, sent)
+                        self._turn_news.notify_all()
         try:
             result = {"stopReason": "cancelled"} if stopped_first else connection.request(
                 "session/prompt", {"sessionId": chat.native_id,
@@ -2289,19 +2292,17 @@ class CopilotChatRuntime:
             sent = self._turns_own_cancel(chat, turn)
         else:
             sent = None
-        if sent == NEVER_QUEUED:
-            # The prompt never went (Copilot closed first, or too much was
-            # waiting): the message comes back unsent, as for a Stop before
-            # the turn decided to send.
-            cancel, before_sending = False, True
+        if sent in (NOT_SENT, NEVER_QUEUED):
+            # The cancel couldn't go out, or the prompt itself never went
+            # (Copilot is closing, or too much was waiting): no timer, and
+            # the turn ends with its own notice, which says the message
+            # wasn't sent (Kelly, #405, #758). Not "stopped before it went":
+            # Stop isn't what kept it back.
+            cancel = False
         elif sent == ANSWERED_FIRST:
             # No timer, so nothing will be closed: the window mustn't
             # warn that it will be. Copilot answered first (Kelly, #386).
             cancel, answered = False, True
-        elif sent == NOT_SENT:
-            # The cancel couldn't go out (Copilot is closing): no timer
-            # either, and the turn ends with the connection (Kelly, #405).
-            cancel = False
         self._notify(chat)
         return Stopped(waiting, cancelled=cancel, answered=answered,
                        before_sending=before_sending,
