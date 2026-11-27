@@ -348,13 +348,16 @@ that makes the app replace many more objects shows. So:
   already active by the time Orca got to it, Orca took the dialog's frame for the focus, then
   quietly moved its focus to the control focused in it (`presentKeyboardEvent`). It said nothing
   then, and nothing when that control's own focus event came. The app's focus and names were
-  right every time. Holding chords as a person does didn't help: in 400 repeats each, held and
-  instant chords both failed (1 and 0 times). Orca had been busy with the app's own events (a
-  session list refresh) when the key came. Later Orca doesn't make the quiet move, and
+  right every time. Holding chords as a person does didn't help: in 400 repeats each, held
+  chords failed once and instant chords not at all, and in the held failure Orca had been busy
+  with the app's own events (a session list refresh) when the key came. Later Orca doesn't make the quiet move, and
   `orca-customizations.py` stops Orca 46 making it too (in CI only; `TCP_ORCA_KEEP_QUIET_MOVE=1`
   leaves Orca as it is). People using Orca 46 can still hear a dialog's title without its first
-  control, and Tab or Shift+Tab then says it. The report ends with how often the correction
-  acted, and which failed steps it acted in.
+  control; Orca's Where Am I, or Tab then Shift+Tab, then says it. The app could only make that
+  rarer by opening dialogs later, or work round it by moving the focus away and back, which
+  would slow dialogs or say things twice for everyone. The report ends with how often the
+  correction acted, and which failed steps it acted in (most of its acts are Escape or Return
+  closing a dialog, which are harmless).
 
 `build_linux.sh`, and so the release workflow's Linux jobs, also start the packed AppImage on a
 virtual screen and wait for its window. Orca runs one copy per user, so to run these on a PC

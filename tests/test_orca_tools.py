@@ -69,6 +69,123 @@ def test_the_customization_writes_what_the_report_counts():
         assert any(text.startswith(marker) for text in strings), marker
 
 
+def _load_customizations(monkeypatch, keep_quiet_move=False):
+    """Runs tools/orca-customizations.py against stand-ins for the parts of
+    Orca 46 it touches, and returns them."""
+    import types
+    roles = types.SimpleNamespace(DIALOG="dialog", FRAME="frame", WINDOW="window")
+    atspi = types.SimpleNamespace(Role=roles, Accessible=types.SimpleNamespace(
+        clear_cache_single=lambda obj: None))
+    gi = types.ModuleType("gi")
+    gi.require_version = lambda name, version: None
+    repository = types.ModuleType("gi.repository")
+    repository.Atspi = atspi
+    gi.repository = repository
+    messages = []
+    debug = types.ModuleType("orca.debug")
+    debug.debugFile, debug.LEVEL_INFO = None, 800
+    debug.printMessage = lambda level, text, timestamp=False: messages.append(text)
+
+    class AXObject:
+        roles = {}
+
+        @staticmethod
+        def get_role(obj):
+            return AXObject.roles.get(obj)
+
+    ax_object = types.ModuleType("orca.ax_object")
+    ax_object.AXObject = AXObject
+
+    class FocusManager:
+        locus, focused = None, None
+
+        def get_locus_of_focus(self):
+            return self.locus
+
+        def find_focused_object(self):
+            return self.focused
+
+    manager = FocusManager()
+    focus_manager = types.ModuleType("orca.focus_manager")
+    focus_manager.getManager = lambda: manager
+    seen = []
+
+    class Script:
+        def presentKeyboardEvent(self, event):
+            # Orca 46's own: moves the focus quietly if it's on a window.
+            seen.append(manager.find_focused_object())
+            if event == "boom":
+                raise RuntimeError(event)
+            return True
+
+    default = types.ModuleType("orca.scripts.default")
+    default.Script = Script
+    scripts = types.ModuleType("orca.scripts")
+    scripts.default = default
+    orca = types.ModuleType("orca")
+    orca.debug, orca.focus_manager, orca.scripts = debug, focus_manager, scripts
+    for name, module in {"gi": gi, "gi.repository": repository, "orca": orca,
+                         "orca.debug": debug, "orca.ax_object": ax_object,
+                         "orca.focus_manager": focus_manager, "orca.scripts": scripts,
+                         "orca.scripts.default": default}.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    if keep_quiet_move:
+        monkeypatch.setenv("TCP_ORCA_KEEP_QUIET_MOVE", "1")
+    else:
+        monkeypatch.delenv("TCP_ORCA_KEEP_QUIET_MOVE", raising=False)
+    source = (ROOT / "tools" / "orca-customizations.py").read_text(encoding="utf-8")
+    exec(compile(source, "orca-customizations.py", "exec"), {"__name__": "orca_customizations"})
+    return types.SimpleNamespace(script=Script(), manager=manager, roles=AXObject.roles,
+                                 seen=seen, messages=messages)
+
+
+def test_orca_46_is_kept_from_its_quiet_focus_move_on_a_key(monkeypatch):
+    """With the focus on a dialog's frame as a key is handled, Orca 46 finds
+    no focused object to move to quietly, so the control's own focus event
+    is said (#751)."""
+    orca = _load_customizations(monkeypatch)
+    assert orca_speech.KEY_LOADED in orca.messages
+    orca.manager.locus, orca.manager.focused = "dialog frame", "message box"
+    orca.roles.update({"dialog frame": "frame", "message box": "text"})
+    assert orca.script.presentKeyboardEvent("A") is True
+    assert orca.seen == [None]
+    assert orca.messages.count(orca_speech.KEY_KEPT + ", so the focused control's own event "
+                               "is said") == 1
+    # Put back afterwards, even when Orca's own fails.
+    assert orca.manager.find_focused_object() == "message box"
+    try:
+        orca.script.presentKeyboardEvent("boom")
+    except RuntimeError:
+        pass
+    assert orca.manager.find_focused_object() == "message box"
+
+
+def test_a_focus_not_on_a_window_is_left_alone(monkeypatch):
+    orca = _load_customizations(monkeypatch)
+    orca.manager.locus, orca.manager.focused = "message box", "message box"
+    orca.roles["message box"] = "text"
+    orca.script.presentKeyboardEvent("Tab")
+    assert orca.seen == ["message box"]
+    assert not any(m.startswith(orca_speech.KEY_KEPT) for m in orca.messages)
+
+
+def test_a_window_with_nothing_focused_writes_no_correction(monkeypatch):
+    orca = _load_customizations(monkeypatch)
+    orca.manager.locus = "main frame"
+    orca.roles["main frame"] = "frame"
+    orca.script.presentKeyboardEvent("Escape")
+    assert not any(m.startswith(orca_speech.KEY_KEPT) for m in orca.messages)
+
+
+def test_the_quiet_move_can_be_left_in_to_measure_it(monkeypatch):
+    orca = _load_customizations(monkeypatch, keep_quiet_move=True)
+    orca.manager.locus, orca.manager.focused = "dialog frame", "message box"
+    orca.roles.update({"dialog frame": "frame", "message box": "text"})
+    orca.script.presentKeyboardEvent("A")
+    assert orca.seen == ["message box"]
+    assert orca_speech.KEY_LOADED not in orca.messages
+
+
 def test_crashes_are_told_from_failures_and_timeouts():
     assert orca_names.crashed(139) == "SIGSEGV"
     assert orca_names.crashed(-11) == "SIGSEGV"

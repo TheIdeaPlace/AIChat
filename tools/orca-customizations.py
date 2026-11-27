@@ -32,13 +32,15 @@
 #    again. So the dialog's first control (the tool's message, Copilot's
 #    request) went unsaid now and then: "answer the tool" or "answer Copilot"
 #    failed in 3 of about 45 CI runs looked at (#751). The app's focus and
-#    names were right every time. Later Orca no longer makes the quiet move
-#    (its present_keyboard_event only echoes the key), so the focus event is
-#    said; this does the same for Orca 46 by leaving the focus on the frame
-#    while it handles the key. The debug log says "TCP #751" each time.
-#    Again for CI's Orca only: people using Orca 46 can still meet this, and
-#    hear a dialog's title without its first control (Tab or Shift+Tab says
-#    it); nothing the app does can change it.
+#    names were right every time. Later Orca's present_keyboard_event has no
+#    such move, so there the focus event is said; this does the same for
+#    Orca 46 by leaving the focus on the frame while it handles the key. The
+#    debug log says "TCP #751" each time. Again for CI's Orca only: people
+#    using Orca 46 can still meet this, and hear a dialog's title without its
+#    first control (Orca's Where Am I, or Tab then Shift+Tab, says it). The
+#    app could only make it rarer by opening dialogs later, or have the
+#    control said by moving the focus away and back, which would slow
+#    dialogs or say things twice for everyone.
 import os
 
 from orca import debug
@@ -116,7 +118,9 @@ if default is not None and AXObject is not None \
         try:
             return _present_key(self, event)
         finally:
-            del manager.find_focused_object
+            # pop, not del: never raise in Orca's key handling, even if
+            # this were somehow entered again.
+            manager.__dict__.pop("find_focused_object", None)
 
     default.Script.presentKeyboardEvent = presentKeyboardEvent
     debug.printMessage(debug.LEVEL_INFO, "TCP #751: no quiet move of the focus from a window "

@@ -1130,8 +1130,9 @@ def orca_corrections(text: str, results: List[dict],
 def key_focus_kept(text: str, results: List[dict]) -> List[str]:
     """How often tools/orca-customizations.py kept Orca 46 from quietly
     moving its focus from a window to the control in it while handling a key
-    (#751), and the failed steps it did so in, where it's the first place to
-    look. Most are Escape or Return closing a dialog, harmless either way."""
+    (#751), and the failed steps it did so in. Most of its acts are Escape or
+    Return closing a dialog, harmless either way, so a failed step named here
+    is worth a look in Orca's log, not proof of this."""
     if KEY_LOADED not in text:
         return ["Orca's quiet focus moves on a key weren't stopped: later Orca doesn't make "
                 "them, and Orca 46 needs tools/orca-customizations.py to have loaded."]
