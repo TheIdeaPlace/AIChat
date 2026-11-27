@@ -39,7 +39,7 @@ def test_an_orca_without_the_correction_says_so():
 
 
 def test_kept_focus_is_counted_and_named_only_in_failed_steps():
-    """The #751 correction acts about 40 times a run, nearly all as Escape
+    """The #751 correction acts some 80 times a run, nearly all as Escape
     closes a dialog: the total is reported, and only failed steps by name."""
     text = "\n".join([orca_speech.KEY_LOADED] + [orca_speech.KEY_KEPT] * 3)
     results = [{"step": "dialog closed", "focus_kept": 2, "passed": True},
