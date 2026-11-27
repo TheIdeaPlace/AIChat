@@ -38,6 +38,116 @@ def test_an_orca_without_the_correction_says_so():
     assert lines[0].startswith("Orca's dead objects weren't corrected")
 
 
+class ChordLog:
+    """Stands in for OrcaLog in press(): records each wait for Orca to handle
+    a key in the same list as the keys sent, and says whether it was seen."""
+
+    def __init__(self, sent, handled=True):
+        self.sent, self.handled = sent, handled
+
+    def size(self):
+        return 0
+
+    def wait_for(self, offset, pattern, timeout):
+        self.sent.append(("wait", pattern))
+        return self.handled
+
+
+def _pressing(monkeypatch, handled=True):
+    sent = []
+    monkeypatch.setattr(orca_speech, "_xdotool", lambda *args: sent.append(args))
+    monkeypatch.setattr(orca_speech.time, "sleep", lambda seconds: None)
+    return sent, ChordLog(sent, handled)
+
+
+def _handled(key):
+    return ("wait", orca_speech._KEY_HANDLED.format(key=key))
+
+
+def test_a_chord_is_held_a_modifier_at_a_time_and_orca_handles_each_first(monkeypatch):
+    """All of "ctrl+shift+a" at once had Orca still on the modifiers when the
+    A came, and the app's dialog opened before Orca handled it: Orca 46 then
+    read the window and not the box the focus was in ("answer the tool")."""
+    sent, log = _pressing(monkeypatch)
+    orca_speech.press(["ctrl+shift+a"], log)
+    assert sent == [("keydown", "ctrl"), _handled("Control_L"),
+                    ("keydown", "shift"), _handled("Shift_L"),
+                    ("key", "a"), ("keyup", "shift"), ("keyup", "ctrl")]
+
+
+def test_a_modifier_orca_never_logs_still_presses_and_releases_the_chord(monkeypatch, capsys):
+    sent, log = _pressing(monkeypatch, handled=False)
+    orca_speech.press(["Ctrl+Shift+V"], log)
+    assert [s for s in sent if s[0] != "wait"] == [("keydown", "Ctrl"), ("keydown", "Shift"),
+                                                   ("key", "V"), ("keyup", "Shift"),
+                                                   ("keyup", "Ctrl")]
+    assert "didn't show it handling Ctrl" in capsys.readouterr().out
+
+
+def test_a_chord_whose_key_fails_still_lets_go_of_its_modifiers(monkeypatch):
+    sent = []
+
+    def xdotool(*args):
+        sent.append(args)
+        if args[0] == "key":
+            raise RuntimeError("xdotool failed")
+    monkeypatch.setattr(orca_speech, "_xdotool", xdotool)
+    log = ChordLog(sent)
+    try:
+        orca_speech.press(["alt+c"], log)
+    except RuntimeError:
+        pass
+    assert sent[-1] == ("keyup", "alt")
+
+
+def test_keys_on_their_own_are_sent_as_they_are(monkeypatch):
+    sent, log = _pressing(monkeypatch)
+    orca_speech.press(["Tab", "shift+Return", "z"], log)
+    assert sent == [("key", "Tab"), ("keydown", "shift"), _handled("Shift_L"),
+                    ("key", "Return"), ("keyup", "shift"), ("key", "z")]
+    assert orca_speech._chord("plus") is None and orca_speech._chord("KP_Add") is None
+
+
+def test_orcas_log_of_a_handled_key_is_recognized(tmp_path):
+    """The line Orca 46 writes once it has handled a key (CI), and the form
+    later Orca writes it in."""
+    path = tmp_path / "orca.log"
+    path.write_text("14:35:27.745 - SPEECH OUTPUT: 'left shift'\n"
+                    "^^^^^ PROCESS ATSPI_KEY_PRESSED_EVENT: 'Shift_L' (50) ^^^^^\n"
+                    "^^^^^ PROCESS ATSPI_KEY_PRESSED_EVENT : 'Control_L' (37) ^^^^^\n",
+                    encoding="utf-8")
+    log = orca_speech.OrcaLog(path)
+    pattern = orca_speech._KEY_HANDLED.format
+    assert log.wait_for(0, pattern(key="Shift_L"), timeout=0)
+    assert log.wait_for(0, pattern(key="Control_L"), timeout=0)
+    assert not log.wait_for(0, pattern(key="Alt_L"), timeout=0)
+    # Released keys don't count: only Orca done with the press.
+    path.write_text("^^^^^ PROCESS ATSPI_KEY_RELEASED_EVENT: 'Alt_L' (64) ^^^^^\n",
+                    encoding="utf-8")
+    assert not log.wait_for(0, pattern(key="Alt_L"), timeout=0)
+
+
+def test_a_failed_step_says_when_orca_took_a_window_from_a_key(tmp_path):
+    # The line from the failed run's debug log (PR #729's first run).
+    path = tmp_path / "orca.log"
+    path.write_text("14:35:27.773295 - FOCUS MANAGER: Focus [table cell: 'You: Make the "
+                    "uploader flush before it signals.'] is not in [frame: 'trip-planner asks: "
+                    "Visual probe'] orca.start > event_manager._processKeyboardEvent > "
+                    "input_event.__init__ > focus_manager.set_active_window\n"
+                    "14:35:27.781241 - FOCUS MANAGER: Focus [frame: 'trip-planner asks: Visual "
+                    "probe'] is not in [frame: 'trip-planner asks: Visual probe'] "
+                    "focus_manager.set_locus_of_focus > script.locusOfFocusChanged > "
+                    "default.locusOfFocusChanged > focus_manager.set_active_window\n",
+                    encoding="utf-8")
+    count = orca_speech.OrcaLog(path).matches_since(0, orca_speech._WINDOW_FROM_KEY)
+    assert count == 1
+    step = {"step": "answer the tool", "keys": ["ctrl+shift+a"], "spoken": ["A"],
+            "missing": ["Message"], "refused": [], "passed": False, "window_from_key": count}
+    passed = dict(step, step="opened fine", missing=[], passed=True)
+    text = orca_speech.report([step, passed], (46, 0), record=False)
+    assert text.count("took the window for the focus") == 1
+
+
 def test_crashes_are_told_from_failures_and_timeouts():
     assert orca_names.crashed(139) == "SIGSEGV"
     assert orca_names.crashed(-11) == "SIGSEGV"
