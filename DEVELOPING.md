@@ -346,11 +346,15 @@ that makes the app replace many more objects shows. So:
   has to have been quiet for half a second (`OrcaLog.wait_idle`). Orca logs every event it
   takes off its queue, and while idle only a line about every 1.5 seconds. Before most keys
   Orca is already quiet, so there's no wait. After a trigger the half second is counted from
-  when the trigger finished, since its events may still be on their way. A step whose keys go
-  before Orca catches up (within the step timeout) fails, and the report says why. Orca 46
+  when the trigger finished, since its events may still be on their way. If Orca hasn't caught
+  up within the step timeout, the keys go anyway and the step fails, saying why. Orca 46
   handles a key as soon as it comes, ahead of events still in its queue, and then handles
   those events by what's true *after* the key. #751 and #754 were both that, so this is one
-  rule for every step rather than a fix for each step that meets it.
+  rule for every step rather than a fix for each step that meets it. It does mean the check no
+  longer presses a key while Orca is still busy with the app's events, which people using
+  Orca 46 can meet (#751's one held-chord failure came during a session list refresh). That
+  case is covered only by `orca-customizations.py`'s #751 correction, so a change that keeps
+  Orca busier around a key won't show here.
 - "a suggestion, then Tab to the message box" failed now and then (#754): Orca said "Write the
   script, selected" but not "Your message". All five failures (in four runs) had the same
   cause. The trigger puts the suggestion in the message box and selects it while the box

@@ -986,7 +986,7 @@ class OrcaLog:
         return self.path.stat().st_mtime if self.path.exists() else 0.0
 
     def wait_idle(self, quiet: float = TRIGGER_QUIET, timeout: float = STEP_TIMEOUT,
-                  from_now: bool = True, clock=time.time, sleep=time.sleep) -> bool:
+                  from_now: bool = True, clock=time.monotonic, sleep=time.sleep) -> bool:
         """Wait until the log hasn't grown for ``quiet`` seconds: Orca has
         taken every event the app sent before now off its queue. True then,
         False at ``timeout``. ``from_now``: the quiet is counted from now,
@@ -1001,7 +1001,11 @@ class OrcaLog:
         ignored and the box went unsaid (#754)."""
         end = clock() + timeout
         size = self.size()
-        since = clock() if from_now else min(clock(), self.modified())
+        # The log's age is read once, against the wall clock its time is
+        # kept in; the waiting itself is timed on ``clock``, which a change
+        # to the system's time can't stretch.
+        age = 0.0 if from_now else max(0.0, time.time() - self.modified())
+        since = clock() - age
         while True:
             if clock() - since >= quiet:
                 return True

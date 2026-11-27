@@ -2,6 +2,7 @@
 retry after a crash, which must never hide an unnamed control."""
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -102,10 +103,10 @@ def test_orca_already_quiet_costs_no_wait(tmp_path, monkeypatch):
     half second."""
     fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[])
     log = orca_speech.OrcaLog(fake.path)
-    monkeypatch.setattr(log, "modified", lambda: -2.0)
+    monkeypatch.setattr(log, "modified", lambda: time.time() - 2.0)
     assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep)
     assert fake.now == 0.0
-    monkeypatch.setattr(log, "modified", lambda: -0.2)
+    monkeypatch.setattr(log, "modified", lambda: time.time() - 0.2)
     assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep)
     assert fake.now == 0.3
 
