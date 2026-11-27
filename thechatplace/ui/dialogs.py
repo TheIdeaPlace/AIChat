@@ -6409,6 +6409,12 @@ class RewindDialog(wx.Dialog):
         _end_modal(self, wx.ID_OK)
 
 
+#: Why a chat started elsewhere can't change its tools here, Claude's or
+#: Codex's: said by Delete in the list, as there's no button for it there.
+READ_ONLY_TOOLS = ("This chat wasn't started in The Chat Place, so tools can't be turned on or "
+                   "off for it here.")
+
+
 class ConnectedToolsDialog(wx.Dialog):
     """Tools, Connected Tools (#468): a Claude chat's MCP servers and claude.ai
     connectors, one per row, read in full ("claude.ai Microsoft Learn:
@@ -6458,6 +6464,11 @@ class ConnectedToolsDialog(wx.Dialog):
                        self.refresh_btn):
             if button is not None:
                 row.Add(button, 0, wx.RIGHT, 6)
+        # A chat started elsewhere can't change its tools here, Claude's or
+        # Codex's, and the note says so: a Turn Off for This Chat button there
+        # only said "can't" once pressed (#729's acceptance test). Delete in
+        # the list still says why.
+        self.toggle_btn.Show(bool(host.can_turn_off))
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "C&lose")
         row.Add(self.close_btn, 0)
@@ -6570,7 +6581,7 @@ class ConnectedToolsDialog(wx.Dialog):
     def reload(self, select: int = 0, announce: bool = False, read_again: bool = False):
         from ..claude_mcp import tools_summary
         if self.busy:
-            self._tell(self.busy, back_to=self.refresh_btn)
+            self._tell(self.busy, back_to=self.refresh_btn, title=self._title(self.refresh_btn))
             return
         self.busy = "Still reading the connected tools. Try again in a moment."
         self.loaded = False
@@ -6605,13 +6616,14 @@ class ConnectedToolsDialog(wx.Dialog):
             if not getattr(self.host, 'delete_toggles', True) and self.host.can_turn_off:
                 # The same checks as the button's first: while loading or
                 # copying, after a failed read, or on a row with no tool.
-                server = self._server_for("change", self.list)
+                server = self._server_for("change", self.list, self.toggle_btn)
                 if server is None:
                     return
+                title = self._title(self.toggle_btn, server)
                 if not getattr(server, "can_be_denied", True):
-                    self._tell(f"{server.label} can't be turned off here.")
+                    self._tell(f"{server.label} can't be turned off here.", title=title)
                     return
-                self._tell(self.host.delete_text(server))
+                self._tell(self.host.delete_text(server), title=title)
                 return
             self.on_toggle()
             return
@@ -6624,25 +6636,44 @@ class ConnectedToolsDialog(wx.Dialog):
 
     # -- actions ----------------------------------------------------------------
 
-    def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None):
-        wx.MessageBox(text, self.GetTitle(), wx.OK | icon, self)
+    #: A message box's title when nothing more fitting is given.
+    TITLE = "Connected Tools"
+
+    def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None, title: str = ""):
+        """A message box, then focus on ``back_to`` (the list by default).
+        ``title`` names what it's about ("Sign In: notion"): with this
+        dialog's own title, "Connected Tools: hello dialog" was said twice,
+        once for each window (#729's acceptance test)."""
+        wx.MessageBox(text, title or self.TITLE, wx.OK | icon, self)
         if self._alive():
             (back_to or self.list).SetFocus()
 
-    def _server_for(self, action: str, back_to):
-        """The selected server, or None after saying why there isn't one."""
+    @staticmethod
+    def _title(button, server=None) -> str:
+        """A message box's title for ``button``'s action, on ``server``:
+        "Sign In: notion", or "Reconnect" with no tool to name."""
+        verb = (button.GetLabelText() if isinstance(button, wx.Button)
+                else ConnectedToolsDialog.TITLE)
+        label = getattr(server, "label", "") if server is not None else ""
+        return f"{verb}: {label}" if label and not getattr(server, "informational", False) else verb
+
+    def _server_for(self, action: str, back_to, button=None):
+        """The selected server, or None after saying why there isn't one, in
+        a box titled for ``button`` (``back_to``, when it's a button)."""
+        title = self._title(button or (back_to if isinstance(back_to, wx.Button) else None))
         if self.busy:
-            self._tell(self.busy, back_to=back_to)
+            self._tell(self.busy, back_to=back_to, title=title)
             return None
         if self.load_error:
-            self._tell(self.load_error + " Press Refresh to try again.", back_to=back_to)
+            self._tell(self.load_error + " Press Refresh to try again.", back_to=back_to,
+                       title=title)
             return None
         server = self._selected()
         if server is not None and getattr(server, "informational", False):
-            self._tell(server.text(), back_to=back_to)
+            self._tell(server.text(), back_to=back_to, title=title)
             return None
         if server is None:
-            self._tell(f"Select a connected tool to {action} first.", back_to=back_to)
+            self._tell(f"Select a connected tool to {action} first.", back_to=back_to, title=title)
         return server
 
     @staticmethod
@@ -6654,7 +6685,7 @@ class ConnectedToolsDialog(wx.Dialog):
         """Says why, on a row listed only for the new-chats setting."""
         if not getattr(server, "not_in_folder", False):
             return False
-        self._tell(self._not_here_text(server), back_to=back_to)
+        self._tell(self._not_here_text(server), back_to=back_to, title=self._title(back_to, server))
         return True
 
     def _off_text(self, server) -> str:
@@ -6665,47 +6696,57 @@ class ConnectedToolsDialog(wx.Dialog):
         server = self._server_for("sign in to", self.sign_in_btn)
         if server is None or self._not_here(server, self.sign_in_btn):
             return
+        title = self._title(self.sign_in_btn, server)
+
+        def tell(text, icon=wx.ICON_INFORMATION, back_to=self.sign_in_btn):
+            self._tell(text, icon, back_to=back_to, title=title)
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
-            self._tell(server.text(), back_to=self.sign_in_btn)
+            tell(server.text())
             return
         if server.missing:
-            self._tell(self._off_text(server), back_to=self.sign_in_btn)
+            tell(self._off_text(server))
             return
         if server.is_session_tools:
-            self._tell(f"{server.label} has nothing to sign in to.", back_to=self.sign_in_btn)
+            tell(f"{server.label} has nothing to sign in to.")
             return
         nothing = getattr(self.host, 'nothing_to_sign_in', None)
         if nothing and nothing(server):
             # Codex: a stdio server, or one with a token (#729).
-            self._tell(nothing(server), back_to=self.sign_in_btn)
+            tell(nothing(server))
             return
         if server.status == "connected":
-            self._tell(f"{server.label} is connected already.", back_to=self.sign_in_btn)
+            tell(f"{server.label} is connected already.")
             return
         self.busy = "Still asking for sign-in information. Try again in a moment."
 
-        def done(text, error):
+        def done(text, error, declined=False):
+            """``declined``: you declined the page's question yourself, so
+            there's no box to dismiss: it's said, and focus goes back to Sign
+            In, not to Refresh as after a sign-in (#729's acceptance test)."""
             if not self._alive():
                 return
             self.busy = ""
-            if error:
-                self._tell(f"Couldn't start signing in to {server.label}. {error}",
-                           wx.ICON_WARNING, back_to=self.sign_in_btn)
+            if declined:
+                self.sign_in_btn.SetFocus()
+                self._feedback(text)
+            elif error:
+                tell(f"Couldn't start signing in to {server.label}. {error}", wx.ICON_WARNING)
             else:
                 notice = getattr(self.host, 'is_sign_in_notice', None)
-                self._tell(text, back_to=self.sign_in_btn if notice and notice(server, text)
-                           else self.refresh_btn)
+                tell(text, back_to=self.sign_in_btn if notice and notice(server, text)
+                     else self.refresh_btn)
         self.host.sign_in(server, done)
 
     def on_reconnect(self):
         server = self._server_for("reconnect", self.reconnect_btn)
         if server is None or self._not_here(server, self.reconnect_btn):
             return
+        title = self._title(self.reconnect_btn, server)
         if server.missing and not server.off_for_chat:  # Codex: selected, then removed
-            self._tell(server.text(), back_to=self.reconnect_btn)
+            self._tell(server.text(), back_to=self.reconnect_btn, title=title)
             return
         if server.off_for_chat or server.missing:
-            self._tell(self._off_text(server), back_to=self.reconnect_btn)
+            self._tell(self._off_text(server), back_to=self.reconnect_btn, title=title)
             return
         index = self.list.GetSelection()
         self.busy = f"Still reconnecting {server.label}. Try again in a moment."
@@ -6718,24 +6759,27 @@ class ConnectedToolsDialog(wx.Dialog):
             if error:
                 self.list.SetString(index, server.text())
                 self._tell(f"Couldn't reconnect {server.label}. {error}", wx.ICON_WARNING,
-                           back_to=self.reconnect_btn)
+                           back_to=self.reconnect_btn, title=title)
                 return
             self._fill(rows, index)
             now = next((r for r in self.rows if r.name == server.name), None)
             self._tell(now.text() if now is not None else f"{server.label} reconnected.",
-                       back_to=self.list)
+                       back_to=self.list, title=title)
         self.host.reconnect(server, done)
 
     def on_toggle(self):
-        server = self._server_for("turn off", self.toggle_btn)
-        if server is None or self._not_here(server, self.toggle_btn):
+        # Reached by Delete in the list too; in a chat started elsewhere the
+        # button isn't shown, so focus goes back to the list.
+        back = self.toggle_btn if self.toggle_btn.IsShown() else self.list
+        server = self._server_for("turn off", back, self.toggle_btn)
+        if server is None or self._not_here(server, back):
             return
+        title = self._title(self.toggle_btn, server)
         if not self.host.can_turn_off:
-            self._tell("Tools can be turned off only for chats The Chat Place started.",
-                       back_to=self.toggle_btn)
+            self._tell(READ_ONLY_TOOLS, back_to=back, title=title)
             return
         if not getattr(server, "can_be_denied", True):
-            self._tell(f"{server.label} can't be turned off here.", back_to=self.toggle_btn)
+            self._tell(f"{server.label} can't be turned off here.", back_to=back, title=title)
             return
         index = self.list.GetSelection()
         focus = wx.Window.FindFocus()
@@ -6747,7 +6791,7 @@ class ConnectedToolsDialog(wx.Dialog):
                 return
             self.busy = ""
             if error:
-                self._tell(error, wx.ICON_WARNING, back_to=self.toggle_btn)
+                self._tell(error, wx.ICON_WARNING, back_to=self.toggle_btn, title=title)
                 return
             self._fill(rows, index)
             if focus is not None and focus.GetTopLevelParent() is self:
@@ -6760,8 +6804,10 @@ class ConnectedToolsDialog(wx.Dialog):
         server = self._server_for("turn off", self.new_chats_btn)
         if server is None:
             return
+        title = self._title(self.new_chats_btn, server)
         if not server.can_be_denied:
-            self._tell(f"{server.label} can't be turned off here.", back_to=self.new_chats_btn)
+            self._tell(f"{server.label} can't be turned off here.", back_to=self.new_chats_btn,
+                       title=title)
             return
         index = self.list.GetSelection()
         focus = wx.Window.FindFocus()
@@ -6770,7 +6816,7 @@ class ConnectedToolsDialog(wx.Dialog):
             if not self._alive():
                 return
             if error:
-                self._tell(error, wx.ICON_WARNING, back_to=self.new_chats_btn)
+                self._tell(error, wx.ICON_WARNING, back_to=self.new_chats_btn, title=title)
                 return
             if [r.name for r in rows] == [r.name for r in self.rows]:
                 # Only the one row: rebuilding the list would read it again
@@ -6813,13 +6859,21 @@ class ElicitationDialog(wx.Dialog):
     where the page really is, so a message can't get in first or pose as them.
     Enter in a read-only box says where to go here too, and never opens a page.
     Answer Later (Escape) leaves it waiting.
+
+    ``title``: the window's title in place of "<tool> asks: <chat>", for a
+    page The Chat Place asks about itself, such as Connected Tools' Sign In
+    ("Sign In to notion", #729's acceptance test): "notion asks: hello"
+    named the chat, not what the page was for. ``can_wait=False``: nothing
+    is waiting for an answer, so there's no Answer Later, and Escape
+    declines.
     """
 
-    def __init__(self, parent, session_title: str, request, feedback=None):
+    def __init__(self, parent, session_title: str, request, feedback=None, *, title: str = "",
+                 can_wait: bool = True):
         from ..claude_mcp import is_web_url
         problem = request.form_problem()
         # A page to open is a few lines and a button: no room kept for a form.
-        super().__init__(parent, title=f"{request.server_label} asks: {session_title}",
+        super().__init__(parent, title=title or f"{request.server_label} asks: {session_title}",
                          size=dialog_size(parent, 680, 380 if request.is_url or problem else 540),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.request = request
@@ -6882,11 +6936,10 @@ class ElicitationDialog(wx.Dialog):
         else:
             self.send_btn = wx.Button(self, label="&Send")
         self.decline_btn = wx.Button(self, label="&Decline")
-        later = wx.Button(self, wx.ID_CANCEL, "Answer &Later")
-        for button in (self.send_btn, self.decline_btn):
-            if button is not None:
-                row.Add(button, 0, wx.RIGHT, 6)
-        row.Add(later, 0)
+        self.later_btn = wx.Button(self, wx.ID_CANCEL, "Answer &Later") if can_wait else None
+        buttons = [b for b in (self.send_btn, self.decline_btn, self.later_btn) if b is not None]
+        for button in buttons:
+            row.Add(button, 0, wx.RIGHT if button is not buttons[-1] else 0, 6)
         # A form's Enter sends, from inside the form (_on_key; what's needed
         # is checked first); a page to open needs its button pressed, so a
         # stray Enter never opens a server's link.
@@ -6901,7 +6954,7 @@ class ElicitationDialog(wx.Dialog):
             self.form_panel.SetMinSize((-1, -1))
             self.Layout()
             self.form_panel.FitInside()
-        self.SetEscapeId(wx.ID_CANCEL)
+        self.SetEscapeId(wx.ID_CANCEL if can_wait else self.decline_btn.GetId())
         if self.send_btn is not None:
             self.send_btn.Bind(wx.EVT_BUTTON, self._on_send)
         self.decline_btn.Bind(wx.EVT_BUTTON, self._on_decline)

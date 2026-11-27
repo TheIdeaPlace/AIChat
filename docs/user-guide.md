@@ -2897,7 +2897,10 @@ long as the dialog is open; a tool turned off for the chat isn't started.
 - **Turn Off for This Chat** (Alt+O), or Delete in the list, keeps the tool out of this chat's
   turns from the next one; the row then says "off for this chat", and the button becomes
   **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
-  Only chats started here can do this; The Chat Place's session tools can't be turned off.
+  Only chats started here have this button; in a chat started elsewhere it isn't there, and
+  Delete in the list says why. The Chat Place's session tools can't be turned off.
+- A message these buttons show is titled for what it answers, such as "Sign In: notion" or
+  "Reconnect: github".
 - **Turn Off for New Chats** (Alt+N), in a Claude chat, is for a tool you don't plan to use. Every
   new chat from then on has it off, and The Chat Place stops telling you Claude can't use it.
   Chats you already have, and Retry and Branch copies of them, keep their own setting. The row says "off for new chats", and the
@@ -2976,17 +2979,22 @@ on or off in the chat itself.
 - The list also has the apps from ChatGPT you can use, and **The Chat Place's session tools**,
   which stay on while The Chat Place is running. An app is turned on in a copy the same way as a
   server.
-- **Sign In** (Alt+S) reads you the sign-in page's real address and opens it only if you agree;
-  finish in your browser and keep Connected Tools open to hear the result. It works with a
+- **Sign In** (Alt+S) asks first, in **Sign In to** and the tool's name. It opens on the Address
+  box, whose first line says where the page is and gives its whole address, for example "Opens
+  mcp.notion.com: https://…". **Open in Browser** (Alt+O) opens it; finish in your browser and
+  keep Connected Tools open to hear the result. **Decline** (Alt+D) or Escape opens nothing:
+  you hear "Sign-in page was not opened." and are back on Sign In. It works with a
   server off and in chats started elsewhere, without making a chat or turning the tool on.
-  Sign-in waits up to three minutes and needs a recent Codex. An app opens its app page instead.
+  Sign-in waits up to three minutes and needs a recent Codex. An app asks in **Connect** and the
+  app's name, and opens its app page instead.
   A server Codex starts on this computer, or one set up with a token, has nothing to sign in
   to, and Sign In says so. Some services, GitHub's among them, don't let Codex sign in for you:
   Sign In says to give Codex a token instead (`codex mcp add` with `--bearer-token-env-var`) or
   to follow the service's own instructions for Codex. When Codex gives no reason, Sign In says
   to run `codex mcp login` with the tool's name in a terminal, which shows Codex's own reason.
-  **Reconnect** (Alt+R) tries a server again and lets an enabled tool use its new sign-in.
-  The Chat Place leaves your Codex settings alone.
+  **Reconnect** (Alt+R) tries a server again and lets an enabled tool use its new sign-in. If it
+  can't, it says why and what to do next, such as checking the server with `codex mcp list` in
+  a terminal. The Chat Place leaves your Codex settings alone.
 - If a server the chat uses is later removed from Codex's settings, the chat can't send and says
   why. The server is first in this list, and **Copy with Tool Off** makes a copy without it. Or
   add it back to Codex's `config.toml`.
@@ -2999,8 +3007,10 @@ on or off in the chat itself.
   for you, with a notice.
 
 For a Codex chat started elsewhere, the list shows the servers set up in Codex for its folder,
-without how each is doing, and tools can't be changed for it here. Sign In still works for
-its configured servers; it leaves the chat's tools as they are.
+without how each is doing, and tools can't be changed for it here, so there's no Copy with Tool
+On or Off button. Sign In still works for its configured servers; it leaves the chat's tools as
+they are. Reconnect says there's nothing to reconnect there, since the chat's tools aren't
+connected in The Chat Place.
 
 ## Organizing your chats
 
@@ -3121,7 +3131,7 @@ the other commands for the selected chat.
 When the open chat gets a reply, when one of the chats started here finishes a turn, or when
 any listed chat stops working, it's announced through your screen reader (or a system voice
 when no screen reader is running) and put on the status bar. **Ctrl+Shift+R** repeats the last
-announcement.
+announcement; before there's been one, it says "Nothing to repeat yet."
 
 **Settings** (Ctrl+Comma) chooses how much is said:
 

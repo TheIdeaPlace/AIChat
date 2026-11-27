@@ -1831,6 +1831,39 @@ def d_codex_tools_more_apps(frame, env):
     return opener
 
 
+def d_codex_tools_read_only(frame, env):
+    """A Codex chat started elsewhere (#729's acceptance test): the servers
+    set up for its folder, with no Turn Off for This Chat, since its tools
+    can't change here."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    s_main_codex_owned(frame, env)
+    info = SimpleNamespace(cli_session_id='probe-elsewhere', is_own=False, title='Codex review',
+                           key=None)
+    host = CodexConnectedTools(frame, info)
+    host.load = lambda done: done([
+        CodexTool('project-notes', 'configured', off_for_chat=False, read_only=True),
+        CodexTool('everything', 'configured', off_for_chat=False, read_only=True,
+                  auth='unsupported')], '')
+    return lambda: frame._modal(ConnectedToolsDialog(frame, 'Codex review', host))
+
+
+def d_codex_tools_sign_in(frame, env):
+    """Connected Tools' Sign In asks before opening a server's sign-in page
+    (#598), titled for what it is, with where it goes and the whole address on
+    the Address box's first line, and no Answer Later (#729's acceptance
+    test). The dialog the host itself builds."""
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import sign_in_dialog
+    s_main_codex_owned(frame, env)
+    server = CodexTool('project-notes', 'needs-auth', (), False)
+    url = ('https://notes.example/authorize?response_type=code&client_id=probe-client'
+           '&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&state=probe')
+    return lambda: frame._modal(sign_in_dialog(frame, server, url, feedback=frame._feedback))
+
+
 def s_main_codex_queue_edited(frame, env):
     from dataclasses import replace
     from thechatplace.providers.codex_input import CodexInput
@@ -2815,6 +2848,10 @@ SURFACES = {
                                      "Codex Connected Tools when Codex couldn't list apps"),
     "codex-tools-more-apps": ("dialog", d_codex_tools_more_apps,
                               "Codex Connected Tools with the ChatGPT apps not set up as one row"),
+    "codex-tools-read-only": ("dialog", d_codex_tools_read_only,
+                              "Codex Connected Tools in a chat started elsewhere"),
+    "codex-tools-sign-in": ("dialog", d_codex_tools_sign_in,
+                            "Connected Tools' Sign In asks before opening a sign-in page"),
     "codex-tool-approval": ("dialog", d_codex_tool_approval, "Codex tool-call consent with exact arguments and a one-time answer"),
     "main-codex-queue-edited": ("window", s_main_codex_queue_edited, "A queued Codex message returned to its draft without stopping the turn"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
@@ -2986,6 +3023,8 @@ DIALOG_CLASSES = {
     "codex-tools": "ConnectedToolsDialog",
     "codex-tools-apps-unavailable": "ConnectedToolsDialog",
     "codex-tools-more-apps": "ConnectedToolsDialog",
+    "codex-tools-read-only": "ConnectedToolsDialog",
+    "codex-tools-sign-in": "ElicitationDialog",
     "codex-tool-approval": "ElicitationDialog",
     "codex-commands": "CommandPickerDialog",
     "codex-collaboration": "SingleChoiceDialog",

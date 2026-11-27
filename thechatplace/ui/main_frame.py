@@ -843,8 +843,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "turn_status": self.on_turn_status,
             "usage_and_context": lambda e: self.on_usage(),
             "changed_files": lambda e: self.on_changes(),
-            "repeat_last_announcement": lambda e: self._say(self._last_announcement, force=True,
-                                                            resay=False),
+            "repeat_last_announcement": lambda e: self.on_repeat_last_announcement(),
             "what_ai_knows": lambda e: self.on_about_you(),
             "connected_tools": lambda e: self.on_connected_tools(),
             "user_guide": self.on_user_guide,
@@ -1149,6 +1148,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if force or self.speech.enabled:
             self._speak_announcement(text, interrupt=interrupt, window=window, about=about,
                                      resay=resay)
+
+    #: What Repeat Last Announcement says before anything has been announced:
+    #: a key that does nothing and says nothing sounds broken (#729).
+    NOTHING_TO_REPEAT = "Nothing to repeat yet."
+
+    def on_repeat_last_announcement(self):
+        """Ctrl+Shift+R: say the last announcement again, or that there's
+        none yet. That answer isn't itself an announcement, so it's never
+        what the next Ctrl+Shift+R repeats."""
+        if self._last_announcement:
+            self._say(self._last_announcement, force=True, resay=False)
+            return
+        self._status(self.NOTHING_TO_REPEAT)
+        self._speak_announcement(self.NOTHING_TO_REPEAT, interrupt=True)
 
     def _speak_announcement(self, text: str, interrupt: bool, window: Optional[wx.Window] = None,
                             keep: bool = False, about: str = "", again: str = "",

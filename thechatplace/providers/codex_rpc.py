@@ -226,6 +226,27 @@ class CodexSignInRefused(CodexRpcError):
         super().__init__(self.REASONS[self.code])
 
 
+class CodexReconnectRefused(CodexRpcError):
+    """Why Reconnect in Connected Tools didn't reconnect a server, in the
+    app's own words, each with a next step (#729's acceptance test). Never
+    Codex's or the server's text, which can carry the server's own."""
+    REASONS = {
+        'not_own': ("This chat wasn't started in The Chat Place, so its tools aren't connected "
+                    "here and there's nothing to reconnect. Sign In still works. To use a tool "
+                    "here, start a Codex chat in The Chat Place and turn the tool on for it."),
+        'not_enabled': ("This tool is off for this chat, so there's nothing to reconnect. Copy "
+                        "with Tool On makes a copy of the chat with it on."),
+        'timeout': ("Codex took too long to reconnect its tools. Press Reconnect to try again; "
+                    "a server that has to be downloaded first can take a while the first time."),
+        'failed': ("Codex couldn't reconnect its tools. Check the server's settings in Codex "
+                   "(codex mcp list, in a terminal, shows them), then press Reconnect again."),
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'failed'
+        super().__init__(self.REASONS[self.code])
+
+
 class CodexDeleteUnanswered(CodexRpcError):
     """thread/delete went to Codex and no answer came back (a timeout, the
     connection closing): it may have been deleted (#634). Raised only once the

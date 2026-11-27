@@ -1110,10 +1110,13 @@ class ElicitationRequest(PermissionRequest):
 
     def address_text(self) -> str:
         """What the Address box says, from The Chat Place and not the server:
-        where the page really is, on a line of its own, then the address."""
+        where the page really is, then its whole address, on the first line,
+        which is what a screen reader reads as the box gets focus: with the
+        address on a line of its own, only "Opens mcp.notion.com" was read
+        (#729's acceptance test)."""
         host = web_url_host(self.url)
         if host:
-            return f"Opens {host}\n{self.url}"
+            return f"Opens {host}: {self.url}"
         return ("The Chat Place won't open this: it isn't a plain web page's address.\n"
                 + (_visible(self.url) or "(The server gave no address.)"))
 

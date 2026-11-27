@@ -42,6 +42,41 @@ COULD_NOT_START = ("Codex could not start signing in to this tool. To see Codex'
                    "codex mcp login followed by the tool's name in a terminal.")
 
 
+#: Said, without a box to dismiss, when you decline or close the sign-in
+#: page's question: you chose that yourself, so focus goes back to Sign In
+#: (#729's acceptance test: the box sent it to Refresh, as after a sign-in).
+SIGN_IN_NOT_OPENED = 'Sign-in page was not opened.'
+APP_PAGE_NOT_OPENED = 'App page was not opened.'
+
+#: Reconnect's failure with no known reason, with a next step (#729's
+#: acceptance test), as COULD_NOT_START is for Sign In.
+COULD_NOT_RECONNECT = ("Codex didn't say why. Close Connected Tools, open it again and press "
+                       "Reconnect; if it still fails, run codex mcp list in a terminal to check "
+                       "the server's settings.")
+
+
+def sign_in_dialog(parent, server, url, feedback=None):
+    """The question before Sign In opens a page (#598, #729): "Sign In to
+    notion", or "Connect" for a ChatGPT app, opening on the Address box,
+    whose first line says where the page is and what its whole address is.
+    Nothing waits on the answer, so there's no Answer Later: Escape declines.
+    The probe builds it here too, so its picture is the real one."""
+    from ..claude_mcp import elicitation_from
+    from .dialogs import ElicitationDialog
+    if server.app_id:
+        title = f'Connect {server.label}'
+        message = (f'Open in Browser opens the app page above, where you can connect '
+                   f'{server.label} to Codex. Decline leaves it unopened.')
+    else:
+        title = f'Sign In to {server.label}'
+        message = (f'Open in Browser opens the address above, where you sign in to '
+                   f'{server.label}. Decline leaves it unopened.')
+    request = elicitation_from('app-sign-in' if server.app_id else 'sign-in',
+                               {'mode': 'url', 'url': url, 'mcp_server_name': server.label,
+                                'message': message})
+    return ElicitationDialog(parent, '', request, feedback=feedback, title=title, can_wait=False)
+
+
 def _reasons(*codes):
     from ..providers.codex_rpc import CodexSignInRefused
     return frozenset(CodexSignInRefused.REASONS[code] for code in codes)
@@ -97,7 +132,9 @@ class CodexConnectedTools:
             # says the row's notice. &O still, as the other labels have it.
             return 'Change T&ool'
         if not self.can_turn_off:
-            return 'Turn &Off for This Chat'  # says why not when pressed
+            # Not shown: the dialog hides it in a chat started elsewhere
+            # (#729's acceptance test). Named for the title of Delete's box.
+            return 'Turn &Off for This Chat'
         return 'Copy with Tool &On' if server and server.off_for_chat else 'Copy with Tool &Off'
 
     def delete_text(self, server, platform=None):
@@ -152,29 +189,33 @@ class CodexConnectedTools:
         return isinstance(text, str) and any(text == f"{server.label}: {reason}"
                                              for reason in _NOTHING_TO_SIGN_IN)
 
+    def _ask_to_open(self, server, url):
+        """Whether you chose Open in Browser for ``url`` (sign_in_dialog)."""
+        dialog = sign_in_dialog(self.dialog or self.frame, server, url, feedback=self.frame._feedback)
+        try:
+            return dialog.ShowModal() == wx.ID_OK and dialog.action == 'accept'
+        finally:
+            dialog.Destroy()
+
     def sign_in(self, server, done):
+        """``done(text, error)``, or ``done(text, '', declined=True)`` when
+        you declined the page: the dialog then says ``text`` without a box
+        and puts focus back on Sign In."""
         if server.app_id:
-            from ..claude_mcp import elicitation_from, is_web_url
+            from ..claude_mcp import is_web_url
             from ..platform_paths import open_url
-            from .dialogs import ElicitationDialog
             if not is_web_url(server.install_url):
                 done(None, 'Codex did not provide a sign-in or installation page for this app.')
                 return
-            request = elicitation_from('app-sign-in', {'mode': 'url', 'url': server.install_url,
-                'mcp_server_name': server.label, 'message': 'Open this app page to connect it to Codex.'})
-            dialog = ElicitationDialog(self.dialog or self.frame, self.info.title, request,
-                feedback=self.frame._feedback)
+            if not self._ask_to_open(server, server.install_url):
+                done(APP_PAGE_NOT_OPENED, '', declined=True)
+                return
             try:
-                accepted = dialog.ShowModal() == wx.ID_OK and dialog.action == 'accept'
-            finally:
-                dialog.Destroy()
-            if accepted:
-                try:
-                    open_url(server.install_url)
-                except (OSError, ValueError):
-                    done(None, 'Could not open the app page in your browser.')
-                    return
-            done('Press Refresh after connecting the app.' if accepted else 'App page was not opened.', '')
+                open_url(server.install_url)
+            except (OSError, ValueError):
+                done(None, 'Could not open the app page in your browser.')
+                return
+            done('Press Refresh after connecting the app.', '')
             return
         text = self.nothing_to_sign_in(server)
         if text:  # the dialog asks first; this is for any other caller
@@ -198,22 +239,17 @@ class CodexConnectedTools:
                 done(None, result if error and isinstance(result, str) and result
                      else COULD_NOT_START)
                 return
-            from ..claude_mcp import elicitation_from, is_web_url
+            from ..claude_mcp import is_web_url
             from ..platform_paths import open_url
-            from .dialogs import ElicitationDialog
             url, login_id = result.get('authorizationUrl'), result.get('loginId')
             if not isinstance(url, str) or not is_web_url(url):
                 done(None, 'Codex did not return a usable sign-in address.')
                 return
-            request = elicitation_from('sign-in', {'mode': 'url', 'url': url,
-                'mcp_server_name': server.name, 'message': 'Open this address to sign in to the connected tool.'})
-            dialog = ElicitationDialog(self.dialog or self.frame, info.title, request, feedback=self.frame._feedback)
-            try:
-                accepted = dialog.ShowModal() == wx.ID_OK and dialog.action == 'accept'
-            finally:
-                dialog.Destroy()
-            if not accepted or self.closed:
-                done('Sign-in page was not opened.', '')
+            accepted = self._ask_to_open(server, url)
+            if self.closed:
+                return  # nobody to tell, and no page opened
+            if not accepted:
+                done(SIGN_IN_NOT_OPENED, '', declined=True)
                 return
             try:
                 open_url(url)
@@ -250,9 +286,21 @@ class CodexConnectedTools:
         if server.app_id or server.is_session_tools:
             self.load(done)
             return
+        if self.record is None:
+            # Said without asking Codex, which would refuse: a chat started
+            # elsewhere has no connection here to reconnect.
+            from ..providers.codex_rpc import CodexReconnectRefused
+            done(None, CodexReconnectRefused.REASONS['not_own'])
+            return
         def finished(result, error):
-            if not self.closed:
-                done(None, 'Codex could not reconnect this tool.') if error else done(result or [], '')
+            if self.closed:
+                return
+            if error:
+                # The app's own words for a known refusal (safe_reason gives
+                # CodexReconnectRefused's), never Codex's or the server's.
+                done(None, result if isinstance(result, str) and result else COULD_NOT_RECONNECT)
+            else:
+                done(result or [], '')
         self.frame._codex_work(lambda: self.frame.sessions.connected_tool_action(self.info, server.name, 'reconnect'), finished)
 
     def set_off(self, server, off, done):

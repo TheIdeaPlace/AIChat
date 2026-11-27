@@ -858,7 +858,10 @@ Copilot chats don't have these yet.
   from the next one, and **Turn On for This Chat** brings it back. It's kept with the chat and
   given to each turn as `--settings` with `deniedMcpServers`, which Claude Code applies to that
   turn's process only: other chats, the desktop app and Claude Code's own settings are left
-  alone. Only chats started here can do this; the session tools can't be turned off.
+  alone. Only chats started here have this button: in a chat started elsewhere it isn't shown,
+  for Claude or Codex, and Delete in the list says why. The session tools can't be turned off.
+- Each message these buttons show is titled for what it answers, such as "Sign In: notion" or
+  "Reconnect: github", not with the dialog's own title.
 - When a turn starts with a tool that needs sign-in or failed, it's said once each time The Chat
   Place runs ("Claude can't use claude.ai Morningstar: it needs sign-in. To sign in, or stop
   hearing this, use Tools, Connected Tools."), on the status bar and spoken at the Full level
@@ -1138,10 +1141,15 @@ make one." (or Copy with Tool Off; on a Mac it names only the button). The Chat 
 the copy's tools before each turn, saves them with the copy, and keeps every other server and
 app off. Your Codex settings stay as they are. Add a server with Codex in a terminal (`codex
 mcp add`).
-**Sign In** reads you the real web address before opening it; finish signing in in your
-browser. When Codex says which sign-in it is, keep the dialog open to hear its result;
-otherwise press **Refresh** when finished. **Reconnect** tries the servers again.
-For apps, Sign In opens the app page Codex gives and Refresh reads whether it's available now.
+**Sign In** asks first, in **Sign In to** and the tool's name. It opens on the Address box, whose
+first line says where the page is and gives its whole address ("Opens mcp.notion.com:
+https://…"). **Open in Browser** (Alt+O) opens it; finish signing in in your browser. When Codex
+says which sign-in it is, keep the dialog open to hear its result; otherwise press **Refresh**
+when finished. **Decline** (Alt+D) or Escape opens nothing: you hear "Sign-in page was not
+opened." and are back on Sign In. **Reconnect** tries the servers again; if it can't, it says
+why and what to do next, and in a chat started elsewhere it says there's nothing to reconnect
+there. For apps, Sign In asks in **Connect** and the app's name, opens the app page Codex gives,
+and Refresh reads whether it's available now.
 **Sign In works with a server off, and in chats started elsewhere.** It uses the servers configured
 for the chat's folder, without making a chat or turning the tool on. Keep Connected Tools open
 until the result is announced; an enabled tool may need **Reconnect** to use the sign-in.
@@ -1154,7 +1162,8 @@ gives no reason, Sign In says to run `codex mcp login` with the tool's name in a
 shows Codex's own reason.
 If a server a chat uses is later removed from Codex's settings, turns are refused and say why;
 the list shows it first, and **Copy with Tool Off** makes a copy without it, or you can add it back.
-A chat started elsewhere still has its tools left as they are. When Codex asks permission
+A chat started elsewhere still has its tools left as they are, and has no Copy with Tool On or
+Off button: its tools can't change here. When Codex asks permission
 for a tool call, Answer shows its arguments and your answer covers only that call. Long arguments
 show a preview and the number of characters not shown. Whether
 Codex asks depends on its configuration; enabling a tool does not guarantee a question before
@@ -1531,7 +1540,8 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   reply), summary (the session's name and the first sentence) or silent (status bar only), whether
   every listed session is announced or just the open one, and the speech route; its Reading
   messages group chooses whether full messages open as a formatted page or plain text.
-  Ctrl+Shift+R repeats the last announcement.
+  Ctrl+Shift+R repeats the last announcement, or says "Nothing to repeat yet." before there's
+  been one.
 - **Sounds.** Off until you turn them on, in Tools, **Sounds**. They let you hear what a chat is doing
   without tool activity on: a soft tick for each tool that runs, a soft settling chord when a file
   changes, a faint hum after 20 quiet seconds of a turn still working, and sounds for a message sent,

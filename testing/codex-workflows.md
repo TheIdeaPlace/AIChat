@@ -14,12 +14,13 @@ nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a termi
   Prompt; Codex finds `npx` itself, so no `npx.cmd` or `cmd /c` is needed:
 
   ```
-  codex mcp add everything -- npx -y @modelcontextprotocol/server-everything
+  codex mcp add everything -- npx -y @modelcontextprotocol/server-everything@2.4.0
   codex mcp list
   ```
 
   The list shows everything, npx, enabled, Auth Unsupported. Codex downloads the server the
-  first time a chat starts it.
+  first time a chat starts it. The version is pinned so the tool count below holds: without
+  `@2.4.0`, `npx -y` fetches the newest version, which can have a different number of tools.
 
 - **A web service that signs in through your browser**, for the Sign In check. It must support
   OAuth dynamic client registration. GitHub's (`https://api.githubcopilot.com/mcp/`) doesn't:
@@ -47,7 +48,9 @@ minute). Sign In on everything says "everything: This tool doesn't need signing 
 starts it on this computer without an account." and asks Codex nothing. Select the tool and
 choose **Copy with Tool On** (Alt+O). It's the only way to
 turn a tool on in a Codex chat. In the copy it opens, the row says "everything: connected,
-configured Codex MCP server, 19 tools", and Details lists them. Ask for a task by name. The
+configured Codex MCP server, 19 tools" with server-everything 2.4.0 (measured 2026-11-27 through
+The Chat Place's own Codex code, Codex 0.163; another version of the server can list another
+number), and Details lists them. Ask for a task by name. The
 server's adding tool is get-sum, not "add": "Use the everything tool's get-sum tool to add 2 and
 3." Codex answers 5. Remove a test server afterward with `codex mcp remove everything`.
 
@@ -90,9 +93,13 @@ reasons for GitHub and everything were checked the same way with Codex 0.163.
    Approvals, a child automatic-review decision has Codex subagent in its details.
    Allowed decisions stay quiet with tool activity off; a denial is announced.
 4. Tools, Connected Tools: select a configured HTTP server that's off and press
-   Sign In. Hear the actual address before opening it. Cancel leaves the tool off
-   and creates no chat. If you finish sign-in, hear the result; Reconnect an enabled
-   tool to use it. Repeat from an externally started Codex chat: it stays read-only.
+   Sign In. The question is titled "Sign In to" and the tool's name, and opens on
+   the Address box, whose first line is "Opens" with the host, then the whole address.
+   Decline or Escape leaves the tool off, creates no chat, says "Sign-in page was not
+   opened." and puts you back on Sign In. If you finish sign-in, hear the result;
+   Reconnect an enabled tool to use it. Repeat from an externally started Codex chat:
+   it stays read-only, with no Turn Off for This Chat button, and Reconnect says
+   there's nothing to reconnect there and that Sign In still works.
    A real third-party account is required to check that service's browser flow.
 5. With a disposable connected tool that asks permission, open Answer. Focus starts
    on Message. Read its tool arguments by line. Tab reaches Send, Decline and Answer

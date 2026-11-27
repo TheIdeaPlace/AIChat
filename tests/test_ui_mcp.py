@@ -11,6 +11,7 @@ from thechatplace import platform_paths  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.claude_mcp import McpServer, elicitation_from  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
+from thechatplace.ui.dialogs import READ_ONLY_TOOLS  # noqa: E402
 from thechatplace.ui_text import key_name  # noqa: E402
 
 import fake_env  # noqa: E402
@@ -281,9 +282,10 @@ def test_a_codex_chat_from_elsewhere_reads_as_read_only(frame, env):
         assert dialog.list.GetString(0) == "notes: configured, configured Codex MCP server"
         details = dialog.details.GetValue()
         assert "can't be changed here" in details and "off for this chat" not in details
-        assert dialog.toggle_btn.GetLabel() == "Turn &Off for This Chat"
+        # No button that can only say "can't" once pressed (#729's acceptance test).
+        assert not dialog.toggle_btn.IsShown()
         dialog.on_toggle()
-        assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
+        assert env["boxes"][-1] == READ_ONLY_TOOLS
     finally:
         dialog.Destroy()
 
@@ -436,7 +438,7 @@ def test_delete_in_a_codex_chat_from_elsewhere_still_says_why_not(frame, env):
     dialog = ConnectedToolsDialog(frame, "Chat", host)
     try:
         _key(dialog, wx.WXK_DELETE)
-        assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
+        assert env["boxes"][-1] == READ_ONLY_TOOLS
     finally:
         dialog.Destroy()
 
@@ -445,7 +447,7 @@ def test_delete_in_a_codex_chat_from_elsewhere_still_says_why_not(frame, env):
 def test_codex_sign_in_off_and_external_tools_shows_real_address_without_copy(frame, env, monkeypatch, is_own):
     from types import SimpleNamespace
     from thechatplace.providers.codex_tools import CodexTool
-    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools, SIGN_IN_NOT_OPENED
     from thechatplace.ui.dialogs import ConnectedToolsDialog, ElicitationDialog
     info = _codex_info(is_own=is_own)
     record = SimpleNamespace(cli_session_id="c-1", provider_options={}) if is_own else None
@@ -460,19 +462,144 @@ def test_codex_sign_in_off_and_external_tools_shows_real_address_without_copy(fr
     tool = CodexTool("notes", "off" if is_own else "needs-auth",
                      off_for_chat=is_own, read_only=not is_own)
     host.load = lambda done: done([tool], "")
+    seen = {}
     def cancel(dialog):
         addresses.append(dialog.request.url)
+        seen.update(title=dialog.GetTitle(), later=dialog.later_btn,
+                    address=dialog.address_text.GetValue(),
+                    escape=dialog.GetEscapeId() == dialog.decline_btn.GetId())
         return wx.ID_CANCEL
     monkeypatch.setattr(ElicitationDialog, "ShowModal", cancel)
-    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    said, focused = [], []
+    dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    monkeypatch.setattr(dialog.sign_in_btn, "SetFocus", lambda: focused.append("sign in"))
+    monkeypatch.setattr(dialog.refresh_btn, "SetFocus", lambda: focused.append("refresh"))
     try:
+        boxes = len(env["boxes"])
         dialog.on_sign_in()
         assert calls == [(info, "notes", "login")]
         assert addresses == ["https://tools.example/authorize?state=probe"]
-        assert "Sign-in page was not opened." in env["boxes"][-1]
+        # Says what it is and where it goes (#729's acceptance test), with
+        # nothing waiting for an answer later: Escape declines.
+        assert seen == {"title": "Sign In to notes", "later": None, "escape": True,
+                        "address": "Opens tools.example: https://tools.example/authorize?state=probe"}
+        # Declining is said without a box, and focus goes back to Sign In,
+        # not to Refresh as after a sign-in (#729's acceptance test).
+        assert len(env["boxes"]) == boxes
+        assert said == [SIGN_IN_NOT_OPENED] and focused == ["sign in"]
+        assert not dialog.busy
         assert not env["opened"]
         if record is not None:
             assert record.provider_options == {}
+    finally:
+        dialog.Destroy()
+
+
+def test_declining_an_apps_page_goes_back_to_sign_in_too(frame, env, monkeypatch):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import APP_PAGE_NOT_OPENED, CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog, ElicitationDialog
+    stub = _codex_frame()
+    stub._feedback = lambda text: None
+    host = CodexConnectedTools(stub, _codex_info())
+    app = CodexTool("app:docs", "available", app_id="docs", display_name="Project documents",
+                    install_url="https://chatgpt.com/apps/docs")
+    host.load = lambda done: done([app], "")
+    titles = []
+    def decline(dialog):
+        titles.append(dialog.GetTitle())
+        dialog._on_decline()
+        return wx.ID_OK
+    monkeypatch.setattr(ElicitationDialog, "ShowModal", decline)
+    monkeypatch.setattr(ElicitationDialog, "EndModal", lambda self, code: None)
+    said, focused = [], []
+    dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    monkeypatch.setattr(dialog.sign_in_btn, "SetFocus", lambda: focused.append("sign in"))
+    try:
+        boxes = len(env["boxes"])
+        dialog.on_sign_in()
+        assert titles == ["Connect Project documents"]
+        assert len(env["boxes"]) == boxes and said == [APP_PAGE_NOT_OPENED]
+        assert focused == ["sign in"] and not env["opened"]
+    finally:
+        dialog.Destroy()
+
+
+def test_each_box_is_titled_for_what_it_answers_not_the_dialog(frame, env, monkeypatch):
+    """Each box had Connected Tools' own title, so "Connected Tools: Chat
+    dialog" was said twice, once for each window (#729's acceptance test)."""
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    rows = [CodexTool("everything", "configured", off_for_chat=False, read_only=True,
+                      auth="unsupported"),
+            CodexTool("notes", "configured", off_for_chat=False, read_only=True)]
+    host.load = lambda done: done(rows, "")
+    titled = []
+    monkeypatch.setattr(wx, "MessageBox", lambda text, title, *a, **k: titled.append(title) or wx.OK)
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_sign_in()
+        dialog.list.SetSelection(1)
+        dialog.on_reconnect()
+        _key(dialog, wx.WXK_DELETE)
+        dialog.busy = "Still reading the connected tools. Try again in a moment."
+        dialog.on_refresh()
+        dialog.busy = ""
+        dialog._fill([])
+        dialog.on_sign_in()
+        assert titled == ["Sign In: everything", "Reconnect: notes", "Turn Off for This Chat: notes",
+                          "Refresh", "Sign In"]
+        assert dialog.GetTitle() not in titled
+    finally:
+        dialog.Destroy()
+
+
+def test_reconnect_in_a_codex_chat_from_elsewhere_says_why_and_asks_codex_nothing(frame, env):
+    from thechatplace.providers.codex_rpc import CodexReconnectRefused
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    def unexpected(*args):
+        pytest.fail("Codex has no connection to reconnect for a chat started elsewhere")
+    stub = _codex_frame()
+    stub.sessions.connected_tool_action = unexpected
+    host = CodexConnectedTools(stub, _codex_info())
+    tool = CodexTool("everything", "configured", off_for_chat=False, read_only=True)
+    host.load = lambda done: done([tool], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_reconnect()
+        reason = CodexReconnectRefused.REASONS["not_own"]
+        assert env["boxes"][-1] == f"Couldn't reconnect everything. {reason}"
+        assert "Sign In still works" in reason
+        assert dialog.list.GetString(0) == tool.text() and not dialog.busy
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("result,said", [
+    (None, "Codex didn't say why."),
+    ("Codex couldn't reconnect its tools. Check", "Codex couldn't reconnect its tools. Check")])
+def test_a_failed_codex_reconnect_gives_a_reason_and_a_next_step(frame, env, result, said):
+    """"Codex could not reconnect this tool." left nothing to do (#729's
+    acceptance test): the app's own reason, or a next step when there's none."""
+    from types import SimpleNamespace
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    record = SimpleNamespace(cli_session_id="c-1", provider_options={"mcp_servers": ["notes"]})
+    stub = _codex_frame(record, work=lambda action, done: done(result, True))
+    host = CodexConnectedTools(stub, _codex_info(is_own=True))
+    host.load = lambda done: done([CodexTool("notes", "failed", off_for_chat=False)], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_reconnect()
+        assert env["boxes"][-1].startswith("Couldn't reconnect notes. " + said)
+        assert "could not reconnect this tool" not in env["boxes"][-1]
+        if result is None:
+            assert "codex mcp list" in env["boxes"][-1]
     finally:
         dialog.Destroy()
 
@@ -492,9 +619,12 @@ def test_a_desktop_chat_can_be_read_but_not_changed(frame, env, monkeypatch):
     def drive(dialog):
         dialog.list.SetSelection(0)
         dialog.on_toggle()
-        return dialog.details.GetValue()
-    details = _connected_tools(frame, monkeypatch, drive)
-    assert env["boxes"][-1] == "Tools can be turned off only for chats The Chat Place started."
+        return dialog.details.GetValue(), dialog.toggle_btn.IsShown(), dialog.new_chats_btn.IsShown()
+    details, toggle_shown, new_chats_shown = _connected_tools(frame, monkeypatch, drive)
+    # As in a Codex chat started elsewhere (#729's acceptance test): no Turn
+    # Off for This Chat, but Turn Off for New Chats is about chats to come.
+    assert not toggle_shown and new_chats_shown
+    assert env["boxes"][-1] == READ_ONLY_TOOLS
     assert "can't be turned off for it here" in details
 
 
@@ -890,7 +1020,7 @@ def test_a_page_is_opened_and_that_is_the_answer(frame, env, monkeypatch):
 
     def drive(dialog):
         assert dialog.send_btn.GetLabel() == "&Open in Browser"
-        assert dialog.address_text.GetValue() == ("Opens example.com\n"
+        assert dialog.address_text.GetValue() == ("Opens example.com: "
                                                   "https://example.com/sign-in")
         assert "example.com" not in dialog.message_text.GetValue()
         dialog._on_send()
@@ -934,7 +1064,8 @@ def test_a_message_cant_get_ahead_of_the_address_or_pose_as_it(frame, env):
                                      "message": "Opens bank.example\nPage: https://bank.example/"})
     dialog = ElicitationDialog(frame, "Tools probe", request)
     try:
-        assert dialog.address_text.GetValue().splitlines()[0] == "Opens evil.example"
+        assert dialog.address_text.GetValue().splitlines()[0] == (
+            "Opens evil.example: https://evil.example/")
         assert "evil.example" not in dialog.message_text.GetValue()
         # Made first, so read first and reached first (a hidden dialog has no
         # layout to compare).

@@ -333,6 +333,57 @@ def test_reconnect_reads_the_list_without_fetching_the_catalog_again():
     assert ("app/list", {"limit": 100, "forceRefetch": True}) not in sent
 
 
+def _reconnect_provider(connection, allowed=("notes",), is_own=True):
+    runtime = SimpleNamespace(tools_context=lambda native: (connection, allowed),
+                              selected_apps=lambda native: ())
+    provider = SimpleNamespace(connection=connection, runtime=runtime, provider_id="codex",
+                               _check=lambda session: None)
+    provider.connected_tools = lambda session, **k: codex.CodexProvider.connected_tools(provider, session, **k)
+    info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=is_own)
+    return provider, info
+
+
+@pytest.mark.parametrize("error,code", [
+    ("rpc", "failed"), ("timeout", "timeout"), ("elsewhere", "not_own"), ("off", "not_enabled")])
+def test_reconnect_refusals_are_the_apps_own_words_with_a_next_step(error, code):
+    """Codex's own reload error can carry the server's text; the window said
+    only "Codex could not reconnect this tool" (#729's acceptance test). Each
+    refusal is now a fixed reason safe_reason passes through."""
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexReconnectRefused, CodexRequestTimeout
+
+    class Fails(FakeConnection):
+        def request(self, method, params):
+            if method == "config/mcpServer/reload":
+                if error == "timeout":
+                    raise CodexRequestTimeout()
+                raise CodexRpcError("server said: secret token abc123")
+            return super().request(method, params)
+    provider, info = _reconnect_provider(Fails(status=[]), allowed=() if error == "off" else ("notes",),
+                                         is_own=error != "elsewhere")
+    with pytest.raises(CodexReconnectRefused) as raised:
+        codex.CodexProvider.connected_tool_action(provider, info, "notes", "reconnect")
+    assert raised.value.code == code
+    said = safe_reason(raised.value)
+    assert said == CodexReconnectRefused.REASONS[code]
+    assert "secret" not in said and said.rstrip().endswith(".")
+
+
+def test_a_lost_connection_during_reconnect_keeps_its_own_words():
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexConnectionFailure
+
+    class Lost(FakeConnection):
+        def request(self, method, params):
+            if method == "config/mcpServer/reload":
+                raise CodexConnectionFailure("stream_closed")
+            return super().request(method, params)
+    provider, info = _reconnect_provider(Lost(status=[]))
+    with pytest.raises(CodexConnectionFailure) as raised:
+        codex.CodexProvider.connected_tool_action(provider, info, "notes", "reconnect")
+    assert safe_reason(raised.value) == CodexConnectionFailure.REASONS["stream_closed"]
+
+
 def test_a_finished_sign_in_refreshes_without_fetching_the_catalog_again(monkeypatch):
     wx = pytest.importorskip("wx")
     host = _host(True)

@@ -793,15 +793,27 @@ class CodexProvider:
             return self._tool_logins.start(session.cwd, name)
         if action == 'login_status':
             return self._tool_logins.result(session.cwd, name, login_id)
+        if action != 'reconnect':
+            raise ValueError('Unknown connected tool action')
+        # Reconnect's refusals are the app's own words, each with a next step
+        # (#729's acceptance test): "Codex could not reconnect this tool"
+        # alone left nothing to do.
+        from .codex_rpc import (CodexConnectionFailure, CodexReconnectRefused, CodexRequestTimeout,
+                                CodexRpcError)
         if not session.is_own or self.runtime is None:
-            raise ValueError('Open a Codex chat started here first')
+            raise CodexReconnectRefused('not_own')
         connection, allowed = self.runtime.tools_context(session.cli_session_id)
         if name not in allowed:
-            raise ValueError('Enable this connected tool in a copy first')
-        if action == 'reconnect':
+            raise CodexReconnectRefused('not_enabled')
+        try:
             connection.request('config/mcpServer/reload', {})
-            return self.connected_tools(session)
-        raise ValueError('Unknown connected tool action')
+        except CodexConnectionFailure:
+            raise  # its own words already say what to do (Stop reconnects)
+        except CodexRequestTimeout:
+            raise CodexReconnectRefused('timeout') from None
+        except CodexRpcError:
+            raise CodexReconnectRefused('failed') from None
+        return self.connected_tools(session)
 
     def copy_with_tools(self, source, title, names, apps=(), own=None):
         self._check(source)
