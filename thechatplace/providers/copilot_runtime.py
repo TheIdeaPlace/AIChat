@@ -88,6 +88,9 @@ MAX_TEXT_CHARS = 65_536
 MAX_REQUESTS = 8
 #: How long Copilot gets to honour Stop before its process is closed.
 CANCEL_GRACE_SECONDS = 15.0
+#: The most a Stop waits for a prompt on its way to be queued, to say what its
+#: cancel did (#758). Queuing never waits on Copilot, so this is only a guard.
+OWN_CANCEL_WAIT_SECONDS = 10.0
 #: Streamed text is shown at most this often, so a long answer in many tiny
 #: chunks can't flood the window or hold up the reader thread.
 CHUNK_NOTIFY_SECONDS = 0.05
@@ -366,7 +369,8 @@ class Stopped(NamedTuple):
     #: refusal or its process ending return the prompt too.
     answered: bool = False
     #: The turn hadn't decided to send its message: it sees the stop and
-    #: gives the message back unsent, so nothing went to Copilot (#405).
+    #: gives the message back unsent, so nothing went to Copilot (#405). Or
+    #: it had, but the message never went out (#758).
     before_sending: bool = False
     #: A cancel had already gone for this turn, with its timer running: this
     #: Stop sent nothing and left the timer alone, so the forced close comes
@@ -377,6 +381,8 @@ class Stopped(NamedTuple):
 #: What _cancel did.
 CANCEL_SENT, ANSWERED_FIRST, NOT_SENT = "sent", "answered first", "not sent"
 ALREADY_SENT = "already sent"
+#: The turn's prompt never went to Copilot, so there was nothing to cancel.
+NEVER_QUEUED = "never queued"
 
 
 #: Said, and nothing sent, when a chat meant to start in plan mode couldn't.
@@ -1095,6 +1101,10 @@ class _Chat:
         #: first): only then can a Stop's cancel lead to Copilot being
         #: closed, and the window warn that it will be (Kelly, #405).
         self.sending = False
+        #: (turn, what _cancel did) for the cancel a turn sent itself, for a
+        #: Stop that came while its prompt was on its way; NEVER_QUEUED if
+        #: that prompt never went (#758).
+        self.own_cancel: Optional[tuple] = None
         self.context = (0, 0)
         #: Counts compactions (context use dropping sharply), as Codex's state
         #: does, so the window's context warning can be said again after one.
@@ -1267,6 +1277,9 @@ class CopilotChatRuntime:
         self._billing_wait = billing_wait
         self._cancel_grace = cancel_grace
         self._lock = threading.RLock()
+        #: Told when a turn's prompt has gone out with the cancel a Stop left
+        #: to it, or has failed to go: that Stop waits to say which (#758).
+        self._turn_news = threading.Condition(self._lock)
         self._connect_lock = threading.Lock()
         self._connection: Optional[copilot_acp.AcpConnection] = None
         self._chats: Dict[str, _Chat] = {}
@@ -2064,7 +2077,11 @@ class CopilotChatRuntime:
                     chat.preamble = ""  # gone with this prompt
                 cancel = chat.stopping and not chat.answered and chat.turns == turn
             if cancel:
-                self._cancel(chat, connection, turn)
+                sent = self._cancel(chat, connection, turn)
+                with self._lock:
+                    # That Stop is waiting to say whether it went (#758).
+                    chat.own_cancel = (turn, sent)
+                    self._turn_news.notify_all()
         try:
             result = {"stopReason": "cancelled"} if stopped_first else connection.request(
                 "session/prompt", {"sessionId": chat.native_id,
@@ -2102,6 +2119,11 @@ class CopilotChatRuntime:
             if chat.cancel_timer is not None:
                 chat.cancel_timer.cancel()  # it stopped in time
                 chat.cancel_timer = None
+            if not stopped_first and not chat.prompt_queued:
+                # A Stop waiting on a prompt that never went out learns it
+                # here (#758).
+                chat.own_cancel = (turn, NEVER_QUEUED)
+                self._turn_news.notify_all()
         self._notify(chat)  # the window knows Stop has nothing left to cancel
         try:
             self._check_billing(chat, outcome)
@@ -2248,10 +2270,8 @@ class CopilotChatRuntime:
         # A turn that hasn't decided to send will see this stop and give its
         # message back unsent: there's nothing to cancel, and nothing will be
         # closed, so the window mustn't warn that it will be (Kelly, #405).
-        # (The prompt can still fail to go after that, AcpNotSent for a
-        # message too big or too many requests waiting: a moment's gap in
-        # which the warning is said for nothing. Its message comes back
-        # unsent, and says so.)
+        # One that has decided can still fail to send (AcpNotSent: Copilot
+        # closed, or too many requests waiting); _turns_own_cancel finds out.
         before_sending = cancel and not sending
         cancel = cancel and sending
         # Before its prompt is queued, the turn sends the cancel itself, right
@@ -2259,8 +2279,22 @@ class CopilotChatRuntime:
         # first, be ignored, and the timer would close a Copilot that was
         # only answering (Kelly, #372). Or the turn sees the stop before
         # sending, and the message comes back unsent.
-        sent = self._cancel(chat, connection, turn) if cancel and prompt_queued else None
-        if sent == ANSWERED_FIRST:
+        if cancel and prompt_queued:
+            sent = self._cancel(chat, connection, turn)
+        elif cancel:
+            # The prompt is on its way: wait the moment it takes to be
+            # queued, so what's said is what the turn's own cancel did,
+            # never a close threatened for a Copilot that's already closing
+            # (#758).
+            sent = self._turns_own_cancel(chat, turn)
+        else:
+            sent = None
+        if sent == NEVER_QUEUED:
+            # The prompt never went (Copilot closed first, or too much was
+            # waiting): the message comes back unsent, as for a Stop before
+            # the turn decided to send.
+            cancel, before_sending = False, True
+        elif sent == ANSWERED_FIRST:
             # No timer, so nothing will be closed: the window mustn't
             # warn that it will be. Copilot answered first (Kelly, #386).
             cancel, answered = False, True
@@ -2272,6 +2306,31 @@ class CopilotChatRuntime:
         return Stopped(waiting, cancelled=cancel, answered=answered,
                        before_sending=before_sending,
                        already_asked=sent == ALREADY_SENT)
+
+    def _turns_own_cancel(self, chat: _Chat, turn: int) -> Optional[str]:
+        """For a Stop that came while ``turn``'s prompt was on its way: what
+        _cancel did when the turn sent the cancel itself, or NEVER_QUEUED if
+        the prompt never went. Only a moment: between deciding to send and
+        hearing it's queued, the turn waits on nothing (copilot_acp queues
+        without waiting on the pipe), and it tells _turn_news either way. The
+        limit is a guard, not a timing: should it ever pass, None, the old
+        report (a cancel the turn will send)."""
+        deadline = time.monotonic() + OWN_CANCEL_WAIT_SECONDS
+        with self._lock:
+            while True:
+                news = chat.own_cancel
+                if news is not None and news[0] == turn:
+                    if news[1] == CANCEL_SENT:
+                        # A second Stop in the same moment finds the clock
+                        # already running, as it would after this one.
+                        chat.own_cancel = (turn, ALREADY_SENT)
+                    return news[1]
+                if chat.turns != turn:
+                    return ANSWERED_FIRST  # can't be: a turn says before it ends
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return None
+                self._turn_news.wait(left)
 
     def _cancel(self, chat: _Chat, connection, turn: int) -> str:
         """Ask Copilot to cancel ``turn``, and close it if it doesn't stop in
