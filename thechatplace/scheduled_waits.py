@@ -739,7 +739,14 @@ def remember_note(notes: Dict[str, str], key: str, line: str) -> Dict[str, str]:
     kept = dict(notes or {})
     if not key or not line or len(key) > MAX_KEY or len(line) > MAX_NOTE:
         return kept
-    kept.pop(key, None)
+    before = kept.pop(key, None)
+    if before and line not in before:
+        # A second line after the same reply (Part 2: a far check said with
+        # it, then the rest when the chat stopped waiting): both are kept.
+        joined = f"{before} {line}"
+        line = joined if len(joined) <= MAX_NOTE else before
+    elif before:
+        line = before
     kept[key] = line
     while len(kept) > MAX_NOTES:
         kept.pop(next(iter(kept)))

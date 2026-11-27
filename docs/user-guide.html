@@ -593,12 +593,11 @@ not a bill.</p>
   claude.ai or your phone. It copies the conversation to claude.ai, where it stays. See "Remote
   Control".</li>
 </ul>
-<p>Work that runs by itself later doesn't happen in a chat here yet. When Claude sets a check for later
-("I'll look at the pull request again at 2:00 PM", or a <code>/loop</code>) or a watch, the chat ends when
-Claude's reply does, and the check ends with it. You're told when that happens: after the reply you
-hear, for example, "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM
-won't run." To check back, send the chat a message yourself at that time. The Claude desktop app
-has scheduled tasks.</p>
+<p>When Claude sets a check for later in a Claude chat on your subscription ("I'll look at the pull
+request again at 2:00 PM", or a <code>/loop</code>) or a watch, the chat stays open for it while The Chat
+Place is open, and Claude's answer is announced when the check runs. See "Replying" for what you
+hear, and when a check can't be kept. Scheduling your own prompts, and checks that run while The
+Chat Place is closed, aren't something it does yet; the Claude desktop app has scheduled tasks.</p>
 <h2 id="getting-more-out-of-codex">Getting more out of Codex</h2>
 <p>Much of "Getting more out of Claude" is true of Codex too: say what it can't find for itself, say
 how to check the work, and use one chat for one job. These sections are what's different in a Codex
@@ -2367,14 +2366,35 @@ running ("Still running in the background: Windows build"), but the turn stays o
 finishes, Claude carries on by itself, and its next answer is announced as usual. While Claude is
 waiting, what you send goes to it at once instead of being queued. Stop ends the turn and the
 background work with it.</p>
-<p>A check or watch Claude sets for later isn't background work: nothing is running while it waits, so
-the turn still ends with the reply, and the check with it. Once a turn, after the reply, you hear
-which ones won't run: "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM
-won't run." A repeating one is said by how often ("the repeating check Claude set to run every 30
-minutes"), and a watch by what it watches ("the watch Claude started (Watch PR 749) stops"). The
-same line, with the date, stays after that reply in the messages list, in the full message and in
-exports, so it's there when you come back to the chat; Copy Message leaves it out. If the turn was kept open for background work, the line comes when the turn ends, with the
-chat's name.</p>
+<p>Claude can also set a check for later: "I'll look at the pull request again at 2:00 PM", a <code>/loop</code>,
+or a watch on a command's output. In a Claude chat on your subscription, the chat stays open for it
+while The Chat Place is open. You hear the reply and what's next ("Scheduled check at 2:00 PM", or
+"Scheduled check at 1:30 PM, and every 30 minutes after that"). The chat's row stays working,
+with "next check at 2:00 PM" (or "watching: Watch PR 749") as its detail, and Turn Status
+(Ctrl+Shift+T) and Properties (Alt+Enter) say each check that's waiting. At that time Claude
+starts by itself, the row says it's working, and its answer is announced like any reply, with
+"scheduled check" before it: "PR 749, scheduled check: The checks passed." The finished sound
+plays, and a notification appears if The Chat Place isn't in front. If the check needs your
+permission, it asks as any turn does and waits for you, however long that takes; nothing is
+answered for you. Once nothing more is waiting, the chat closes as usual. What you send meanwhile
+goes to Claude at once, and the checks stay set.</p>
+<p>Each check is held to the same rules as a message you send: the same sign-in, never an API key in
+your environment, and never usage credits unless you said yes for that message, as Send asks. If
+one of those is wrong when a check starts, it's stopped and you hear why.</p>
+<p>A check isn't kept, and you hear which ones won't run when Claude's reply ends, when:
+- the chat is on API credits: "This chat ends when Claude's reply does, so the check Claude set
+  for 2:00 PM won't run";
+- as many chats as Settings allows are already waiting (5 at first; see "Settings");
+- it's more than 7 days away: "That's more than 7 days away, too long to keep the chat open, so
+  the check Claude set for 2:00 PM on Thursday, December 10 won't run."</p>
+<p>A repeating one is said by how often ("the repeating check Claude set to run every 30 minutes"),
+and a watch by what it watches ("the watch Claude started (Watch PR 749) stops"). Stop ends the
+chat's checks too, and says so first: "Stopping ends the check Claude set for 2:00 PM too." There's
+no stopping one check alone; ask Claude to cancel it. Quitting asks first, as it does when work is
+running: "1 chat has scheduled checks, which won't run if you quit. Quit anyway?", with No as the
+default. The line saying which checks won't run stays after that reply, with the date, in the
+messages list, in the full message and in exports, so it's there when you come back to the chat;
+Copy Message leaves it out. Checks only run while The Chat Place is open.</p>
 <p>To end just one piece of background work and keep the turn, choose
 <strong>Chat, Stop Background Task</strong>, just below Stop Running Turn. It's available while the loaded Claude chat has background work running. It lists each
 one with how long it has run ("Windows build, running 3 minutes"); choose one, press Enter, and
@@ -3135,6 +3155,11 @@ setting moves straight to it.</p>
 - <strong>Clear Recent Folders</strong> (Alt+L) asks first, with No as the default, and then clears the list
   at once: Cancel in Settings doesn't bring it back. A folder comes back when a chat works in it
   again.
+- <strong>Claude chats kept open at once for checks Claude sets for later</strong> (no access key; Tab to it):
+  how many Claude chats can stay open waiting for a check Claude set, 5 at first, up to 20; 0 keeps
+  none open. Each waiting chat keeps its own copy of Claude Code running, about 250 MB of memory.
+  A chat past the limit ends with its reply, and you hear which checks won't run. It counts for the
+  next chat that sets one. See "Replying".
 - <strong>Turn on Remote Control for The Chat Place's sessions</strong> (Alt+U): Claude chats started here
   only, and off at first. It counts from each chat's next turn. Session, Remote Control can set one
   chat on or off instead (see "Remote Control").

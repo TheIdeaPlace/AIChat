@@ -324,8 +324,15 @@ class FakeRunner:
     def __init__(self, command, cwd, prompt, on_event, images=None, remote_control=None,
                  task_list=False, mcp_config=None, disabled_mcp=(), context_usage=False,
                  billing="subscription", api_key_name="", ledger=None, chat_id="",
-                 purpose="turn", cost_baselines=None, suggestions=False, allow_overage=False):
+                 purpose="turn", cost_baselines=None, suggestions=False, allow_overage=False,
+                 wait_slots=None):
         self.allow_overage = allow_overage  # usage credits for this turn (#722)
+        # Kept open for Claude's waits (#749, Part 2): a test sets
+        # ``waiting_for_waits`` and ``held`` (the waits holding it).
+        self.wait_slots = wait_slots
+        self.waiting_for_waits = False
+        self.held = []
+        self.pending_waits = []
         self.command, self.cwd, self.prompt, self.on_event = command, cwd, prompt, on_event
         self.suggestions = suggestions  # prompt suggestions asked for (#474)
         # How the turn is charged (#658), as the window asked.
@@ -391,11 +398,19 @@ class FakeRunner:
         return ([("steer", text) for text in self.steering]
                 + [("now", text) for text in getattr(self, "now_untaken", [])])
 
+    @property
+    def kept_open(self):
+        return self.waiting_on_background or self.waiting_for_waits
+
+    def held_waits(self):
+        return list(self.held)
+
     def send_follow_up(self, prompt, images=None):
-        if not self.waiting_on_background:
+        if not (self.waiting_on_background or self.waiting_for_waits):
             return False
         self.follow_ups = getattr(self, "follow_ups", []) + [(prompt, images)]
         self.waiting_on_background = False
+        self.waiting_for_waits = False
         return True
 
     def _control(self, subtype, value, on_done):

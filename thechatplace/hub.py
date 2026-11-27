@@ -56,11 +56,12 @@ def collect(own: Iterable[OwnSession], running_own_ids: Set[str],
             started=platform_paths.process_start,
             order: str = SORT_STATUS,
             last_messages: bool = False,
-            background: Optional[Set[str]] = None) -> Snapshot:
+            background=None) -> Snapshot:
     """``waiting`` maps a running own session to what Claude is waiting for
     (a permission request, question or plan): it needs you, not working.
     ``background``: running own sessions where Claude has answered and the
-    turn is open only for background work (#161).
+    turn is open only for background work (#161), or for Claude's waits
+    (#749); a set, or a dict giving each its row's detail.
     ``order`` is how the list is sorted (see ``sessions.SORT_ORDERS``).
     ``last_messages`` fills in each session's Last message column (#146):
     only while that column is shown, since it reads every transcript."""

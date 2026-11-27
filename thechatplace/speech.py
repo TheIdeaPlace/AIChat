@@ -233,6 +233,10 @@ class SpeechSettings:
     last_run_version: str = ""
     #: How many recent folders New Session offers (#215); 0 offers none.
     recent_folder_limit: int = 20
+    #: How many Claude chats may stay open at once for the checks Claude set
+    #: for later (#749): the rest end with the reply, saying which won't run.
+    #: 0 keeps none open. Default in ``scheduled_waits.DEFAULT_WAIT_LIMIT``.
+    wait_limit: int = 5
     #: Claude connected tools that new chats start without and that are never
     #: warned about (Connected Tools, Turn Off for New Chats). The server names.
     mcp_off_for_new_chats: List[str] = field(default_factory=list)
@@ -377,6 +381,11 @@ class SpeechSettings:
         limit = raw.get("recent_folder_limit", RECENT_LIMIT)
         settings.recent_folder_limit = limit if isinstance(limit, int) \
             and not isinstance(limit, bool) and 0 <= limit <= RECENT_MAX else RECENT_LIMIT
+        from .scheduled_waits import DEFAULT_WAIT_LIMIT, MAX_WAIT_LIMIT
+        waits = raw.get("wait_limit", DEFAULT_WAIT_LIMIT)
+        settings.wait_limit = waits if isinstance(waits, int) \
+            and not isinstance(waits, bool) and 0 <= waits <= MAX_WAIT_LIMIT \
+            else DEFAULT_WAIT_LIMIT
         from .claude_mcp import is_safe_server_name
         names = raw.get("mcp_off_for_new_chats")
         settings.mcp_off_for_new_chats = list(dict.fromkeys(

@@ -8,8 +8,6 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-import pytest
-
 from thechatplace import claude_cli as cli
 from thechatplace import scheduled_waits as sw
 from thechatplace.billing import ROUTE_API
@@ -18,7 +16,7 @@ from thechatplace.scheduled_waits import CRON, WAKEUP, WATCH, Wait, WaitSlots
 
 from test_claude_cli import FAKE_CLAUDE, FakeTimers
 
-#: A Thursday afternoon: Nov 27 2026 at 1:00 PM local time.
+#: A Friday afternoon: Nov 27 2026 at 1:00 PM local time.
 NOW = datetime(2026, 11, 27, 13, 0)
 #: A one-time timer due a minute from NOW, so its wake (at NOW) is its own.
 SOON = "1 13 27 11 *"
@@ -137,6 +135,37 @@ def test_the_lines_for_a_far_check_and_a_chat_that_stopped_waiting():
     for line in (sw.lost_sentence([far], NOW, dated=True, start=sw.far_start()),
                  sw.lost_sentence([far], NOW, dated=True, start=sw.ENDED_START)):
         assert sw.clean_notes({"m": line}) == {"m": line}
+
+
+def test_a_scheduled_checks_answer_is_announced_as_one():
+    from thechatplace import announce
+    assert announce.reply_text("PR 749", "The checks passed.", announce.ANNOUNCE_FULL,
+                               woke=True) == "PR 749, scheduled check: The checks passed."
+    assert announce.reply_text("PR 749", "The checks passed. All green.",
+                               announce.ANNOUNCE_SUMMARY, cost="6 cents", woke=True) == (
+        "PR 749, scheduled check, 6 cents: The checks passed. 5 words.")
+    assert announce.reply_text("PR 749", "x", announce.ANNOUNCE_SILENT, woke=True) is None
+
+
+def test_properties_say_what_a_kept_chat_waits_for(tmp_path):
+    from thechatplace import properties
+    from thechatplace.own_store import OwnSession
+    own = OwnSession("chat-1", "PR 749", str(tmp_path))
+    lines = properties.session_properties(own.to_info(), own=own, now_ms=0,
+                                          waits="Scheduled check at 2:00 PM.")
+    status = next(i for i, line in enumerate(lines) if line.startswith("Status: "))
+    assert lines[status + 1] == "Waiting for: Scheduled check at 2:00 PM."
+    assert not any(line.startswith("Waiting for:")
+                   for line in properties.session_properties(own.to_info(), own=own, now_ms=0))
+
+
+def test_two_lines_after_one_reply_are_both_kept():
+    far = sw.lost_sentence([cron("0 14 10 12 *")], NOW, start=sw.far_start())
+    ended = sw.lost_sentence([cron("*/30 * * * *", recurring=True)], NOW, start=sw.ENDED_START)
+    notes = sw.remember_note(sw.remember_note({}, "m1", far), "m1", ended)
+    assert notes == {"m1": f"{far} {ended}"}
+    assert sw.remember_note(notes, "m1", ended) == notes      # not twice
+    assert sw.clean_notes(notes) == notes
 
 
 def test_wait_slots_follow_the_setting_and_free_on_release():

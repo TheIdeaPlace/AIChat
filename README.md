@@ -388,7 +388,9 @@ too).
   or not, takes it off the list, and the next folder takes its place; a folder you've taken off
   comes back once a session works in it again. Delete still edits a folder you're typing.
   Settings (Ctrl+Comma) sets how many recent folders the list offers (20 at first; 0 for none)
-  and has Clear Recent Folders (Alt+L), which asks first and then takes them all off.
+  and has Clear Recent Folders (Alt+L), which asks first and then takes them all off. Just below,
+  it sets how many Claude chats can stay open at once for checks Claude sets for later (5 at
+  first, up to 20; 0 for none; #749).
   Browse (Alt+B) still opens a folder dialog. **From GitHub** (Alt+G) lists your
   repositories with `gh repo list` (the GitHub CLI's own sign-in; The Chat Place keeps no token)
   and says how many there are, or in the list why it couldn't get them. Type to filter, or type
@@ -2302,25 +2304,52 @@ may not be read out until later.)
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
 Claude's timers and watches are different again (#749): a `CronCreate` ("check again at 2 PM"),
-`ScheduleWakeup` (`/loop`) or `Monitor` isn't a running task (a Monitor is an *ambient* one, which
-the turn doesn't wait for), so the turn still ends with the reply and they end with `claude`. The
-runner records each top-level call once its result comes back without an error (`CronDelete`
-removes a job by the id CronCreate's result named; a ScheduleWakeup replaces the last one, and
-`stop` ends it; a Monitor that leaves the background list has ended; a turn Claude Code starts
-for a timer, `command_lifecycle` with a `wakeup_source`, means the one-time ones due by then ran)
-as `pending_waits`, with a `waits` event after each change, and puts them on the turn's last
-event. The window then says, once per turn, after however the turn ended: "This chat ends when
-Claude's reply does, so the check Claude set for 2:00 PM won't run." A one-time timer's time is
-worked out from its cron expression in local time, or now plus `delaySeconds`; one whose time
-passed with no wake seen may never have fired, so it's still named. A repeating one is named in
-plain words ("the repeating check Claude set to run every 30 minutes"), never as cron text, and a
-watch by its description ("the watch Claude started (Watch PR 749) stops"). The notification gives
-the reply's first sentence and then the line, so a long reply can't push it out. The line is kept
-after that reply, with the date even for a time today (by its message id, in The Chat Place's own
-store as `reply_notes`, never in the transcript), so the messages list, the full message, Find and
-exports show it later; Copy Message leaves it out. If the turn waited for background work, the
-line comes when the turn ends, with the chat's name. Keeping the process open for these waits is
-#749's Part 2.
+`ScheduleWakeup` (`/loop`) or `Monitor` isn't a running task, so #161 can't see it. (In Claude
+Code 2.1.331 a Monitor's task is listed as `local_bash`, not ambient, so it does keep the turn open
+as background work; one listed as *ambient* is kept only while it's listed.) The runner records
+each top-level call once its result comes back without an error (`CronDelete` removes a job by the
+id CronCreate's result named; a ScheduleWakeup replaces the last one, and `stop` ends it, its time
+read from the result's "(in 97s)", as Claude Code rounds the delay up to a whole minute; a Monitor
+that leaves the background list has ended; a turn Claude Code starts for a timer, `command_lifecycle`
+with a `wakeup_source` of `schedule_wakeup` for a CronCreate or `loop_wakeup` for a ScheduleWakeup,
+means the one due by then ran) as `pending_waits`, with a `waits` event after each change.
+**Keeping the process open (Part 2).** A Claude turn on the subscription that's answered and idle,
+with no background work but with waits due within 7 days (`scheduled_waits.MAX_HOLD_DAYS`; a
+watch only while it's listed; a repeating timer until Claude Code's 30-day expiry), isn't closed:
+`_end_or_wait` says "scheduled", and the turn waits, "waiting for a scheduled check", for as long as
+something holds it, up to Settings' limit on chats kept open at once (5 at first,
+`SpeechSettings.wait_limit`, shared through `scheduled_waits.WaitSlots`). The reply is said then,
+with what's next ("Scheduled check at 2:00 PM"), and the row's detail is "answered, next check at
+2:00 PM" (or "watching: …"); Turn Status and Properties say each wait. When Claude Code starts a
+turn by itself, `command_lifecycle` `started` becomes a `woke` event: the row says it's working,
+and its answer is said as "Title, scheduled check: …", with the finished sound and a notification.
+That turn's own `system/init` gets every check a sent turn's does (`source_problem` on
+`apiKeySource`, Fable), and usage credits are checked against the last rate-limit report and never
+allowed for it (a yes was for one message); a problem ends the process and says why, and nothing
+goes back to the reply box. A permission it asks for waits for you, however long. Each answer
+Claude gives by itself while a turn is kept open (a check's, a watch's news, a background agent's
+follow-up) is said as it comes, not only the last. What you send meanwhile goes straight in, as
+with background work. Once nothing holds it, the process closes as before; one-time waits whose
+time passed 10 minutes ago with no wake stop holding it, checked by a timer. API-credit chats
+never keep waits: a process has one reservation and one `--max-budget-usd`, so a wake couldn't
+be given a fresh, checked budget. Stop ends the process and every wait, saying first "Stopping
+ends the check Claude set for 2:00 PM too."; quitting adds "1 chat has scheduled checks, which
+won't run if you quit." to the "Work is running" question (its answers and default unchanged).
+**Saying what won't happen.** When a wait can't be kept (an API-credit chat, the limit reached),
+the window says, once per turn, after however the turn ended: "This chat ends when Claude's reply
+does, so the check Claude set for 2:00 PM won't run." One more than 7 days away is said with the
+reply instead ("That's more than 7 days away, too long to keep the chat open, so …"), and a chat
+that was kept open and then ended (Stop, quitting, Claude Code exiting, a check that never came)
+says "This chat stopped waiting, so …". A one-time timer's time is worked out from its cron
+expression in local time, or from the wakeup's result; one whose time passed with no wake seen may
+never have fired, so it's still named. A repeating one is named in plain words ("the repeating
+check Claude set to run every 30 minutes"), never as cron text, and a watch by its description
+("the watch Claude started (Watch PR 749) stops"). The notification gives the reply's first
+sentence and then the line, so a long reply can't push it out. The line is kept after that reply,
+with the date even for a time today (by its message id, in The Chat Place's own store as
+`reply_notes`, never in the transcript), so the messages list, the full message, Find and exports
+show it later; Copy Message leaves it out. If the turn waited for background work, the line comes
+when the turn ends, with the chat's name.
 **Chat, Stop Background Task** (just below Stop Running Turn) ends one of them and keeps the turn: it's available while the
 loaded Claude chat has background work, lists each piece with how long it has run ("Windows
 build, running 3 minutes"), asks Yes or No (No first) naming the one chosen, and says "Stopped

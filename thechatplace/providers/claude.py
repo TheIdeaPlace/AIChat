@@ -55,9 +55,13 @@ class ClaudeProvider:
             if item.cli_session_id in running_own_ids and waiting.get(item.cli_session_id):
                 info.state, info.detail = NEEDS_YOU, waiting[item.cli_session_id]
             elif item.cli_session_id in running_own_ids:
-                info.state, info.detail = WORKING, (
-                    "answered, background work running"
-                    if item.cli_session_id in (background or ()) else "")
+                # ``background`` may give each its own detail: a chat kept
+                # open for Claude's waits says the next one (#749).
+                detail = ""
+                if item.cli_session_id in (background or ()):
+                    detail = (background.get(item.cli_session_id) if isinstance(background, dict)
+                              else "") or "answered, background work running"
+                info.state, info.detail = WORKING, detail
             elif (live.get(item.cli_session_id) is not None
                   and live[item.cli_session_id].status == "busy"):
                 # Someone resumed it elsewhere (a terminal); it is busy there.

@@ -190,7 +190,7 @@ class RelayChats:
         if info.provider == "claude":
             runner = self._runners.get(info.cli_session_id)
             if runner is not None:
-                return not runner.waiting_on_background
+                return not self._kept_open(runner)
         elif info.provider in ("codex", "codex-api", "copilot"):
             state = self._codex_states.get(info.key)
             if state is not None:
