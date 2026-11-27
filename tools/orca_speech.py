@@ -13,7 +13,9 @@ and runs in CI (#230).
 
 Orca 46 took new objects for dead ones now and then, and said nothing about
 them, which failed a different step on each run; tools/orca-customizations.py
-puts that right, and the report says how often it did (#579).
+puts that right, and the report says how often it did (#579). It also stops
+Orca 46 quietly moving its focus into a dialog a key has just opened, which
+left the dialog's first control unsaid now and then (#751).
 
 ``orca_speech.sh`` makes the session bus, virtual screen and accessibility bus
 and then runs ``check`` here. ``check`` starts Orca with a debug log, starts
@@ -70,6 +72,12 @@ START_TIMEOUT = 60.0
 #: and each time it puts right a live object Orca 46 took for dead (#579).
 LOADED = "TCP #579: dead objects are asked again"
 CORRECTED = "TCP #579: an object Orca had taken for dead answers"
+#: What it writes as it loads its other correction, and each time that one
+#: acts: Orca 46 had a window for the focus while handling a key, and was kept
+#: from quietly moving to the control focused in it, which then went unsaid
+#: (#751).
+KEY_LOADED = "TCP #751: no quiet move of the focus from a window on a key"
+KEY_KEPT = "TCP #751: the focus stays on the window while Orca handles a key"
 #: More corrections than this in one step is warned about. Six runs of every
 #: step (#605) made 16 to 27 a run, none more than 8 in a step (Backup
 #: Schedule), nearly all as a dialog opened: three times that is a real change.
@@ -1071,7 +1079,8 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
                          "passed": not missing and not refused,
                          "started": time.strftime("%H:%M:%S", time.localtime(started)),
                          "seconds": round(took, 1),
-                         "corrected": log.count_since(before, CORRECTED)})
+                         "corrected": log.count_since(before, CORRECTED),
+                         "focus_kept": log.count_since(before, KEY_KEPT)})
         # As it goes: a job that runs out of time keeps no report at the end.
         # The time it started finds the step in Orca's debug log (--keep).
         print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
@@ -1118,6 +1127,23 @@ def orca_corrections(text: str, results: List[dict],
     return lines
 
 
+def key_focus_kept(text: str, results: List[dict]) -> List[str]:
+    """How often tools/orca-customizations.py kept Orca 46 from quietly
+    moving its focus from a window to the control in it while handling a key
+    (#751), and the failed steps it did so in. Most of its acts are Escape or
+    Return closing a dialog, harmless either way, so a failed step named here
+    is worth a look in Orca's log, not proof of this."""
+    if KEY_LOADED not in text:
+        return ["Orca's quiet focus moves on a key weren't stopped: later Orca doesn't make "
+                "them, and Orca 46 needs tools/orca-customizations.py to have loaded."]
+    lines = [f"Orca had a window for the focus while handling a key {text.count(KEY_KEPT)} "
+             "times, and was kept from moving quietly to the control in it "
+             "(tools/orca-customizations.py, #751)."]
+    lines += [f"  {r['focus_kept']:5}  {r['step']} (failed)" for r in results
+              if r.get("focus_kept") and not r.get("passed", True)]
+    return lines
+
+
 def check(args) -> int:
     for tool in ("orca", "xdotool"):
         if not shutil.which(tool):
@@ -1155,6 +1181,7 @@ def check(args) -> int:
     print(text)
     debug_text = log_path.read_text("utf-8", "replace") if log_path.exists() else ""
     print("\n".join(orca_corrections(debug_text, results)))
+    print("\n".join(key_focus_kept(debug_text, results)))
     if args.json:
         Path(args.json).write_text(json.dumps({"orca": list(version), "steps": results},
                                               indent=2), encoding="utf-8")
