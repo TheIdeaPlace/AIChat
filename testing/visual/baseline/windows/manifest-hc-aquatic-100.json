@@ -2162,7 +2162,22 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex Connected Tools when Codex couldn't list apps"
+  },
+  "usage-credits": {
+   "kind": "dialog",
+   "png": "usage-credits-hc-aquatic-100.png",
+   "json": "usage-credits-hc-aquatic-100.json",
+   "title": "Use usage credits?",
+   "class": "UsageCreditsDialog",
+   "size": [
+    520,
+    129
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Use usage credits? when a Fable turn would be charged to usage credits, Cancel default (#722)"
   }
  },
- "seconds": 280.2
+ "seconds": 280.2,
+ "complete": false
 }

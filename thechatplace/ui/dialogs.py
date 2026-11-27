@@ -82,6 +82,64 @@ class UnpricedApiDialog(wx.Dialog):
         wx.CallAfter(self.warning.SetFocus)
 
 
+class UsageCreditsDialog(wx.Dialog):
+    """ "Use usage credits?" (#722): asked when you send to a subscription
+    chat on Fable once its turns are charged to usage credits. Ends with
+    wx.ID_YES for Use Usage Credits, wx.ID_NO for Change Model, and
+    wx.ID_CANCEL for Cancel, Escape or closing it.
+
+    The app's own dialog, not a native message box, so that Cancel is the
+    default button and has the focus on every platform: nobody could confirm
+    that a Mac honors CANCEL_DEFAULT on a Yes/No/Cancel box, and Return there
+    would have spent. Use Usage Credits has no access key, so a stray key
+    can't spend either. The question is the dialog's text, which JAWS and
+    NVDA read as it opens; VoiceOver and Orca read only the focused control,
+    so on a Mac it's Cancel's help as well, and on Linux its description."""
+
+    TITLE = "Use usage credits?"
+    CREDITS_LABEL = "Use Usage Credits"  # no "&", on purpose
+    MODEL_LABEL = "Change &Model"
+
+    def __init__(self, parent, question: str):
+        super().__init__(parent, title=self.TITLE, size=dialog_size(parent, 520, 200),
+                         style=wx.DEFAULT_DIALOG_STYLE)
+        margin = dip_width(self, 12)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.question = WrappingText(self, question)
+        sizer.Add(self.question, 0, wx.EXPAND | wx.ALL, margin)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.credits = wx.Button(self, wx.ID_YES, self.CREDITS_LABEL)
+        row.Add(self.credits, 0, wx.RIGHT, dip_width(self, 8))
+        self.change_model = wx.Button(self, wx.ID_NO, self.MODEL_LABEL)
+        row.Add(self.change_model, 0, wx.RIGHT, dip_width(self, 8))
+        self.cancel = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        row.Add(self.cancel, 0)
+        sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, margin)
+        self.SetSizer(sizer)
+        _fit_width(self)
+        _fit_height(self)
+        self.cancel.SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL)
+        mac_a11y.set_help(self.cancel, question)
+        # Orca too read only the title and Cancel as it opened, even with the
+        # dialog given the alert role GTK's message boxes have (CI on #745),
+        # so there the question is Cancel's description.
+        gtk_a11y.set_description(self.cancel, question)
+        for button in (self.credits, self.change_model):
+            button.Bind(wx.EVT_BUTTON, lambda e, code=button.GetId(): _end_modal(self, code))
+        # No press_focused_button_on_a_mac here: on a Mac, AppKit gives Return
+        # to the default button's key equivalent before any control sees it,
+        # so Return always cancels there, even on Use Usage Credits, which
+        # only Space presses. The safe way round, and left so.
+        self.CentreOnParent()
+        self.cancel.SetFocus()
+        wx.CallAfter(self._focus_cancel)
+
+    def _focus_cancel(self):
+        if self:
+            self.cancel.SetFocus()
+
+
 class ShortcutsDialog(wx.Dialog):
     def __init__(self, parent, keys=None):
         super().__init__(parent, title="Keyboard Shortcuts", size=dialog_size(parent, 620, 520),
@@ -3702,16 +3760,24 @@ class QuestionDialog(wx.Dialog):
                 in zip(self._controls, self._questions)}
 
 
+#: PlanDialog's answers (#738): carry on in the chosen mode, the plan is
+#: right but don't start on it, or keep planning.
+PLAN_APPROVE, PLAN_HOLD, PLAN_KEEP = "approve", "hold", "keep"
+ID_PLAN_HOLD = wx.NewIdRef()
+
+
 class PlanDialog(wx.Dialog):
     """Claude's plan, to read, then Approve (choosing the permission mode to
-    carry on in) or Keep Planning with a note. Keep Planning is the default
-    button: approving starts real changes, so it needs a deliberate press."""
+    carry on in), Approve, Don't Start (the plan is right, but Claude stays in
+    plan mode, #738), or Keep Planning with a note. Keep Planning is the
+    default button: approving starts real changes, so it needs a deliberate
+    press, and Enter never approves anything."""
 
     def __init__(self, parent, session_title: str, request, modes, default_mode: str):
         super().__init__(parent, title=f"Claude's plan: {session_title}", size=dialog_size(parent, 760, 600),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._modes = list(modes)  # (value, label)
-        self.approved = False
+        self.result = PLAN_KEEP
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Plan:"), 0, wx.LEFT | wx.TOP, 8)
         self.plan_text = _read_only_text(self, request.plan() or "(Claude sent no plan text.)",
@@ -3720,20 +3786,24 @@ class PlanDialog(wx.Dialog):
 
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
         grid.AddGrowableCol(1, 1)
-        grid.Add(wx.StaticText(self, label="If approved, carry on &in:"), 0,
+        # "Approve", not "If approved": Approve, Don't Start leaves the mode
+        # alone (#738).
+        grid.Add(wx.StaticText(self, label="With Approve, carry on &in:"), 0,
                  wx.ALIGN_CENTER_VERTICAL)
         self.mode = wx.Choice(self, choices=[label for _v, label in self._modes])
-        set_accessible_name(self.mode, "If approved, carry on in")
+        set_accessible_name(self.mode, "With Approve, carry on in")
         values = [v for v, _l in self._modes]
         self.mode.SetSelection(values.index(default_mode) if default_mode in values else 0)
         grid.Add(self.mode, 1, wx.EXPAND)
-        grid.Add(wx.StaticText(self, label="&What to change (for Keep Planning):"), 0,
+        # Sent with Keep Planning, or after the fixed message with Approve,
+        # Don't Start ("file it as an issue", #738).
+        grid.Add(wx.StaticText(self, label="&Note (for Keep Planning or Don't Start):"), 0,
                  wx.ALIGN_TOP)
         # A few lines: Shift+Enter starts a new one, Enter still presses
         # Keep Planning (answer_box_key).
         self.note = wx.TextCtrl(self, style=ANSWER_BOX_STYLE)
         self.note.SetMinSize(dip(self, -1, ANSWER_BOX_HEIGHT))
-        set_accessible_name(self.note, "What to change (for Keep Planning)")
+        set_accessible_name(self.note, "Note (for Keep Planning or Don't Start)")
         grid.Add(self.note, 1, wx.EXPAND)
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -3746,6 +3816,8 @@ class PlanDialog(wx.Dialog):
             self.formatted_button.Bind(wx.EVT_BUTTON, lambda e: self._read_formatted(request))
         approve = wx.Button(self, ID_ALLOW, "&Approve")
         row.Add(approve, 0, wx.RIGHT, 6)
+        hold = wx.Button(self, ID_PLAN_HOLD, "Approve, &Don't Start")
+        row.Add(hold, 0, wx.RIGHT, 6)
         keep = wx.Button(self, ID_DENY, "&Keep Planning")
         keep.SetDefault()
         row.Add(keep, 0, wx.RIGHT, 6)
@@ -3753,9 +3825,10 @@ class PlanDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        approve.Bind(wx.EVT_BUTTON, lambda e: self._finish(True))
-        keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(False))
-        self.keep_button = keep
+        approve.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_APPROVE))
+        hold.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_HOLD))
+        keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_KEEP))
+        self.approve_button, self.hold_button, self.keep_button = approve, hold, keep
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         wx.CallAfter(self.plan_text.SetFocus)
 
@@ -3763,8 +3836,13 @@ class PlanDialog(wx.Dialog):
         if not answer_box_key(event, [self.note], self.keep_button):
             event.Skip()
 
-    def _finish(self, approved: bool):
-        self.approved = approved
+    @property
+    def approved(self) -> bool:
+        """Approved to carry on in the chosen mode (not Don't Start)."""
+        return self.result == PLAN_APPROVE
+
+    def _finish(self, result: str):
+        self.result = result
         self.EndModal(wx.ID_OK)
 
     def _read_formatted(self, request):
@@ -7043,7 +7121,7 @@ class ChatOptionsDialog(wx.Dialog):
                  billing: str = "subscription"):
         from ..chat_options import ChatOptions
         super().__init__(parent, title=f"Chat Options: {chat_title}" if chat_title
-                         else "Chat Options", size=dialog_size(parent, 620, 600),
+                         else "Chat Options", size=dialog_size(parent, 620, 670),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._provider = provider
         self._folder = folder
@@ -7069,6 +7147,13 @@ class ChatOptionsDialog(wx.Dialog):
         self.agent = wx.Choice(self)
         set_accessible_name(self.agent, "Run as agent")
         grid.Add(self.agent, 1, wx.EXPAND)
+        # The chosen agent's whole description, to read by line: the list
+        # names the agent only, as a description cut to fit it stopped
+        # mid-word ("searching for c…").
+        grid.Add(wx.StaticText(self, label="Agent descri&ption:"), 0, wx.ALIGN_TOP)
+        self.agent_about = _read_only_text(self, "", "Agent description", min_height=60)
+        grid.Add(self.agent_about, 1, wx.EXPAND)
+        self.agent.Bind(wx.EVT_CHOICE, lambda e: self._show_agent_about())
         grid.Add(wx.StaticText(self, label="Output &style:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.style = wx.Choice(self)
         set_accessible_name(self.style, "Output style")
@@ -7173,6 +7258,24 @@ class ChatOptionsDialog(wx.Dialog):
                           else style)
         self.style.Set(labels)
         self.style.SetSelection(self._style_values.index(style))
+        self._show_agent_about()
+
+    def _show_agent_about(self):
+        """The Agent Description box, for the agent chosen."""
+        from ..chat_options import AGENT_LOADING_ABOUT, AGENT_NONE_ABOUT, AGENT_UNKNOWN_ABOUT
+        name = self._agent_values[max(0, self.agent.GetSelection())]
+        agents = self._choices.agents if self._choices is not None else ()
+        agent = next((a for a in agents if a.name == name), None)
+        if not name:
+            text = AGENT_NONE_ABOUT
+        elif agent is not None:
+            text = agent.about()
+        elif self._choices is None:
+            text = AGENT_LOADING_ABOUT
+        else:
+            text = AGENT_UNKNOWN_ABOUT
+        self.agent_about.ChangeValue(text)
+        self.agent_about.SetInsertionPoint(0)
 
     def _choices_loaded(self, choices):
         if not self or self.IsBeingDeleted():

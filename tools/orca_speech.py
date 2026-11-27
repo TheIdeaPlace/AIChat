@@ -233,6 +233,27 @@ STEPS = [
     Step('Price unknown asks again', [], trigger='openai-unpriced-confirm',
          expect=['Price unknown warning', 'This spends OpenAI API credits']),
     Step('Price unknown Enter cancels', ['Return'], expect=['Messages in Visual probe']),
+    # "Use usage credits?" (#722), asked through the app's own _ask_overage,
+    # whose answer the trigger then says: it opens on Cancel, the default;
+    # Tab goes round the three buttons; Escape and Return both cancel.
+    Step("Use usage credits question", [], trigger="usage-credits",
+         expect=["Use usage credits?", "Turns on Fable are now charged to usage credits",
+                 "Cancel", "push button"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Use usage credits, Tab to Use Usage Credits", ["Tab"],
+         expect=["Use Usage Credits", "push button"]),
+    Step("Use usage credits, Change Model", ["Tab"], expect=["Change Model", "push button"]),
+    Step("Use usage credits, back to Cancel", ["Tab"], expect=["Cancel", "push button"]),
+    # The refusals tell a wrong answer on an Orca before 49 too, which says
+    # the answer only from the active window, if at all.
+    Step("Use usage credits, Escape cancels", ["Escape"], expect=["Messages in Visual probe"],
+         expect_dbus=["Usage credits answer: cancel"],
+         refuse=["answer: credits", "answer: model"]),
+    Step("Use usage credits asks again", [], trigger="usage-credits",
+         expect=["Use usage credits?", "Cancel", "push button"]),
+    Step("Use usage credits, Return cancels", ["Return"], expect=["Messages in Visual probe"],
+         expect_dbus=["Usage credits answer: cancel"],
+         refuse=["answer: credits", "answer: model"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -327,7 +348,8 @@ STEPS = [
     Step("Close Codex Change Permission Mode in Plan", ["Escape"], expect=["Messages in Visual probe"]),
     # Chat Options (#468), opened by the trigger: opened from the menu, the
     # menu's closing put Orca's reading a Tab behind on GTK. It opens on Run
-    # as agent, and Tab goes through every control in turn. The
+    # as agent, and Tab goes through every control in turn, the agent's
+    # description box (#664) next. The
     # list has no folders yet, so its one row says so. Add Folder's picker
     # comes back to Add Folder, as there's no folder to go to in the list.
     Step("Codex Chat Options", [], trigger="codex-chat-options",
@@ -337,6 +359,7 @@ STEPS = [
     Step("Close Codex Chat Options", ["Escape"]),
     Step("Chat Options", [], trigger="chat-options", expect=["Chat Options: Visual probe", "Run as agent"],
          refuse=["unlabeled", "unlabelled"]),
+    Step("Chat Options, agent description", ["Tab"], expect=["Agent description"]),
     Step("Chat Options, output style", ["Tab"], expect=["Output style"]),
     Step("Chat Options, instructions", ["Tab"], expect=["Instructions for this chat"]),
     Step("Chat Options, more folders", ["Tab"], expect=["No more folders"]),
@@ -851,6 +874,14 @@ def refresh(frame) -> None:
                   timeout=10)
 
 
+def usage_credits(frame) -> None:
+    """"Use usage credits?" (#722), asked as Send asks it, through the app's
+    own ``_ask_overage``, then its answer said ("credits", "model" or
+    "cancel"), so a step can check which button a key pressed."""
+    answer = frame._ask_overage("Visual probe", "fable")
+    frame._say(f"Usage credits answer: {answer}", force=True)
+
+
 def suggestion(frame) -> None:
     """The open chat's last reply came with a suggested next message (#474)."""
     frame._suggestions[frame._open_claude_id()] = "Write the script"
@@ -871,6 +902,7 @@ TRIGGERS = {
     "suggestion-done": lambda frame, env: suggestion_done(frame),
     'local-file-links': lambda frame, env: _codex_dialog('d_local_file_links', frame, env),
     'openai-unpriced-confirm': lambda frame, env: _codex_dialog('d_openai_unpriced', frame, env),
+    "usage-credits": lambda frame, env: usage_credits(frame),
     "question": lambda frame, env: ask_question(frame),
     "elicitation": lambda frame, env: ask_elicitation(frame),
     "background": lambda frame, env: stop_background_task(frame),
@@ -1005,8 +1037,10 @@ def press(keys: List[str]) -> None:
 # -- the check ------------------------------------------------------------------------------
 
 def _found(needle: str, spoken: List[str]) -> bool:
-    text = " ".join(spoken).casefold()
-    return needle.casefold() in text
+    # Whitespace collapsed: a wrapped paragraph's label (WrappingText) has
+    # line breaks wherever the font put them, which mustn't split a phrase.
+    text = " ".join(" ".join(spoken).split()).casefold()
+    return " ".join(needle.split()).casefold() in text
 
 
 def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,

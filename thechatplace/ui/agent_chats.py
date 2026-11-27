@@ -112,7 +112,7 @@ class AgentChats:
             if (provider, old_id) in table:
                 table[(provider, new_id)] = table.pop((provider, old_id))
         for found in (self._agent_asked, self._agent_unconfirmed, self._agent_refused,
-                      self._agent_planning, self._agent_sound_owed):
+                      self._agent_planning, self._agent_plan_held, self._agent_sound_owed):
             if (provider, old_id) in found:
                 found.discard((provider, old_id))
                 found.add((provider, new_id))
@@ -655,24 +655,31 @@ class AgentChats:
         if (provider, native_id) in self._agent_awaiting:
             self._agent_asked.add((provider, native_id))
 
-    def _agent_member_answered(self, provider, native_id, allowed, planning=False):
+    def _agent_member_answered(self, provider, native_id, allowed, planning=False, held=False):
         """You answered a member's request mid-turn. An approval or an
         answered question lets automatic hand-offs go on after the turn: a
         builder that runs its tests asks every turn, and each approval
-        paused the relay (bug bash). A refusal still pauses it."""
+        paused the relay (bug bash). A refusal still pauses it. ``held``:
+        the plan was approved but not to be started (#738)."""
         identity = (provider, native_id)
         if identity not in self._agent_awaiting:
             return
         if planning:
-            # You chose to keep planning: not a refusal, but the plan isn't
-            # approved, so the relay waits for you.
+            # You chose to keep planning, or approved the plan without
+            # starting on it: not a refusal, but nothing is to be built yet,
+            # so the relay waits for you.
             self._agent_planning.add(identity)
+            if held:
+                self._agent_plan_held.add(identity)
+            else:
+                self._agent_plan_held.discard(identity)
             self._agent_asked.add(identity)
         elif not allowed:
             self._agent_refused.add(identity)
             self._agent_asked.add(identity)
         elif identity not in self._agent_refused:
             self._agent_planning.discard(identity)
+            self._agent_plan_held.discard(identity)
             self._agent_asked.discard(identity)
 
     def _agent_tool_used(self, provider, native_id, path):
@@ -811,6 +818,7 @@ class AgentChats:
             self._agent_asked.discard(identity)
             self._agent_refused.discard(identity)
             self._agent_planning.discard(identity)
+            self._agent_plan_held.discard(identity)
             awaited = self._agent_awaiting.get(identity)
             index = conversation.member_index(provider, native_id)
             if (awaited is not None and awaited[1] and index is not None
@@ -840,9 +848,11 @@ class AgentChats:
         asked = identity in self._agent_asked
         was_refused = identity in self._agent_refused
         was_planning = identity in self._agent_planning
+        plan_held = identity in self._agent_plan_held
         self._agent_asked.discard(identity)
         self._agent_refused.discard(identity)
         self._agent_planning.discard(identity)
+        self._agent_plan_held.discard(identity)
         index = conversation.member_index(provider, native_id)
         member = conversation.members[index]
         conversation.unread = not self._agent_is_open(conversation)
@@ -922,6 +932,8 @@ class AgentChats:
             stop = (f"Paused: {refused.strip()}" if refused
                     else f"Paused: something was refused during {member.name}'s turn."
                     if was_refused
+                    else f"Paused: {member.name}'s plan is approved, but not to be started yet."
+                    if plan_held
                     else f"Paused: {member.name}'s plan isn't approved yet."
                     if was_planning
                     else f"Paused: {member.name} asked you something that wasn't answered.")
@@ -1442,6 +1454,7 @@ class AgentChats:
             self._agent_unconfirmed.discard(member.identity)
             self._agent_refused.discard(member.identity)
             self._agent_planning.discard(member.identity)
+            self._agent_plan_held.discard(member.identity)
         self._agent_forget_waiting(conversation.conversation_id)
         self._agent_last_heard.pop(conversation.conversation_id, None)
         self._agent_spoke.pop(conversation.conversation_id, None)

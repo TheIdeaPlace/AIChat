@@ -1387,6 +1387,14 @@ def d_openai_unpriced(frame, env):
     return lambda: frame._modal(UnpricedApiDialog(frame, 'future-model', 2))
 
 
+def d_usage_credits(frame, env):
+    """"Use usage credits?" (#722), as Send asks it in a Fable chat once its
+    turns are charged to usage credits."""
+    from thechatplace.ui.dialogs import UsageCreditsDialog
+    question = frame._overage_question("Visual probe", "fable")
+    return lambda: frame._modal(UsageCreditsDialog(frame, question))
+
+
 def d_codex_new(frame, env):
     from thechatplace.ui.dialogs import NewSessionDialog
     return lambda: frame._modal(NewSessionDialog(frame, env["folders"]["Scratch"],
@@ -2735,6 +2743,9 @@ SURFACES = {
     'new-session-openai': ('dialog', d_new_session_openai, 'Codex New Session charged to OpenAI API credits'),
     'new-session-unpriced': ('dialog', d_new_session_unpriced, 'New Session offers a model with price unknown'),
     'openai-unpriced-confirm': ('dialog', d_openai_unpriced, 'Mandatory price-unknown warning, Cancel default'),
+    "usage-credits": ("dialog", d_usage_credits,
+                      "Use usage credits? when a Fable turn would be charged to usage credits, "
+                      "Cancel default (#722)"),
     "new-session-worktree": ("dialog", d_new_session_worktree,
                              "New Session making a new worktree, with Start from on"),
     "new-session-branch-in-use": ("dialog", d_new_session_branch_in_use,
@@ -2915,6 +2926,7 @@ DIALOG_CLASSES = {
     'new-session-openai': 'NewSessionDialog',
     'new-session-unpriced': 'NewSessionDialog',
     'openai-unpriced-confirm': 'UnpricedApiDialog',
+    "usage-credits": "UsageCreditsDialog",
     "new-session-worktree": "NewSessionDialog",
     "new-session-branch-in-use": "NewSessionDialog",
     "codex-new": "NewSessionDialog",
