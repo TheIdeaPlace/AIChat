@@ -3,6 +3,7 @@ that's never shown: which models New Session and Change Model offer, the
 plan checked before every Fable turn, and "Use usage credits?" asked only
 when you send, once a Fable turn has said turns are charged to usage
 credits. No real claude or speech."""
+import sys
 import time
 from types import SimpleNamespace
 
@@ -17,7 +18,7 @@ from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
 from records import assistant_block, text_block, user_text  # noqa: E402
 import fake_env  # noqa: E402
 from fake_env import FakeRunner, add_transcript, now_ms, pump  # noqa: E402
-from markers import mac  # noqa: E402
+from markers import atk, mac  # noqa: E402
 
 
 def overage(on=True, resets_in=86400):
@@ -375,19 +376,33 @@ def answer_for_real(frame, drive, aside=False):
     _ask_overage returned and what was seen. A dialog that never closes is
     closed after a while and said to have timed out, rather than hanging."""
     seen = {}
+    finished = []
 
     def when_up(tries=200):
+        if finished:  # never left to drive the next test's dialog
+            return
         dialog = _usage_dialog()
         focus = wx.Window.FindFocus()
-        settled = focus is not None and focus.GetTopLevelParent() is dialog
-        if dialog is None or (not settled and tries):
-            if tries:
-                wx.CallLater(25, when_up, tries - 1)
+        # A Mac with Full Keyboard Access off (its default, and CI's) gives
+        # buttons no focus at all, so there's no focus to wait for.
+        settled = dialog is not None and (
+            (focus is not None and focus.GetTopLevelParent() is dialog)
+            or (not dialog.cancel.CanAcceptFocusFromKeyboard() and tries < 190))
+        if not settled and tries:
+            wx.CallLater(25, when_up, tries - 1)
+            return
+        if dialog is None:
             return
         seen.update(focus=focus, default=dialog.GetDefaultItem(),
                     cancel=dialog.cancel, credits=dialog.credits,
-                    change_model=dialog.change_model, question=dialog.question.GetLabel())
-        drive(dialog, seen)
+                    change_model=dialog.change_model, question=dialog.question.GetLabel(),
+                    keyboard_focus=dialog.cancel.CanAcceptFocusFromKeyboard())
+        try:
+            drive(dialog, seen)
+        except Exception as error:  # noqa: BLE001 - raised again once the dialog is closed
+            # wx swallows a CallLater's exception: the test would only time out.
+            seen["error"] = error
+            dialog.EndModal(wx.ID_ABORT)
 
     def watchdog():
         dialog = _usage_dialog()
@@ -400,6 +415,9 @@ def answer_for_real(frame, drive, aside=False):
         answer = frame._ask_overage("On Fable", "fable", aside=aside)
     finally:
         guard.Stop()
+        finished.append(True)
+    if "error" in seen:
+        raise seen["error"]
     return answer, seen
 
 
@@ -420,6 +438,15 @@ def _key(code):
     return press
 
 
+#: A Mac's CI runner may not let a test post keys (that needs Accessibility
+#: permission), and gives buttons no focus with Full Keyboard Access off.
+#: There, Return is checked as AppKit handles it, by Cancel's key equivalent
+#: (test_on_a_mac_return_presses_cancel...), and Escape by the escape ID.
+real_keys = pytest.mark.skipif(sys.platform == "darwin",
+                               reason="a Mac's Return is checked by its key equivalent")
+
+
+@real_keys
 @pytest.mark.parametrize("code", [wx.WXK_RETURN, wx.WXK_ESCAPE], ids=["Return", "Escape"])
 def test_usage_credits_opens_on_cancel_and_return_or_escape_cancels(frame, code):
     shown(frame)
@@ -428,6 +455,16 @@ def test_usage_credits_opens_on_cancel_and_return_or_escape_cancels(frame, code)
     assert seen["default"] is seen["cancel"]
     assert seen["focus"] is seen["cancel"]
     assert answer == "cancel"
+
+
+def test_usage_credits_cancel_is_the_default_and_escape(frame):
+    from thechatplace.ui.dialogs import UsageCreditsDialog
+    dialog = UsageCreditsDialog(frame, "Spend?")
+    try:
+        assert dialog.GetDefaultItem() is dialog.cancel
+        assert dialog.GetEscapeId() == wx.ID_CANCEL == dialog.cancel.GetId()
+    finally:
+        dialog.Destroy()
 
 
 @pytest.mark.parametrize("button,expected", [("credits", "credits"),
@@ -474,6 +511,18 @@ def test_use_usage_credits_has_no_access_key(frame):
         # The buttons in the order Tab reaches them, Cancel last.
         buttons = [w for w in dialog.GetChildren() if isinstance(w, wx.Button)]
         assert buttons == [dialog.credits, dialog.change_model, dialog.cancel]
+    finally:
+        dialog.Destroy()
+
+
+@atk
+def test_orca_gets_usage_credits_as_an_alert(frame):
+    """An alert, which Orca reads with its text, as GTK's message boxes."""
+    from thechatplace.ui import gtk_a11y
+    from thechatplace.ui.dialogs import UsageCreditsDialog
+    dialog = UsageCreditsDialog(frame, "Spend?")
+    try:
+        assert gtk_a11y.get_role(dialog) == gtk_a11y.role_number("alert")
     finally:
         dialog.Destroy()
 

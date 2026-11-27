@@ -244,12 +244,16 @@ STEPS = [
          expect=["Use Usage Credits", "push button"]),
     Step("Use usage credits, Change Model", ["Tab"], expect=["Change Model", "push button"]),
     Step("Use usage credits, back to Cancel", ["Tab"], expect=["Cancel", "push button"]),
+    # The refusals tell a wrong answer on an Orca before 49 too, which says
+    # the answer only from the active window, if at all.
     Step("Use usage credits, Escape cancels", ["Escape"], expect=["Messages in Visual probe"],
-         expect_dbus=["Usage credits answer: cancel"]),
+         expect_dbus=["Usage credits answer: cancel"],
+         refuse=["answer: credits", "answer: model"]),
     Step("Use usage credits asks again", [], trigger="usage-credits",
          expect=["Use usage credits?", "Cancel", "push button"]),
     Step("Use usage credits, Return cancels", ["Return"], expect=["Messages in Visual probe"],
-         expect_dbus=["Usage credits answer: cancel"]),
+         expect_dbus=["Usage credits answer: cancel"],
+         refuse=["answer: credits", "answer: model"]),
     Step("keyboard shortcuts", ["F1"], expect=["Keyboard Shortcuts"]),
     Step("shortcuts closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -1026,8 +1030,10 @@ def press(keys: List[str]) -> None:
 # -- the check ------------------------------------------------------------------------------
 
 def _found(needle: str, spoken: List[str]) -> bool:
-    text = " ".join(spoken).casefold()
-    return needle.casefold() in text
+    # Whitespace collapsed: a wrapped paragraph's label (WrappingText) has
+    # line breaks wherever the font put them, which mustn't split a phrase.
+    text = " ".join(" ".join(spoken).split()).casefold()
+    return " ".join(needle.split()).casefold() in text
 
 
 def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,

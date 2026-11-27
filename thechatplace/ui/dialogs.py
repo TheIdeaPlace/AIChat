@@ -121,9 +121,16 @@ class UsageCreditsDialog(wx.Dialog):
         self.cancel.SetDefault()
         self.SetEscapeId(wx.ID_CANCEL)
         mac_a11y.set_help(self.cancel, question)
+        # Orca reads a dialog's text only for an alert: a wx dialog is a
+        # "frame" to it, and Orca said just the title and Cancel (CI on #745).
+        # An alert is what GTK's own message boxes are, read with their text.
+        gtk_a11y.set_role(self, "alert")
         for button in (self.credits, self.change_model):
             button.Bind(wx.EVT_BUTTON, lambda e, code=button.GetId(): _end_modal(self, code))
-        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        # No press_focused_button_on_a_mac here: on a Mac, AppKit gives Return
+        # to the default button's key equivalent before any control sees it,
+        # so Return always cancels there, even on Use Usage Credits, which
+        # only Space presses. The safe way round, and left so.
         self.CentreOnParent()
         self.cancel.SetFocus()
         wx.CallAfter(self._focus_cancel)
@@ -131,13 +138,6 @@ class UsageCreditsDialog(wx.Dialog):
     def _focus_cancel(self):
         if self:
             self.cancel.SetFocus()
-
-    def _on_char_hook(self, event):
-        # Return on a Mac presses the focused button, as on Windows; at the
-        # start that's Cancel, the default as well.
-        if press_focused_button_on_a_mac(event):
-            return
-        event.Skip()
 
 
 class ShortcutsDialog(wx.Dialog):
