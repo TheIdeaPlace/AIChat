@@ -935,7 +935,7 @@ def test_one_steer_at_a_time_and_the_queue_waits_for_it():
         assert service.send(record, 'Steer me')
         assert service.send(record, 'Then me')
         with ThreadPoolExecutor(1) as pool:
-            steering = pool.submit(service.steer, record, 'Steer me', index=0)
+            steering = pool.submit(service.steer, record, service.snapshot(record.cli_session_id).queued[0], index=0)
             assert c.steer_entered.wait(5)
             state = service.snapshot(record.cli_session_id)
             assert state.steering == ('Steer me',) and state.queued == ('Then me',)
@@ -972,7 +972,7 @@ def test_a_refused_queued_steer_goes_back_in_its_place():
         c.steer_result = CodexRpcError('Codex request failed')  # Codex said no
         c.steer_result.rpc_code = -32600
         with pytest.raises(CodexSteerRefused) as refused:
-            service.steer(record, 'Two', index=1)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[1], index=1)
         assert refused.value.code == 'refused'
         assert service.snapshot(record.cli_session_id).queued == ('One', 'Two')
         assert not service.snapshot(record.cli_session_id).problem
@@ -992,7 +992,7 @@ def test_stop_while_a_queued_steer_waits_returns_it_with_the_queue():
         c.steer_result = CodexRpcError('Codex request failed')
         c.steer_result.rpc_code = -32600
         with ThreadPoolExecutor(1) as pool:
-            steering = pool.submit(service.steer, record, 'Steer me', index=0)
+            steering = pool.submit(service.steer, record, service.snapshot(record.cli_session_id).queued[0], index=0)
             assert c.steer_entered.wait(5)
             assert service.stop(record) == ('Other',)
             c.steer_release.set()
@@ -1016,7 +1016,7 @@ def test_an_unconfirmed_steer_is_never_queued_to_go_again():
         c.steer_release.set()
         c.steer_result = {'turnId': 'some-other-turn'}
         with pytest.raises(CodexRpcError, match='did not confirm'):
-            service.steer(record, 'Steer me', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert not service.snapshot(record.cli_session_id).queued
         assert any(u.unsent == ('Steer me',) for u in updates)
         c.events.append(CodexEvent('turn_completed', record.cli_session_id, 'turn-1',
@@ -1067,7 +1067,7 @@ def test_an_unknown_steer_error_is_unconfirmed_and_never_queued_again():
         c.steer_result = CodexRpcError('Codex request failed')
         c.steer_result.rpc_code = -32603  # an internal error: may have been taken
         with pytest.raises(CodexRpcError, match='did not confirm'):
-            service.steer(record, 'Steer me', index=0)
+            service.steer(record, service.snapshot(record.cli_session_id).queued[0], index=0)
         assert not service.snapshot(record.cli_session_id).queued
         assert any(u.unsent == ('Steer me',) for u in updates)
     finally:

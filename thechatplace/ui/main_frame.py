@@ -7333,6 +7333,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def remove_queued(self):
         """Remove the selected queued message (Delete, or the context menu)."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self._take_codex_queued(info, editing=False)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
                            "messages for editing.")
@@ -7517,6 +7520,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         and takes it straight away, in the same turn, as the desktop app's
         Send Now does."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self.steer_queued()  # Codex accepts input at its next step, without interruption (#526).
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"{provider_name(info.provider)} sends queued messages after its reply. "
                            "Stop returns them for editing.")
@@ -7560,6 +7566,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Take the selected queued message back into the reply box, to
         change it and send it again."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self._take_codex_queued(info, editing=True)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
                            "messages for editing.")

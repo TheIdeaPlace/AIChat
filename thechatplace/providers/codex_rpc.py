@@ -446,6 +446,8 @@ class ReadOnlyCodexConnection:
             category = 'reply' if event.kind in ('text_delta', 'text_completed') else event.kind
             key = (event.thread_id, event.turn_id, event.item_id, category, event.part)
             previous = pending.get(key)
+            if previous is not None and previous.tool:
+                event = replace(event, tool=True)  # completed activity must retain its tool-start sound
             if event.kind in ('text_delta', 'reasoning_delta') and previous is not None:
                 if previous.kind == 'text_completed':
                     return
@@ -457,6 +459,9 @@ class ReadOnlyCodexConnection:
                     cuts.pop(next(iter(cuts)))
                 cuts[(old.thread_id, old.turn_id)] = True
             pending[key] = event
+
+    def _prepare_event(self, event):
+        return event
 
     def _bind_server_request(self, request):
         return request
@@ -524,7 +529,10 @@ class ReadOnlyCodexConnection:
         # request half-registered if it raises.
         if on_sent is not None:
             on_sent()
-        if not pending.ready.wait(self._timeout):
+        # Account app discovery can spend longer fetching the remote catalog.
+        # Keep the ordinary budget for chat/history requests on this connection.
+        timeout = self._timeout * 3 if method == "app/list" else self._timeout
+        if not pending.ready.wait(timeout):
             with self._lock:
                 expired = self._pending.pop(request_id, None) is pending
                 if expired:
@@ -648,6 +656,7 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
+                        event = self._prepare_event(event)
                         if getattr(self, 'billing_route', '') == 'api' and event.kind not in ('text_delta', 'reasoning_delta'):
                             from ..billing import scrub
                             event = replace(event, text=scrub(event.text),

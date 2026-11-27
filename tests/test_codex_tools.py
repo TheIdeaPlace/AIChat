@@ -126,7 +126,7 @@ def test_the_codex_note_says_first_that_a_change_is_a_new_copy():
         for word in ("MCP", "sandbox", "Plugin", "read-only", "Configured", "CLI"):
             assert word not in note
         assert "codex mcp add" in note
-    assert "codex mcp login" in elsewhere
+    assert "Sign In connects your account without changing this chat's tools" in elsewhere
 
 
 @pytest.mark.parametrize("platform,key", [("win32", " (Alt+O)"), ("linux", " (Alt+O)"), ("darwin", "")])
@@ -136,35 +136,33 @@ def test_delete_and_sign_in_name_the_button_and_its_key_where_it_has_one(platfor
     assert host.delete_text(on, platform) == (
         f"In a Codex chat, a tool changes only in a new copy: press Copy with Tool On{key} to make one.")
     assert host.delete_text(off, platform).endswith(f"press Copy with Tool Off{key} to make one.")
-    assert host.sign_in_text(on, platform) == (
-        f"Sign In works only in a chat with this tool on. Press Copy with Tool On{key} to make a "
-        "copy with it on, then sign in from Connected Tools in that copy.")
 
 
-def test_sign_in_for_a_chat_from_elsewhere_gives_the_codex_command():
-    host = _host(False)
-    assert host.sign_in_text(CodexTool("notes", "needs-auth", read_only=True)) == (
-        "This chat wasn't started in The Chat Place. To sign in to this tool, use Codex in a "
-        "terminal: codex mcp login notes.")
+@pytest.mark.parametrize("own", [True, False])
+@pytest.mark.parametrize("off", [True, False])
+def test_the_apps_unavailable_row_has_a_neutral_toggle_label(own, off):
+    """It isn't a tool, so the button names no copy with it on or off (#729's
+    review), however the row was made."""
+    host = _host(own)
+    notice = CodexTool("Apps unavailable", "Press Refresh to try again.",
+                       off_for_chat=off, informational=True)
+    assert host.toggle_label(notice) == "Change T&ool"
+    assert "Copy with Tool" not in host.toggle_label(notice)
+    # A real tool's label is unchanged.
+    assert host.toggle_label(CodexTool("notes", "off")) == (
+        "Copy with Tool &On" if own else "Turn &Off for This Chat")
 
 
-@pytest.mark.parametrize("name,platform,said", [
-    # Every character codex mcp add allows (codex-cli 0.163) goes as it is.
-    ("my-notes_2", "win32", "codex mcp login my-notes_2"),
-    ("team/notes.v2", "linux", "codex mcp login team/notes.v2"),
-    ("me@work:notes", "darwin", "codex mcp login me@work:notes"),
-    # PowerShell would take a leading @ as splatting.
-    ("@work", "win32", "codex mcp login '@work'"),
-    # Hand-written in config.toml: single quotes, a quote inside as each shell needs.
-    ("my notes", "win32", "codex mcp login 'my notes'"),
-    ("Kelly's notes", "win32", "codex mcp login 'Kelly''s notes'"),
-    ("Kelly's notes", "darwin", "codex mcp login 'Kelly'\\''s notes'"),
-    ("$(rm -rf ~)", "linux", "codex mcp login '$(rm -rf ~)'"),
-])
-def test_the_login_command_is_safe_to_paste_in_each_systems_terminal(name, platform, said):
-    pytest.importorskip("wx")
-    from thechatplace.ui.codex_tools_host import _login_command
-    assert _login_command(name, platform) == said
+@pytest.mark.parametrize('own', [False, True])
+def test_signin_can_start_for_an_off_server_without_a_chat(own):
+    host=_host(own)
+    work=[];calls=[]
+    host.frame._codex_work=lambda action,done: work.append(action)
+    host.frame.sessions=SimpleNamespace(connected_tool_action=lambda *a: calls.append(a))
+    host.sign_in(CodexTool('notes','off',off_for_chat=True),lambda *a: None)
+    assert len(work)==1
+    work[0]()
+    assert calls==[(host.info,'notes','login')]
 
 
 def test_every_copy_question_says_make_a_new_copy(monkeypatch):
@@ -248,3 +246,71 @@ def test_a_tools_copy_finished_after_the_dialog_closed_still_says_it(monkeypatch
     done(action(), None)
     assert said[-1] == "Saved Chat (tools copy). No prompt was sent. " + copy_note(short=True)
     assert opened == []
+
+
+@pytest.mark.parametrize("failure,expected", [
+    ("timeout", "timed out"), ("unsupported", "does not support"), ("other", "could not list"),
+])
+def test_app_inventory_failure_is_information_not_a_configured_server(failure, expected):
+    from thechatplace.providers.codex_rpc import CodexRequestTimeout
+    class Connection(FakeConnection):
+        def request(self, method, params):
+            if method == "app/list":
+                error = CodexRequestTimeout() if failure == "timeout" else CodexRpcError("private payload")
+                error.unknown_method = failure == "unsupported"
+                raise error
+            return super().request(method, params)
+    rows = codex.CodexProvider.connected_tools(_provider(Connection()), INFO)
+    notice = rows[-1]
+    assert notice.informational and expected in notice.text()
+    assert "private payload" not in notice.text()
+    assert "configured Codex MCP server" not in notice.text()
+    assert "does not mean your account has no apps" in notice.text()
+    summary = tools_summary(rows)
+    # The notice is its own sentence after the count (#729's review).
+    assert summary == "2 connected tools. " + notice.text()
+    assert not notice.off_for_chat
+    assert tools_summary([notice]).startswith("No configured tools listed.")
+
+
+def test_app_pagination_refetches_catalog_only_on_the_first_page():
+    from thechatplace.providers.codex_tools import app_inventory
+    calls = []
+    class Connection:
+        def request(self, method, params):
+            assert method == "app/list"
+            calls.append(params)
+            return {"data": [], "nextCursor": "page-two" if len(calls) == 1 else None}
+    assert app_inventory(Connection(), INFO) == []
+    assert calls == [{"limit": 100, "forceRefetch": True},
+                     {"limit": 100, "forceRefetch": False, "cursor": "page-two"}]
+
+
+def test_accessible_apps_precede_the_installable_catalog_without_losing_entries():
+    from thechatplace.providers.codex_tools import app_inventory
+    class Connection:
+        def request(self, method, params):
+            return {"data": [
+                {"id": "unconnected-one", "name": "First catalog app", "isAccessible": False},
+                {"id": "available-one", "name": "First usable app", "isAccessible": True},
+                {"id": "unconnected-two", "name": "Second catalog app", "isAccessible": False},
+                {"id": "available-two", "name": "Second usable app", "isAccessible": True},
+            ]}
+    rows = app_inventory(Connection(), INFO)
+    assert [row.app_id for row in rows] == [
+        "available-one", "available-two", "unconnected-one", "unconnected-two"]
+    assert all(row.off_for_chat for row in rows)
+    # An app on for the chat that now needs sign-in stays with the chat's
+    # apps, ahead of usable apps that are off: it's the row someone opened
+    # the list to fix (#729's review). Then usable apps, then the catalog.
+    rows = app_inventory(Connection(), INFO, selected=("unconnected-two", "available-two"))
+    assert [row.app_id for row in rows] == [
+        "available-two", "unconnected-two", "available-one", "unconnected-one"]
+    assert [row.off_for_chat for row in rows] == [False, False, True, True]
+    assert len(rows) == 4
+    # One on for the chat that Codex no longer lists is with the chat's apps
+    # too, not after the whole catalog.
+    rows = app_inventory(Connection(), INFO, selected=("gone-app", "available-two"))
+    assert [row.app_id for row in rows] == [
+        "available-two", "gone-app", "available-one", "unconnected-one", "unconnected-two"]
+    assert rows[1].missing and not rows[1].off_for_chat

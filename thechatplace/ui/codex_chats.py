@@ -30,6 +30,11 @@ from .codex_extras import CodexExtras
 from .sound_host import SoundHost
 
 
+def _draft_text(text):
+    draft = getattr(text, 'draft_text', None)
+    return codex_long_messages.expand(text) if draft is None else draft
+
+
 class CodexChats(SoundHost, CodexExtras):
     def _delete_codex(self, info):
         """Let Codex delete its history before forgetting our owned record."""
@@ -174,8 +179,67 @@ class CodexChats(SoundHost, CodexExtras):
                 done(result, error)
         self._pool.submit(work)
 
+    def _codex_tools_load(self, key, action, done):
+        """Run a Connected Tools list read off the shared pool (#729's review).
+
+        Codex's app catalog can take a minute a page, and closing the dialog
+        doesn't stop the read. On ``_pool``'s three workers, a slow catalog
+        with the dialog closed and reopened a few times held every worker, so
+        no chat of any provider could open and the list stopped refreshing.
+        Each read gets a daemon thread of its own instead (one never holds up
+        quitting), and a dialog reopened while a read for the same chat is
+        still running waits for that one rather than starting another, so the
+        threads are bounded by the chats whose lists are being read. ``done``
+        is called as ``_codex_work`` calls it, on the UI thread."""
+        import threading
+        loads = self.__dict__.setdefault('_codex_tool_loads', {})
+        waiting = loads.get(key)
+        if waiting is not None:
+            waiting.append(done)
+            return
+        loads[key] = [done]
+        def work():
+            try:
+                result, error = action(), False
+            except Exception as exc:
+                record_failure(exc)
+                result, error = safe_reason(exc) or None, True
+            wx.CallAfter(finish, result, error)
+        def finish(result, error):
+            callers = loads.pop(key, ())
+            if self._gone():
+                return
+            for call in callers:
+                # One dialog's failure mustn't leave another on "Reading".
+                try:
+                    call(result, error)
+                except Exception as exc:
+                    record_failure(exc)
+        threading.Thread(target=work, name='codex-tools', daemon=True).start()
+
+    def _restore_codex_parts(self, key, texts):
+        from ..providers.codex_input import CodexInput
+        parts = [part for text in texts
+                 for part in (text.items()[1:] if isinstance(text, CodexInput) else getattr(text, 'parts', ()))]
+        paths = [path for text in texts for path in getattr(text, 'attachment_paths', ())]
+        if not parts and not paths:
+            return
+        attached = getattr(self, '_attachments', {})
+        images = attached.setdefault(key, [])
+        images.extend(path for path in paths if path not in images)
+        images.extend(p['path'] for p in parts if p['path'] not in images)
+        self._attachments = attached
+        skills = getattr(self, '_codex_skills', {})
+        skills.setdefault(key, {}).update({p['name']: p['path'] for p in parts if p['type'] == 'skill'})
+        self._codex_skills = skills
+        if self._open is not None and self._open.key == key:
+            show = getattr(self, '_show_attachments', None)
+            if show is not None:
+                show()
+
     def _restore_codex_text(self, key, texts):
-        text = '\n\n'.join(texts)
+        self._restore_codex_parts(key, texts)
+        text = '\n\n'.join(_draft_text(text) for text in texts)
         if not text:
             return
         if self._open is not None and self._open.key == key:
@@ -185,6 +249,42 @@ class CodexChats(SoundHost, CodexExtras):
         else:
             current = self._codex_drafts.get(key, '')
             self._codex_drafts[key] = text + ('\n\n' + current if current else '')
+
+    def _take_codex_queued(self, info, *, editing):
+        """Take a selected queued occurrence back without stopping Codex (#526)."""
+        index = self._selected_queued()
+        state = self._codex_states.get(info.key)
+        record = self.store.get(info.cli_session_id, provider=info.provider)
+        if index is None or state is None or record is None or not 0 <= index < len(state.queued):
+            return
+        expected = state.queued[index]
+        if (editing and codex_long_messages.saved_path(expected) is not None
+                and codex_long_messages.original(expected) is None):
+            self._feedback('The original long message is unavailable. It stays queued; no file was deleted.')
+            return
+        def done(text, error):
+            if error:
+                self._feedback(text or 'The queued messages changed. Select the message again.')
+                return
+            if editing:
+                self._restore_codex_text(info.key, (text,))
+            saved, _entry = self._long_message_entry(info.key, text)
+            if saved:
+                self._drop_long_message(info.key, saved)
+            loaded = self._open is not None and self._open.key == info.key
+            if loaded:
+                self._show_attachments()
+                self._rebuild_chat_list()
+                if editing:
+                    self.reply_text.SetFocus()
+            self._update_send_state()
+            if editing:
+                destination = 'message box' if loaded else f'draft for {record.title}'
+                self._feedback(f'Queued message back in the {destination}. Send queues it again, after any others still queued.')
+            else:
+                self._sound(sound_events.QUEUED_DELETED, info.key)
+                self._feedback(f'Queued message removed from {record.title}.')
+        self._codex_work(lambda: self.sessions.owned_action('take_queued', record, index, expected), done)
 
     def _load_codex_rules(self, folder, callback):
         self._codex_work(lambda: self.sessions.saved_rule_count('codex', folder), callback)
@@ -643,16 +743,16 @@ class CodexChats(SoundHost, CodexExtras):
             return text, None
         prompt = codex_long_messages.prompt_for(text, saved)
         parts = getattr(text, 'parts', ())
-        if parts:
-            # Attached images and skills still go natively, with the prompt.
-            from ..providers.codex_input import CodexInput
-            try:
-                prompt = CodexInput(prompt, parts)
-            except ValueError:
-                # A file gone since it was attached: the text goes as it
-                # was and is refused in plain words, never a stuck send.
-                codex_long_messages.delete_files((saved,))
-                return text, None
+        # Keep the live original with its input, independently of the bounded
+        # history cache: editing or Stop must not return a dead file prompt.
+        from ..providers.codex_input import CodexInput
+        try:
+            prompt = CodexInput(prompt, parts, original=str(text),
+                draft=getattr(text, 'draft_text', None),
+                attachments=getattr(text, 'attachment_paths', ()))
+        except ValueError:
+            codex_long_messages.delete_files((saved,))
+            return text, None
         codex_long_messages.remember(saved, str(text), record.cli_session_id)
         key = record.to_info().key
         files = getattr(self, '_long_message_files', None)
@@ -1168,7 +1268,7 @@ class CodexChats(SoundHost, CodexExtras):
             # (Stop): it stays until the history is read again (#410).
             self._steers_turn_over(key)
         # A saved long message comes back as it was written, not as its prompt.
-        unsent = tuple(codex_long_messages.expand(text) for text in state.unsent)
+        unsent = tuple(_draft_text(text) for text in state.unsent)
         prefix = getattr(self, "_api_context_prefixes", {}).get(key, "")
         if prefix:
             unsent = tuple(text[len(prefix):] if text.startswith(prefix) else text for text in unsent)
@@ -1177,6 +1277,12 @@ class CodexChats(SoundHost, CodexExtras):
             agent_unsent = getattr(self, '_agent_unsent', None)
             if agent_unsent is not None:
                 unsent = agent_unsent(provider, state.native_id, unsent)
+        # Return native parts only for messages that stayed with this chat,
+        # after the agent-conversation handoff and API context stripping.
+        def recovered(raw):
+            written = _draft_text(raw)
+            return written[len(prefix):] if prefix and written.startswith(prefix) else written
+        self._restore_codex_parts(key, [raw for raw in state.unsent if recovered(raw) in unsent])
         self._restore_codex_text(key, unsent)
         self._long_message_turn_over(key, state)
         record = self.store.get(state.native_id, provider=provider)

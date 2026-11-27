@@ -384,9 +384,12 @@ def tools_summary(rows) -> str:
     """The list in one line, for Refresh to say: "3 connected tools, 1 needs
     sign-in". Works for any provider's rows."""
     # A row listed only for the new-chats setting isn't a tool this chat has.
-    rows = [r for r in rows if not getattr(r, "not_in_folder", False)]
+    rows = list(rows)
+    notices = [r.text() for r in rows if getattr(r, "informational", False)]
+    rows = [r for r in rows if not getattr(r, "not_in_folder", False)
+            and not getattr(r, "informational", False)]
     if not rows:
-        return "No connected tools."
+        return " ".join(["No configured tools listed." if notices else "No connected tools.", *notices])
     on = [r for r in rows if not r.off_for_chat]
     needs = sum(r.status == "needs-auth" for r in on)
     failed = sum(r.status == "failed" for r in on)
@@ -398,7 +401,8 @@ def tools_summary(rows) -> str:
         parts.append(f"{failed} failed")
     if off:
         parts.append(f"{off} off for this chat")
-    return ", ".join(parts)
+    # A notice is a sentence of its own, not part of the count (#729's review).
+    return ". ".join([", ".join(parts), " ".join(notices)]) if notices else ", ".join(parts)
 
 
 #: Addresses plain http may go to: nothing on the way can read or change them.

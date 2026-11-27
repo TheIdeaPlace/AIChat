@@ -863,7 +863,13 @@ class CodexChatRuntime:
                 queue = self._queues.setdefault(native_id, [])
                 if len(queue) >= 20 or sum(map(len, queue)) + len(text) > 128000:
                     raise ValueError('This Codex chat has too many queued messages')
-                queue.append(text)
+                # Each queued occurrence has its own identity, even for identical text.
+                # UI actions must never remove a different row after a concurrent dispatch.
+                from .codex_input import CodexInput
+                queue.append(CodexInput(str(text), input_items(text)[1:],
+                                        original=getattr(text, 'original_text', None),
+                    draft=getattr(text, 'draft_text', None),
+                    attachments=getattr(text, 'attachment_paths', ())))
                 queued = True
             else:
                 self._sending.add(native_id)
@@ -995,6 +1001,30 @@ class CodexChatRuntime:
                 self._notify(native_id, unsent=(text,))
         self._launch_queued(send_next)
 
+    def take_queued(self, record, index, expected):
+        """Remove exactly the occurrence the UI selected (#526), without an RPC.
+
+        The queue belongs to this runtime. Dispatch, Stop and steering share
+        its lock; a stale row or a steer in flight leaves the queue untouched.
+        Native images and skills travel back with the text for editing.
+        """
+        proof, executor = self._context(record)
+        native_id = proof.native_id
+        with self._lock:
+            queue = self._queues.get(native_id, [])
+            if (self._stop.is_set() or self._proofs.get(native_id) is not proof
+                    or self._executor is not executor or native_id in self._reopening
+                    or native_id in self._stopping or native_id in self._steering
+                    or self._problems.get(native_id)
+                    or type(index) is not int or not 0 <= index < len(queue)
+                    or queue[index] is not expected):
+                raise ValueError('The queued messages changed. Select the message again.')
+            text = queue.pop(index)
+            if not queue:
+                del self._queues[native_id]
+        self._notify(native_id)
+        return text
+
     def steer(self, record, text, *, index=None):
         """Steer (#239): ``text``, or the queued message at ``index`` (which
         must still be ``text``), into the running turn without stopping it.
@@ -1023,7 +1053,7 @@ class CodexChatRuntime:
                 raise CodexSteerRefused('busy')
             if index is not None:
                 queue = self._queues.get(native_id, [])
-                if type(index) is not int or not 0 <= index < len(queue) or queue[index] != text:
+                if type(index) is not int or not 0 <= index < len(queue) or queue[index] is not text:
                     raise CodexSteerRefused('changed')
                 del queue[index]
                 if not queue:

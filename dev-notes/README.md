@@ -41,3 +41,5 @@ shipped.
 
 - [Backup history reader](backup-reader-436.md): the #436 UI contract and isolated Codex recovery.
 - [Approval noise post-mortem](approval-noise-postmortem.md): how automatic approval review buried the chat, the cross-project changes (#566), and the fix (#564).
+
+- [Codex workflow follow-up](codex-workflows.md): queue identities, subagent turn attribution, standalone OAuth and real protocol limits (#526, #569, #570, #597, #598, #536).
