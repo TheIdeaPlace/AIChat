@@ -181,6 +181,10 @@ class ClaudeExtras:
             return
         said = change.said(info.title)
         runner = self._runners.get(own.cli_session_id)
+        if change.removed_dirs and runner is not None:
+            # First, before reading whether it's held: the turn's thread may
+            # be about to hold it, and mustn't once the folder's gone (#749).
+            runner.no_hold_for_waits = True
         if change.removed_dirs and runner is not None and (
                 getattr(runner, "waiting_for_waits", False)
                 or getattr(runner, "held_for_waits", False)):
@@ -206,8 +210,7 @@ class ClaudeExtras:
         elif runner is not None and change.removed_dirs:
             # Not kept open yet: it mustn't start to be, with the folder
             # still reachable (#749). It ends with its reply, which says
-            # which checks won't run.
-            runner.no_hold_for_waits = True
+            # which checks won't run (no_hold_for_waits, set above).
             said = (said[:-1] + "; the turn running now carries on as it started, then ends, "
                     "even if Claude sets a check for later.")
         elif runner is not None:

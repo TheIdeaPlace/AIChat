@@ -188,7 +188,7 @@ class Run:
     """A turn against fake_claude.py's cron mode, events collected."""
 
     def __init__(self, tmp_path, monkeypatch, limit=5, command_extra=(), timer=None,
-                 slots=None, **env):
+                 slots=None, no_hold=False, **env):
         monkeypatch.setattr(sw, "wall_clock", lambda: at(NOW))
         self.log = tmp_path / "fake.log"
         variables = {"FAKE_CLAUDE_LOG": str(self.log), "FAKE_CLAUDE_MODE": "cron",
@@ -203,6 +203,7 @@ class Run:
                                  env=cli.child_environment({**cli.child_environment(),
                                                             **variables}),
                                  wait_slots=self.slots, allow_overage=allow, **kwargs)
+        self.runner.no_hold_for_waits = no_hold
         self.runner.start()
 
     def on_event(self, event):
@@ -308,6 +309,25 @@ def test_no_place_under_the_limit_ends_the_turn_with_the_reply(tmp_path, monkeyp
     slots.take("another chat")
     run = Run(tmp_path, monkeypatch, slots=slots, FAKE_CLAUDE_WAKE="0.3")
     assert run.done().kind == "finished" and run.count("waiting") == 0
+
+
+def test_a_turn_told_not_to_hold_ends_with_its_reply(tmp_path, monkeypatch):
+    # A folder taken away mid-answer (#749): the window sets the flag, and
+    # the process mustn't then stay open with the folder still reachable.
+    monkeypatch.setattr(sw, "wall_clock", lambda: at(NOW))
+    runner = TurnRunner(["claude"], ".", "go", lambda e: None, wait_slots=WaitSlots(lambda: 5))
+    runner._stdin_open = True
+    runner.pending_waits = [cron(SOON)]
+    assert runner._hold_for_waits_locked()
+    runner.wait_slots.release(runner)
+    runner.no_hold_for_waits = True
+    assert not runner._hold_for_waits_locked()
+    # And through the real fake: the turn ends with the reply, saying the check won't run.
+    run = Run(tmp_path, monkeypatch, no_hold=True, FAKE_CLAUDE_WAKE="5")
+    final = run.done()
+    assert run.count("waiting") == 0 and final.kind == "finished"
+    assert "held" not in final.data
+    assert [w.cron for w in sw.from_dicts(final.data["waits"])] == [SOON]
 
 
 def test_a_far_timer_doesnt_hold_and_is_said_once(tmp_path, monkeypatch):
