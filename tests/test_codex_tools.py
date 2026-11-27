@@ -282,22 +282,22 @@ def test_app_pagination_refetches_catalog_only_on_the_first_page():
             assert method == "app/list"
             calls.append(params)
             return {"data": [], "nextCursor": "page-two" if len(calls) == 1 else None}
-    assert app_inventory(Connection(), INFO) == []
+    assert app_inventory(Connection(), INFO, refresh=True) == []
     assert calls == [{"limit": 100, "forceRefetch": True},
                      {"limit": 100, "forceRefetch": False, "cursor": "page-two"}]
 
 
-def test_opening_the_list_takes_codexs_catalog_and_refresh_reads_it_again():
+def test_only_refresh_reads_codexs_catalog_again():
     """Codex's first app/list page waits for the whole catalog, 40 seconds or
-    more, unless Codex already has it (#729's end-to-end test). Opening the
-    list takes what Codex has; Refresh, the provider's default, refetches."""
+    more, unless Codex already has it (#729's end-to-end test). Every read
+    takes what Codex has unless Refresh asks for it again."""
     from thechatplace.providers.codex_tools import app_inventory
     calls = []
     class Connection:
         def request(self, method, params):
             calls.append(params)
             return {"data": []}
-    app_inventory(Connection(), INFO, refresh=False)
+    app_inventory(Connection(), INFO)
     assert calls == [{"limit": 100, "forceRefetch": False}]
     sent = []
     class Records(FakeConnection):
@@ -305,11 +305,54 @@ def test_opening_the_list_takes_codexs_catalog_and_refresh_reads_it_again():
             sent.append((method, params))
             return super().request(method, params)
     connection = Records()
-    codex.CodexProvider.connected_tools(_provider(connection), INFO, refresh=False)
+    codex.CodexProvider.connected_tools(_provider(connection), INFO)
     assert ("app/list", {"limit": 100, "forceRefetch": False}) in sent
     sent.clear()
-    codex.CodexProvider.connected_tools(_provider(connection), INFO)
+    codex.CodexProvider.connected_tools(_provider(connection), INFO, refresh=True)
     assert ("app/list", {"limit": 100, "forceRefetch": True}) in sent
+
+
+def test_reconnect_reads_the_list_without_fetching_the_catalog_again():
+    """Reconnect re-reads the list, and was refetching the catalog for most of
+    a minute on the shared pool (#729's review)."""
+    sent = []
+    class Records(FakeConnection):
+        def request(self, method, params):
+            sent.append((method, params))
+            return super().request(method, params)
+    connection = Records(status=[])
+    runtime = SimpleNamespace(tools_context=lambda native: (connection, ("notes",)),
+                              selected_apps=lambda native: ())
+    provider = SimpleNamespace(connection=connection, runtime=runtime, provider_id="codex",
+                               _check=lambda session: None)
+    provider.connected_tools = lambda session, **k: codex.CodexProvider.connected_tools(provider, session, **k)
+    info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=True)
+    codex.CodexProvider.connected_tool_action(provider, info, "notes", "reconnect")
+    assert ("config/mcpServer/reload", {}) in sent
+    assert ("app/list", {"limit": 100, "forceRefetch": False}) in sent
+    assert ("app/list", {"limit": 100, "forceRefetch": True}) not in sent
+
+
+def test_a_finished_sign_in_refreshes_without_fetching_the_catalog_again(monkeypatch):
+    wx = pytest.importorskip("wx")
+    host = _host(True)
+    refreshed = []
+    host.dialog = SimpleNamespace(on_refresh=lambda **k: refreshed.append(k))
+    host.frame._feedback = lambda text: None
+    host.frame._codex_work = lambda action, done: done(True, False)
+    host.frame.sessions = SimpleNamespace(connected_tool_action=lambda *a: True)
+    server = CodexTool("notes", "needs-auth", (), False)
+    host._logins["notes"] = "login"
+    host._poll_login(host.info, server, "login", 1)
+    assert refreshed == [{"read_again": False}]
+
+
+def test_nothing_to_sign_in_notices_are_told_apart_from_a_started_sign_in():
+    host = _host(True)
+    server = CodexTool("everything", "configured", auth="unsupported")
+    assert host.is_sign_in_notice(server, host.nothing_to_sign_in(server))
+    assert not host.is_sign_in_notice(server, "Finish signing in in your browser.")
+    assert not host.is_sign_in_notice(server, None)
 
 
 CATALOG = [
@@ -336,8 +379,8 @@ def test_only_chosen_and_usable_apps_are_rows_and_one_row_counts_the_rest():
     assert all(row.off_for_chat for row in rows[:2])
     more = rows[-1]
     assert more.informational and not more.off_for_chat and not more.app_id
-    assert more.text() == ("More ChatGPT apps: 3 can be set up. To use one, set it up in "
-                           "ChatGPT's settings, under Apps, then press Refresh here.")
+    assert more.text() == ("More ChatGPT apps: 3 more aren't connected to your account. To use "
+                           "one, connect it in ChatGPT's settings, under Apps, then press Refresh here.")
     # It isn't a tool: the count and the summary leave it out, and say it.
     assert tools_summary(rows) == "2 connected tools, 2 off for this chat. " + more.text()
     # An app on for the chat that now needs sign-in stays with the chat's
@@ -347,7 +390,7 @@ def test_only_chosen_and_usable_apps_are_rows_and_one_row_counts_the_rest():
     assert [row.app_id for row in rows] == ["available-two", "unconnected-two", "available-one", ""]
     assert [row.off_for_chat for row in rows] == [False, False, True, False]
     assert rows[1].install_url == "" and rows[1].status == "needs sign-in or installation"
-    assert rows[-1].text().startswith("More ChatGPT apps: 2 can be set up.")
+    assert rows[-1].text().startswith("More ChatGPT apps: 2 more aren't connected to your account.")
     # One on for the chat that Codex no longer lists is with the chat's apps
     # too, ahead of the rest.
     rows = app_inventory(Catalog(), INFO, selected=("gone-app", "available-two"))
@@ -365,7 +408,7 @@ def test_a_large_catalog_is_one_row_with_a_readable_count():
             return {"data": data, "nextCursor": str(page + 1) if page < 50 else None}
     rows = app_inventory(Big(), INFO)
     assert len(rows) == 4 and rows[-1].informational
-    assert rows[-1].text().startswith("More ChatGPT apps: 5,097 can be set up.")
+    assert rows[-1].text().startswith("More ChatGPT apps: 5,097 more aren't connected to your account.")
 
 
 def test_every_app_usable_or_chosen_leaves_no_more_apps_row():
@@ -384,7 +427,7 @@ def test_a_chat_started_elsewhere_lists_only_usable_apps():
     from thechatplace.providers.codex_tools import app_inventory
     rows = app_inventory(Catalog(), INFO, read_only=True)
     assert [row.app_id for row in rows] == ["available-one", "available-two", ""]
-    assert rows[-1].text().startswith("More ChatGPT apps: 3 can be set up.")
+    assert rows[-1].text().startswith("More ChatGPT apps: 3 more aren't connected to your account.")
     assert all(row.read_only for row in rows)
 
 

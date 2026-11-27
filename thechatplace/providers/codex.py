@@ -754,7 +754,10 @@ class CodexProvider:
                                    'description': str(skill.get('description') or '')[:2000]})
         return skills
 
-    def connected_tools(self, session, selected=None, apps=(), refresh=True):
+    def connected_tools(self, session, selected=None, apps=(), refresh=False):
+        """``refresh``: fetch ChatGPT's app catalog again, which takes most of
+        a minute; only Connected Tools' Refresh button asks (#729). Reconnect
+        and the reads after a copy or a sign-in take what Codex has."""
         self._check(session)
         from .codex_features import CodexFeatureError
         from .codex_tools import inventory, app_inventory, apps_unavailable

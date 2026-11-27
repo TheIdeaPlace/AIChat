@@ -38,10 +38,11 @@ nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a termi
 Then, in a Codex chat started here: Tools, Connected Tools (MCP) (Alt+T, C). Codex lists
 configured servers first ("everything: off for this chat, configured Codex MCP server"), then
 the ChatGPT apps your account can use (three to five in November 2026), then one row, "More
-ChatGPT apps: 5,022 can be set up. To use one, set it up in ChatGPT's settings, under Apps, then
-press Refresh here." The list's name counts only the servers and apps, not that row. The first
-open after The Chat Place starts takes most of a minute while Codex fetches ChatGPT's app
-catalog; opening it again takes a few seconds, and Refresh fetches the catalog again (most of a
+ChatGPT apps: 5,022 more aren't connected to your account. To use one, connect it in ChatGPT's
+settings, under Apps, then press Refresh here." The list's name counts only the servers and
+apps, not that row. The first open after The Chat Place starts takes most of a minute while
+Codex fetches ChatGPT's app catalog; opening it again takes a few seconds, and so do Reconnect
+and the refresh after a sign-in. Only the Refresh button fetches the catalog again (most of a
 minute). Sign In on everything says "everything: This tool doesn't need signing in: Codex
 starts it on this computer without an account." and asks Codex nothing. Select the tool and
 choose **Copy with Tool On** (Alt+O). It's the only way to

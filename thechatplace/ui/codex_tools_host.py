@@ -126,21 +126,31 @@ class CodexConnectedTools:
         # Not _codex_work: the app catalog can take a minute a page, which on
         # the window's shared pool held up opening chats (#729's review). A
         # dialog reopened while this chat's list is still being read joins
-        # that read; ``finished`` above does nothing for a closed one.
+        # that read, a Refresh's included; ``finished`` above does nothing
+        # for a closed one.
         key = ('connected-tools', getattr(info, 'key', None) or info.cli_session_id,
-               tuple(sorted(selected.items())), refresh)
+               tuple(sorted(selected.items())))
         self.frame._codex_tools_load(key, lambda: self.frame.sessions.connected_tools(
             info, refresh=refresh, **selected), finished)
 
     @staticmethod
     def nothing_to_sign_in(server):
-        """What Sign In says, without asking Codex, for a server Codex reports
-        has nothing to sign in to: a stdio server ("unsupported") or one with
-        a bearer token (#729). "" otherwise."""
+        """What Sign In says, without asking Codex, for a server whose
+        configuration has nothing to sign in to: a stdio server
+        ("unsupported") or one with a bearer token (``config_auth``; #729).
+        "" otherwise."""
         from ..providers.codex_rpc import CodexSignInRefused
         from ..providers.codex_tools import NO_SIGN_IN
         code = NO_SIGN_IN.get(getattr(server, 'auth', '')) if not server.app_id else None
         return f"{server.label}: {CodexSignInRefused.REASONS[code]}" if code else ''
+
+    @staticmethod
+    def is_sign_in_notice(server, text):
+        """Whether Sign In's ``text`` says there's nothing to sign in to, so
+        the dialog puts focus back on Sign In, as for its own check, rather
+        than on Refresh, as after a sign-in (#729's review)."""
+        return isinstance(text, str) and any(text == f"{server.label}: {reason}"
+                                             for reason in _NOTHING_TO_SIGN_IN)
 
     def sign_in(self, server, done):
         if server.app_id:
@@ -177,8 +187,9 @@ class CodexConnectedTools:
             if self.closed or self._logins.get(server.name) is not attempt:
                 return
             if error and isinstance(result, str) and result in _NOTHING_TO_SIGN_IN:
-                # Not a failure: there's nothing to sign in to (a chat
-                # started elsewhere, whose rows have no auth status).
+                # Not a failure: there's nothing to sign in to. The row said
+                # otherwise only if Codex's configuration changed after the
+                # list was read.
                 done(f"{server.label}: {result}", '')
                 return
             if error or not isinstance(result, dict):
@@ -227,7 +238,8 @@ class CodexConnectedTools:
             elif result is True:
                 self.frame._feedback('Signed in to ' + server.label + '. Reconnect an enabled tool to use the sign-in.')
                 if self.dialog:
-                    self.dialog.on_refresh()
+                    # Not a fresh app catalog: a sign-in can't change it (#729).
+                    self.dialog.on_refresh(read_again=False)
             elif remaining:
                 wx.CallLater(2000, self._poll_login, info, server, login_id, remaining - 1)
             else:

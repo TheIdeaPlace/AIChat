@@ -6558,12 +6558,16 @@ class ConnectedToolsDialog(wx.Dialog):
         refresh_list_item(self.list)
         self._show_selected()
 
-    def on_refresh(self):
+    def on_refresh(self, read_again: bool = True):
         """Read the list again, staying on the same row and saying how it
-        came out: focus stays on the button, so nothing else would."""
-        self.reload(self.list.GetSelection(), announce=True)
+        came out: focus stays on the button, so nothing else would.
+        ``read_again``: the Refresh button, which asks the host for what's
+        new (Codex's ChatGPT app catalog, after an app is set up; #729). A
+        refresh after a server's sign-in passes False: a sign-in can't change
+        the catalog, and fetching it again takes most of a minute."""
+        self.reload(self.list.GetSelection(), announce=True, read_again=read_again)
 
-    def reload(self, select: int = 0, announce: bool = False):
+    def reload(self, select: int = 0, announce: bool = False, read_again: bool = False):
         from ..claude_mcp import tools_summary
         if self.busy:
             self._tell(self.busy, back_to=self.refresh_btn)
@@ -6585,9 +6589,7 @@ class ConnectedToolsDialog(wx.Dialog):
                 self._fill(rows, select)
             if announce:
                 self._feedback(self.load_error or tools_summary(self.rows))
-        if announce and hasattr(self.host, 'read_again'):
-            # Refresh asks for what's new, not what the host already has:
-            # Codex's ChatGPT app list, after an app is set up (#729).
+        if read_again and hasattr(self.host, 'read_again'):
             self.host.read_again()
         self.host.load(done)
 
@@ -6690,7 +6692,9 @@ class ConnectedToolsDialog(wx.Dialog):
                 self._tell(f"Couldn't start signing in to {server.label}. {error}",
                            wx.ICON_WARNING, back_to=self.sign_in_btn)
             else:
-                self._tell(text, back_to=self.refresh_btn)
+                notice = getattr(self.host, 'is_sign_in_notice', None)
+                self._tell(text, back_to=self.sign_in_btn if notice and notice(server, text)
+                           else self.refresh_btn)
         self.host.sign_in(server, done)
 
     def on_reconnect(self):

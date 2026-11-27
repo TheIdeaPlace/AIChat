@@ -200,12 +200,15 @@ def more_apps(count):
     Information, like ``apps_unavailable``: not a tool, so not counted, and
     Sign In, Reconnect and the toggle only say it."""
     return CodexTool('More ChatGPT apps',
-        f"{count:,} can be set up. To use one, set it up in ChatGPT's "
-        'settings, under Apps, then press Refresh here.',
+        # "Not connected", not "can be set up": Codex's isAccessible is false
+        # for an app never set up and, it may be, for one whose connection
+        # lapsed, and both are connected again the same way (#729's review).
+        f"{count:,} more aren't connected to your account. To use one, connect it in "
+        "ChatGPT's settings, under Apps, then press Refresh here.",
         off_for_chat=False, read_only=True, display_name='More ChatGPT apps', informational=True)
 
 
-def app_inventory(connection, info, selected=(), *, read_only=False, refresh=True):
+def app_inventory(connection, info, selected=(), *, read_only=False, refresh=False):
     """The chat's ChatGPT apps: those on for it, and those the account can
     already use, with one row counting the rest of the catalog (#729).
 

@@ -138,7 +138,7 @@ def test_app_inventory_refreshes_and_never_passes_foreign_thread_identity():
     def request(method, params):
         calls.append((method, params))
         return {'data': [{'id': 'docs', 'name': 'Documents', 'isAccessible': True}]}
-    rows = app_inventory(SimpleNamespace(request=request), SimpleNamespace(cli_session_id='foreign'), ['docs'])
+    rows = app_inventory(SimpleNamespace(request=request), SimpleNamespace(cli_session_id='foreign'), ['docs'], refresh=True)
     assert rows[0].label == 'Documents' and not rows[0].off_for_chat
     assert calls == [('app/list', {'limit': 100, 'forceRefetch': True})]
 

@@ -1420,7 +1420,7 @@ def test_the_more_apps_row_is_information_and_isnt_counted(frame, env, action):
         assert dialog.toggle_btn.GetLabel() == "Change T&ool"
         getattr(dialog, action)()
         assert env["boxes"][-1] == rows[2].text()
-        assert "5,022 can be set up" in env["boxes"][-1]
+        assert "5,022 more aren't connected" in env["boxes"][-1]
     finally:
         dialog.Destroy()
 

@@ -2938,9 +2938,9 @@ To use an available connection in a ChatGPT-subscription Codex chat:
    **Copy with Tool Off** and continue in that copy.
 
 Apps that are on for the chat come first, including one that needs you to sign in again, then
-other apps your account can use. The thousands of ChatGPT apps you haven't set up are one
-entry at the end, **More ChatGPT apps**, which says how many there are: set one up in ChatGPT's
-settings, under Apps, then press **Refresh**. Like **Apps unavailable**, it's information, not a
+other apps your account can use. The thousands of ChatGPT apps not connected to your account
+are one entry at the end, **More ChatGPT apps**, which says how many there are: connect one in
+ChatGPT's settings, under Apps, then press **Refresh**. Like **Apps unavailable**, it's information, not a
 tool: it isn't counted, and Sign In, Reconnect and Change Tool only say its message. Apps start
 off for a chat until you use **Copy with Tool On**. The first time Connected Tools opens after
 The Chat Place starts, listing apps can take up to a minute while Codex fetches ChatGPT's app
