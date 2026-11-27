@@ -401,6 +401,7 @@ def test_built_copy_without_its_updater_says_so_not_running_from_source(portable
                                                                          monkeypatch):
     # current\ copied on its own, or Update.exe gone.
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
     unsure = FakeManager(Update("0.2.0"))
 
     def cannot_tell():
@@ -413,6 +414,19 @@ def test_built_copy_without_its_updater_says_so_not_running_from_source(portable
         assert result.describe() == (
             "The Chat Place can't update itself here: it's missing the updater it came with. "
             "Download the installer or the portable zip again. The latest release is 0.2.0.")
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_a_mac_or_linux_copy_without_its_updater_says_to_download_it_again(monkeypatch,
+                                                                           platform):
+    # No installer or portable zip there, so it names the app instead.
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(updater, "mac_update_blocker", lambda: "")
+    result = UpdateService("0.1.0", manager_factory=not_installed, latest=lambda: "0.2.0").check()
+    assert result.describe() == (
+        "The Chat Place can't update itself here: it's missing the updater it came with. "
+        "Download The Chat Place again. The latest release is 0.2.0.")
 
 
 def test_only_a_built_portable_zip_that_updates_has_a_folder_for_its_record(portable_zip,
