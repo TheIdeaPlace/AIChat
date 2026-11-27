@@ -761,7 +761,7 @@ def test_a_copy_drops_every_removed_server_and_says_it_is_being_made(frame, env,
     host.load(lambda rows, error: None)
     action, done = jobs.pop()
     done(action(), False)
-    assert asked == [{'selected': ('kept', 'gone', 'also gone'), 'apps': ()}]
+    assert asked == [{'selected': ('kept', 'gone', 'also gone'), 'apps': (), 'refresh': False}]
     assert host.toggle_label(rows[0]) == 'Copy with Tool &Off'
     host.set_off(rows[0], True, lambda rows, error: None)
     assert "no longer in Codex's configuration" in boxes[-1]

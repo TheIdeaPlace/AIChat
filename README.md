@@ -1101,11 +1101,16 @@ To use an available connection in a ChatGPT-subscription Codex chat:
    **Copy with Tool Off** and continue in that copy.
 
 Apps that are on for the chat come first, including one that needs you to sign in again, then
-other apps your account can use, then the larger catalog of apps that need setting up. Apps
-start off for a chat until you use **Copy with Tool On**. Listing account apps can take up to a
-minute per page while Codex fetches its catalog. The lookup runs in the background: opening
-other chats doesn't wait for it, and you can close the dialog while it is waiting. Opening
-Connected Tools again for the same chat waits for that lookup rather than starting another.
+other apps your account can use. The thousands of ChatGPT apps you haven't set up are one
+entry at the end, **More ChatGPT apps**, which says how many there are: set one up in ChatGPT's
+settings, under Apps, then press **Refresh**. Like **Apps unavailable**, it's information, not a
+tool: it isn't counted, and Sign In, Reconnect and Change Tool only say its message. Apps start
+off for a chat until you use **Copy with Tool On**. The first time Connected Tools opens after
+The Chat Place starts, listing apps can take up to a minute while Codex fetches ChatGPT's app
+catalog; after that the list opens in seconds, from what Codex fetched, and **Refresh** fetches
+it again. The lookup runs in the background: opening other chats doesn't wait for it, and you
+can close the dialog while it is waiting. Opening Connected Tools again for the same chat waits
+for that lookup rather than starting another.
 
 An empty list can mean no services have been configured. **Apps unavailable** means the app
 inventory could not be retrieved; it does not establish that your account has no apps. That
@@ -1141,6 +1146,12 @@ For apps, Sign In opens the app page Codex gives and Refresh reads whether it's 
 for the chat's folder, without making a chat or turning the tool on. Keep Connected Tools open
 until the result is announced; an enabled tool may need **Reconnect** to use the sign-in.
 Sign-in waits up to three minutes. It needs a recent Codex; unsupported sign-ins say they failed.
+A server Codex starts on this computer (a stdio server) has nothing to sign in to, and neither
+does one set up with a token; Sign In says so. Some services, GitHub's among them, don't let
+Codex sign in for you: Sign In says to give Codex a token instead (`codex mcp add` with
+`--bearer-token-env-var`) or to follow the service's own instructions for Codex. When Codex
+gives no reason, Sign In says to run `codex mcp login` with the tool's name in a terminal, which
+shows Codex's own reason.
 If a server a chat uses is later removed from Codex's settings, turns are refused and say why;
 the list shows it first, and **Copy with Tool Off** makes a copy without it, or you can add it back.
 A chat started elsewhere still has its tools left as they are. When Codex asks permission

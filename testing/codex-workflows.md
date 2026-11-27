@@ -24,7 +24,9 @@ nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a termi
 - **A web service that signs in through your browser**, for the Sign In check. It must support
   OAuth dynamic client registration. GitHub's (`https://api.githubcopilot.com/mcp/`) doesn't:
   `codex mcp add github --url …` fails with "Dynamic client registration not supported", and
-  Sign In in The Chat Place says Codex could not start signing in. Notion's does. Add it by
+  Sign In in The Chat Place says "Couldn't start signing in to github. This service doesn't
+  support signing in through Codex. Give Codex a token for it instead: …", naming
+  `--bearer-token-env-var`. Notion's does support it. Add it by
   editing `config.toml` (in `CODEX_HOME`, normally `~/.codex`), not with `codex mcp add`, which
   starts its own sign-in at once for a web server and would leave nothing for Sign In to do:
 
@@ -35,8 +37,14 @@ nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a termi
 
 Then, in a Codex chat started here: Tools, Connected Tools (MCP) (Alt+T, C). Codex lists
 configured servers first ("everything: off for this chat, configured Codex MCP server"), then
-every app in ChatGPT's catalog (over 5,000 in November 2026, so the list takes most of a
-minute to read). Select the tool and choose **Copy with Tool On** (Alt+O). It's the only way to
+the ChatGPT apps your account can use (three to five in November 2026), then one row, "More
+ChatGPT apps: 5,022 can be set up. To use one, set it up in ChatGPT's settings, under Apps, then
+press Refresh here." The list's name counts only the servers and apps, not that row. The first
+open after The Chat Place starts takes most of a minute while Codex fetches ChatGPT's app
+catalog; opening it again takes a few seconds, and Refresh fetches the catalog again (most of a
+minute). Sign In on everything says "everything: This tool doesn't need signing in: Codex
+starts it on this computer without an account." and asks Codex nothing. Select the tool and
+choose **Copy with Tool On** (Alt+O). It's the only way to
 turn a tool on in a Codex chat. In the copy it opens, the row says "everything: connected,
 configured Codex MCP server, 19 tools", and Details lists them. Ask for a task by name. The
 server's adding tool is get-sum, not "add": "Use the everything tool's get-sum tool to add 2 and
@@ -60,7 +68,9 @@ Verified on Windows on 2026-11-26 with Codex 0.163 and everything 2.3.1, in a th
 `codex exec` called get-sum. The Chat Place's provider code was driven without a window:
 listing, Copy with Tool On, a turn calling the tool, the prompted question answered with both
 Send and Decline, and Sign In's start, which fails for GitHub and returns an address for
-Notion. No sign-in was finished.
+Notion. No sign-in was finished. On 2026-11-26 the fixed list (three to five usable apps and
+the More ChatGPT apps row, about 44 seconds cold, 3 seconds from Codex's copy) and Sign In's
+reasons for GitHub and everything were checked the same way with Codex 0.163.
 
 1. While Codex is working, queue two different messages. In Messages, select the
    first, press the Applications key (Shift+F10), and choose Edit Queued Message.
@@ -102,6 +112,8 @@ approval does not test connected-tool arguments.
 
 If only **Apps unavailable** is listed, neither integration check is ready. This is a failed
 inventory lookup, not a tool. Do not try Sign In on it. There may also be no configured servers.
+**More ChatGPT apps** isn't a tool either: Sign In, Reconnect and Change Tool on it only say its
+message.
 After signing into an off server, use **Copy with Tool On** to use it. Reconnect alone cannot
 enable it. An externally started chat means one created in another Codex client; signing in
 must leave that original chat's tools and read-only status in The Chat Place unchanged.

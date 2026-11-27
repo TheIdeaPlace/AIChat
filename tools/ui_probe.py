@@ -1808,6 +1808,29 @@ def d_codex_tools_apps_unavailable(frame, env):
     return opener
 
 
+def d_codex_tools_more_apps(frame, env):
+    """The ChatGPT catalog as one row (#729's end-to-end test): the servers,
+    the apps the account can use, then "More ChatGPT apps", selected, so its
+    neutral button and its words in Details show."""
+    from thechatplace.providers.codex_tools import CodexTool, more_apps
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    s_main_codex_owned(frame, env)
+    host = CodexConnectedTools(frame, frame._open)
+    rows = [CodexTool('project-notes', 'connected', ('find_notes',), False),
+            CodexTool('reference-search', 'off', (), True),
+            CodexTool('app:docs', 'available', app_id='docs', display_name='Project documents'),
+            CodexTool('app:maps', 'available', app_id='maps', display_name='Trail maps'),
+            more_apps(5022)]
+    host.load = lambda done: done(rows, '')
+
+    def opener():
+        dialog = ConnectedToolsDialog(frame, 'Codex review', host)
+        dialog._fill(rows, select=len(rows) - 1)
+        return frame._modal(dialog)
+    return opener
+
+
 def s_main_codex_queue_edited(frame, env):
     from dataclasses import replace
     from thechatplace.providers.codex_input import CodexInput
@@ -2790,6 +2813,8 @@ SURFACES = {
     "codex-tools": ("dialog", d_codex_tools, "Codex MCP selection through explicitly authorised copies"),
     "codex-tools-apps-unavailable": ("dialog", d_codex_tools_apps_unavailable,
                                      "Codex Connected Tools when Codex couldn't list apps"),
+    "codex-tools-more-apps": ("dialog", d_codex_tools_more_apps,
+                              "Codex Connected Tools with the ChatGPT apps not set up as one row"),
     "codex-tool-approval": ("dialog", d_codex_tool_approval, "Codex tool-call consent with exact arguments and a one-time answer"),
     "main-codex-queue-edited": ("window", s_main_codex_queue_edited, "A queued Codex message returned to its draft without stopping the turn"),
     "codex-commands": ("dialog", d_codex_commands, "Codex commands and explicit skills"),
@@ -2960,6 +2985,7 @@ DIALOG_CLASSES = {
     "codex-aside": "AskAsideDialog",
     "codex-tools": "ConnectedToolsDialog",
     "codex-tools-apps-unavailable": "ConnectedToolsDialog",
+    "codex-tools-more-apps": "ConnectedToolsDialog",
     "codex-tool-approval": "ElicitationDialog",
     "codex-commands": "CommandPickerDialog",
     "codex-collaboration": "SingleChoiceDialog",

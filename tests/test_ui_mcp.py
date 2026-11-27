@@ -244,7 +244,7 @@ def _codex_frame(record=None, work=None):
     from types import SimpleNamespace
     work = work or (lambda action, done: done(action(), False))
     return SimpleNamespace(store=SimpleNamespace(get=lambda *a, **k: record),
-                           sessions=SimpleNamespace(connected_tools=lambda info: []),
+                           sessions=SimpleNamespace(connected_tools=lambda info, **options: []),
                            _codex_work=work,
                            _codex_tools_load=lambda key, action, done: work(action, done))
 
@@ -1393,5 +1393,69 @@ def test_unavailable_apps_row_never_performs_a_tool_action(frame, env, action):
         getattr(dialog, action)()
         assert env["boxes"][-1] == notice.text()
         assert dialog.details.GetValue().startswith(notice.text())
+    finally:
+        dialog.Destroy()
+
+
+@pytest.mark.parametrize("action", ["on_sign_in", "on_reconnect", "on_toggle"])
+def test_the_more_apps_row_is_information_and_isnt_counted(frame, env, action):
+    """The ChatGPT catalog is one row, not 5,027 (#729's end-to-end test)."""
+    from thechatplace.providers.codex_tools import CodexTool, more_apps
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = CodexConnectedTools(_codex_frame(), _codex_info())
+    rows = [CodexTool("notes", "off"),
+            CodexTool("app:sites", "available", app_id="sites", display_name="Sites"),
+            more_apps(5022)]
+    host.load = lambda done: done(rows, "")
+    def unexpected(*args, **kwargs):
+        pytest.fail("The more apps row must not perform a tool action")
+    host.sign_in = host.reconnect = host.set_off = unexpected
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        assert dialog._list_name() == "Connected tools, 2"
+        assert dialog.list.GetString(2) == rows[2].text()
+        dialog.list.SetSelection(2)
+        dialog._show_selected()
+        assert dialog.toggle_btn.GetLabel() == "Change T&ool"
+        getattr(dialog, action)()
+        assert env["boxes"][-1] == rows[2].text()
+        assert "5,022 can be set up" in env["boxes"][-1]
+    finally:
+        dialog.Destroy()
+
+
+def test_sign_in_on_a_server_with_nothing_to_sign_in_to_says_so_and_asks_nothing(frame, env):
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    def unexpected(*args, **kwargs):
+        pytest.fail("Codex must not be asked to sign in to a stdio server")
+    host = CodexConnectedTools(_codex_frame(work=unexpected), _codex_info())
+    host.frame._codex_tools_load = lambda key, action, done: done([], False)
+    row = CodexTool("everything", "configured", off_for_chat=False, read_only=True, auth="unsupported")
+    host.load = lambda done: done([row], "")
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.on_sign_in()
+        assert env["boxes"][-1] == ("everything: This tool doesn't need signing in: Codex starts it "
+                                    "on this computer without an account.")
+        assert not dialog.busy
+    finally:
+        dialog.Destroy()
+
+
+def test_refresh_reads_codexs_app_catalog_again_and_opening_doesnt(frame, env):
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    asked = []
+    codex_frame = _codex_frame()
+    codex_frame.sessions.connected_tools = lambda info, **options: asked.append(options) or []
+    dialog = ConnectedToolsDialog(frame, "Chat", CodexConnectedTools(codex_frame, _codex_info()))
+    try:
+        dialog.on_refresh()
+        # A load after Refresh (a copy, say) takes what Codex has again.
+        dialog.host.load(lambda rows, error: None)
+        assert [options["refresh"] for options in asked] == [False, True, False]
     finally:
         dialog.Destroy()

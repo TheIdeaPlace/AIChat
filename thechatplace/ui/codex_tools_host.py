@@ -35,6 +35,21 @@ NOTE_READ_ONLY = ("These are the tools Codex can connect to in this chat's folde
 #: When Codex's failure has no words fit to show (safe_reason gave none).
 COULD_NOT_SAY = 'Codex could not say.'
 
+#: Sign In's failure with no known reason. Still a next step, as Details
+#: promises (#729): Codex's own command shows its reason, which the window
+#: doesn't, since it can carry the server's text.
+COULD_NOT_START = ("Codex could not start signing in to this tool. To see Codex's reason, run "
+                   "codex mcp login followed by the tool's name in a terminal.")
+
+
+def _reasons(*codes):
+    from ..providers.codex_rpc import CodexSignInRefused
+    return frozenset(CodexSignInRefused.REASONS[code] for code in codes)
+
+
+#: Sign In refusals that aren't failures: there's nothing to sign in to.
+_NOTHING_TO_SIGN_IN = _reasons('not_needed', 'token')
+
 
 def _press(label, platform=None):
     """Copy with Tool On or Off, named for pressing: "Copy with Tool On
@@ -68,6 +83,7 @@ class CodexConnectedTools:
         self.closed = False
         self._logins = {}
         self.busy = False
+        self._refresh = False
         #: Selected servers no longer configured: no copy may name them.
         self.removed = set()
 
@@ -89,7 +105,13 @@ class CodexConnectedTools:
         return ('In a Codex chat, a tool changes only in a new copy: press '
                 + _press(self.toggle_label(server), platform) + ' to make one.')
 
+    def read_again(self):
+        """Refresh was pressed: the next read asks Codex for its app catalog
+        afresh, where opening the list takes what Codex already has (#729)."""
+        self._refresh = True
+
     def load(self, done):
+        refresh, self._refresh = self._refresh, False
         def finished(rows, error):
             if not error:
                 self.removed = {row.name for row in rows or () if row.missing}
@@ -106,9 +128,19 @@ class CodexConnectedTools:
         # dialog reopened while this chat's list is still being read joins
         # that read; ``finished`` above does nothing for a closed one.
         key = ('connected-tools', getattr(info, 'key', None) or info.cli_session_id,
-               tuple(sorted(selected.items())))
-        self.frame._codex_tools_load(key, lambda: self.frame.sessions.connected_tools(info, **selected),
-                                     finished)
+               tuple(sorted(selected.items())), refresh)
+        self.frame._codex_tools_load(key, lambda: self.frame.sessions.connected_tools(
+            info, refresh=refresh, **selected), finished)
+
+    @staticmethod
+    def nothing_to_sign_in(server):
+        """What Sign In says, without asking Codex, for a server Codex reports
+        has nothing to sign in to: a stdio server ("unsupported") or one with
+        a bearer token (#729). "" otherwise."""
+        from ..providers.codex_rpc import CodexSignInRefused
+        from ..providers.codex_tools import NO_SIGN_IN
+        code = NO_SIGN_IN.get(getattr(server, 'auth', '')) if not server.app_id else None
+        return f"{server.label}: {CodexSignInRefused.REASONS[code]}" if code else ''
 
     def sign_in(self, server, done):
         if server.app_id:
@@ -134,14 +166,26 @@ class CodexConnectedTools:
                     return
             done('Press Refresh after connecting the app.' if accepted else 'App page was not opened.', '')
             return
+        text = self.nothing_to_sign_in(server)
+        if text:  # the dialog asks first; this is for any other caller
+            done(text, '')
+            return
         info = self.info
         attempt = object()
         self._logins[server.name] = attempt
         def started(result, error):
             if self.closed or self._logins.get(server.name) is not attempt:
                 return
+            if error and isinstance(result, str) and result in _NOTHING_TO_SIGN_IN:
+                # Not a failure: there's nothing to sign in to (a chat
+                # started elsewhere, whose rows have no auth status).
+                done(f"{server.label}: {result}", '')
+                return
             if error or not isinstance(result, dict):
-                done(None, 'Codex could not start signing in to this tool.')
+                # The app's own words for a known refusal (safe_reason gives
+                # CodexSignInRefused's), never Codex's or the server's.
+                done(None, result if error and isinstance(result, str) and result
+                     else COULD_NOT_START)
                 return
             from ..claude_mcp import elicitation_from, is_web_url
             from ..platform_paths import open_url

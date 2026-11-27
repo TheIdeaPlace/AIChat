@@ -754,7 +754,7 @@ class CodexProvider:
                                    'description': str(skill.get('description') or '')[:2000]})
         return skills
 
-    def connected_tools(self, session, selected=None, apps=()):
+    def connected_tools(self, session, selected=None, apps=(), refresh=True):
         self._check(session)
         from .codex_features import CodexFeatureError
         from .codex_tools import inventory, app_inventory, apps_unavailable
@@ -771,7 +771,8 @@ class CodexProvider:
                 optional = True
         rows = inventory(connection, session, allowed, read_only=not session.is_own, status_optional=optional)
         try:
-            rows.extend(app_inventory(self.connection, session, apps, read_only=not session.is_own))
+            rows.extend(app_inventory(self.connection, session, apps, read_only=not session.is_own,
+                                     refresh=refresh))
         except CodexRpcError as exc:
             # An unavailable inventory is information, never a selectable server.
             # Keep server-provided messages out of the UI.

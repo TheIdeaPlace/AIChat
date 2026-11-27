@@ -29,6 +29,10 @@ class CodexTool:
     display_name: str = ''
     install_url: str = ''
     informational: bool = False
+    #: How a server signs in, from its configuration (``config_auth``):
+    #: "unsupported" (stdio), "bearerToken", or "" when Sign In may apply.
+    #: Sign In says there's nothing to sign in to for the first two (#729).
+    auth: str = ''
 
     @property
     def can_be_denied(self):
@@ -88,7 +92,8 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
         names = config.get('mcp_servers') or {}
         if not isinstance(names, dict):
             raise CodexTurnRejected('mcp_tools')
-        return [CodexTool(name, 'configured', off_for_chat=False, read_only=True)
+        return [CodexTool(name, 'configured', off_for_chat=False, read_only=True,
+                          auth=config_auth(names[name]))
                 for name in server_names(list(names))]
     # Only the configuration's shape is checked here. A selected server that
     # has been removed refuses every turn, and this list is where it gets said
@@ -119,8 +124,38 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
                   'starting': 'still connecting', 'failed': 'failed'}.get(row.get('runtimeStatus'),
                       'not connected; refresh or reopen the chat')
         rows.append(CodexTool(name, status, tools, name not in allowed,
-                             is_session_tools=name == "ccd_session_mgmt" and name in allowed))
+                             is_session_tools=name == "ccd_session_mgmt" and name in allowed,
+                             auth=config_auth(names[name])))
     return rows
+
+
+#: The auth values with nothing for Sign In to do, and what it says.
+NO_SIGN_IN = {'unsupported': 'not_needed', 'bearerToken': 'token'}
+
+
+def config_auth(config):
+    """Codex's word for how a server signs in ("unsupported" for a stdio
+    server, "bearerToken" for one with a token), from its configuration, or
+    "" when signing in may apply. Not mcpServerStatus/list's authStatus:
+    with a thread, Codex 0.163 says "unsupported" for an HTTP server that's
+    off for the chat (GitHub's, which needs signing in), so Sign In would
+    have refused it (#729's end-to-end test)."""
+    return {v: k for k, v in NO_SIGN_IN.items()}.get(sign_in_refusal(config), '')
+
+
+def sign_in_refusal(config):
+    """Why Sign In can't go ahead for this server's configuration, as a
+    CodexSignInRefused code, or None. Read from the configuration alone, so
+    a chat started elsewhere (whose rows have no status) gets it too, and no
+    server is started to find out. Codex signs in only to streamable HTTP
+    servers ("url"), and one with a bearer token signs in with that."""
+    if not isinstance(config, dict):
+        return 'not_configured'
+    if not isinstance(config.get('url'), str):
+        return 'not_needed'
+    if config.get('bearer_token_env_var') or config.get('bearer_token'):
+        return 'token'
+    return None
 
 
 def app_ids(values):
@@ -159,11 +194,32 @@ def verify_apps(connection, thread_id, selected):
         raise CodexRpcError('Codex app permissions do not match this chat')
 
 
-def app_inventory(connection, info, selected=(), *, read_only=False):
+def more_apps(count):
+    """The one row standing for the ChatGPT apps the account hasn't set up
+    (#729's end-to-end test: Codex listed 5,027, and every one was a row).
+    Information, like ``apps_unavailable``: not a tool, so not counted, and
+    Sign In, Reconnect and the toggle only say it."""
+    return CodexTool('More ChatGPT apps',
+        f"{count:,} can be set up. To use one, set it up in ChatGPT's "
+        'settings, under Apps, then press Refresh here.',
+        off_for_chat=False, read_only=True, display_name='More ChatGPT apps', informational=True)
+
+
+def app_inventory(connection, info, selected=(), *, read_only=False, refresh=True):
+    """The chat's ChatGPT apps: those on for it, and those the account can
+    already use, with one row counting the rest of the catalog (#729).
+
+    Codex 0.163's app/list can't be asked for usable apps only (its only
+    parameters are cursor, limit, threadId and forceRefetch), and its first
+    page waits for the whole catalog, about 40 to 55 seconds, whether it's
+    refetched or not when Codex hasn't read it yet; later pages come from what
+    that read kept. ``refresh`` False takes what Codex already has, so the
+    list opens in seconds once Codex has read the catalog; Refresh reads it
+    again, as when an app has just been set up in ChatGPT."""
     from .codex_rpc import CodexRpcError
     rows, seen, cursor = [], set(), None
     for _ in range(100):
-        params = {'limit': 100, 'forceRefetch': cursor is None}
+        params = {'limit': 100, 'forceRefetch': refresh and cursor is None}
         if cursor:
             params['cursor'] = cursor
         page = connection.request('app/list', params)
@@ -193,21 +249,29 @@ def app_inventory(connection, info, selected=(), *, read_only=False):
         seen.add(cursor)
     else:
         raise CodexRpcError('Codex app list is too large')
+    # Only apps on for this chat (a chat started here) and apps the account
+    # can already use are rows. The rest of the catalog, thousands of apps
+    # nobody has set up, is one row that counts them (#729's end-to-end test).
+    on = set() if read_only else set(selected)
+    known = {r.app_id for r in rows}
+    hidden = sum(r.app_id not in on and r.status != 'available' for r in rows)
+    rows = [r for r in rows if r.app_id in on or r.status == 'available']
     # Apps on for this chat first, even one that now needs sign-in: it's the
     # row someone opening the list to fix it is looking for. Then usable
-    # account apps that are off, ahead of a potentially large public catalog
-    # (#729). A selected app Codex no longer lists is on for the chat too, so
-    # it's added before sorting and comes first with the others.
-    known = {r.app_id for r in rows}
+    # account apps that are off. A selected app Codex no longer lists is on
+    # for the chat too, so it's added before sorting and comes first with the
+    # others.
     rows.extend(CodexTool('app:' + identity, 'unavailable', off_for_chat=False, missing=True,
         app_id=identity, display_name=identity) for identity in selected if identity not in known)
     rows.sort(key=lambda row: (row.off_for_chat, row.status != 'available'))
+    if hidden:
+        rows.append(more_apps(hidden))
     return rows
 
 
 # OAuth has its own connection: no thread, turn, tool execution or ownership
 # is required to sign in to a configured server (#598).
-from .codex_rpc import ReadOnlyCodexConnection, CodexRpcError
+from .codex_rpc import ReadOnlyCodexConnection, CodexRpcError, CodexSignInRefused
 
 
 class CodexToolConnection(ReadOnlyCodexConnection):
@@ -306,10 +370,20 @@ class CodexToolLogins:
             connection = manager._get()
             config = connection.request('config/read', {'includeLayers': False}).get('config')
             servers = config.get('mcp_servers') if isinstance(config, dict) else None
-            if not isinstance(servers, dict) or not isinstance(servers.get(name), dict):
-                raise CodexRpcError('This server is no longer configured for the chat folder.')
+            refusal = sign_in_refusal(servers.get(name) if isinstance(servers, dict) else None)
+            if refusal:
+                # Said before asking Codex, which would only fail (#729).
+                raise CodexSignInRefused(refusal)
             # Never enable a tool, copy a chat, or save a configuration to sign in.
-            result = connection.request('mcpServer/oauth/login', {'name': name, 'timeoutSecs': 180})
+            try:
+                result = connection.request('mcpServer/oauth/login', {'name': name, 'timeoutSecs': 180})
+            except CodexRpcError as error:
+                # A refusal Codex words in a known way gets the app's sentence
+                # for it; the server's own words never reach the window.
+                reason = getattr(error, 'sign_in_refusal', None)
+                if reason:
+                    raise CodexSignInRefused(reason) from None
+                raise
             login_id = result.get('loginId')
             if not isinstance(login_id, str) or not login_id:
                 raise CodexRpcError('This Codex version cannot confirm a standalone sign-in. Update Codex.')

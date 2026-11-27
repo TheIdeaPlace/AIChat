@@ -195,6 +195,35 @@ _UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found',
 #: rollout" answers don't count: thread/resume refuses an archived chat, and
 #: a chat that exists mustn't be taken for gone.
 _MISSING_THREAD = re.compile(r'thread not found: ([A-Za-z0-9_-]{1,128})')
+#: Why mcpServer/oauth/login refused, as Codex 0.163 words it, so Sign In can
+#: say a fixed sentence of the app's own rather than "could not start" (#729).
+#: A server with no dynamic client registration (GitHub's): -32603 "...
+#: Dynamic client registration not supported". A stdio server: -32600
+#: "OAuth login is only supported for streamable HTTP servers."
+_SIGN_IN_REFUSALS = (
+    ('no_registration', re.compile(r'dynamic client registration not supported', re.IGNORECASE)),
+    ('not_needed', re.compile(r'oauth login is only supported for streamable http', re.IGNORECASE)),
+)
+
+
+class CodexSignInRefused(CodexRpcError):
+    """Why Sign In for a configured server can't go ahead, in the app's own
+    words (#729). Never Codex's or the server's text."""
+    REASONS = {
+        'no_registration': ("This service doesn't support signing in through Codex. Give Codex a "
+                            "token for it instead: set one in an environment variable and add the "
+                            "server with codex mcp add and --bearer-token-env-var, or follow the "
+                            "service's own instructions for Codex."),
+        'not_needed': ("This tool doesn't need signing in: Codex starts it on this computer "
+                       "without an account."),
+        'token': ("This tool signs in with a token set up in Codex's configuration, so there's "
+                  "nothing to sign in to here. To change the token, change its environment variable."),
+        'not_configured': "This server is no longer configured for the chat folder.",
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'not_configured'
+        super().__init__(self.REASONS[self.code])
 
 
 class CodexDeleteUnanswered(CodexRpcError):
@@ -723,6 +752,9 @@ class ReadOnlyCodexConnection:
                 # the id, which the request already had, and nothing else.
                 missing = _MISSING_THREAD.fullmatch(said) if isinstance(said, str) else None
                 pending.error.missing_thread = missing.group(1) if missing and code == -32600 else None
+                # Which known sign-in refusal it was, if any: a code, not the text.
+                pending.error.sign_in_refusal = next((name for name, pattern in _SIGN_IN_REFUSALS
+                    if isinstance(said, str) and pattern.search(said[:4096])), None)
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:

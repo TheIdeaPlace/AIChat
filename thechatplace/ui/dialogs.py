@@ -6585,6 +6585,10 @@ class ConnectedToolsDialog(wx.Dialog):
                 self._fill(rows, select)
             if announce:
                 self._feedback(self.load_error or tools_summary(self.rows))
+        if announce and hasattr(self.host, 'read_again'):
+            # Refresh asks for what's new, not what the host already has:
+            # Codex's ChatGPT app list, after an app is set up (#729).
+            self.host.read_again()
         self.host.load(done)
 
     # -- keys -------------------------------------------------------------------
@@ -6667,6 +6671,11 @@ class ConnectedToolsDialog(wx.Dialog):
             return
         if server.is_session_tools:
             self._tell(f"{server.label} has nothing to sign in to.", back_to=self.sign_in_btn)
+            return
+        nothing = getattr(self.host, 'nothing_to_sign_in', None)
+        if nothing and nothing(server):
+            # Codex: a stdio server, or one with a token (#729).
+            self._tell(nothing(server), back_to=self.sign_in_btn)
             return
         if server.status == "connected":
             self._tell(f"{server.label} is connected already.", back_to=self.sign_in_btn)

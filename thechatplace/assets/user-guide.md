@@ -2938,11 +2938,16 @@ To use an available connection in a ChatGPT-subscription Codex chat:
    **Copy with Tool Off** and continue in that copy.
 
 Apps that are on for the chat come first, including one that needs you to sign in again, then
-other apps your account can use, then the larger catalog of apps that need setting up. Apps
-start off for a chat until you use **Copy with Tool On**. Listing account apps can take up to a
-minute per page while Codex fetches its catalog. The lookup runs in the background: opening
-other chats doesn't wait for it, and you can close the dialog while it is waiting. Opening
-Connected Tools again for the same chat waits for that lookup rather than starting another.
+other apps your account can use. The thousands of ChatGPT apps you haven't set up are one
+entry at the end, **More ChatGPT apps**, which says how many there are: set one up in ChatGPT's
+settings, under Apps, then press **Refresh**. Like **Apps unavailable**, it's information, not a
+tool: it isn't counted, and Sign In, Reconnect and Change Tool only say its message. Apps start
+off for a chat until you use **Copy with Tool On**. The first time Connected Tools opens after
+The Chat Place starts, listing apps can take up to a minute while Codex fetches ChatGPT's app
+catalog; after that the list opens in seconds, from what Codex fetched, and **Refresh** fetches
+it again. The lookup runs in the background: opening other chats doesn't wait for it, and you
+can close the dialog while it is waiting. Opening Connected Tools again for the same chat waits
+for that lookup rather than starting another.
 
 An empty list can mean no services have been configured. **Apps unavailable** means the app
 inventory could not be retrieved; it does not establish that your account has no apps. That
@@ -2975,6 +2980,11 @@ on or off in the chat itself.
   finish in your browser and keep Connected Tools open to hear the result. It works with a
   server off and in chats started elsewhere, without making a chat or turning the tool on.
   Sign-in waits up to three minutes and needs a recent Codex. An app opens its app page instead.
+  A server Codex starts on this computer, or one set up with a token, has nothing to sign in
+  to, and Sign In says so. Some services, GitHub's among them, don't let Codex sign in for you:
+  Sign In says to give Codex a token instead (`codex mcp add` with `--bearer-token-env-var`) or
+  to follow the service's own instructions for Codex. When Codex gives no reason, Sign In says
+  to run `codex mcp login` with the tool's name in a terminal, which shows Codex's own reason.
   **Reconnect** (Alt+R) tries a server again and lets an enabled tool use its new sign-in.
   The Chat Place leaves your Codex settings alone.
 - If a server the chat uses is later removed from Codex's settings, the chat can't send and says

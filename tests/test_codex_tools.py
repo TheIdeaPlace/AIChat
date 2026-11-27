@@ -83,7 +83,8 @@ def test_a_chat_of_its_own_still_reads_status_on_its_own_connection():
     info = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=True)
     rows = codex.CodexProvider.connected_tools(_provider(FakeConnection(), runtime), info)
     assert connection.calls == ["config/read", "mcpServerStatus/list"]
-    assert rows[0] == CodexTool("notes", "connected", ("find",), False)
+    # The fake's servers have no "url", so they're stdio servers to Sign In.
+    assert rows[0] == CodexTool("notes", "connected", ("find",), False, auth="unsupported")
     assert rows[1].off_for_chat and rows[1].text().startswith("search: off for this chat")
 
 
@@ -286,31 +287,269 @@ def test_app_pagination_refetches_catalog_only_on_the_first_page():
                      {"limit": 100, "forceRefetch": False, "cursor": "page-two"}]
 
 
-def test_accessible_apps_precede_the_installable_catalog_without_losing_entries():
+def test_opening_the_list_takes_codexs_catalog_and_refresh_reads_it_again():
+    """Codex's first app/list page waits for the whole catalog, 40 seconds or
+    more, unless Codex already has it (#729's end-to-end test). Opening the
+    list takes what Codex has; Refresh, the provider's default, refetches."""
     from thechatplace.providers.codex_tools import app_inventory
+    calls = []
     class Connection:
         def request(self, method, params):
-            return {"data": [
-                {"id": "unconnected-one", "name": "First catalog app", "isAccessible": False},
-                {"id": "available-one", "name": "First usable app", "isAccessible": True},
-                {"id": "unconnected-two", "name": "Second catalog app", "isAccessible": False},
-                {"id": "available-two", "name": "Second usable app", "isAccessible": True},
-            ]}
-    rows = app_inventory(Connection(), INFO)
-    assert [row.app_id for row in rows] == [
-        "available-one", "available-two", "unconnected-one", "unconnected-two"]
-    assert all(row.off_for_chat for row in rows)
+            calls.append(params)
+            return {"data": []}
+    app_inventory(Connection(), INFO, refresh=False)
+    assert calls == [{"limit": 100, "forceRefetch": False}]
+    sent = []
+    class Records(FakeConnection):
+        def request(self, method, params):
+            sent.append((method, params))
+            return super().request(method, params)
+    connection = Records()
+    codex.CodexProvider.connected_tools(_provider(connection), INFO, refresh=False)
+    assert ("app/list", {"limit": 100, "forceRefetch": False}) in sent
+    sent.clear()
+    codex.CodexProvider.connected_tools(_provider(connection), INFO)
+    assert ("app/list", {"limit": 100, "forceRefetch": True}) in sent
+
+
+CATALOG = [
+    {"id": "unconnected-one", "name": "First catalog app", "isAccessible": False},
+    {"id": "available-one", "name": "First usable app", "isAccessible": True},
+    {"id": "unconnected-two", "name": "Second catalog app", "isAccessible": False},
+    {"id": "available-two", "name": "Second usable app", "isAccessible": True},
+    {"id": "unconnected-three", "name": "Third catalog app", "isAccessible": False},
+]
+
+
+class Catalog:
+    def request(self, method, params):
+        return {"data": CATALOG}
+
+
+def test_only_chosen_and_usable_apps_are_rows_and_one_row_counts_the_rest():
+    """The ChatGPT catalog listed 5,027 apps as rows, nearly all never set up
+    (#729's end-to-end test). Rows are the apps on for this chat and those the
+    account can already use; one information row counts the rest."""
+    from thechatplace.providers.codex_tools import app_inventory
+    rows = app_inventory(Catalog(), INFO)
+    assert [row.app_id for row in rows] == ["available-one", "available-two", ""]
+    assert all(row.off_for_chat for row in rows[:2])
+    more = rows[-1]
+    assert more.informational and not more.off_for_chat and not more.app_id
+    assert more.text() == ("More ChatGPT apps: 3 can be set up. To use one, set it up in "
+                           "ChatGPT's settings, under Apps, then press Refresh here.")
+    # It isn't a tool: the count and the summary leave it out, and say it.
+    assert tools_summary(rows) == "2 connected tools, 2 off for this chat. " + more.text()
     # An app on for the chat that now needs sign-in stays with the chat's
     # apps, ahead of usable apps that are off: it's the row someone opened
-    # the list to fix (#729's review). Then usable apps, then the catalog.
-    rows = app_inventory(Connection(), INFO, selected=("unconnected-two", "available-two"))
-    assert [row.app_id for row in rows] == [
-        "available-two", "unconnected-two", "available-one", "unconnected-one"]
-    assert [row.off_for_chat for row in rows] == [False, False, True, True]
-    assert len(rows) == 4
+    # the list to fix (#729's review). It's no longer counted with the rest.
+    rows = app_inventory(Catalog(), INFO, selected=("unconnected-two", "available-two"))
+    assert [row.app_id for row in rows] == ["available-two", "unconnected-two", "available-one", ""]
+    assert [row.off_for_chat for row in rows] == [False, False, True, False]
+    assert rows[1].install_url == "" and rows[1].status == "needs sign-in or installation"
+    assert rows[-1].text().startswith("More ChatGPT apps: 2 can be set up.")
     # One on for the chat that Codex no longer lists is with the chat's apps
-    # too, not after the whole catalog.
-    rows = app_inventory(Connection(), INFO, selected=("gone-app", "available-two"))
-    assert [row.app_id for row in rows] == [
-        "available-two", "gone-app", "available-one", "unconnected-one", "unconnected-two"]
+    # too, ahead of the rest.
+    rows = app_inventory(Catalog(), INFO, selected=("gone-app", "available-two"))
+    assert [row.app_id for row in rows] == ["available-two", "gone-app", "available-one", ""]
     assert rows[1].missing and not rows[1].off_for_chat
+
+
+def test_a_large_catalog_is_one_row_with_a_readable_count():
+    from thechatplace.providers.codex_tools import app_inventory
+    class Big:
+        def request(self, method, params):
+            page = int(params.get("cursor") or 0)
+            data = [{"id": f"app-{page}-{n}", "name": f"App {page} {n}",
+                     "isAccessible": page == 0 and n < 3} for n in range(100)]
+            return {"data": data, "nextCursor": str(page + 1) if page < 50 else None}
+    rows = app_inventory(Big(), INFO)
+    assert len(rows) == 4 and rows[-1].informational
+    assert rows[-1].text().startswith("More ChatGPT apps: 5,097 can be set up.")
+
+
+def test_every_app_usable_or_chosen_leaves_no_more_apps_row():
+    from thechatplace.providers.codex_tools import app_inventory
+    class Usable:
+        def request(self, method, params):
+            return {"data": [{"id": "one", "name": "One", "isAccessible": True},
+                             {"id": "two", "name": "Two", "isAccessible": False}]}
+    rows = app_inventory(Usable(), INFO, selected=("two",))
+    assert [row.app_id for row in rows] == ["two", "one"]
+    assert not any(row.informational for row in rows)
+
+
+def test_a_chat_started_elsewhere_lists_only_usable_apps():
+    """Nothing is on for such a chat here, so every app was a read-only row."""
+    from thechatplace.providers.codex_tools import app_inventory
+    rows = app_inventory(Catalog(), INFO, read_only=True)
+    assert [row.app_id for row in rows] == ["available-one", "available-two", ""]
+    assert rows[-1].text().startswith("More ChatGPT apps: 3 can be set up.")
+    assert all(row.read_only for row in rows)
+
+
+@pytest.mark.parametrize("own", [True, False])
+def test_the_more_apps_row_has_the_neutral_toggle_label(own):
+    from thechatplace.providers.codex_tools import more_apps
+    assert _host(own).toggle_label(more_apps(12)) == "Change T&ool"
+
+
+# -- Sign In for a server with nothing to sign in to, or that can't (#729) ------------------
+
+
+@pytest.mark.parametrize("config,code", [
+    ({"command": "npx", "args": ["-y", "server"]}, "not_needed"),
+    ({"url": "https://example.invalid/mcp"}, None),
+    ({"url": "https://example.invalid/mcp", "bearer_token_env_var": "TOKEN"}, "token"),
+    (None, "not_configured"),
+    ("not a table", "not_configured"),
+])
+def test_sign_in_refusal_comes_from_the_configuration(config, code):
+    from thechatplace.providers.codex_tools import sign_in_refusal, config_auth
+    assert sign_in_refusal(config) == code
+    assert config_auth(config) == {"not_needed": "unsupported", "token": "bearerToken"}.get(code, "")
+
+
+def test_rows_carry_how_each_server_signs_in_whether_or_not_the_chat_is_its_own():
+    """From the configuration, not mcpServerStatus/list's authStatus: with a
+    thread, Codex 0.163 said "unsupported" for GitHub's HTTP server while it
+    was off for the chat, which needs signing in (#729)."""
+    servers = {"stdio": {"command": "npx"}, "web": {"url": "https://example.invalid/mcp"},
+               "token": {"url": "https://example.invalid/mcp", "bearer_token_env_var": "T"}}
+    status = [{"name": name, "runtimeStatus": None, "authStatus": "unsupported"} for name in servers]
+    for rows in (inventory(FakeConnection(servers=servers), INFO, read_only=True),
+                 inventory(FakeConnection(servers=servers, status=status),
+                           SimpleNamespace(cwd="folder", cli_session_id="native-1"), ())):
+        assert {row.name: row.auth for row in rows} == {
+            "stdio": "unsupported", "web": "", "token": "bearerToken"}
+
+
+def test_sign_in_says_there_is_nothing_to_sign_in_to_without_asking_codex():
+    host = _host(True)
+    work = []
+    host.frame._codex_work = lambda action, done: work.append(action)
+    said = []
+    for server in (CodexTool("everything", "connected", (), False, auth="unsupported"),
+                   CodexTool("tokened", "off", auth="bearerToken")):
+        host.sign_in(server, lambda text, error: said.append((text, error)))
+    assert work == []
+    assert said == [
+        ("everything: This tool doesn't need signing in: Codex starts it on this computer "
+         "without an account.", ""),
+        ("tokened: This tool signs in with a token set up in Codex's configuration, so there's "
+         "nothing to sign in to here. To change the token, change its environment variable.", "")]
+    assert host.nothing_to_sign_in(CodexTool("web", "needs-auth", (), False)) == ""
+    # An app's Sign In is its page, whatever the field says.
+    assert host.nothing_to_sign_in(CodexTool("app:x", "off", app_id="x", auth="unsupported")) == ""
+
+
+@pytest.mark.parametrize("result,error,expected", [
+    # The fixed sentence for a service with no dynamic client registration.
+    ("This service doesn't support signing in through Codex. Give Codex a token",
+     True, (None, "This service doesn't support signing in through Codex. Give Codex a token")),
+    # A refusal from a chat whose rows had no auth status isn't a failure.
+    ("This tool doesn't need signing in: Codex starts it on this computer without an account.",
+     True, ("notes: This tool doesn't need signing in: Codex starts it on this computer "
+            "without an account.", "")),
+    # No known reason: still a next step, as Details promises.
+    (None, True, (None, "Codex could not start signing in to this tool. To see Codex's reason, "
+                        "run codex mcp login followed by the tool's name in a terminal.")),
+    ({}, True, (None, "Codex could not start signing in to this tool. To see Codex's reason, "
+                      "run codex mcp login followed by the tool's name in a terminal.")),
+])
+def test_sign_in_failure_says_why_in_the_apps_own_words(result, error, expected):
+    host = _host(True)
+    jobs, said = [], []
+    host.frame._codex_work = lambda action, done: jobs.append(done)
+    host.sign_in(CodexTool("notes", "needs-auth", (), False), lambda *a: said.append(a))
+    jobs[0](result, error)
+    assert said == [expected]
+
+
+class SignInConnection:
+    def __init__(self, server, error=None):
+        self.server, self.error, self.calls, self.closed = server, error, [], False
+
+    def request(self, method, params):
+        self.calls.append(method)
+        if method == "config/read":
+            return {"config": {"mcp_servers": {"notes": self.server}}}
+        raise self.error
+
+
+class SignInManager:
+    def __init__(self, connection):
+        self.connection, self.closes = connection, 0
+
+    def _get(self):
+        return self.connection
+
+    def close(self):
+        self.closes += 1
+
+
+def _error(message, code):
+    """A refusal as the connection makes it from Codex's answer."""
+    import threading
+    from thechatplace.providers.codex_rpc import ReadOnlyCodexConnection, _Pending
+    connection = object.__new__(ReadOnlyCodexConnection)
+    connection._lock, connection._closed = threading.Lock(), False
+    connection._abandoned, connection._abandoned_before = set(), 0
+    pending = _Pending()
+    connection._pending = {1: pending}
+    connection._receive({"id": 1, "error": {"code": code, "message": message}})
+    return pending.error
+
+
+# Codex 0.163's words, measured with GitHub's MCP server and a stdio server.
+NO_DCR = ("failed to login to MCP server 'github': Registration failed: Dynamic registration "
+          "failed: Registration failed: Dynamic client registration not supported")
+HTTP_ONLY = "OAuth login is only supported for streamable HTTP servers."
+
+
+def test_the_connection_keeps_which_sign_in_refusal_it_was_and_never_the_words():
+    assert _error(NO_DCR, -32603).sign_in_refusal == "no_registration"
+    assert _error(HTTP_ONLY, -32600).sign_in_refusal == "not_needed"
+    other = _error("failed to login: connection refused", -32603)
+    assert other.sign_in_refusal is None
+    assert "github" not in str(_error(NO_DCR, -32603))
+
+
+@pytest.mark.parametrize("server,error,code,asked", [
+    ({"command": "npx"}, None, "not_needed", False),
+    ({"url": "https://example.invalid/mcp", "bearer_token_env_var": "T"}, None, "token", False),
+    ({"url": "https://example.invalid/mcp"}, (NO_DCR, -32603), "no_registration", True),
+    ({"url": "https://example.invalid/mcp"}, (HTTP_ONLY, -32600), "not_needed", True),
+])
+def test_standalone_sign_in_refuses_with_a_fixed_reason(tmp_path, server, error, code, asked):
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_rpc import CodexSignInRefused
+    from thechatplace.providers.codex_tools import CodexToolLogins
+    connection = SignInConnection(server, _error(*error) if error else None)
+    manager = SignInManager(connection)
+    service = CodexToolLogins(factory=lambda folder: manager)
+    try:
+        with pytest.raises(CodexSignInRefused) as refused:
+            service.start(str(tmp_path), "notes")
+        assert refused.value.code == code
+        assert ("mcpServer/oauth/login" in connection.calls) == asked
+        shown = safe_reason(refused.value)
+        assert shown == CodexSignInRefused.REASONS[code]
+        assert "github" not in shown and "Registration failed" not in shown
+        assert manager.closes == 1 and not service._attempts
+    finally:
+        service.close()
+
+
+def test_an_unknown_sign_in_failure_shows_nothing_of_codexs(tmp_path):
+    from thechatplace.codex_diagnostics import safe_reason
+    from thechatplace.providers.codex_tools import CodexToolLogins
+    connection = SignInConnection({"url": "https://example.invalid/mcp"},
+                                  _error("private server words", -32603))
+    service = CodexToolLogins(factory=lambda folder: SignInManager(connection))
+    try:
+        with pytest.raises(CodexRpcError) as failed:
+            service.start(str(tmp_path), "notes")
+        assert safe_reason(failed.value) == ""
+    finally:
+        service.close()
