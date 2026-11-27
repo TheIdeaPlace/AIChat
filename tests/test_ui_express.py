@@ -4,7 +4,7 @@ import pytest
 
 wx = pytest.importorskip("wx")
 
-from test_ui_hidden import env, fake_runner, frame, select, settle  # noqa: F401,E402
+from test_ui_hidden import env, fake_runner, frame, select, settle, tab_order  # noqa: F401,E402
 from fake_env import add_transcript, pump, status_field  # noqa: E402
 from records import assistant_block, text_block, user_text  # noqa: E402
 from thechatplace import express as express_text  # noqa: E402
@@ -148,7 +148,8 @@ def test_the_note_on_replying_is_one_line_named_and_go_to_reply_box_lands_on_it(
     turn_on(frame)
     open_express(frame)
     note = frame.express_note
-    assert not note.IsMultiLine() and not note.IsEditable()
+    # Multi-line, as a read-only one-line box isn't a Tab stop on Windows.
+    assert note.IsMultiLine() and not note.IsEditable()
     assert note.GetName() == "About replying"
     # One line high: no taller than the reply box's one-line neighbours.
     assert note.GetSize().height < frame.FromDIP(60)
@@ -163,6 +164,17 @@ def test_the_note_on_replying_is_one_line_named_and_go_to_reply_box_lands_on_it(
     row_of(frame, "Hub probe")
     frame.express_open_chat()
     assert not frame.express_note_panel.IsShown() and frame.own_reply.IsShown()
+
+
+def test_tab_goes_from_the_list_to_the_note_then_on(frame, env):
+    """The Tab order as the window walks it (AcceptsFocusFromKeyboard), not
+    SetFocus: the note was skipped by real Tab presses in the VM, because a
+    read-only one-line box isn't a Tab stop on Windows."""
+    replies(env)
+    turn_on(frame)
+    open_express(frame)
+    assert tab_order(frame) == [frame.session_list, frame.chat_list, frame.express_note,
+                                frame.activity_check, frame.new_btn, frame.refresh_btn]
 
 
 def test_enter_on_a_row_opens_that_chat(frame, env):

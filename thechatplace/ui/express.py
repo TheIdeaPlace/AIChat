@@ -57,14 +57,23 @@ class ExpressView:
         replying:" and a one-line read-only box saying how to reply. A box,
         not a label, so Tab and F6 stop on it and a screen reader reads it,
         as the desktop chats' note; one line, as that's all it says, so the
-        list keeps the room (#737)."""
+        list keeps the room (#737).
+
+        A multi-line box sized to one line, not a one-line box: on Windows a
+        read-only one-line box isn't a Tab stop (wx's
+        AcceptsFocusFromKeyboard says no), so Tab went from the list straight
+        to Show tool activity. The desktop chats' note is multi-line too."""
         self.express_note_panel = wx.Panel(parent)
         row = wx.BoxSizer(wx.HORIZONTAL)
         row.Add(wx.StaticText(self.express_note_panel, label="About replying:"), 0,
                 wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.express_note = wx.TextCtrl(self.express_note_panel, value=express.REPLY_NOTE,
-                                        style=wx.TE_READONLY)
+        self.express_note = wx.TextCtrl(
+            self.express_note_panel, value=express.REPLY_NOTE,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.TE_NO_VSCROLL)
         set_accessible_name(self.express_note, "About replying")
+        one_line = self.express_note.GetSizeFromTextSize(
+            self.express_note.GetTextExtent(express.REPLY_NOTE))
+        self.express_note.SetMinSize((-1, one_line.height))
         row.Add(self.express_note, 1, wx.ALIGN_CENTER_VERTICAL)
         self.express_note_panel.SetSizer(row)
         sizer.Add(self.express_note_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
