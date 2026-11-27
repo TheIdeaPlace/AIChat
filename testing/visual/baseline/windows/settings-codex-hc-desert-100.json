@@ -3,11 +3,11 @@
  "class": "SettingsDialog",
  "size": [
   680,
-  923
+  969
  ],
  "client": [
   664,
-  884
+  930
  ],
  "dpi": [
   96,
@@ -23,10 +23,10 @@
     0,
     0,
     664,
-    845
+    891
    ],
    "best": [
-    644,
+    663,
     16
    ],
    "depth": 0,
@@ -495,12 +495,50 @@
    "problems": []
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Claude chats kept open at once for checks Claude sets for later:",
+   "rect": [
+    10,
+    493,
+    334,
+    16
+   ],
+   "best": [
+    334,
+    16
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Claude chats kept open at once for checks Claude sets for later",
+   "label": "",
+   "rect": [
+    352,
+    490,
+    40,
+    23
+   ],
+   "best": [
+    40,
+    23
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "CheckBox",
    "name": "check",
    "label": "T&urn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (Session, Remote Control changes one session.)",
    "rect": [
     10,
-    490,
+    523,
     624,
     30
    ],
@@ -519,7 +557,7 @@
    "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so Tools, Tasks shows how\nfar along it is (from the next turn)",
    "rect": [
     10,
-    530,
+    563,
     624,
     30
    ],
@@ -535,10 +573,48 @@
   {
    "class": "CheckBox",
    "name": "check",
+   "label": "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in Chrome extension; from the next\nturn)",
+   "rect": [
+    10,
+    603,
+    643,
+    30
+   ],
+   "best": [
+    643,
+    30
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)",
+   "rect": [
+    10,
+    643,
+    547,
+    15
+   ],
+   "best": [
+    547,
+    15
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
    "label": "Include Code&x chats (restart required)",
    "rect": [
     10,
-    570,
+    668,
     219,
     15
    ],
@@ -557,7 +633,7 @@
    "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
-    595,
+    693,
     325,
     15
    ],
@@ -576,7 +652,7 @@
    "label": "Check for up&dates when The Chat Place starts",
    "rect": [
     10,
-    616,
+    714,
     263,
     15
    ],
@@ -595,7 +671,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    641,
+    739,
     382,
     15
    ],
@@ -614,7 +690,7 @@
    "label": "Histor&y retention and kept copies:",
    "rect": [
     10,
-    676,
+    774,
     179,
     16
    ],
@@ -633,9 +709,9 @@
    "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
    "rect": [
     12,
-    694,
+    792,
     644,
-    110
+    58
    ],
    "best": [
     127,
@@ -653,7 +729,7 @@
    "label": "Open Claude's retention settings",
    "rect": [
     10,
-    812,
+    858,
     193,
     23
    ],
@@ -672,7 +748,7 @@
    "label": "OK",
    "rect": [
     494,
-    853,
+    899,
     75,
     23
    ],
@@ -691,7 +767,7 @@
    "label": "Cancel",
    "rect": [
     577,
-    853,
+    899,
     75,
     23
    ],
