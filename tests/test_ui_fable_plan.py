@@ -516,13 +516,14 @@ def test_use_usage_credits_has_no_access_key(frame):
 
 
 @atk
-def test_orca_gets_usage_credits_as_an_alert(frame):
-    """An alert, which Orca reads with its text, as GTK's message boxes."""
+def test_orca_hears_the_question_on_cancel(frame):
+    """Orca reads only the title and the focused button as it opens, so the
+    question is Cancel's description."""
     from thechatplace.ui import gtk_a11y
     from thechatplace.ui.dialogs import UsageCreditsDialog
     dialog = UsageCreditsDialog(frame, "Spend?")
     try:
-        assert gtk_a11y.get_role(dialog) == gtk_a11y.role_number("alert")
+        assert gtk_a11y.get_description(dialog.cancel) == "Spend?"
     finally:
         dialog.Destroy()
 

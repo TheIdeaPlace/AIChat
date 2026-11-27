@@ -93,8 +93,8 @@ class UsageCreditsDialog(wx.Dialog):
     that a Mac honors CANCEL_DEFAULT on a Yes/No/Cancel box, and Return there
     would have spent. Use Usage Credits has no access key, so a stray key
     can't spend either. The question is the dialog's text, which JAWS and
-    NVDA read as it opens; VoiceOver reads only the focused control, so on a
-    Mac it's Cancel's help as well."""
+    NVDA read as it opens; VoiceOver and Orca read only the focused control,
+    so on a Mac it's Cancel's help as well, and on Linux its description."""
 
     TITLE = "Use usage credits?"
     CREDITS_LABEL = "Use Usage Credits"  # no "&", on purpose
@@ -121,10 +121,10 @@ class UsageCreditsDialog(wx.Dialog):
         self.cancel.SetDefault()
         self.SetEscapeId(wx.ID_CANCEL)
         mac_a11y.set_help(self.cancel, question)
-        # Orca reads a dialog's text only for an alert: a wx dialog is a
-        # "frame" to it, and Orca said just the title and Cancel (CI on #745).
-        # An alert is what GTK's own message boxes are, read with their text.
-        gtk_a11y.set_role(self, "alert")
+        # Orca too read only the title and Cancel as it opened, even with the
+        # dialog given the alert role GTK's message boxes have (CI on #745),
+        # so there the question is Cancel's description.
+        gtk_a11y.set_description(self.cancel, question)
         for button in (self.credits, self.change_model):
             button.Bind(wx.EVT_BUTTON, lambda e, code=button.GetId(): _end_modal(self, code))
         # No press_focused_button_on_a_mac here: on a Mac, AppKit gives Return
