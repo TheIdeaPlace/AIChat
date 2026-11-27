@@ -1298,3 +1298,28 @@ hc-aquatic-100 at commit 730f3cb4; in High Contrast Aquatic the selected row is 
 text and everything else white on near-black.
 
 **What looks off:** Nothing beyond the long row's scroll bar.
+
+## codex-tools-more-apps: Connected Tools with the ChatGPT apps not connected as one row (#729)
+
+The same 700 by 540 dialog, "Connected Tools: Codex review", in the same layout. The
+"Connected tools:" list takes the top half and shows five rows: "project-notes: connected,
+configured Codex MCP server, 1 tool", "reference-search: off for this chat, configured Codex MCP
+server", "Project documents: off for this chat, Codex app", "Trail maps: off for this chat, Codex
+app", and, selected, "More ChatGPT apps: 5,022 more aren't connected to your account. To use one,
+connect it in ChatGPT's settings, under Apps, then press Refresh here." That last row is wider
+than the list, so it runs to the list's right edge and a horizontal scroll bar shows under the
+rows, as on the apps-unavailable screen. Under the list, left to right: Sign In, Reconnect, Change
+Tool (the neutral label for an information row) and Refresh, with Close at the right. "Details:"
+heads a read-only box that fills the lower half: the whole More ChatGPT apps sentence, a blank
+line, then the paragraph about turning tools on or off in a Codex chat. Nothing is cut off apart
+from the scrolled row, and nothing overlaps.
+
+Measured at commit 27f691a9: light text is black on white (21:1) in the list and Details, and on
+#F0F0F0 (18.43:1) for the labels; button text is black on #FDFDFD (20.65:1); the selected row is
+white on #0078D4 (4.53:1). The list's border is #828790 on #F0F0F0 (3.17:1). High Contrast Aquatic
+has white on #202020 (16.29:1) for all text and buttons, the selected row #202020 on aqua #8EE3F0
+(11.17:1), and #A6A6A6 borders (6.69:1).
+
+**What looks off:** The light Details box keeps the native text-box border, #ABADB3 on #F0F0F0
+(1.97:1), below 3:1; this is the native-border limitation tracked in
+[#532](https://github.com/TheIdeaPlace/AIChat/issues/532), not something this screen adds.

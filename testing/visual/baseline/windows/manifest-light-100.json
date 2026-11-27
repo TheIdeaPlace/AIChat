@@ -2176,6 +2176,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Use usage credits? when a Fable turn would be charged to usage credits, Cancel default (#722)"
+  },
+  "codex-tools-more-apps": {
+   "kind": "dialog",
+   "png": "codex-tools-more-apps-light-100.png",
+   "json": "codex-tools-more-apps-light-100.json",
+   "title": "Connected Tools: Codex review",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Connected Tools with the ChatGPT apps not set up as one row"
   }
  },
  "seconds": 278.6,
