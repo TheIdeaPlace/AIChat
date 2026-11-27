@@ -357,6 +357,21 @@ def test_one_wake_is_one_job_even_with_another_due_a_moment_later():
     assert [w.kind for w in waits.waits] == [WAKEUP]
 
 
+def test_a_repeating_timers_wake_on_time_leaves_a_one_time_check_due_soon():
+    clock = {"now": at(NOW)}
+    waits = WaitBook(lambda: clock["now"])
+    waits.tool_use("CronCreate", "t1", {"cron": "*/5 * * * *"})
+    waits.tool_result("t1", "Done.", False)
+    waits.tool_use("CronCreate", "t2", {"cron": "6 13 27 11 *", "recurring": False})
+    waits.tool_result("t2", "Done.", False)
+    clock["now"] = at(datetime(2026, 11, 27, 13, 5, 10))  # the 1:05 repeat fired
+    assert not waits.woke()
+    assert len(waits.waits) == 2
+    clock["now"] = at(datetime(2026, 11, 27, 13, 6, 5))  # now the 1:06 one, overdue
+    assert waits.woke()
+    assert [w.recurring for w in waits.waits] == [True]
+
+
 def test_a_task_without_a_description_isnt_taken_for_a_watch_without_one():
     waits = book()
     waits.tool_use("Monitor", "t1", {"command": "tail -f log"})

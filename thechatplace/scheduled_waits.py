@@ -296,8 +296,24 @@ class WaitBook:
                 due.append((when, wait))
         if not due:
             return False
-        fired = min(due, key=lambda pair: pair[0])[1]
+        overdue = [pair for pair in due if pair[0].timestamp() <= now]
+        if not overdue and self._repeating_due(now):
+            return False  # the wake is more likely a repeating timer's, on time
+        fired = min(overdue or due, key=lambda pair: pair[0])[1]
         return self._replace([w for w in self._waits if w is not fired])
+
+    def _repeating_due(self, now: float) -> bool:
+        """Whether a repeating timer matched in the last ``WAKE_EARLY_SECONDS``."""
+        try:
+            since = datetime.fromtimestamp(now - WAKE_EARLY_SECONDS)
+        except (OverflowError, OSError, ValueError):
+            return False
+        for wait in self._waits:
+            if wait.kind == CRON and wait.recurring:
+                when = next_cron_time(wait.cron, since)
+                if when is not None and when.timestamp() <= now:
+                    return True
+        return False
 
     def tasks_changed(self, tasks) -> bool:
         """``background_tasks_changed``'s whole list, ambient tasks and all.
