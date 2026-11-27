@@ -447,6 +447,12 @@ A 700 by 582 dialog titled "Claude asks: Visual probe". The Question box at the 
 
 **What looks off:** Nothing. Long text wraps inside each box rather than widening the dialog.
 
+## usage-credits: Use usage credits? (#722, #745)
+
+A 512 by 128 dialog titled "Use usage credits?". Its question wraps onto two lines: "Turns on Fable are now charged to usage credits, past your plan's Fable allowance. Send this message to Visual probe on usage credits, change the model, or cancel?" Three buttons sit at the bottom right: "Use Usage Credits" (no underlined letter, on purpose, so no key spends), "Change Model" (M underlined) and "Cancel", which is the default and has the focus (blue-outlined; in High Contrast Aquatic filled aqua). In High Contrast Aquatic the text and the other buttons are white on near-black. Seen in light-100 and hc-aquatic-100 at commit ad93ec27.
+
+**What looks off:** Nothing.
+
 ## plan: Claude's plan to approve
 
 This is a 760 by 600 dialog. "Plan:" heads a large read-only box (728 by 385, about 64% of the height) showing the plan as raw Markdown: "# Plan" and three numbered steps, with the rest of the box empty. Below it are two form rows. The first is "With Approve, carry on in:" (it was "If approved, carry on in:" until #738) with a dropdown reading "Auto: Claude decides what is safe to run without asking". The second is "Note (for Keep Planning or Don't Start):" (was "What to change (for Keep Planning):"), its label level with the top of a box room for two or three lines, with a scroll bar (Shift+Enter starts a new line in it, #591). Five buttons sit at the bottom right: "Read Formatted...", "Approve", "Approve, Don't Start" (new in #738, D underlined), "Keep Planning" (outlined in blue as the default) and "Answer Later"; the new button moved Read Formatted and Approve 134 pixels to the left. In High Contrast Aquatic the buttons are white-outlined on near-black and Keep Planning is filled aqua. At 175% all five labels fit their buttons, with the row still inside the dialog. Seen in light-100, hc-aquatic-100 and light-175 at commit c8e4791d.
