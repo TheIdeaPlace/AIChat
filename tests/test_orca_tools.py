@@ -100,6 +100,24 @@ def test_a_chord_whose_key_fails_still_lets_go_of_its_modifiers(monkeypatch):
     assert sent[-1] == ("keyup", "alt")
 
 
+def test_one_modifier_that_wont_let_go_doesnt_keep_the_others_held(monkeypatch):
+    sent = []
+
+    def xdotool(*args):
+        sent.append(args)
+        if args == ("keyup", "shift"):
+            raise RuntimeError("xdotool failed")
+    monkeypatch.setattr(orca_speech, "_xdotool", xdotool)
+    monkeypatch.setattr(orca_speech.time, "sleep", lambda seconds: None)
+    try:
+        orca_speech.press(["ctrl+shift+a"], ChordLog(sent))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("the failed keyup was swallowed")
+    assert sent[-1] == ("keyup", "ctrl")
+
+
 def test_keys_on_their_own_are_sent_as_they_are(monkeypatch):
     sent, log = _pressing(monkeypatch)
     orca_speech.press(["Tab", "shift+Return", "z"], log)
@@ -127,19 +145,37 @@ def test_orcas_log_of_a_handled_key_is_recognized(tmp_path):
     assert not log.wait_for(0, pattern(key="Alt_L"), timeout=0)
 
 
-def test_a_failed_step_says_when_orca_took_a_window_from_a_key(tmp_path):
-    # The line from the failed run's debug log (PR #729's first run).
+def _window_from_key(focus, window, key, mods):
+    """Orca 46's lines for a key press that found ``window`` newly active, as
+    in the failed runs' debug logs."""
+    return (f"14:35:27.773295 - FOCUS MANAGER: Focus [{focus}] is not in [frame: '{window}'] "
+            "orca.start > event_manager._processKeyboardEvent > input_event.__init__ > "
+            "focus_manager.set_active_window\n"
+            f"14:35:27.781241 - FOCUS MANAGER: Focus [frame: '{window}'] is not in [frame: "
+            f"'{window}'] focus_manager.set_locus_of_focus > script.locusOfFocusChanged > "
+            "default.locusOfFocusChanged > focus_manager.set_active_window\n"
+            f"14:35:27.814289 - KEYBINDINGS: '{key}' ({key}) mods: {mods} key-pressed-event "
+            "matches []\n")
+
+
+def test_only_a_chord_that_finds_a_new_window_is_counted():
+    """Escape and Return closing a dialog find the window behind it this way
+    some 40 times a run, harmlessly; only Ctrl+Shift+A was behind the
+    unsaid focus (PR #729's first run, and two runs before it)."""
+    escape = _window_from_key("text: 'Linux notes: your own answer'",
+                              "Visual probe — The Chat Place", "Escape", 0)
+    chord = _window_from_key("table cell: 'You: Make the uploader flush before it signals.'",
+                             "trip-planner asks: Visual probe", "A", 5)
+    assert orca_speech.windows_from_chords(escape) == 0
+    assert orca_speech.windows_from_chords(chord) == 1
+    assert orca_speech.windows_from_chords(escape + chord + escape) == 1
+
+
+def test_a_failed_step_says_when_orca_took_a_window_from_a_chord(tmp_path):
     path = tmp_path / "orca.log"
-    path.write_text("14:35:27.773295 - FOCUS MANAGER: Focus [table cell: 'You: Make the "
-                    "uploader flush before it signals.'] is not in [frame: 'trip-planner asks: "
-                    "Visual probe'] orca.start > event_manager._processKeyboardEvent > "
-                    "input_event.__init__ > focus_manager.set_active_window\n"
-                    "14:35:27.781241 - FOCUS MANAGER: Focus [frame: 'trip-planner asks: Visual "
-                    "probe'] is not in [frame: 'trip-planner asks: Visual probe'] "
-                    "focus_manager.set_locus_of_focus > script.locusOfFocusChanged > "
-                    "default.locusOfFocusChanged > focus_manager.set_active_window\n",
-                    encoding="utf-8")
-    count = orca_speech.OrcaLog(path).matches_since(0, orca_speech._WINDOW_FROM_KEY)
+    path.write_text(_window_from_key("table cell: 'You'", "trip-planner asks: Visual probe",
+                                     "A", 5), encoding="utf-8")
+    count = orca_speech.windows_from_chords(orca_speech.OrcaLog(path).text_since(0))
     assert count == 1
     step = {"step": "answer the tool", "keys": ["ctrl+shift+a"], "spoken": ["A"],
             "missing": ["Message"], "refused": [], "passed": False, "window_from_key": count}
