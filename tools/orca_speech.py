@@ -13,7 +13,9 @@ and runs in CI (#230).
 
 Orca 46 took new objects for dead ones now and then, and said nothing about
 them, which failed a different step on each run; tools/orca-customizations.py
-puts that right, and the report says how often it did (#579).
+puts that right, and the report says how often it did (#579). It also stops
+Orca 46 quietly moving its focus into a dialog a key has just opened, which
+left the dialog's first control unsaid now and then (#751).
 
 ``orca_speech.sh`` makes the session bus, virtual screen and accessibility bus
 and then runs ``check`` here. ``check`` starts Orca with a debug log, starts
@@ -70,37 +72,16 @@ START_TIMEOUT = 60.0
 #: and each time it puts right a live object Orca 46 took for dead (#579).
 LOADED = "TCP #579: dead objects are asked again"
 CORRECTED = "TCP #579: an object Orca had taken for dead answers"
+#: What it writes as it loads its other correction, and each time that one
+#: acts: Orca 46 had a window for the focus while handling a key, and was kept
+#: from quietly moving to the control focused in it, which then went unsaid
+#: (#751).
+KEY_LOADED = "TCP #751: no quiet move of the focus from a window on a key"
+KEY_KEPT = "TCP #751: the focus stays on the window while Orca handles a key"
 #: More corrections than this in one step is warned about. Six runs of every
 #: step (#605) made 16 to 27 a run, none more than 8 in a step (Backup
 #: Schedule), nearly all as a dialog opened: three times that is a real change.
 CORRECTIONS_CEILING = 25
-#: Orca's debug log line when it has finished with a key press, its echo
-#: included: Orca 46 writes "PROCESS ATSPI_KEY_PRESSED_EVENT: 'Shift_L' (50)",
-#: later Orca puts spaces round the colon (and runs a command bound to the key
-#: afterwards, as "HANDLE", which a modifier alone doesn't have). In a
-#: password box Orca writes "(obscured)" for the key, so a chord there waits
-#: MODIFIER_TIMEOUT for each modifier.
-_KEY_HANDLED = r"\^\^\^\^\^ PROCESS ATSPI_KEY_PRESSED_EVENT ?: ?'{key}'"
-#: A chord's modifiers as xdotool names them, and as Orca's log does.
-_MODIFIERS = {"ctrl": "Control_L", "control": "Control_L", "shift": "Shift_L",
-              "alt": "Alt_L", "super": "Super_L"}
-#: The longest a chord waits for Orca to handle one of its modifiers.
-MODIFIER_TIMEOUT = 2.0
-#: Orca, handling a key press, finding a window active that it hadn't been
-#: told of yet, and making it the focus (Orca 46's input_event.__init__),
-#: then the key it was handling and its modifiers.
-_WINDOW_FROM_KEY = re.compile(
-    r"is not in \[[^\n]*_processKeyboardEvent[^\n]*set_active_window"
-    r".*?KEYBINDINGS: '[^']*' \([^)]*\) mods: (\d+) key-pressed-event", re.S)
-
-
-def windows_from_chords(text: str) -> int:
-    """How often Orca took a new window for the focus while handling a key
-    held with a modifier (press()). Escape or Return closing a dialog does it
-    some 40 times a run, harmlessly: the focus in the window behind is a new
-    object to Orca, and said. Only a chord was ever behind a dialog whose
-    focused control went unsaid."""
-    return sum(1 for m in _WINDOW_FROM_KEY.finditer(text) if m.group(1) != "0")
 
 
 @dataclass
@@ -349,9 +330,7 @@ STEPS = [
     # Ask Aside (#468): it opens on the question box; Escape closes it. From
     # the Chat menu, not Ctrl+Shift+Y: that key's Y could land in the question
     # box once the dialog had focus, so Orca said "Y" instead of the box's
-    # name (a race lost every run once #658's steps ran first). That looks
-    # like the race press() describes, when chords were sent all at once
-    # (#659); the menu path stays, as a path of its own to check.
+    # name (a race lost every run once #658's steps ran first).
     Step("Ask Aside", ["alt+c", "i"], expect=["Ask Aside about Visual probe", "Your question"]),
     Step("Ask Aside closed, back in the messages", ["Escape"],
          expect=["Messages in Visual probe"]),
@@ -969,25 +948,6 @@ class OrcaLog:
             log.seek(offset)
             return log.read().decode("utf-8", "replace").count(needle)
 
-    def text_since(self, offset: int) -> str:
-        if not self.path.exists():
-            return ""
-        with self.path.open("rb") as log:
-            log.seek(offset)
-            return log.read().decode("utf-8", "replace")
-
-    def wait_for(self, offset: int, pattern: str, timeout: float) -> bool:
-        """Whether ``pattern`` turned up in the log after ``offset`` within
-        ``timeout`` seconds."""
-        found = re.compile(pattern)
-        end = time.time() + timeout
-        while True:
-            if found.search(self.text_since(offset)):
-                return True
-            if time.time() >= end:
-                return False
-            time.sleep(0.02)
-
     def since_mark(self) -> List[str]:
         if not self.path.exists():
             return []
@@ -1060,62 +1020,9 @@ def _keycode(name: str) -> int:
     raise SystemExit(f"{name} isn't on this display's keyboard map")
 
 
-def _xdotool(*args: str) -> None:
-    subprocess.run(["xdotool", *args], check=True)
-
-
-def _chord(key: str) -> Optional[tuple]:
-    """A chord's modifiers and its last key ("ctrl+shift+a": ctrl and shift,
-    then a), or None for a key on its own or a modifier this doesn't know."""
-    *mods, last = key.split("+")
-    if mods and last and all(m.casefold() in _MODIFIERS for m in mods):
-        return mods, last
-    return None
-
-
-def press(keys: List[str], log: Optional[OrcaLog] = None) -> None:
-    """Presses each key, a chord as a person does: each modifier held, and
-    handled by Orca, before the last key.
-
-    xdotool's own "key ctrl+shift+a" sends all three within a millisecond.
-    Orca was then still handling "left control" and "left shift" when the A
-    came, and got to it tens of milliseconds late. The app, which has its keys
-    straight from X, had opened the Answer dialog by then, and Orca 46,
-    finding a window active that it hadn't heard of, made the window its
-    focus from the key press, said "trip-planner asks: Visual probe frame",
-    and moved to the focused message box without saying it. The box's own
-    focus event, a moment later, was for where Orca already was, so it said
-    nothing more, and the step failed now and then: "answer the tool", and
-    "answer Copilot" the same way. No one's fingers send a chord
-    that fast; held as a person holds it, Orca has done with the modifiers
-    before the last key comes."""
+def press(keys: List[str]) -> None:
     for key in keys:
-        chord = _chord(key) if log is not None else None
-        if chord:
-            mods, last = chord
-            held = []
-            try:
-                for mod in mods:
-                    offset = log.size()
-                    _xdotool("keydown", mod)
-                    held.append(mod)
-                    if not log.wait_for(offset, _KEY_HANDLED.format(key=_MODIFIERS[mod.casefold()]),
-                                        MODIFIER_TIMEOUT):
-                        print(f"  (Orca's log didn't show it handling {mod} within "
-                              f"{MODIFIER_TIMEOUT:.0f}s; pressing {last} anyway)", flush=True)
-                _xdotool("key", last)
-            finally:
-                # Each let go of even if one fails: a modifier left held would
-                # make every key after it a chord, and hide the first failure.
-                failed = None
-                for mod in reversed(held):
-                    try:
-                        _xdotool("keyup", mod)
-                    except Exception as error:  # noqa: BLE001 - raised once all are up
-                        failed = failed or error
-                if failed is not None:
-                    raise failed
-        elif key in _KEYCODE_KEYS:
+        if key in _KEYCODE_KEYS:
             # The system Python, which has PyGObject; .venv may not.
             subprocess.run(["/usr/bin/python3", "-c",
                             "import sys, gi; gi.require_version('Atspi', '2.0'); "
@@ -1124,7 +1031,7 @@ def press(keys: List[str], log: Optional[OrcaLog] = None) -> None:
                             "Atspi.KeySynthType.PRESSRELEASE)", str(_keycode(key))],
                            check=True)
         else:
-            _xdotool("key", key)
+            subprocess.run(["xdotool", "key", key], check=True)
         time.sleep(0.3)
 
 
@@ -1161,7 +1068,7 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
             end = time.time() + STEP_TIMEOUT
             while step.after_trigger and not done_file.exists() and time.time() < end:
                 time.sleep(0.1)
-        press(step.keys, log)
+        press(step.keys)
         spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
         took = time.time() - started
         said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
@@ -1173,7 +1080,7 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
                          "started": time.strftime("%H:%M:%S", time.localtime(started)),
                          "seconds": round(took, 1),
                          "corrected": log.count_since(before, CORRECTED),
-                         "window_from_key": windows_from_chords(log.text_since(before))})
+                         "focus_kept": log.count_since(before, KEY_KEPT)})
         # As it goes: a job that runs out of time keeps no report at the end.
         # The time it started finds the step in Orca's debug log (--keep).
         print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
@@ -1192,12 +1099,6 @@ def report(results: List[dict], version: tuple, record: bool) -> str:
             lines.append(f"       not said: {m!r}")
         for m in r["refused"]:
             lines.append(f"       said, and shouldn't be: {m!r}")
-        if not record and not r["passed"] and r.get("window_from_key"):
-            # What made "answer the tool" fail now and then (press()): said
-            # here, the next time it happens needs no digging in Orca's log.
-            lines.append("       Orca found a new window active while handling a chord's key, "
-                         "before it was told of it, and took the window for the focus: it may "
-                         "have moved to the focused control without saying it (see press())")
     if not record:
         failed = sum(not r["passed"] for r in results)
         lines += ["", f"{len(results) - failed} of {len(results)} steps passed."]
@@ -1223,6 +1124,22 @@ def orca_corrections(text: str, results: List[dict],
             lines.append(f"::warning::{r['step']}: Orca took {count} live objects for dead, "
                          f"more than the {ceiling} any step took in testing (#579). Did the "
                          "app start replacing more of its rows or windows?")
+    return lines
+
+
+def key_focus_kept(text: str, results: List[dict]) -> List[str]:
+    """How often tools/orca-customizations.py kept Orca 46 from quietly
+    moving its focus from a window to the control in it while handling a key
+    (#751), and the failed steps it did so in, where it's the first place to
+    look. Most are Escape or Return closing a dialog, harmless either way."""
+    if KEY_LOADED not in text:
+        return ["Orca's quiet focus moves on a key weren't stopped: later Orca doesn't make "
+                "them, and Orca 46 needs tools/orca-customizations.py to have loaded."]
+    lines = [f"Orca had a window for the focus while handling a key {text.count(KEY_KEPT)} "
+             "times, and was kept from moving quietly to the control in it "
+             "(tools/orca-customizations.py, #751)."]
+    lines += [f"  {r['focus_kept']:5}  {r['step']} (failed)" for r in results
+              if r.get("focus_kept") and not r.get("passed", True)]
     return lines
 
 
@@ -1263,6 +1180,7 @@ def check(args) -> int:
     print(text)
     debug_text = log_path.read_text("utf-8", "replace") if log_path.exists() else ""
     print("\n".join(orca_corrections(debug_text, results)))
+    print("\n".join(key_focus_kept(debug_text, results)))
     if args.json:
         Path(args.json).write_text(json.dumps({"orca": list(version), "steps": results},
                                               indent=2), encoding="utf-8")

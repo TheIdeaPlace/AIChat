@@ -26,7 +26,8 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -w "$XDG_RUNTIME_DIR" ]; then
     XDG_RUNTIME_DIR="$(mktemp -d)"; chmod 700 "$XDG_RUNTIME_DIR"; export XDG_RUNTIME_DIR
 fi
 # Orca runs orca-customizations.py at start: here, a debug log written a line
-# at a time, and Orca 46's mistaken dead objects corrected (#579). See the file.
+# at a time, Orca 46's mistaken dead objects corrected (#579), and its quiet
+# focus move into a dialog a key just opened stopped (#751). See the file.
 mkdir -p "$XDG_DATA_HOME/orca"
 cp tools/orca-customizations.py "$XDG_DATA_HOME/orca/orca-customizations.py" || exit 1
 for launcher in /usr/libexec/at-spi-bus-launcher /usr/lib/at-spi2-core/at-spi-bus-launcher; do

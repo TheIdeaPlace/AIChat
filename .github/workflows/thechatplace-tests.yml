@@ -82,7 +82,9 @@ jobs:
   # remembers dead objects by their address, and took new ones that got the
   # same address (a dialog, a list row) for dead, so it said nothing about
   # them. tools/orca-customizations.py has Orca ask such an object again, as
-  # newer Orca does; the speech report counts how often. Neither step
+  # newer Orca does; the speech report counts how often. It also stops Orca
+  # 46 quietly moving its focus into a dialog a key just opened, which left
+  # the dialog's first control unsaid now and then (#751). Neither step
   # retries a failed check: only a probe that crashes is run again, once,
   # on the surfaces it hadn't finished (orca_names.py --run).
   orca:
