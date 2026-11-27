@@ -1895,11 +1895,11 @@ class SettingsDialog(wx.Dialog):
         outer.Add(wx.StaticText(body, label="Histor&y retention and kept copies:"),
                   0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
         self.retention = wx.TextCtrl(body, value=describe_retention(),
-                                    # 80, not 110: the room the limit on
+                                    # 58, not 110: the room the limit on
                                     # chats kept open for Claude's checks
                                     # takes (#749), so Settings doesn't
                                     # start to scroll. The box scrolls.
-                                    size=(-1, self.FromDIP(80)),
+                                    size=(-1, self.FromDIP(58)),
                                     style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
         set_accessible_name(self.retention, "History retention and kept copies")
         self.retention.SetInsertionPoint(0)
