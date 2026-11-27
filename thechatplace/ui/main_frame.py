@@ -429,6 +429,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: Chats whose Stop said already which of Claude's waits it ends
         #: (#749): the turn's end doesn't say it again.
         self._stop_said_waits: set = set()
+        #: Chats stopped because a folder was taken away in Chat Options
+        #: while they waited for Claude's checks (#749): their end is said
+        #: as that, after the change's own confirmation, not as a failure.
+        self._options_stopped: set = set()
         #: API chats whose first send this run was confirmed (#658), once a
         #: message really went (#663), and those confirmed with a message
         #: on its way.
@@ -7008,6 +7012,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # after the reply, but not said twice.
                 self._stop_said_waits.discard(session_id)
                 lost = ""
+            options_stopped = session_id in self._options_stopped
+            self._options_stopped.discard(session_id)
             lost_said = False
             self._note_worktree_move(session_id, title)
             # A check Claude set for later is said in the chat's own name,
@@ -7045,6 +7051,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                        title, session_id, interrupt=False)
                 else:
                     self._status(f"{title} finished.")
+            elif options_stopped and runner is not None and runner.cancelled:
+                # Stopped as a folder was taken away in Chat Options (#749):
+                # not a failure, and queued behind the change's confirmation.
+                spoken = f"{title} stopped for its new chat options."
+                if lost:
+                    spoken, lost_said = announce.then(spoken, lost), True
+                self._say(spoken, interrupt=False, about=session_id)
             elif event.kind == "failed" or event.is_error:
                 # A Stop or a failure says what it cost too (#663).
                 spoken = self._with_cost(

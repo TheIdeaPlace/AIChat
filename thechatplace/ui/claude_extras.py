@@ -188,9 +188,28 @@ class ClaudeExtras:
             # for Claude's checks would keep reaching it for days, so its
             # process ends, and the checks with it. The turn's end says
             # which won't run, as for any chat that stops waiting.
+            working = not getattr(runner, "waiting_for_waits", False)
+            # Said as a stop for the new options, not a failure, and after
+            # this, not over it (the turn's end, in main_frame).
+            self._options_stopped.add(own.cli_session_id)
             runner.cancel()
             said = (said[:-1] + "; it was open for checks Claude set, so it's stopped now, "
-                    "and they end with it.")
+                    "and they end with it"
+                    + (", and so does the answer Claude was writing." if working else "."))
+            queued = self._take_queued(own.cli_session_id)
+            if queued:
+                # Given back as Stop gives it back, not as a failure's.
+                self._rebuild_chat_list()
+                self._give_back(own.cli_session_id, queued, True)
+                self._update_send_state()
+                said += " Your queued message is back in the message box."
+        elif runner is not None and change.removed_dirs:
+            # Not kept open yet: it mustn't start to be, with the folder
+            # still reachable (#749). It ends with its reply, which says
+            # which checks won't run.
+            runner.no_hold_for_waits = True
+            said = (said[:-1] + "; the turn running now carries on as it started, then ends, "
+                    "even if Claude sets a check for later.")
         elif runner is not None:
             # A chat kept open for Claude's checks says so (#749).
             said = said[:-1] + self._running_turn_note(own) + "."

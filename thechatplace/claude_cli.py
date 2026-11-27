@@ -1686,6 +1686,10 @@ class TurnRunner:
         #: (#749, Part 2): the window's, shared by every chat, with Settings'
         #: limit. None never keeps one open for them (Part 1's behaviour).
         self.wait_slots = wait_slots
+        #: Set by the window when a folder is taken from the chat mid-turn
+        #: (#749): this process isn't kept open for waits, since it still
+        #: reaches the folder. A plain flag, read without the lock.
+        self.no_hold_for_waits = False
         #: You chose to keep going on usage credits for this one turn (#722);
         #: never kept for the next.
         self.allow_overage = allow_overage
@@ -2115,7 +2119,7 @@ class TurnRunner:
         credits: a process has one reservation and one budget, so a wake turn
         couldn't be given a fresh, checked one. Call with ``_lock`` held."""
         if (self.wait_slots is None or self.billing == ROUTE_API or self._cancelled
-                or not self._stdin_open):
+                or not self._stdin_open or self.no_hold_for_waits):
             return False
         held = waits_policy.held_waits(self.pending_waits, self._listed,
                                        waits_policy.wall_clock())

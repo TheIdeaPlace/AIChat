@@ -2340,8 +2340,10 @@ A repeating one is said by how often ("the repeating check Claude set to run eve
 and a watch by what it watches ("the watch Claude started (Watch PR 749) stops"). Stop ends the
 chat's checks too, and says so first: "Stopping ends the check Claude set for 2:00 PM too." There's
 no stopping one check alone; ask Claude to cancel it. Taking a folder away from a waiting chat in
-Chat Options stops it at once, and its checks with it, so the folder can't be reached. Other changes
-to its settings count once its checks end, or after Stop. Hide, Delete and Put Files Back wait too:
+Chat Options stops it at once, and its checks with it, so the folder can't be reached; you hear
+"stopped for its new chat options" and which checks won't run. Taken away while Claude is still
+answering, the chat ends with that answer instead of waiting. Other changes to its settings count
+once its checks end, or after Stop. Hide, Delete and Put Files Back don't work on a waiting chat:
 they say "That chat is waiting for a check Claude set. Stop ends it." Quitting asks first, as it does when work is
 running: "1 chat is waiting for checks Claude set, which won't run if you quit. Quit anyway?", with No as the
 default. The line saying which checks won't run stays after that reply, with the date, in the
