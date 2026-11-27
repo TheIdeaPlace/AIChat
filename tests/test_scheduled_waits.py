@@ -390,9 +390,17 @@ def test_the_parser_takes_a_wake_turn_as_the_due_timer_having_run():
         {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]})
     parser.waits._clock = lambda: at(NOW) + 61
     assert feed(parser, type="command_lifecycle", state="completed") == []
-    [event] = feed(parser, type="command_lifecycle", command_uuid="c", state="started",
-                   wakeup_source="schedule_wakeup", session_id="abc-1")
+    # A CronCreate timer's wake (schedule_wakeup) isn't the wakeup's (Part 2's
+    # probe: a ScheduleWakeup's is loop_wakeup, with scheduled_for).
+    [woke] = feed(parser, type="command_lifecycle", command_uuid="c", state="started",
+                  wakeup_source="schedule_wakeup", session_id="abc-1")
+    assert woke.kind == "woke" and woke.data == {"source": "schedule_wakeup"}
+    assert [w.kind for w in parser.waits.waits] == [WAKEUP]
+    event, woke = feed(parser, type="command_lifecycle", command_uuid="d", state="started",
+                       wakeup_source="loop_wakeup", scheduled_for=1795796400000,
+                       session_id="abc-1")
     assert event.kind == "waits" and event.data["waits"] == []
+    assert woke.kind == "woke" and woke.data == {"source": "loop_wakeup"}
 
 
 def test_waits_round_trip_through_an_events_data():

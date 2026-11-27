@@ -101,9 +101,15 @@ def log(**extra):
                        **extra}, handle)
 
 
+import threading  # noqa: E402 - only the wake modes (#749) write from a thread
+
+_out_lock = threading.Lock()
+
+
 def out(**data):
-    sys.stdout.buffer.write(json.dumps(data, ensure_ascii=False).encode("utf-8") + b"\n")
-    sys.stdout.buffer.flush()
+    with _out_lock:  # whole lines, even from a wake's thread (#749)
+        sys.stdout.buffer.write(json.dumps(data, ensure_ascii=False).encode("utf-8") + b"\n")
+        sys.stdout.buffer.flush()
 
 
 log()
@@ -152,15 +158,18 @@ if mode == "hang":
 result = "done"
 
 
-def answer_controls(until):
+def answer_controls(until, other=None):
     """Answer live control requests (#468) as Claude Code 2.1.296 does, until
     ``until(subtype)`` says enough or stdin closes. FAKE_CLAUDE_REFUSE names a
-    subtype to refuse, as an older Claude Code would."""
+    subtype to refuse, as an older Claude Code would. ``other`` is given
+    every other message (a follow-up, a permission's answer)."""
     refuse = os.environ.get("FAKE_CLAUDE_REFUSE", "")
     for raw in iter(sys.stdin.buffer.readline, b""):
         message = json.loads(raw.decode("utf-8"))
         received.append(message)
         if message.get("type") != "control_request":
+            if other is not None:
+                other(message)
             continue
         request, rid = message.get("request", {}), message.get("request_id")
         subtype = request.get("subtype")
@@ -254,9 +263,17 @@ if mode == "cron":
     expression = os.environ.get("FAKE_CLAUDE_CRON", "0 14 27 11 *")
     recurring = os.environ.get("FAKE_CLAUDE_RECURRING") == "1"
     then = os.environ.get("FAKE_CLAUDE_CRON_THEN", "")
+    #: The model that writes every reply (FAKE_CLAUDE_MODEL, #749's usage-credit test).
+    cron_model = os.environ.get("FAKE_CLAUDE_MODEL", "claude-opus-5-5")
     out(type="system", subtype="session_state_changed", state="running")
+    if os.environ.get("FAKE_CLAUDE_WAKE_OVERAGE") == "1":
+        # Past the plan's allowance already, in the turn that sets the
+        # timer: its wake must be checked against usage credits too (#749).
+        out(type="rate_limit_event", session_id="abc-1", rate_limit_info={
+            "status": "allowed_warning", "isUsingOverage": True,
+            "overageStatus": "allowed", "rateLimitType": "five_hour"})
     out(type="assistant", parent_tool_use_id=None, uuid="rec-tool", message={
-        "id": "msg_tool", "model": "claude-opus-5-5", "content": [{
+        "id": "msg_tool", "model": cron_model, "content": [{
             "type": "tool_use", "id": "toolu_cron1", "name": "CronCreate",
             "input": {"cron": expression, "prompt": "Check the pull request's checks.",
                       "recurring": recurring}}]})
@@ -274,7 +291,7 @@ if mode == "cron":
                        "It will fire once then auto-delete."}]})
     if then == "delete":
         out(type="assistant", parent_tool_use_id=None, message={
-            "model": "claude-opus-5-5", "content": [{
+            "model": cron_model, "content": [{
                 "type": "tool_use", "id": "toolu_cron2", "name": "CronDelete",
                 "input": {"id": "f0d1911f"}}]})
         out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
@@ -282,7 +299,7 @@ if mode == "cron":
             "content": "Cancelled job f0d1911f."}]})
     if then == "monitor":
         out(type="assistant", parent_tool_use_id=None, message={
-            "model": "claude-opus-5-5", "content": [{
+            "model": cron_model, "content": [{
                 "type": "tool_use", "id": "toolu_mon1", "name": "Monitor",
                 "input": {"command": "gh pr checks 749 --watch", "description": "Watch PR 749"}}]})
         out(type="system", subtype="background_tasks_changed", tasks=[
@@ -293,13 +310,80 @@ if mode == "cron":
             "content": "Monitor started (task m1)."}]})
     reply = "I'll check the pull request again at 2:00 PM."
     out(type="assistant", parent_tool_use_id=None, uuid="rec-reply", message={
-        "id": "msg_reply", "model": "claude-opus-5-5",
+        "id": "msg_reply", "model": cron_model,
         "content": [{"type": "text", "text": reply}]})
     out(type="result", subtype="success", is_error=False, result=reply, session_id="abc-1",
         **COST)
     out(type="system", subtype="session_state_changed", state="idle")
     log(waited=True)
-    answer_controls(lambda subtype: False)  # until The Chat Place closes stdin
+    # Part 2 (#749): with FAKE_CLAUDE_WAKE=<seconds>, the timer fires that
+    # long after idle, as the probe of 2026-11-27 saw it with Claude Code
+    # 2.1.331: running, command_lifecycle started (wakeup_source), a fresh
+    # system/init, the reply, the result, command_lifecycle completed, idle.
+    # FAKE_CLAUDE_WAKES is how many times (a repeating timer: the default 1
+    # is a one-shot's); FAKE_CLAUDE_WAKE_SOURCE is the wake's apiKeySource;
+    # FAKE_CLAUDE_WAKE_ASK=1 has it ask permission and wait for the answer;
+    # FAKE_CLAUDE_WAKE_OVERAGE=1 has the first turn's rate limit say usage
+    # credits; FAKE_CLAUDE_WAKE_DELETE=1 has it delete the timer (CronDelete). A
+    # message sent meanwhile is answered as a turn of its own.
+    wake_after = os.environ.get("FAKE_CLAUDE_WAKE")
+    answers = []
+    answered = threading.Event()
+
+    def other(message):
+        if message.get("type") == "control_response":
+            answers.append(message)
+            answered.set()
+        elif message.get("type") == "user":
+            text = message["message"]["content"]
+            out(type="system", subtype="session_state_changed", state="running")
+            out(type="assistant", parent_tool_use_id=None, uuid="rec-follow", message={
+                "id": "msg_follow", "model": cron_model,
+                "content": [{"type": "text", "text": f"Got it: {text}"}]})
+            out(type="result", subtype="success", is_error=False, result=f"Got it: {text}",
+                session_id="abc-1", **COST)
+            out(type="system", subtype="session_state_changed", state="idle")
+
+    def wake():
+        for number in range(1, int(os.environ.get("FAKE_CLAUDE_WAKES", "1")) + 1):
+            time.sleep(float(wake_after))
+            out(type="system", subtype="session_state_changed", state="running")
+            out(type="command_lifecycle", command_uuid=f"wake-{number}", state="started",
+                wakeup_source="schedule_wakeup", session_id="abc-1")
+            out(type="system", subtype="init", session_id="abc-1",
+                apiKeySource=os.environ.get("FAKE_CLAUDE_WAKE_SOURCE") or init_source,
+                model=cron_model)
+            if os.environ.get("FAKE_CLAUDE_WAKE_ASK") == "1":
+                answered.clear()
+                out(type="system", subtype="session_state_changed", state="requires_action")
+                out(type="control_request", request_id=f"wake-ask-{number}", request={
+                    "subtype": "can_use_tool", "tool_name": "Bash",
+                    "input": {"command": "gh pr checks 749"}, "tool_use_id": "toolu_ask"})
+                answered.wait(120)
+                out(type="system", subtype="session_state_changed", state="running")
+            if os.environ.get("FAKE_CLAUDE_WAKE_DELETE") == "1":
+                out(type="assistant", parent_tool_use_id=None, message={
+                    "model": cron_model, "content": [{
+                        "type": "tool_use", "id": f"toolu_del{number}", "name": "CronDelete",
+                        "input": {"id": "f0d1911f"}}]})
+                out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+                    "type": "tool_result", "tool_use_id": f"toolu_del{number}",
+                    "content": "Cancelled job f0d1911f."}]})
+            text = f"Scheduled check {number}: the checks passed."
+            out(type="assistant", parent_tool_use_id=None, uuid=f"rec-wake{number}", message={
+                "id": f"msg_wake{number}", "model": cron_model,
+                "content": [{"type": "text", "text": text}]})
+            out(type="result", subtype="success", is_error=False, result=text,
+                session_id="abc-1", **COST)
+            out(type="command_lifecycle", command_uuid=f"wake-{number}", state="completed",
+                session_id="abc-1")
+            out(type="system", subtype="session_state_changed", state="idle")
+            log(waited=True, wakes=number, answers=[a.get("response", {}).get("response", {})
+                                                    .get("behavior") for a in answers])
+
+    if wake_after:
+        threading.Thread(target=wake, daemon=True).start()
+    answer_controls(lambda subtype: False, other)  # until The Chat Place closes stdin
     sys.exit(0)
 if mode == "ask":
     out(type="control_request", request_id="req-1",
