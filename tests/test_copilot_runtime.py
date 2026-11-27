@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from thechatplace import platform_paths
-from thechatplace.providers import copilot_acp, copilot_folder
+from thechatplace.providers import copilot_acp, copilot_folder, copilot_runtime
 from thechatplace.providers.copilot_runtime import (ALLOW_ONCE, COMMAND, MAX_DIFF_CHARS,
                                                     MAX_TEXT_CHARS, REJECT, CopilotChatError,
                                                     CopilotChatRuntime, CopilotRequest, Stopped,
@@ -19,6 +19,13 @@ from thechatplace.sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, WORKING
 
 FAKE = Path(__file__).with_name("fake_copilot_acp.py")
 PYTHON = getattr(sys, "_base_executable", None) or sys.executable
+#: The cancel grace for a test whose Copilot does stop when asked: longer
+#: than wait()'s 10 seconds, so the timer that closes a Copilot ignoring a
+#: cancel never fires in it, however busy the machine. Beside the whole
+#: suite on CI's Windows runner the fake took up to 1.3 seconds to answer a
+#: cancel, and with half a second the timer closed it in 23 of 16,000 runs
+#: (#753).
+STRICT_GRACE = 30.0
 
 
 @pytest.fixture(autouse=True)
@@ -675,7 +682,7 @@ def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
                FAKE_COPILOT_LOG=str(log))
     runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("strict", env),
                                  sessions_dir=tmp_path / "sessions", billing_wait=0.5,
-                                 cancel_grace=0.5)
+                                 cancel_grace=STRICT_GRACE)
     try:
         chat = runtime.create(str(tmp_path))
         connection = runtime._connection
@@ -688,7 +695,8 @@ def test_a_stop_as_the_prompt_goes_out_reaches_copilot_after_it(tmp_path):
             return real_request(method, params, *args, **kwargs)
         connection.request = stop_first
         runtime.send(chat, "Long job")
-        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
+            runtime.snapshot(chat)
         assert stops == [Stopped((), cancelled=True)]  # its cancel follows the prompt
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
@@ -2133,12 +2141,15 @@ def test_stopping_again_doesnt_put_the_forced_close_off(make, tmp_path):
     """A second Stop while the first cancel is pending sends nothing more and
     keeps the first timer, so pressing Stop again can't keep Copilot open.
     A Copilot that ignores the cancel ("deaf"), so the turn is still going
-    when the second Stop comes, however slow the machine."""
+    when the second Stop comes, however slow the machine. The grace gives
+    the two Stops 5 seconds, not 1.5: beside the whole suite, #753's runs
+    saw a round trip to the fake take up to 1.3 seconds, and the forced
+    close still comes well inside wait()'s 10."""
     env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
     runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("deaf", env),
                                  sessions_dir=tmp_path / "sessions", billing_wait=0.5,
-                                 cancel_grace=1.5)
+                                 cancel_grace=5.0)
     try:
         chat = runtime.create(str(tmp_path))
         runtime.send(chat, "Long job")
@@ -2196,16 +2207,29 @@ def test_a_cancel_that_cant_go_out_isnt_reported_as_sent(make, tmp_path):
 
 def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_path):
     """The prompt is written, but the turn hasn't yet heard it's queued: the
-    Stop leaves the cancel to the turn, which sends it after the prompt."""
+    Stop leaves the cancel to the turn, which sends it after the prompt.
+
+    The grace is longer than any wait here (STRICT_GRACE). With half a
+    second, the fake sometimes took longer than that to answer the cancel
+    on a runner busy with the rest of the suite, so the timer closed it and
+    the turn failed (#753). How fast Copilot answers isn't what's tested."""
     env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
     runtime = CopilotChatRuntime(lambda state: None, start=lambda: Process("strict", env),
                                  sessions_dir=tmp_path / "sessions", billing_wait=0.5,
-                                 cancel_grace=0.5)
+                                 cancel_grace=STRICT_GRACE)
     try:
         chat = runtime.create(str(tmp_path))
         connection = runtime._connection
         real_request, stops = connection.request, []
+        real_cancel, cancels = runtime._cancel, []
+
+        def cancel(*args):
+            # How many Stops had returned when it was sent: 0 means Stop
+            # sent it itself, 1 that the turn did once the Stop returned.
+            cancels.append((len(stops), real_cancel(*args)))
+            return cancels[-1][1]
+        runtime._cancel = cancel
 
         def stop_once_written(method, params, *args, on_queued=None, **kwargs):
             def queued():
@@ -2216,8 +2240,11 @@ def test_a_stop_between_the_prompts_write_and_its_queuing_cancels_after_it(tmp_p
             return real_request(method, params, *args, on_queued=queued, **kwargs)
         connection.request = stop_once_written
         runtime.send(chat, "Long job")
-        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted")
+        assert wait(lambda: runtime.snapshot(chat).outcome == "interrupted"), \
+            runtime.snapshot(chat)
         assert stops == [Stopped((), cancelled=True)]
+        # The turn sent the cancel itself, once, and started the clock on it.
+        assert cancels == [(1, copilot_runtime.CANCEL_SENT)]
         order = [m["method"] for m in received(tmp_path)
                  if m.get("method") in ("session/prompt", "session/cancel")]
         assert order == ["session/prompt", "session/cancel"]

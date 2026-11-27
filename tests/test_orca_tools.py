@@ -38,6 +38,270 @@ def test_an_orca_without_the_correction_says_so():
     assert lines[0].startswith("Orca's dead objects weren't corrected")
 
 
+def test_kept_focus_is_counted_and_named_only_in_failed_steps():
+    """The #751 correction acts some 80 times a run, nearly all as Escape
+    closes a dialog: the total is reported, and only failed steps by name."""
+    text = "\n".join([orca_speech.KEY_LOADED] + [orca_speech.KEY_KEPT] * 3)
+    results = [{"step": "dialog closed", "focus_kept": 2, "passed": True},
+               {"step": "answer the tool", "focus_kept": 1, "passed": False},
+               {"step": "quiet", "focus_kept": 0, "passed": False}]
+    lines = orca_speech.key_focus_kept(text, results)
+    assert lines[0].startswith("Orca had a window for the focus while handling a key 3 times")
+    assert lines[1:] == ["      1  answer the tool (failed)"]
+
+
+def test_an_orca_without_the_key_focus_correction_says_so():
+    lines = orca_speech.key_focus_kept(orca_speech.LOADED, [])
+    assert lines[0].startswith("Orca's quiet focus moves on a key weren't stopped")
+
+
+def test_the_customization_writes_what_the_report_counts():
+    """The report finds the correction by the customization's own words, so
+    the two mustn't drift apart."""
+    import ast
+    tree = ast.parse((ROOT / "tools" / "orca-customizations.py").read_text(encoding="utf-8"))
+    strings = [node.value for node in ast.walk(tree)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+    strings += ["".join(part.value for part in node.values if isinstance(part, ast.Constant))
+                for node in ast.walk(tree) if isinstance(node, ast.JoinedStr)]
+    for marker in (orca_speech.LOADED, orca_speech.CORRECTED, orca_speech.KEY_LOADED,
+                   orca_speech.KEY_KEPT):
+        assert any(text.startswith(marker) for text in strings), marker
+
+
+class GrowingLog:
+    """A clock and a debug log that grows by a line on each of the ticks
+    given, so OrcaLog.wait_idle is tested without waiting."""
+
+    def __init__(self, path, grows_at):
+        self.path, self.grows_at, self.now = path, set(grows_at), 0.0
+        path.write_text("", encoding="utf-8")
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now = round(self.now + seconds, 2)
+        if self.now in self.grows_at:
+            with self.path.open("a", encoding="utf-8") as log:
+                log.write(f"{self.now} - EVENT MANAGER: Dequeued an event\n")
+
+
+def test_orca_is_idle_only_once_its_log_stops_growing(tmp_path):
+    """#754: a key pressed while Orca still had the trigger's events queued
+    left the message box unsaid, so the keys wait for the log to go quiet."""
+    fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[0.1, 0.3, 0.6])
+    log = orca_speech.OrcaLog(fake.path)
+    assert log.wait_idle(quiet=0.5, timeout=5, clock=fake.clock, sleep=fake.sleep)
+    assert fake.now == 1.1  # half a second after the last line, not before
+
+
+def test_orca_already_quiet_costs_no_wait(tmp_path, monkeypatch):
+    """Counted from the log's last change, a quiet Orca doesn't hold up the
+    keys; one that changed a moment ago is waited for, the rest of the
+    half second."""
+    fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[])
+    log = orca_speech.OrcaLog(fake.path)
+    # Fixed wall-clock times, exact in binary, so nothing depends on how
+    # long the test takes (the real clock made it fail now and then).
+    monkeypatch.setattr(log, "modified", lambda: 998.0)
+    assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep,
+                         wall=lambda: 1000.0)
+    assert fake.now == 0.0
+    monkeypatch.setattr(log, "modified", lambda: 999.75)
+    assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep,
+                         wall=lambda: 1000.0)
+    assert fake.now == 0.25
+
+
+def test_orca_that_never_goes_quiet_is_said_to_have_not(tmp_path):
+    fake = GrowingLog(tmp_path / "orca-debug.log",
+                      grows_at=[round(0.05 * n, 2) for n in range(1, 200)])
+    log = orca_speech.OrcaLog(fake.path)
+    assert not log.wait_idle(quiet=0.5, timeout=2, clock=fake.clock, sleep=fake.sleep)
+
+
+class StepLog:
+    """Stands in for OrcaLog in run_steps, noting each wait for Orca: how
+    it counted, and whether the trigger had finished by then."""
+
+    def __init__(self, events, world, settles=True):
+        self.events, self.world, self.settles = events, world, settles
+
+    def mark(self):
+        pass
+
+    def size(self):
+        return 0
+
+    def wait_idle(self, from_now):
+        done = sorted(p.name for p in self.world.glob("*.done"))
+        self.events.append(("idle", from_now, done))
+        return self.settles
+
+    def wait_quiet(self, done, timeout):
+        return ["Your message", "Write the script"]
+
+    def count_since(self, offset, needle):
+        return 0
+
+
+def _serve_after_a_moment(world, monkeypatch):
+    """Stands in for serve: a trigger's .done appears while run_steps waits
+    for it, not before."""
+    def sleep(_seconds):
+        for trigger in world.glob("*.trigger"):
+            trigger.unlink()
+            (world / trigger.name.replace(".trigger", ".done")).write_text("", encoding="utf-8")
+    monkeypatch.setattr(orca_speech.time, "sleep", sleep)
+
+
+def test_no_key_until_orca_has_caught_up(tmp_path, monkeypatch):
+    """Every key waits for Orca to catch up with the app's events (#754).
+    After a trigger, only once the trigger is done, and counted from then,
+    as its events may still be on their way; a step with no keys doesn't
+    wait."""
+    events = []
+    _serve_after_a_moment(tmp_path, monkeypatch)
+    monkeypatch.setattr(orca_speech, "press", lambda keys: events.append(("press", keys)))
+    steps = [orca_speech.Step("after", ["Tab"], trigger="suggestion", after_trigger=True),
+             orca_speech.Step("no keys", [], trigger="suggestion-done"),
+             orca_speech.Step("plain", ["Up"])]
+    results = orca_speech.run_steps(StepLog(events, tmp_path), steps, (46, 1), record=False,
+                                    world=tmp_path)
+    assert events == [("idle", True, ["suggestion.done"]), ("press", ["Tab"]),
+                      ("press", []),
+                      ("idle", False, ["suggestion.done"]), ("press", ["Up"])]
+    assert all(r["settled"] and r["passed"] for r in results)
+
+
+def test_keys_pressed_before_orca_caught_up_fail_the_step(tmp_path, monkeypatch):
+    events = []
+    monkeypatch.setattr(orca_speech, "press", lambda keys: None)
+    steps = [orca_speech.Step("plain", ["Tab"], expect=["Your message"])]
+    results = orca_speech.run_steps(StepLog(events, tmp_path, settles=False), steps, (46, 1),
+                                    record=False, world=tmp_path)
+    assert not results[0]["passed"] and not results[0]["settled"]
+    assert f"       {orca_speech.UNSETTLED}" in orca_speech.report(results, (46, 1), False)
+
+
+def _load_customizations(monkeypatch, keep_quiet_move=False):
+    """Runs tools/orca-customizations.py against stand-ins for the parts of
+    Orca 46 it touches, and returns them."""
+    import types
+    roles = types.SimpleNamespace(DIALOG="dialog", FRAME="frame", WINDOW="window")
+    atspi = types.SimpleNamespace(Role=roles, Accessible=types.SimpleNamespace(
+        clear_cache_single=lambda obj: None))
+    gi = types.ModuleType("gi")
+    gi.require_version = lambda name, version: None
+    repository = types.ModuleType("gi.repository")
+    repository.Atspi = atspi
+    gi.repository = repository
+    messages = []
+    debug = types.ModuleType("orca.debug")
+    debug.debugFile, debug.LEVEL_INFO = None, 800
+    debug.printMessage = lambda level, text, timestamp=False: messages.append(text)
+
+    class AXObject:
+        roles = {}
+
+        @staticmethod
+        def get_role(obj):
+            return AXObject.roles.get(obj)
+
+    ax_object = types.ModuleType("orca.ax_object")
+    ax_object.AXObject = AXObject
+
+    class FocusManager:
+        locus, focused = None, None
+
+        def get_locus_of_focus(self):
+            return self.locus
+
+        def find_focused_object(self):
+            return self.focused
+
+    manager = FocusManager()
+    focus_manager = types.ModuleType("orca.focus_manager")
+    focus_manager.getManager = lambda: manager
+    seen = []
+
+    class Script:
+        def presentKeyboardEvent(self, event):
+            # Orca 46's own: moves the focus quietly if it's on a window.
+            seen.append(manager.find_focused_object())
+            if event == "boom":
+                raise RuntimeError(event)
+            return True
+
+    default = types.ModuleType("orca.scripts.default")
+    default.Script = Script
+    scripts = types.ModuleType("orca.scripts")
+    scripts.default = default
+    orca = types.ModuleType("orca")
+    orca.debug, orca.focus_manager, orca.scripts = debug, focus_manager, scripts
+    for name, module in {"gi": gi, "gi.repository": repository, "orca": orca,
+                         "orca.debug": debug, "orca.ax_object": ax_object,
+                         "orca.focus_manager": focus_manager, "orca.scripts": scripts,
+                         "orca.scripts.default": default}.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    if keep_quiet_move:
+        monkeypatch.setenv("TCP_ORCA_KEEP_QUIET_MOVE", "1")
+    else:
+        monkeypatch.delenv("TCP_ORCA_KEEP_QUIET_MOVE", raising=False)
+    source = (ROOT / "tools" / "orca-customizations.py").read_text(encoding="utf-8")
+    exec(compile(source, "orca-customizations.py", "exec"), {"__name__": "orca_customizations"})
+    return types.SimpleNamespace(script=Script(), manager=manager, roles=AXObject.roles,
+                                 seen=seen, messages=messages)
+
+
+def test_orca_46_is_kept_from_its_quiet_focus_move_on_a_key(monkeypatch):
+    """With the focus on a dialog's frame as a key is handled, Orca 46 finds
+    no focused object to move to quietly, so the control's own focus event
+    is said (#751)."""
+    orca = _load_customizations(monkeypatch)
+    assert orca_speech.KEY_LOADED in orca.messages
+    orca.manager.locus, orca.manager.focused = "dialog frame", "message box"
+    orca.roles.update({"dialog frame": "frame", "message box": "text"})
+    assert orca.script.presentKeyboardEvent("A") is True
+    assert orca.seen == [None]
+    assert orca.messages.count(orca_speech.KEY_KEPT + ", so the focused control's own event "
+                               "is said") == 1
+    # Put back afterwards, even when Orca's own fails.
+    assert orca.manager.find_focused_object() == "message box"
+    try:
+        orca.script.presentKeyboardEvent("boom")
+    except RuntimeError:
+        pass
+    assert orca.manager.find_focused_object() == "message box"
+
+
+def test_a_focus_not_on_a_window_is_left_alone(monkeypatch):
+    orca = _load_customizations(monkeypatch)
+    orca.manager.locus, orca.manager.focused = "message box", "message box"
+    orca.roles["message box"] = "text"
+    orca.script.presentKeyboardEvent("Tab")
+    assert orca.seen == ["message box"]
+    assert not any(m.startswith(orca_speech.KEY_KEPT) for m in orca.messages)
+
+
+def test_a_window_with_nothing_focused_writes_no_correction(monkeypatch):
+    orca = _load_customizations(monkeypatch)
+    orca.manager.locus = "main frame"
+    orca.roles["main frame"] = "frame"
+    orca.script.presentKeyboardEvent("Escape")
+    assert not any(m.startswith(orca_speech.KEY_KEPT) for m in orca.messages)
+
+
+def test_the_quiet_move_can_be_left_in_to_measure_it(monkeypatch):
+    orca = _load_customizations(monkeypatch, keep_quiet_move=True)
+    orca.manager.locus, orca.manager.focused = "dialog frame", "message box"
+    orca.roles.update({"dialog frame": "frame", "message box": "text"})
+    orca.script.presentKeyboardEvent("A")
+    assert orca.seen == ["message box"]
+    assert orca_speech.KEY_LOADED not in orca.messages
+
+
 def test_crashes_are_told_from_failures_and_timeouts():
     assert orca_names.crashed(139) == "SIGSEGV"
     assert orca_names.crashed(-11) == "SIGSEGV"

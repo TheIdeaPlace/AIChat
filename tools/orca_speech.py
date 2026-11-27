@@ -13,7 +13,9 @@ and runs in CI (#230).
 
 Orca 46 took new objects for dead ones now and then, and said nothing about
 them, which failed a different step on each run; tools/orca-customizations.py
-puts that right, and the report says how often it did (#579).
+puts that right, and the report says how often it did (#579). It also stops
+Orca 46 quietly moving its focus into a dialog a key has just opened, which
+left the dialog's first control unsaid now and then (#751).
 
 ``orca_speech.sh`` makes the session bus, virtual screen and accessibility bus
 and then runs ``check`` here. ``check`` starts Orca with a debug log, starts
@@ -66,10 +68,23 @@ SETTLE = 1.2
 STEP_TIMEOUT = 15.0
 #: The first step waits for the app to start, which a slow runner takes a while over.
 START_TIMEOUT = 60.0
+#: Once Orca's debug log has been quiet this long, Orca has handled the events
+#: the app sent it, and a key can be pressed (#754). It logs every event it
+#: takes off its queue, and while idle only a line about every 1.5 seconds.
+#: The app's events reach it within milliseconds.
+TRIGGER_QUIET = 0.5
+#: What a step's report says when Orca never went quiet before its keys.
+UNSETTLED = "Orca hadn't caught up with the app's events when the keys were pressed"
 #: What tools/orca-customizations.py writes in Orca's debug log as it loads,
 #: and each time it puts right a live object Orca 46 took for dead (#579).
 LOADED = "TCP #579: dead objects are asked again"
 CORRECTED = "TCP #579: an object Orca had taken for dead answers"
+#: What it writes as it loads its other correction, and each time that one
+#: acts: Orca 46 had a window for the focus while handling a key, and was kept
+#: from quietly moving to the control focused in it, which then went unsaid
+#: (#751).
+KEY_LOADED = "TCP #751: no quiet move of the focus from a window on a key"
+KEY_KEPT = "TCP #751: the focus stays on the window while Orca handles a key"
 #: More corrections than this in one step is warned about. Six runs of every
 #: step (#605) made 16 to 27 a run, none more than 8 in a step (Backup
 #: Schedule), nearly all as a dialog opened: three times that is a real change.
@@ -96,8 +111,10 @@ class Step:
     #: for them, TRIGGERS).
     trigger: str = ""
     #: Press the keys only once the trigger has finished (``serve`` writes
-    #: <name>.done), not straight away. Not for one that opens a dialog,
-    #: which finishes only when the dialog closes.
+    #: <name>.done), not straight away, and then, as before every key, once
+    #: Orca has caught up (``OrcaLog.wait_idle``), its quiet counted from
+    #: then. Not for one that opens a dialog, which finishes only when the
+    #: dialog closes.
     after_trigger: bool = False
 
 
@@ -972,6 +989,41 @@ class OrcaLog:
             time.sleep(0.1)
         return seen
 
+    def modified(self) -> float:
+        return self.path.stat().st_mtime if self.path.exists() else 0.0
+
+    def wait_idle(self, quiet: float = TRIGGER_QUIET, timeout: float = STEP_TIMEOUT,
+                  from_now: bool = True, clock=time.monotonic, sleep=time.sleep,
+                  wall=time.time) -> bool:
+        """Wait until the log hasn't grown for ``quiet`` seconds: Orca has
+        taken every event the app sent before now off its queue. True then,
+        False at ``timeout``. ``from_now``: the quiet is counted from now,
+        for events that may still be on their way; otherwise from the log's
+        last change, so an Orca already quiet doesn't wait at all.
+
+        Orca 46 handles events in turn, and a key ahead of the ones before
+        it. A text box's caret move, made while the box wasn't focused but
+        handled after a Tab had focused it, made Orca take the box for its
+        focus quietly (default.onCaretMoved asks whether the box is focused
+        now, not when it moved), so the box's own focus event was then
+        ignored and the box went unsaid (#754)."""
+        end = clock() + timeout
+        size = self.size()
+        # The log's age is read once, against the wall clock its time is
+        # kept in; the waiting itself is timed on ``clock``, which a change
+        # to the system's time can't stretch.
+        age = 0.0 if from_now else max(0.0, wall() - self.modified())
+        since = clock() - age
+        while True:
+            if clock() - since >= quiet:
+                return True
+            if clock() >= end:
+                return False
+            sleep(0.05)
+            now = self.size()
+            if now != size:
+                size, since = now, clock()
+
 
 def orca_version() -> tuple:
     out = subprocess.run(["orca", "--version"], capture_output=True, text=True).stdout
@@ -1060,6 +1112,7 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         # The first step's speech is the app starting, from the mark made
         # before it was started.
         started, before = time.time(), log.size()
+        settled = True
         if step.trigger:
             done_file = world / f"{step.trigger}.done"
             done_file.unlink(missing_ok=True)
@@ -1067,6 +1120,13 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
             end = time.time() + STEP_TIMEOUT
             while step.after_trigger and not done_file.exists() and time.time() < end:
                 time.sleep(0.1)
+        if step.keys:
+            # No key until Orca has caught up with the app's events, as
+            # anyone would have heard them by then (#754). After a trigger,
+            # the quiet is counted from now, since its events may not have
+            # reached Orca yet; otherwise from the log's last line, so an
+            # Orca already quiet costs nothing.
+            settled = log.wait_idle(from_now=step.after_trigger)
         press(step.keys)
         spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
         took = time.time() - started
@@ -1075,15 +1135,20 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         refused = [] if record else [r for r in step.refuse if _found(r, said)]
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
-                         "passed": not missing and not refused,
+                         # Keys pressed before Orca caught up prove nothing
+                         # either way, so the step fails, saying why.
+                         "passed": not missing and not refused and (settled or record),
                          "started": time.strftime("%H:%M:%S", time.localtime(started)),
                          "seconds": round(took, 1),
-                         "corrected": log.count_since(before, CORRECTED)})
+                         "corrected": log.count_since(before, CORRECTED),
+                         "focus_kept": log.count_since(before, KEY_KEPT),
+                         "settled": settled})
         # As it goes: a job that runs out of time keeps no report at the end.
         # The time it started finds the step in Orca's debug log (--keep).
         print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
               f"[{results[-1]['started']}, {took:.1f}s] "
-              f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}", flush=True)
+              f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}"
+              + ("" if settled else f" ({UNSETTLED})"), flush=True)
     return results
 
 
@@ -1097,6 +1162,8 @@ def report(results: List[dict], version: tuple, record: bool) -> str:
             lines.append(f"       not said: {m!r}")
         for m in r["refused"]:
             lines.append(f"       said, and shouldn't be: {m!r}")
+        if not r.get("settled", True):
+            lines.append(f"       {UNSETTLED}")
     if not record:
         failed = sum(not r["passed"] for r in results)
         lines += ["", f"{len(results) - failed} of {len(results)} steps passed."]
@@ -1122,6 +1189,23 @@ def orca_corrections(text: str, results: List[dict],
             lines.append(f"::warning::{r['step']}: Orca took {count} live objects for dead, "
                          f"more than the {ceiling} any step took in testing (#579). Did the "
                          "app start replacing more of its rows or windows?")
+    return lines
+
+
+def key_focus_kept(text: str, results: List[dict]) -> List[str]:
+    """How often tools/orca-customizations.py kept Orca 46 from quietly
+    moving its focus from a window to the control in it while handling a key
+    (#751), and the failed steps it did so in. Most of its acts are Escape or
+    Return closing a dialog, harmless either way, so a failed step named here
+    is worth a look in Orca's log, not proof of this."""
+    if KEY_LOADED not in text:
+        return ["Orca's quiet focus moves on a key weren't stopped: later Orca doesn't make "
+                "them, and Orca 46 needs tools/orca-customizations.py to have loaded."]
+    lines = [f"Orca had a window for the focus while handling a key {text.count(KEY_KEPT)} "
+             "times, and was kept from moving quietly to the control in it "
+             "(tools/orca-customizations.py, #751)."]
+    lines += [f"  {r['focus_kept']:5}  {r['step']} (failed)" for r in results
+              if r.get("focus_kept") and not r.get("passed", True)]
     return lines
 
 
@@ -1162,6 +1246,7 @@ def check(args) -> int:
     print(text)
     debug_text = log_path.read_text("utf-8", "replace") if log_path.exists() else ""
     print("\n".join(orca_corrections(debug_text, results)))
+    print("\n".join(key_focus_kept(debug_text, results)))
     if args.json:
         Path(args.json).write_text(json.dumps({"orca": list(version), "steps": results},
                                               indent=2), encoding="utf-8")
