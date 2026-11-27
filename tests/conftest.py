@@ -34,6 +34,62 @@ def pytest_unconfigure(config):
         os._exit(status)
 
 
+#: A test still running after this long has hung (the slowest take under a
+#: minute on a busy macOS runner). TCP_HANG_SECONDS changes it, to try it.
+HANG_SECONDS = float(__import__("os").environ.get("TCP_HANG_SECONDS", "300"))
+
+
+def _report_hang(config, nodeid):
+    """Every thread's Python stack, and on a Mac the native ones as well
+    (sample), then end the run (#757). The test run hung in the middle on
+    macOS CI and was cut off at the job's limit with nothing to say where:
+    pytest -q doesn't name the running test, and a thread stuck in native code
+    answers no signal."""
+    import faulthandler
+    import os
+    import subprocess
+    capture = config.pluginmanager.getplugin("capturemanager")
+    try:
+        if capture is not None:
+            capture.suspend_global_capture(in_=False)  # back to the real stderr
+    except Exception:  # noqa: BLE001 - say what's known regardless
+        pass
+    err = sys.__stderr__
+    err.write(f"\n\n#757: {nodeid} has run for {HANG_SECONDS} seconds. Every thread:\n")
+    err.flush()
+    faulthandler.dump_traceback(file=err, all_threads=True)
+    err.flush()
+    if sys.platform == "darwin" and os.path.exists("/usr/bin/sample"):
+        err.write("\nNative stacks (sample):\n")
+        err.flush()
+        try:
+            subprocess.run(["/usr/bin/sample", str(os.getpid()), "3"], stdout=err, stderr=err,
+                           stdin=subprocess.DEVNULL, timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            err.write(f"sample failed: {exc}\n")
+    err.flush()
+    os._exit(3)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """On CI, a test that hangs ends the run with every stack (#757), rather
+    than running out the job's time. Setup and teardown count too: the frame
+    fixtures build and destroy whole windows."""
+    import os
+    import threading
+    if not os.environ.get("CI"):
+        yield
+        return
+    timer = threading.Timer(HANG_SECONDS, _report_hang, args=(item.config, item.nodeid))
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
