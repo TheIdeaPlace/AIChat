@@ -75,6 +75,14 @@ def apps_unavailable(reason):
         off_for_chat=False, read_only=True, display_name='Apps unavailable', informational=True)
 
 
+def _in_order(names):
+    """The configured servers' names, checked, in alphabetical order. Codex's
+    config/read gives them in a different order each time it starts (a hash
+    map's), so the list's rows, and what Home or End lands on, changed from
+    one run to the next (#729's acceptance fixes, seen under NVDA)."""
+    return tuple(sorted(server_names(list(names)), key=lambda name: (name.casefold(), name)))
+
+
 def inventory(connection, info, allowed=(), *, read_only=False, status_optional=False):
     """The configured servers. ``read_only``: a chat started elsewhere, which
     this connection hasn't loaded. Codex 0.163 fails mcpServerStatus/list for
@@ -94,7 +102,7 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
             raise CodexTurnRejected('mcp_tools')
         return [CodexTool(name, 'configured', off_for_chat=False, read_only=True,
                           auth=config_auth(names[name]))
-                for name in server_names(list(names))]
+                for name in _in_order(names)]
     # Only the configuration's shape is checked here. A selected server that
     # has been removed refuses every turn, and this list is where it gets said
     # and where a copy without it is made, so it mustn't refuse too.
@@ -116,7 +124,7 @@ def inventory(connection, info, allowed=(), *, read_only=False, status_optional=
                 if isinstance(row, dict) and isinstance(row.get('name'), str)}
     # First, so the list opens on what's stopping the chat.
     rows = [CodexTool(name, 'removed', (), False, True) for name in allowed if name not in names]
-    for name in server_names(list(names)):
+    for name in _in_order(names):
         row = statuses.get(name, {})
         tools = row.get('tools')
         tools = tuple(str(k)[:200] for k in tools) if isinstance(tools, dict) else ()

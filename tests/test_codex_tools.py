@@ -33,6 +33,21 @@ class FakeConnection:
 INFO = SimpleNamespace(cwd="folder", cli_session_id="native-1", is_own=False)
 
 
+@pytest.mark.parametrize("read_only", [True, False])
+def test_servers_are_listed_in_the_same_order_whatever_order_codex_gives(read_only):
+    """Codex's config/read order changes each time it starts (a hash map's),
+    so the rows, and what Home landed on, changed between runs (#729's
+    acceptance fixes, under NVDA). They're listed alphabetically."""
+    orders = []
+    for servers in ({"notion": {}, "Everything": {}, "brave": {}},
+                    {"brave": {}, "notion": {}, "Everything": {}}):
+        status = [{"name": name, "runtimeStatus": "connected", "tools": {}} for name in servers]
+        connection = FakeConnection(servers=servers, status=None if read_only else status)
+        info = INFO if read_only else SimpleNamespace(cwd="folder", cli_session_id="native-1")
+        orders.append([row.name for row in inventory(connection, info, read_only=read_only)])
+    assert orders == [["brave", "Everything", "notion"]] * 2
+
+
 def test_a_chat_started_elsewhere_lists_the_config_and_never_asks_for_status():
     connection = FakeConnection()
     rows = inventory(connection, INFO, read_only=True)
