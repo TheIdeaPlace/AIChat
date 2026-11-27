@@ -27,7 +27,7 @@
    ],
    "best": [
     540,
-    530
+    198
    ],
    "depth": 0,
    "parent": -1,
@@ -126,10 +126,10 @@
     404,
     50,
     574,
-    339
+    481
    ],
    "best": [
-    1093,
+    1082,
     49
    ],
    "depth": 1,
@@ -137,8 +137,8 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Visual probe, Claude, What changed The upload test failed one run in ten because it read the progress file before the writer had flushed it. It now waits for the writer to…, active just now",
-    "Fix the flaky upload test, Claude, What changed The upload test failed one run in ten because it read the progress file before the writer had flushed it. It now waits for the writer to…, active 1 minute ago"
+    "Visual probe, Claude, What changed. The upload test failed one run in ten because it read the progress file before the writer had flushed it. It now waits for the writer…, active just now",
+    "Fix the flaky upload test, Claude, What changed. The upload test failed one run in ten because it read the progress file before the writer had flushed it. It now waits for the writer…, active 1 minute ago"
    ],
    "selection": 0
   },
@@ -148,13 +148,13 @@
    "label": "panel",
    "rect": [
     402,
-    395,
+    545,
     574,
-    173
+    23
    ],
    "best": [
-    127,
-    140
+    199,
+    23
    ],
    "depth": 1,
    "parent": 0,
@@ -167,7 +167,7 @@
    "label": "About replying:",
    "rect": [
     402,
-    395,
+    548,
     83,
     16
    ],
@@ -183,16 +183,16 @@
   {
    "class": "TextCtrl",
    "name": "About replying",
-   "label": "This session belongs to the Claude desktop app, so you reply to it in Claude. The Chat Place only reads it: sending from here while the desktop app has it open could run two turns at once and tangle the conversation. Open in Claude switches the desktop app to it. Continue Here starts a Chat Place copy of it, with the whole conversation so far, that you can reply to here; the desktop app session isn't changed.",
+   "label": "Press R to reply to the chat you're on.",
    "rect": [
-    404,
-    417,
-    574,
-    153
+    493,
+    547,
+    485,
+    23
    ],
    "best": [
-    127,
-    120
+    110,
+    23
    ],
    "depth": 2,
    "parent": 6,
