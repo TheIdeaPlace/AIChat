@@ -558,7 +558,7 @@ def test_each_box_is_titled_for_what_it_answers_not_the_dialog(frame, env, monke
         dialog.Destroy()
 
 
-def test_a_refresh_nobody_pressed_waits_rather_than_showing_a_box(frame, env):
+def test_a_refresh_nobody_pressed_waits_rather_than_showing_a_box(frame, env, monkeypatch):
     """A sign-in finishing while something else was under way showed "Still
     ..." in a box titled Refresh, which nobody had pressed (#729's review)."""
     from thechatplace.providers.codex_tools import CodexTool
@@ -572,13 +572,21 @@ def test_a_refresh_nobody_pressed_waits_rather_than_showing_a_box(frame, env):
     host.load = load
     said = []
     dialog = ConnectedToolsDialog(frame, "Chat", host, feedback=said.append)
+    # The retry's timer, run here rather than waited for: a test's event
+    # pump doesn't reliably fire timers on Windows.
+    later = []
+    monkeypatch.setattr(wx, "CallLater", lambda ms, call, *a: later.append((ms, call)))
     try:
         boxes = len(env["boxes"])
         dialog.busy = "Still asking for sign-in information. Try again in a moment."
         dialog.refresh_when_free()
         assert len(env["boxes"]) == boxes and len(reads) == 1
+        assert [ms for ms, _call in later] == [1000]
+        later.pop()[1]()  # still busy: waits again
+        assert len(reads) == 1 and len(later) == 1
         dialog.busy = ""
-        assert pump(lambda: len(reads) == 2, timeout=5)
+        later.pop()[1]()
+        assert len(reads) == 2 and not later
         assert len(env["boxes"]) == boxes and said  # read again, and said how it came out
     finally:
         dialog.Destroy()
