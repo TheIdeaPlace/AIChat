@@ -512,6 +512,9 @@ STEPS = [
          expect=["Sign In to notes", "Opens notes.example"]),
     Step("Escape declines, and says so", ["Escape"], expect=["Sign-in page was not opened"]),
     Step("back on Sign In", ["Return"], expect=["Sign In"], refuse=["Refresh"]),
+    Step("Tab to Reconnect", ["Tab"], expect=["Reconnect"]),
+    Step("then Refresh, with no Turn Off button between", ["Tab"], expect=["Refresh"],
+         refuse=["Turn Off for This Chat"]),
     Step("Codex Connected Tools closed again", ["Escape"], expect=["Fix the flaky upload test"]),
     # A GTK message box is read as "alert Warning" and its text, not its title
     # (CI on #634), so the question is checked, and No, the default, focused.

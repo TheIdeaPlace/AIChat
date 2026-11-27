@@ -6678,10 +6678,12 @@ class ConnectedToolsDialog(wx.Dialog):
         label = getattr(server, "label", "") if server is not None else ""
         return f"{verb}: {label}" if label and not getattr(server, "informational", False) else verb
 
-    def _server_for(self, action: str, back_to, button=None):
+    def _server_for(self, action: str, back_to, button=None, verb: str = ""):
         """The selected server, or None after saying why there isn't one, in
-        a box titled for ``button`` (``back_to``, when it's a button)."""
-        title = self._title(button or (back_to if isinstance(back_to, wx.Button) else None))
+        a box titled ``verb``, or for ``button`` (``back_to``, when it's a
+        button)."""
+        title = self._title(button or (back_to if isinstance(back_to, wx.Button) else None),
+                            verb=verb)
         if self.busy:
             self._tell(self.busy, back_to=back_to, title=title)
             return None
@@ -6795,7 +6797,7 @@ class ConnectedToolsDialog(wx.Dialog):
         back = self.toggle_btn if shown else self.list
         # A box isn't titled for a button that isn't there.
         verb = "" if shown else self.READ_ONLY_TITLE
-        server = self._server_for("turn off", back, self.toggle_btn if shown else None)
+        server = self._server_for("turn off", back, self.toggle_btn if shown else None, verb)
         title = self._title(self.toggle_btn, server, verb)
         if server is None or self._not_here(server, back, title):
             return
