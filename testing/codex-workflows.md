@@ -10,24 +10,57 @@ Codex doesn't add one, and The Chat Place has no Add Server form: if `codex mcp 
 nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a terminal.
 
 - **A harmless local test server**, MCP's own "everything" server (it needs Node.js; its tools
-  echo text and add numbers):
+  echo text and add numbers). On Windows these work as written from PowerShell or Command
+  Prompt; Codex finds `npx` itself, so no `npx.cmd` or `cmd /c` is needed:
 
   ```
   codex mcp add everything -- npx -y @modelcontextprotocol/server-everything
   codex mcp list
   ```
 
-- **A web service that signs in through your browser**, for the Sign In check, for example
-  GitHub's (it needs an account that includes it):
+  The list shows everything, npx, enabled, Auth Unsupported. Codex downloads the server the
+  first time a chat starts it.
+
+- **A web service that signs in through your browser**, for the Sign In check. It must support
+  OAuth dynamic client registration. GitHub's (`https://api.githubcopilot.com/mcp/`) doesn't:
+  `codex mcp add github --url …` fails with "Dynamic client registration not supported", and
+  Sign In in The Chat Place says Codex could not start signing in. Notion's does. Add it by
+  editing `config.toml` (in `CODEX_HOME`, normally `~/.codex`), not with `codex mcp add`, which
+  starts its own sign-in at once for a web server and would leave nothing for Sign In to do:
 
   ```
-  codex mcp add github --url https://api.githubcopilot.com/mcp/
+  [mcp_servers.notion]
+  url = "https://mcp.notion.com/mcp"
   ```
 
-Then, in a Codex chat started here: Tools, Connected Tools (MCP) (Alt+T, C), select the tool
-(it's "off for this chat"), and choose **Copy with Tool On** (Alt+O). Continue in the copy it
-opens, and ask for a task by name, for example "Use the everything tool's add tool to add 2 and
-3." Remove a test server afterward with `codex mcp remove everything`.
+Then, in a Codex chat started here: Tools, Connected Tools (MCP) (Alt+T, C). Codex lists
+configured servers first ("everything: off for this chat, configured Codex MCP server"), then
+every app in ChatGPT's catalog (over 5,000 in November 2026, so the list takes most of a
+minute to read). Select the tool and choose **Copy with Tool On** (Alt+O). It's the only way to
+turn a tool on in a Codex chat. In the copy it opens, the row says "everything: connected,
+configured Codex MCP server, 19 tools", and Details lists them. Ask for a task by name. The
+server's adding tool is get-sum, not "add": "Use the everything tool's get-sum tool to add 2 and
+3." Codex answers 5. Remove a test server afterward with `codex mcp remove everything`.
+
+Codex doesn't ask before calling the everything server's tools, which declare themselves
+read-only or harmless, even in a chat that asks before changing files. For check 5, make it ask
+by adding this to `config.toml`, then making a new tools copy:
+
+```
+[mcp_servers.everything.tools.get-sum]
+approval_mode = "prompt"
+```
+
+Codex then sends a connected-tool question: Allow the everything MCP server to run tool
+"get-sum"?, the arguments, and "Your answer covers this call only." Send lets that call run,
+and Decline refuses it. `codex mcp remove everything` removes this setting too.
+
+Verified on Windows on 2026-11-26 with Codex 0.163 and everything 2.3.1, in a throwaway
+`CODEX_HOME`. The commands ran in PowerShell 7, Windows PowerShell and Command Prompt.
+`codex exec` called get-sum. The Chat Place's provider code was driven without a window:
+listing, Copy with Tool On, a turn calling the tool, the prompted question answered with both
+Send and Decline, and Sign In's start, which fails for GitHub and returns an address for
+Notion. No sign-in was finished.
 
 1. While Codex is working, queue two different messages. In Messages, select the
    first, press the Applications key (Shift+F10), and choose Edit Queued Message.
