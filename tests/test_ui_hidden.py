@@ -9882,6 +9882,12 @@ def test_a_long_replys_notification_still_has_the_lost_timer(frame, env, fake_ru
         "finished", text=long_reply, data=_waits_data()))
     assert env["notified"][-1][1] == f"I'll check again at 2:00 PM. {LOST_2PM}"
     assert env["spoken"][-1].endswith(LOST_2PM)
+    # A first sentence too long to leave room is cut, never the line.
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text="word " * 80, data=_waits_data()))
+    shown = env["notified"][-1][1]
+    assert shown.endswith(LOST_2PM) and len(shown) <= 250
 
 
 def test_quitting_mid_turn_keeps_the_lost_timer_after_its_reply(frame, env, fake_runner,

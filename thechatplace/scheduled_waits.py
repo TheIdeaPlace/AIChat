@@ -286,22 +286,28 @@ class WaitBook:
         waits changed. Only a wake seen counts: a one-time time that passed
         while Claude was still working may never have fired before the
         process ended."""
+        # One wake is one job: the soonest due, so a second due a moment
+        # later (a wakeup a minute after a timer) is still a wait.
         now = self._clock()
-        kept = []
+        due = []
         for wait in self._waits:
             when = wait.fire_time() if wait.one_shot else None
             if when is not None and when.timestamp() <= now + WAKE_EARLY_SECONDS:
-                continue
-            kept.append(wait)
-        return self._replace(kept)
+                due.append((when, wait))
+        if not due:
+            return False
+        fired = min(due, key=lambda pair: pair[0])[1]
+        return self._replace([w for w in self._waits if w is not fired])
 
     def tasks_changed(self, tasks) -> bool:
         """``background_tasks_changed``'s whole list, ambient tasks and all.
         A watch that has been listed and is gone has ended (its timeout, or
         Claude stopped it), so it's no longer a wait. True when the waits
         changed."""
+        # A task with no description can't be told from a watch with none.
         listed = {_text(t.get("description")) for t in tasks if isinstance(t, dict)} \
             if isinstance(tasks, list) else set()
+        listed.discard("")
         self._listed = listed
         kept = []
         for wait in self._waits:

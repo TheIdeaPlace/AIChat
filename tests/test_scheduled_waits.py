@@ -345,6 +345,27 @@ def test_a_wake_removes_the_one_time_waits_that_were_due():
     assert not waits.woke()
 
 
+def test_one_wake_is_one_job_even_with_another_due_a_moment_later():
+    clock = {"now": at(NOW)}
+    waits = WaitBook(lambda: clock["now"])
+    waits.tool_use("CronCreate", "t1", {"cron": "5 13 27 11 *", "recurring": False})
+    waits.tool_result("t1", "Done.", False)
+    waits.tool_use("ScheduleWakeup", "t2", {"delaySeconds": 360})  # 1:06 PM
+    waits.tool_result("t2", "ok", False)
+    clock["now"] = at(datetime(2026, 11, 27, 13, 5))
+    assert waits.woke()
+    assert [w.kind for w in waits.waits] == [WAKEUP]
+
+
+def test_a_task_without_a_description_isnt_taken_for_a_watch_without_one():
+    waits = book()
+    waits.tool_use("Monitor", "t1", {"command": "tail -f log"})
+    waits.tasks_changed([{"task_id": "b1", "task_type": "local_bash"}])
+    waits.tool_result("t1", "started", False)
+    waits.tasks_changed([])  # the shell ended; the watch didn't
+    assert [w.kind for w in waits.waits] == [WATCH]
+
+
 def test_the_parser_takes_a_wake_turn_as_the_due_timer_having_run():
     parser = StreamParser()
     parser.waits = book()

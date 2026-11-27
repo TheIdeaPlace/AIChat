@@ -4703,7 +4703,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return  # you stopped it yourself: nothing to tell you
 
         def body(text: str) -> str:
-            return announce.then(announce.first_sentence(text), lost) if lost else text
+            if not lost:
+                return text
+            # Room for the line: a notice holds about 250 characters (notify.py).
+            room = 250 - len(lost) - 2
+            return announce.then(announce.first_sentence(text, room), lost) if room >= 40 \
+                else lost
         if event.kind == "failed" or event.is_error:
             self._notify(key, f"{title}: the turn failed", body(usage.friendly_error(event.text)),
                          needs_you=True)
