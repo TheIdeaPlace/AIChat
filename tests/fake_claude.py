@@ -243,6 +243,64 @@ if mode == "background":
     out(type="system", subtype="session_state_changed", state="idle")
     answer_controls(lambda subtype: False)  # the context request, until stdin closes
     sys.exit(0)
+if mode == "cron":
+    # Claude sets a timer (#749), shaped as Claude Code 2.1.331 sent it in
+    # the probe of 2026-11-27: the CronCreate call, its result naming the
+    # job, the reply, the result and idle; then it waits for stdin to close,
+    # and the timer with it. FAKE_CLAUDE_CRON is the expression (one-shot
+    # unless FAKE_CLAUDE_RECURRING=1); FAKE_CLAUDE_CRON_THEN=delete cancels
+    # it with CronDelete, =refused has CronCreate fail, =monitor adds a
+    # Monitor watch, listed as an ambient background task.
+    expression = os.environ.get("FAKE_CLAUDE_CRON", "0 14 27 11 *")
+    recurring = os.environ.get("FAKE_CLAUDE_RECURRING") == "1"
+    then = os.environ.get("FAKE_CLAUDE_CRON_THEN", "")
+    out(type="system", subtype="session_state_changed", state="running")
+    out(type="assistant", parent_tool_use_id=None, uuid="rec-tool", message={
+        "id": "msg_tool", "model": "claude-opus-5-5", "content": [{
+            "type": "tool_use", "id": "toolu_cron1", "name": "CronCreate",
+            "input": {"cron": expression, "prompt": "Check the pull request's checks.",
+                      "recurring": recurring}}]})
+    if then == "refused":
+        out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+            "type": "tool_result", "tool_use_id": "toolu_cron1", "is_error": True,
+            "content": "<tool_use_error>Too many scheduled jobs (max 50). "
+                       "Cancel one first.</tool_use_error>"}]})
+    else:
+        kind = "recurring job" if recurring else "one-shot task"
+        out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+            "type": "tool_result", "tool_use_id": "toolu_cron1",
+            "content": f"Scheduled {kind} f0d1911f ({expression}). Next run: Nov 27 2:00pm. "
+                       "Session-only (not written to disk, dies when Claude exits). "
+                       "It will fire once then auto-delete."}]})
+    if then == "delete":
+        out(type="assistant", parent_tool_use_id=None, message={
+            "model": "claude-opus-5-5", "content": [{
+                "type": "tool_use", "id": "toolu_cron2", "name": "CronDelete",
+                "input": {"id": "f0d1911f"}}]})
+        out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+            "type": "tool_result", "tool_use_id": "toolu_cron2",
+            "content": "Cancelled job f0d1911f."}]})
+    if then == "monitor":
+        out(type="assistant", parent_tool_use_id=None, message={
+            "model": "claude-opus-5-5", "content": [{
+                "type": "tool_use", "id": "toolu_mon1", "name": "Monitor",
+                "input": {"command": "gh pr checks 749 --watch", "description": "Watch PR 749"}}]})
+        out(type="system", subtype="background_tasks_changed", tasks=[
+            {"task_id": "m1", "task_type": "monitor", "description": "Watch PR 749",
+             "ambient": True}])
+        out(type="user", parent_tool_use_id=None, message={"role": "user", "content": [{
+            "type": "tool_result", "tool_use_id": "toolu_mon1",
+            "content": "Monitor started (task m1)."}]})
+    reply = "I'll check the pull request again at 2:00 PM."
+    out(type="assistant", parent_tool_use_id=None, uuid="rec-reply", message={
+        "id": "msg_reply", "model": "claude-opus-5-5",
+        "content": [{"type": "text", "text": reply}]})
+    out(type="result", subtype="success", is_error=False, result=reply, session_id="abc-1",
+        **COST)
+    out(type="system", subtype="session_state_changed", state="idle")
+    log(waited=True)
+    answer_controls(lambda subtype: False)  # until The Chat Place closes stdin
+    sys.exit(0)
 if mode == "ask":
     out(type="control_request", request_id="req-1",
         request={"subtype": "can_use_tool", "tool_name": "Bash",

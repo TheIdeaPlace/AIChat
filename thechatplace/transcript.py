@@ -155,20 +155,29 @@ class ChatMessage:
     #: A reply on API credits: what it cost, as its last line ("Cost: 19
     #: cents", #692). From The Chat Place's own store, never the transcript.
     cost: str = ""
+    #: A reply after which Claude's timers or watches ended with the chat's
+    #: process: which ones won't run (#749), said after the reply, before
+    #: its cost. From The Chat Place's own store, never the transcript.
+    note: str = ""
 
     @property
     def whole_without_cost(self) -> str:
         """The text with its detail: what Copy copies. A reply's cost line
         is left out (#692), as a copied reply is pasted elsewhere, often
-        into a prompt."""
+        into a prompt; so is its note (#749), which isn't Claude's words."""
         return f"{self.text}\n\n{self.detail}" if self.detail else self.text
 
     @property
+    def trailer(self) -> str:
+        """What The Chat Place adds after a reply: its note, then its cost."""
+        return " ".join(part for part in (self.note, self.cost) if part)
+
+    @property
     def whole(self) -> str:
-        """The text with its detail, and a reply's cost as its last line:
-        what Enter shows, Export saves and Find searches."""
-        text = self.whole_without_cost
-        return f"{text}\n\n{self.cost}" if self.cost else text
+        """The text with its detail, then a reply's note and cost as its last
+        lines: what Enter shows, Export saves and Find searches."""
+        parts = [self.whole_without_cost] + [p for p in (self.note, self.cost) if p]
+        return "\n\n".join(parts)
 
     @property
     def label(self) -> str:
@@ -200,11 +209,11 @@ class ChatMessage:
 
     def list_line(self) -> str:
         """One line for the chat list: who spoke, then the first line, and a
-        reply's cost at its end (#692)."""
+        reply's note (#749) and cost (#692) at its end."""
         line = f"{self.label}: {self.first_line()}"
-        if not self.cost:
+        if not self.trailer:
             return line
-        return f"{line}{'' if line.endswith(('.', '!', '?', '…', ':')) else '.'} {self.cost}"
+        return f"{line}{'' if line.endswith(('.', '!', '?', '…', ':')) else '.'} {self.trailer}"
 
     def full_text(self) -> str:
         return f"{self.label}:\n{self.whole}"

@@ -6,6 +6,7 @@ and NVDA is checked by hand (see DEVELOPING.md).
 """
 import ctypes
 import dataclasses
+import datetime
 import json
 import os
 import threading
@@ -20,6 +21,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
+from thechatplace.scheduled_waits import Wait  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
@@ -9763,6 +9765,94 @@ def test_a_background_update_changes_the_turn_status(frame, env, fake_runner):
     frame._on_turn_event({"id": "own-1"}, "Hub probe",
                          TurnEvent("background", data={"tasks": ["Watch CI"]}))
     assert "background: Watch CI. What" in frame.turn_status.GetLabel()
+
+
+# -- Claude's timers and watches end with the turn (#749) --------------------------------------
+
+#: A Friday afternoon, 1:00 PM local time, for the waits' times.
+WAITS_NOW = datetime.datetime(2026, 11, 27, 13, 0)
+LOST_2PM = ("This chat ends when Claude's reply does, so the check Claude set for 2:00 PM "
+            "won't run.")
+
+
+def _waits_data(*waits, **more):
+    return {"waits": [w.to_dict() for w in waits] or [Wait(
+        "cron", set_at=WAITS_NOW.timestamp(), cron="0 14 27 11 *").to_dict()], **more}
+
+
+@pytest.fixture
+def waits_now(monkeypatch):
+    from thechatplace import scheduled_waits
+    monkeypatch.setattr(scheduled_waits, "local_now", lambda: WAITS_NOW)
+
+
+def test_a_timer_lost_with_the_turn_is_said_after_the_reply(frame, env, fake_runner, waits_now,
+                                                            monkeypatch):
+    monkeypatch.setattr(frame, "_app_is_active", lambda: False)
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text="I'll check again at 2:00 PM.", data=_waits_data()))
+    assert env["spoken"][-1] == f"Hub probe replied. I'll check again at 2:00 PM. {LOST_2PM}"
+    assert frame._last_announcement == env["spoken"][-1]  # Repeat says it all
+    assert env["notified"][-1] == ("Hub probe finished",
+                                   f"I'll check again at 2:00 PM. {LOST_2PM}", "own:own-1")
+    # Once a turn: a turn after it that sets nothing says nothing of it.
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done."))
+    assert env["spoken"][-1] == "Hub probe replied. Done."
+
+
+def test_a_turn_without_waits_says_nothing_of_them(frame, env, fake_runner, waits_now):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("waits", data=_waits_data()))
+    # A timer whose time came while the process lived ran then.
+    ran = _waits_data(Wait("cron", set_at=(WAITS_NOW - datetime.timedelta(hours=2)).timestamp(),
+                           cron="30 11 27 11 *"))
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done.",
+                                                                 data=ran))
+    assert env["spoken"][-1] == "Hub probe replied. Done."
+    assert frame.store.get("own-1").reply_notes == {}
+
+
+def test_a_failed_or_stopped_turn_says_its_lost_timer_too(frame, env, fake_runner, waits_now):
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "failed", text="Stopped.", is_error=True, data=_waits_data()))
+    assert env["spoken"][-1].endswith(f"Stopped. {LOST_2PM}")
+    assert env["spoken"][-1].count("This chat ends") == 1
+
+
+def test_a_lost_timer_after_background_work_is_said_with_the_chats_name(frame, env, fake_runner,
+                                                                       waits_now):
+    runner = _start(frame, fake_runner)
+    _answered_with_background(frame, runner)
+    assert "This chat ends" not in env["spoken"][-1]  # still running: not lost yet
+    runner.waiting_on_background = False
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", data=_waits_data(after_background=True)))
+    assert env["spoken"][-1] == f"Hub probe: {LOST_2PM}"
+
+
+def test_a_lost_timer_is_kept_after_its_reply_in_the_messages_list(frame, env, fake_runner,
+                                                                   waits_now):
+    add_transcript(env, "C:\\G\\Scratch", "own-1", [
+        user_text("Check the PR at 2"),
+        assistant_block(text_block("I'll check again at 2:00 PM."), "m1")])
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text="I'll check again at 2:00 PM.",
+        data=_waits_data(reply_message_id="m1", reply_uuid="u1")))
+    assert frame.store.get("own-1").reply_notes == {"m1": LOST_2PM}
+    row = f"Claude: I'll check again at 2:00 PM. {LOST_2PM}"
+    assert pump(lambda: row in list(frame.chat_list.GetStrings()))
+    reply = next(m for m in frame._chat_messages if m.key == "m1")
+    assert reply.whole == f"I'll check again at 2:00 PM.\n\n{LOST_2PM}"
+    frame.speech.full_messages_in_list = True
+    assert frame._message_item_text(frame._chat_keys.index("m1")) == row
+    # Kept in The Chat Place's own store, so it's there after a restart.
+    again = OwnSessionStore(env["tmp"] / "own.json")
+    again.load()
+    assert again.get("own-1").reply_notes == {"m1": LOST_2PM}
 
 
 def test_send_now_on_a_queued_message_while_waiting_sends_it_without_stopping(frame, env,

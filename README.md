@@ -2301,6 +2301,23 @@ queued unless you steer it (Ctrl+Alt+Enter). The answer to a steered message goe
 may not be read out until later.)
 Something meant to run indefinitely, such as a development server, would keep the turn open until
 you press Stop, so ask Claude to start long-running servers in a terminal of your own.
+Claude's timers and watches are different again (#749): a `CronCreate` ("check again at 2 PM"),
+`ScheduleWakeup` (`/loop`) or `Monitor` isn't a running task (a Monitor is an *ambient* one, which
+the turn doesn't wait for), so the turn still ends with the reply and they end with `claude`. The
+runner records each top-level call once its result comes back without an error (`CronDelete`
+removes a job by the id CronCreate's result named; a ScheduleWakeup replaces the last one, and
+`stop` ends it; a Monitor that leaves the background list has ended) as `pending_waits`, with a
+`waits` event after each change, and puts them on the turn's last event. The window then says,
+once per turn, after however the turn ended: "This chat ends when Claude's reply does, so the check
+Claude set for 2:00 PM won't run." A one-time timer's time is worked out from its cron expression
+in local time, or now plus `delaySeconds`; one whose time came while the process lived (kept open
+by background work) ran, and isn't named. A repeating one is named in plain words ("to run every
+30 minutes", "every weekday at 9:00 AM"), never as cron text, and a watch by its description. The
+line goes in the notification too, and is kept after that reply (by its message id, in The Chat
+Place's own store as `reply_notes`, never in the transcript), so the messages list, the full
+message, Find and exports show it later; Copy Message leaves it out. If the turn waited for
+background work, the line comes when the turn ends, with the chat's name. Keeping the process open
+for these waits is #749's Part 2.
 **Chat, Stop Background Task** (just below Stop Running Turn) ends one of them and keeps the turn: it's available while the
 loaded Claude chat has background work, lists each piece with how long it has run ("Windows
 build, running 3 minutes"), asks Yes or No (No first) naming the one chosen, and says "Stopped

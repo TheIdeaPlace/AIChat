@@ -118,6 +118,12 @@ class OwnSession:
     #: ``reply_costs``). Kept here, never in Claude Code's or Codex's files;
     #: only the newest ``reply_costs.MAX_REPLY_COSTS``. Older releases ignore it.
     reply_costs: Dict[str, str] = field(default_factory=dict)
+    #: A Claude chat's replies after which Claude's timers or watches ended
+    #: with its process: the line saying which won't run, by the reply it
+    #: follows (#749, ``scheduled_waits``). Kept here, never in Claude
+    #: Code's files; only the newest ``scheduled_waits.MAX_NOTES``. Older
+    #: releases ignore it.
+    reply_notes: Dict[str, str] = field(default_factory=dict)
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -278,6 +284,10 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
             from .reply_costs import clean as clean_reply_costs
             values[name] = clean_reply_costs(item[name])
             continue
+        if name == "reply_notes":
+            from .scheduled_waits import clean_notes
+            values[name] = clean_notes(item[name])
+            continue
         if name == "allowed_dirs_at":
             times = item[name] if isinstance(item[name], dict) else {}
             values[name] = {d: t for d, t in times.items()
@@ -352,6 +362,7 @@ def _session_from_dict(item: dict) -> Optional[OwnSession]:
         values["allowed_dirs_at"] = {}
         values["disabled_mcp"] = []
         values["permission_mode"] = "auto"
+        values["reply_notes"] = {}  # Claude's waits only (#749)
     if values["billing"] != "api":
         values["reply_costs"] = {}  # only chats on API credits have them (#692)
     return OwnSession(**values)
@@ -680,6 +691,20 @@ class OwnSessionStore:
         if costs == session.reply_costs:
             return False
         self.update(cli_session_id, provider=provider, reply_costs=costs)
+        return True
+
+    def add_reply_note(self, cli_session_id: str, key: str, line: str) -> bool:
+        """Keep the line saying which of Claude's waits won't run (#749)
+        with the reply it follows, and save. False when there's no such
+        Claude chat or nothing to keep; the oldest go once there are too many."""
+        from .scheduled_waits import remember_note
+        session = self.get(cli_session_id, "claude")
+        if session is None:
+            return False
+        notes = remember_note(session.reply_notes, key, line)
+        if notes == session.reply_notes:
+            return False
+        self.update(cli_session_id, provider="claude", reply_notes=notes)
         return True
 
     def remove(self, cli_session_id: str, provider: str = "claude") -> None:

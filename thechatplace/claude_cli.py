@@ -95,6 +95,7 @@ from . import platform_paths
 from .billing import (KEY_REFUSED, ROUTE_API, account_problem, budget_flags, failure_text,
                       key_refused, normalize_route, scrub, source_problem)
 from .chat_options import ChatChoices, ChatOptions, choices_from_init
+from .scheduled_waits import WaitBook, Wait
 from .transcript import compaction_text
 
 #: (value passed to --permission-mode, label shown in the New Session dialog)
@@ -1021,7 +1022,8 @@ class TurnEvent:
 
     kind: str               # started | text | tool | denied | permission | background |
     #                         waiting | finished | failed | mode | retry | fallback |
-    #                         memory | context (#468) | api_sent (#663) | …
+    #                         memory | context (#468) | api_sent (#663) |
+    #                         waits (#749) | …
     text: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -1070,6 +1072,9 @@ class StreamParser:
         #: turn on API credits keeps its cost with that reply (#692).
         self.reply_uuid = ""
         self.reply_message_id = ""
+        #: The timers, wakeups and watches Claude set in this process (#749),
+        #: from its top-level tool calls and their results.
+        self.waits = WaitBook()
 
     def feed(self, line: str) -> List[TurnEvent]:
         line = line.strip()
@@ -1088,6 +1093,11 @@ class StreamParser:
         except Exception:  # noqa: BLE001 - a format change must not kill the turn
             self.bad_lines += 1
             return []
+
+    def _waits_event(self) -> TurnEvent:
+        """The process's waits, all of them, after a change (#749)."""
+        return TurnEvent("waits", session_id=self.session_id,
+                         data={"waits": [w.to_dict() for w in self.waits.waits]})
 
     def _event(self, event: dict) -> List[TurnEvent]:
         etype = str(event.get("type") or "")
@@ -1185,8 +1195,13 @@ class StreamParser:
             entries = [{"task_id": str(t.get("task_id") or ""),
                         "description": str(t.get("description") or "a background task"),
                         "task_type": str(t.get("task_type") or "")} for t in work]
-            return [TurnEvent("background", session_id=self.session_id,
-                              data={"tasks": names, "entries": entries})]
+            events = [TurnEvent("background", session_id=self.session_id,
+                                data={"tasks": names, "entries": entries})]
+            # The whole list, ambient tasks too: a Monitor's watch gone from
+            # it has ended, and is no longer a wait (#749).
+            if self.waits.tasks_changed(tasks):
+                events.append(self._waits_event())
+            return events
         live = _live_system_event(etype, subtype, event, self.session_id)
         if live is not None:
             return [live]
@@ -1250,6 +1265,9 @@ class StreamParser:
                         if (isinstance(path, str) and path and isinstance(use_id, str)
                                 and len(self._edits) < 500):
                             self._edits[use_id] = path
+                        # A timer, wakeup or watch Claude sets (#749): kept
+                        # until its result says it was set up.
+                        self.waits.tool_use(name, use_id, tool_input)
                         events.append(TurnEvent("tool", text=name,
                                                 detail=f"{name}: {target}" if target else name))
             if any(e.kind == "text" for e in events) and reply_model != "<synthetic>":
@@ -1264,15 +1282,22 @@ class StreamParser:
             echoed = event.get("uuid")
             return [TurnEvent("taken", text=echoed if isinstance(echoed, str) else "",
                               session_id=self.session_id)]
-        if etype == "user" and not event.get("parent_tool_use_id") and self._edits:
+        if etype == "user" and not event.get("parent_tool_use_id") and (
+                self._edits or self.waits.expecting):
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             events = []
+            waits_changed = False
             for block in content if isinstance(content, list) else ():
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     path = self._edits.pop(str(block.get("tool_use_id")), None)
                     if path and not block.get("is_error"):
                         events.append(TurnEvent("edited", data={"file_path": path}))
+                    if self.waits.tool_result(block.get("tool_use_id"), block.get("content"),
+                                              bool(block.get("is_error"))):
+                        waits_changed = True
+            if waits_changed:
+                events.append(self._waits_event())
             return events
         if etype == "prompt_suggestion":
             # What you might send next (#474), after the turn's result.
@@ -1837,6 +1862,11 @@ class TurnRunner:
         #: for background work. A message sent now goes straight in
         #: (``send_follow_up``) instead of waiting for the turn to end.
         self.waiting_on_background = False
+        #: The timers, wakeups and watches Claude has set in this process
+        #: (#749), as the latest "waits" event said. Each ends with the
+        #: process, so for now the turn's end says which won't happen; later
+        #: they'll keep the process open (#749, Part 2).
+        self.pending_waits: List[Wait] = []
 
     def elapsed(self) -> float:
         return self._clock() - self.started_at
@@ -2673,6 +2703,14 @@ class TurnRunner:
                         self._control_done(data.get("request_id", ""), bool(data.get("ok")),
                                            data.get("response") or {}, data.get("error", ""))
                         continue
+                    if event.kind == "waits":
+                        # What Claude has set to happen later (#749): kept
+                        # for the turn's end, and passed on. Never a reason to
+                        # send the message, or a sign Claude is carrying on.
+                        with self._lock:
+                            self.pending_waits = list(self.parser.waits.waits)
+                        self._emit(event)
+                        continue
                     if event.kind == "mode":
                         # The mode changed (#468); not the conversation. Only
                         # a real change: a status repeating the mode the turn
@@ -3070,7 +3108,20 @@ class TurnRunner:
         if not final.session_id:
             final.session_id = self.parser.session_id
         self._cost_data(final)
+        self._waits_data(final)
         self._emit(final)
+
+    def _waits_data(self, event: TurnEvent) -> None:
+        """The process is over, and with it every wait Claude set in it
+        (#749): they go on the turn's last event, with the reply they're
+        kept beside, so the window can say which won't happen."""
+        with self._lock:
+            waits = list(self.pending_waits)
+        if not waits:
+            return
+        event.data = {**(event.data or {}), "waits": [w.to_dict() for w in waits],
+                      "reply_uuid": self.parser.reply_uuid,
+                      "reply_message_id": self.parser.reply_message_id}
 
     def _refuse_unsupported(self) -> None:
         """Control requests other than permission checks and MCP servers'
