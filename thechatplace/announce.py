@@ -64,6 +64,19 @@ def cost_after(cost: str) -> str:
     return " at no cost" if cost == "nothing" else f", {cost}"
 
 
+def then(text: str, more: str) -> str:
+    """``more`` said after ``text`` as a sentence of its own: a full stop
+    first if ``text`` doesn't end one (a reply ending in a code block, say),
+    so the two don't run together (#749)."""
+    text = (text or "").rstrip()
+    if not more:
+        return text
+    if not text:
+        return more
+    end = "" if text.endswith((".", "!", "?", "…", ":")) else "."
+    return f"{text}{end} {more}"
+
+
 def reply_text(title: str, reply: str, level: str, cost: str = "") -> Optional[str]:
     """A session's reply. None means say nothing. ``cost``: what a reply on
     API credits cost, in words ("6 cents", billing.cost_words), said before

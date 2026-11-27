@@ -641,8 +641,12 @@ not a bill.
   claude.ai or your phone. It copies the conversation to claude.ai, where it stays. See "Remote
   Control".
 
-Work that runs by itself on a schedule isn't something The Chat Place does yet, even if a command for
-it is in Claude Code's list. The Claude desktop app has scheduled tasks.
+Work that runs by itself later doesn't happen in a chat here yet. When Claude sets a check for later
+("I'll look at the pull request again at 2:00 PM", or a `/loop`) or a watch, the chat ends when
+Claude's reply does, and the check ends with it. You're told when that happens: after the reply you
+hear, for example, "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM
+won't run." To check back, send the chat a message yourself at that time. The Claude desktop app
+has scheduled tasks.
 
 ## Getting more out of Codex
 
@@ -2308,6 +2312,15 @@ running ("Still running in the background: Windows build"), but the turn stays o
 finishes, Claude carries on by itself, and its next answer is announced as usual. While Claude is
 waiting, what you send goes to it at once instead of being queued. Stop ends the turn and the
 background work with it.
+
+A check or watch Claude sets for later isn't background work: nothing is running while it waits, so
+the turn still ends with the reply, and the check with it. Once a turn, after the reply, you hear
+which ones won't run: "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM
+won't run." A repeating one is said by how often ("the repeating check Claude set to run every 30
+minutes"), and a watch by what it watches ("the watch Claude started (Watch PR 749) stops"). The
+same line, with the date, stays after that reply in the messages list, in the full message and in
+exports, so it's there when you come back to the chat; Copy Message leaves it out. If the turn was kept open for background work, the line comes when the turn ends, with the
+chat's name.
 
 To end just one piece of background work and keep the turn, choose
 **Chat, Stop Background Task**, just below Stop Running Turn. It's available while the loaded Claude chat has background work running. It lists each

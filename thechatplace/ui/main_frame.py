@@ -72,7 +72,7 @@ from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, FILE_ED
                           normalize_permission_mode, CHROME_API, CHROME_OFF, CHROME_ON,
                           fable_in_plan, model_allowed, overage_paused, paused_family,
                           using_overage)
-from .. import codex_long_messages, reply_costs, sound_events
+from .. import codex_long_messages, reply_costs, scheduled_waits, sound_events
 from ..billing import COST_NOT_KNOWN, cost_more, cost_sentence
 from .sound_host import SoundHost
 from ..hub import (Snapshot, collect, fill_last_message, finished_turns,
@@ -2776,7 +2776,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         own = self.store.get(info.cli_session_id, provider=info.provider) if info.is_own else None
         costs = (dict(getattr(own, "reply_costs", None) or {})
                  if getattr(own, "billing", "") == "api" else {})
-        shown_costs = (info.key, tuple(costs.items()))
+        # And the replies after which Claude's timers ended unrun (#749).
+        notes = (dict(getattr(own, "reply_notes", None) or {})
+                 if info.provider == "claude" else {})
+        shown_costs = (info.key, tuple(costs.items()), tuple(notes.items()))
         costs_changed = shown_costs != self._chat_costs_shown
         self._chat_costs_pending = shown_costs  # shown once a read is applied
 
@@ -2795,6 +2798,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     # the short prompt Codex was sent.
                     copies = codex_long_messages.expand_messages(copies)
                 copies = reply_costs.with_costs(copies, costs, ASSISTANT)
+                copies = scheduled_waits.with_notes(copies, notes, ASSISTANT)
                 wx.CallAfter(self._apply_reader_chat, generation, active_reader, changed, copies,
                              transcript.unreadable_lines, None,
                              list(transcript.edits), transcript.turns,
@@ -3176,16 +3180,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # Keyed by label too: a steering row's label says where it is, and
         # changes while its text doesn't (#238).
         cached = self._spoken.get(message.key)
-        if cached is None or cached[0] != (message.label, message.text, message.cost):
+        if cached is None or cached[0] != (message.label, message.text, message.trailer):
             spoken = announce.spoken_markdown(message.text, describe_code=True) \
                 or message.first_line()
             said = f"{message.label}: {spoken}"
-            if message.cost:
-                # A reply's cost is its last words (#692), as in its row.
+            if message.trailer:
+                # A reply's note (#749) and cost (#692) are its last words,
+                # as in its row.
                 said = said.rstrip()
                 said = (f"{said}{'' if said.endswith(('.', '!', '?', '…', ':')) else '.'}"
-                        f" {message.cost}")
-            cached = ((message.label, message.text, message.cost), said)
+                        f" {message.trailer}")
+            cached = ((message.label, message.text, message.trailer), said)
             self._spoken[message.key] = cached
         return cached[1]
 
@@ -4688,20 +4693,54 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         elif not (quiet and self._agent_owe_reply_sound("claude", session_id)):
             self._sound_turn_end(key)
 
-    def _notify_turn_end(self, session_id, title, event, denials, detail, stopped=False):
+    def _notify_turn_end(self, session_id, title, event, denials, detail, stopped=False,
+                         lost=""):
+        """``lost``: which of Claude's timers and watches won't run (#749),
+        said last in the notice, after only the first sentence of what comes
+        before it: a notice is cut short, and the line mustn't be what's cut."""
         key = self._own_key(session_id)
         if stopped:
             return  # you stopped it yourself: nothing to tell you
+
+        def body(text: str) -> str:
+            if not lost:
+                return text
+            # Room for the line: a notice holds about 250 characters (notify.py).
+            room = 250 - len(lost) - 2
+            return announce.then(announce.first_sentence(text, room), lost) if room >= 40 \
+                else lost
         if event.kind == "failed" or event.is_error:
-            self._notify(key, f"{title}: the turn failed", usage.friendly_error(event.text),
+            self._notify(key, f"{title}: the turn failed", body(usage.friendly_error(event.text)),
                          needs_you=True)
         elif denials:
-            self._notify(key, f"{title} needs you", f"{detail}: " + "; ".join(denials),
+            self._notify(key, f"{title} needs you", body(f"{detail}: " + "; ".join(denials)),
                          needs_you=True)
         elif not (event.data or {}).get("after_background"):
             # After background work that brought no new answer, the answer
             # before it was already notified (#161).
-            self._notify(key, f"{title} finished", event.text or "Claude finished its turn.")
+            self._notify(key, f"{title} finished",
+                         body(event.text or "Claude finished its turn."))
+        elif lost:
+            self._notify(key, f"{title} finished", lost)
+
+    def _keep_lost_waits(self, session_id: str, event) -> str:
+        """The line saying which of Claude's timers and watches won't run
+        now its process has ended (#749), kept after the reply it follows
+        so it's still there when the chat is read later; "" for none. The
+        times are worked out now, in local time."""
+        data = getattr(event, "data", None) or {}
+        waits = scheduled_waits.from_dicts(data.get("waits"))
+        now = scheduled_waits.local_now()
+        lost = scheduled_waits.lost_sentence(waits, now)
+        key = reply_costs.claude_reply_key(data)
+        if lost and key:
+            try:
+                # Dated, as it's read on some later day.
+                self.store.add_reply_note(session_id, key,
+                                          scheduled_waits.lost_sentence(waits, now, dated=True))
+            except (OSError, ValueError):
+                pass  # still said; only the line after the reply is lost
+        return lost
 
     @staticmethod
     def _own_key(session_id: str) -> str:
@@ -6740,6 +6779,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if event.kind == "waiting":
             self._answered_with_background(session_id, title, event, is_open_now)
             return
+        if event.kind == "waits":
+            # Claude set a timer or a watch (#749). The runner keeps the
+            # list; what it means is said when the turn ends.
+            return
         if event.kind == "steer_taken":
             data = event.data or {}
             self._steer_status(session_id, event.text, "taken in by Claude")
@@ -6842,13 +6885,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # What it cost, as its reply's last line (#692), before the chat
             # is read again below.
             self._keep_reply_cost(event, session_id)
+            # Claude's timers and watches end with the process (#749): which
+            # won't run is said once, after however the turn ended, and kept
+            # after the reply it follows.
+            lost = self._keep_lost_waits(session_id, event)
+            lost_said = False
             self._note_worktree_move(session_id, title)
             quiet = self._agent_quiet("claude", session_id)
             self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
                                         quiet)
             if not quiet:
                 self._notify_turn_end(session_id, title, event, denials, detail,
-                                      stopped=runner is not None and runner.cancelled)
+                                      stopped=runner is not None and runner.cancelled,
+                                      lost=lost)
             if quiet:
                 pass  # the agent conversation says what happened (#248)
             elif command_result:
@@ -6878,6 +6927,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # A Stop or a failure says what it cost too (#663).
                 spoken = self._with_cost(
                     f"{title}: the turn failed. {usage.friendly_error(event.text)}", cost)
+                if lost:
+                    spoken, lost_said = announce.then(spoken, lost), True
                 self._say_turn_end(spoken, cost, title, session_id)
             else:
                 # On API credits, what the reply cost (#658), unless
@@ -6886,6 +6937,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 if denials and self.speech.enabled:
                     text = ((text or f"{title} finished{announce.cost_after(cost)}.")
                             + f" {detail}: " + "; ".join(denials))
+                if text and lost:
+                    text, lost_said = announce.then(text, lost), True
                 if text:
                     # With its cost, the reply says the send was charged and
                     # settles a "Sent on API credits" still owed; without
@@ -6900,6 +6953,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                         # Silent, or nothing new to say but its cost: the
                         # cost is still said, as Settings asks (#663).
                         self._speak_announcement(said, interrupt=False, about=session_id)
+            if lost and not lost_said:
+                # The ending said nothing it could go with (a slash command's
+                # output, an agent conversation's member, background work's
+                # end with no new answer): said on its own, with the chat's
+                # name, after whatever was. Once a turn, as with the reply.
+                # An agent conversation says what its member did below, and
+                # may interrupt to say it, so then it waits until after.
+                if quiet:
+                    wx.CallAfter(self._say_lost_waits, f"{title}: {lost}")
+                else:
+                    self._say(f"{title}: {lost}", interrupt=False)
             if (event.kind == "finished" and not event.is_error and not command_result
                     and not quiet and not queued and session_id not in self._runners
                     and not (event.data or {}).get("after_background")):
@@ -6954,6 +7018,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # Whatever happened there, a held-back reply sound isn't lost.
                 self._agent_pay_reply_sound("claude", session_id)
             self.refresh_sessions()
+
+    def _say_lost_waits(self, text: str) -> None:
+        """Which of Claude's timers won't run, said after an agent
+        conversation has said its member's turn (#749)."""
+        if not self._gone():
+            self._say(text, interrupt=False)
 
     def _say_untaken(self, note: str) -> None:
         """A message given back at a turn's end, said once the ending has
@@ -7161,6 +7231,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         try:
             self.store.update(session_id, state=state, detail=detail, unread=not is_open,
                               last_activity_ms=int(time.time() * 1000))
+            # Quitting ends Claude's timers too (#749): nothing can be said
+            # now, but the line after the reply is there next time.
+            self._keep_lost_waits(session_id, event)
             self._agent_stopped_by_quit("claude", session_id)
         except (OSError, ValueError):
             pass
