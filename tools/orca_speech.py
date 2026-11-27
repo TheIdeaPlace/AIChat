@@ -487,6 +487,26 @@ STEPS = [
     Step("Branch, a branch only on the remote", ["Up", "Up"],
          expect=["release/next (on origin)"]),
     Step("New Session closed again", ["Escape"], expect=["Fix the flaky upload test"]),
+    # Express (#737), turned on as View, Express does: the session list's
+    # first row. Enter opens it on the newest chat, Down reads the next, R
+    # opens a reply box named for that chat, Escape closes it, and Escape
+    # again goes back to the Express row. Then it's off again.
+    Step("Express on, back to the session list", ["ctrl+1"], trigger="express-on",
+         after_trigger=True, expect=["Session list"]),
+    Step("Home, the Express row", ["Home"], expect=["Express", "chats"]),
+    Step("Enter opens Express", ["Return"], expect=["Messages in Express"],
+         refuse=["No session loaded"]),
+    Step("Down, the next chat", ["Down"], expect=["active"]),
+    # Tab reaches the one-line note in the reply box's place, and comes back.
+    Step("Tab, the note on replying", ["Tab"], expect=["About replying", "Press R"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("Shift+Tab, back to the chat", ["shift+Tab"], expect=["active"]),
+    Step("R, the reply box for that chat", ["r"], expect=["Reply to"],
+         refuse=["unlabeled", "unlabelled"]),
+    Step("reply box closed, back in Express", ["Escape"], expect=["Express"]),
+    Step("Escape, back on the Express row", ["Escape"], expect=["Express", "chats"]),
+    Step("Express off", [], trigger="express-off", after_trigger=True,
+         expect_dbus=["Express is off"]),
     # Copilot's Auto (#426), last, as the Copilot chat replaces the session
     # list's discovery (copilot_chat below): a chat of the app's own in agent
     # mode, with Copilot asking to run npm test and npm run lint already
@@ -847,6 +867,15 @@ def refresh(frame) -> None:
                   timeout=10)
 
 
+def express(frame, on: bool) -> None:
+    """Express (#737) on or off, as View, Express does, and on, the chats'
+    latest replies read before the step's keys."""
+    import fake_env
+    frame._express_set(on)
+    fake_env.pump(lambda: not frame._snapshot_busy and frame._pending_refresh is None,
+                  timeout=10)
+
+
 def suggestion(frame) -> None:
     """The open chat's last reply came with a suggested next message (#474)."""
     frame._suggestions[frame._open_claude_id()] = "Write the script"
@@ -884,6 +913,8 @@ TRIGGERS = {
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
     "refresh": lambda frame, env: refresh(frame),
+    "express-on": lambda frame, env: express(frame, True),
+    "express-off": lambda frame, env: express(frame, False),
 }
 
 

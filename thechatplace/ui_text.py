@@ -178,6 +178,21 @@ SHORTCUTS = [
         ("Ctrl+F", "Show only sessions whose title, folder or what they need contains some "
                    "text; Escape in the list shows them all again"),
     ]),
+    # Express (#737): off until turned on.
+    ("Express", [
+        ("Alt+V, X", "Express on or off: one row at the top of the session list that lists "
+                     "the latest reply from each chat the list is showing, newest first "
+                     "(Settings sets how many)"),
+        ("Enter on the Express row", "Open Express in the messages, on the newest chat"),
+        ("Up, Down, Home and End in Express", "Move between the chats, each read with its "
+                                              "latest reply"),
+        ("Enter in Express", "Open that chat"),
+        ("Shift+Enter in Express", "Read that chat's whole latest reply"),
+        ("R in Express", "Reply to that chat, in a box named for it: Enter sends, Shift+Enter "
+                         "starts a new line, and you stay in Express"),
+        ("Ctrl+C in Express", "Copy that chat's latest reply"),
+        ("Escape in Express", "Back to the session list, on the Express row"),
+    ]),
     ("Messages", [
         ("Enter, or Applications key / Shift+F10 then Read Full Message",
          "Read the whole message as a formatted page (move by heading, table, list and "
@@ -297,6 +312,51 @@ _HEADING = re.compile(r"^#{1,6}\s+", re.M)
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1")
 _CODE = re.compile(r"`([^`]+)`")
+#: A Markdown heading line, up to three spaces in, with any closing #s
+#: (which need a space before them, so "C#" keeps its #).
+_HEADING_LINE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*(\r?)$")
+#: A code fence's opening or closing line: what's between isn't Markdown.
+_FENCE_LINE = re.compile(r"^[ \t]{0,3}(```|~~~)")
+#: What a heading may already end with, so it isn't given a second stop.
+_ENDS_SENTENCE = (".", "?", "!", ":", "…")
+
+
+def headings_as_sentences(text: str) -> str:
+    """Each Markdown heading line as a sentence, without its #s: "## What
+    changed" is "What changed." (#744). Flattened to one line, a heading
+    otherwise runs into the text after it ("What changed The upload test…"),
+    and a screen reader reads the two as one sentence. A heading already
+    ending in a stop, a question mark or a colon is left as it is, and a
+    "# comment" in a code block isn't a heading. Lines keep their places,
+    so what reads by line still does."""
+    def sentence(match: "re.Match[str]") -> str:
+        words, end = match.group(1).rstrip(), match.group(2)
+        # A heading that's all bold: the stop goes inside the marks
+        # ("**What changed.**"), so taking the marks off leaves it. Marks
+        # that only end it (inline code, "*args*", "snake_case_") keep the
+        # stop after them, never inside a code span.
+        plain = words.rstrip("*_`").rstrip()
+        if not plain or plain.endswith(_ENDS_SENTENCE):
+            return words + end
+        marks = words[len(plain):]
+        if marks and "`" not in marks and marks == marks.strip() \
+                and words.startswith(marks) and len(words) > 2 * len(marks):
+            return plain + "." + marks + end
+        return words + "." + end
+
+    lines = text.split("\n")
+    fence = None
+    for i, line in enumerate(lines):
+        opened = _FENCE_LINE.match(line)
+        if fence is not None:
+            if opened and opened.group(1) == fence:
+                fence = None
+            continue
+        if opened:
+            fence = opened.group(1)
+            continue
+        lines[i] = _HEADING_LINE.sub(sentence, line)
+    return "\n".join(lines)
 
 
 def markdown_as_text(text: str) -> str:
@@ -351,6 +411,10 @@ def _tables_as_text(text: str) -> str:
 #: About how long the session list's Last message column is (#146): enough
 #: to hear where a conversation ended, short enough to arrow past.
 LAST_MESSAGE_LIMIT = 150
+#: How much of a chat's latest reply Express keeps (#737): its row shows
+#: ``LAST_MESSAGE_LIMIT`` of it, and a screen reader can read this much of it
+#: on the row; Shift+Enter reads the whole reply from the chat itself.
+REPLY_LIMIT = 1000
 
 
 def choose_access_key(label: str, taken: set) -> str:
@@ -393,7 +457,9 @@ def one_line(text: str, limit: int = LAST_MESSAGE_LIMIT) -> str:
     """Markdown as one plain line of about ``limit`` characters: no marks,
     bullets, quote signs or code fences, all whitespace one space, and a
     long one cut at a word with "…", so a screen reader reads words, not
-    stars and pipes."""
+    stars and pipes. A heading ends with a stop, so it doesn't run into the
+    text after it (#744)."""
+    text = headings_as_sentences(text)
     text = _FENCE.sub("", text)
     text = _TABLE_RULE.sub("", text)
     # A link is its words, and a bare address its site: a screen reader
@@ -417,6 +483,12 @@ def last_message_line(label: str, text: str) -> str:
     when there's nothing to read."""
     plain = one_line(text)
     return f"{label}: {plain}" if plain else ""
+
+
+def reply_line(text: str) -> str:
+    """A chat's latest reply as Express keeps it (#737): one plain line, up
+    to ``REPLY_LIMIT``, without a label (the row's Provider column says whose)."""
+    return one_line(text, REPLY_LIMIT) if text else ""
 
 
 #: A key named in the shortcuts list's key column: modifiers, then an F key,

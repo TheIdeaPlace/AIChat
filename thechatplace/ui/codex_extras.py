@@ -45,6 +45,15 @@ CONTROL_DONE = {
     '/memories off': 'Codex memories are off for {title}.',
 }
 
+def codex_command(line):
+    """The chat control a message's first line is (/model, /compact...), or
+    None if it isn't one and the message goes to Codex as it is."""
+    command = (line or '').strip()
+    if command in ('/model', '/reasoning', '/plan', '/skills') or command in CONTROLS:
+        return command
+    return None
+
+
 #: The /plan picker. "Collaboration mode" is Codex's name inside; the guide
 #: and the release notes call it Plan mode (#596).
 PLAN_MODE_TITLE = 'Plan Mode'
@@ -143,10 +152,18 @@ class CodexExtras:
         return state is not None and bool(state.state == WORKING or state.outcome == 'inProgress'
                                           or getattr(state, 'queued', ()) or getattr(state, 'requests', ()))
 
+    def _codex_box(self, where=None):
+        """The box a Codex command was typed in: the reply box, or ``where``'s
+        (Express's reply dialog, #742)."""
+        return self.reply_text if where is None else where.box
+
     def _codex_mark(self):
         """Where the keyboard is when a picker is asked for, for
-        _codex_may_open once Codex has answered."""
-        return wx.Window.FindFocus(), self.reply_text.GetValue()
+        _codex_may_open once Codex has answered: the focus, the text of the
+        box the command came from, and where that box is (None: the reply
+        box; set while _handle_codex_command runs one typed elsewhere)."""
+        where = getattr(self, '_codex_typed_in', None)
+        return wx.Window.FindFocus(), self._codex_box(where).GetValue(), where
 
     def _codex_may_open(self, mark, what, over=None, still_on=None):
         """Whether a picker or dialog may open now that Codex has answered.
@@ -156,17 +173,42 @@ class CodexExtras:
         ``over`` is the dialog it opens from, which isn't another (Lists, for
         a subagent's conversation). There, moving focus about in that dialog
         doesn't count, so ``still_on()`` says instead whether that dialog is
-        still on what you asked for: another row is having moved on (#468)."""
-        focus, text = mark
-        if ((over is not None or wx.Window.FindFocus() is focus)
+        still on what you asked for: another row is having moved on (#468).
+        A command typed in a dialog (Express's reply, #742) opens over it,
+        while it's still open and its box is as it was. One sent to a chat
+        from Send Reply to Another Chat (``where.chat``) opens while that
+        chat is still the open one and its reply box is as it was: focus
+        settles where Windows puts it back after that dialog closes, so
+        where it was when the command went says nothing."""
+        focus, text, where = mark
+        box = self._codex_box(where)
+        typed_over = getattr(where, 'over', None)
+        if typed_over is not None:
+            gone = not typed_over or not typed_over.IsModal()  # closed since
+            over = None if gone else (over if over is not None else typed_over)
+        else:
+            gone = False
+        chat = getattr(where, 'chat', None)
+        if chat is not None:
+            stayed = self._open is not None and self._open.key == chat
+        else:
+            stayed = over is not None or wx.Window.FindFocus() is focus
+        if (not gone and bool(box) and stayed
                 and (still_on is None or still_on())
-                and self.reply_text.GetValue() == text
+                and box.GetValue() == text
                 and not any(isinstance(window, wx.Dialog) and window.IsModal()
                             and window is not over for window in wx.GetTopLevelWindows())):
             return True
         self._feedback(f"{what} ready, but you've moved on, so nothing opened. Choose it again "
                        'when you want it.')
         return False
+
+    def _codex_parent(self, mark):
+        """What a dialog a command opens goes over: the dialog the command
+        was typed in (Express's reply, #742), so closing it returns there,
+        or the window."""
+        over = getattr(mark[2], 'over', None)
+        return over if over else self
 
     def _codex_ask_aside(self, info):
         if not self._require_capability('aside', info) or self._other_provider_said(info):
@@ -383,7 +425,13 @@ class CodexExtras:
         self._codex_work(lambda: self.sessions.branch(info, title, anchor, before, own=own), created)
 
     def _codex_commands(self, info, *, skills_only=False):
+        """Ctrl+/ or /skills: a picker of the chat controls and the folder's
+        skills, the choice put at the start of the box it was asked from.
+        That's the reply box, or Express's reply dialog (#742), whose
+        skills are its own (``where.skills``) rather than the chat's."""
         mark = self._codex_mark()
+        where = mark[2]
+        box = self._codex_box(where)
         self._feedback('Getting the Codex skills for this folder.' if skills_only
                        else 'Getting the Codex commands and skills for this folder.')
 
@@ -397,13 +445,13 @@ class CodexExtras:
             if not rows:
                 self._feedback('No enabled Codex skills are available for this folder.')
                 return
-            if self._open is None or self._open.key != info.key:
+            if box is self.reply_text and (self._open is None or self._open.key != info.key):
                 return  # another chat is loaded now: a picker would fill its reply box
             if not self._codex_may_open(mark, 'The Codex commands are'):
                 return
             if error:
                 self._feedback("Could not get this folder's Codex skills, so only the chat controls are listed.")
-            dialog = CommandPickerDialog(self, rows)
+            dialog = CommandPickerDialog(self._codex_parent(mark), rows)
             try:
                 if dialog.ShowModal() != wx.ID_OK or dialog.chosen is None:
                     return
@@ -411,34 +459,47 @@ class CodexExtras:
             finally:
                 dialog.Destroy()
             prefix = chosen.get('prefix', '/') + chosen['name']
-            draft = self.reply_text.GetValue().lstrip()
-            self.reply_text.SetValue(prefix + ('\n' if chosen.get('builtin') and draft else ' ') + draft)
+            draft = box.GetValue().lstrip()
+            box.SetValue(prefix + ('\n' if chosen.get('builtin') and draft else ' ') + draft)
             if chosen.get('prefix') == '$':
-                selected = getattr(self, '_codex_skills', {})
-                selected.setdefault(info.key, {})[chosen['name']] = chosen['path']
-                self._codex_skills = selected
-            self.reply_text.SetFocus()
-            self.reply_text.SetInsertionPointEnd()
+                if where is not None and where.skills is not None:
+                    where.skills[chosen['name']] = chosen['path']
+                else:
+                    selected = getattr(self, '_codex_skills', {})
+                    selected.setdefault(info.key, {})[chosen['name']] = chosen['path']
+                    self._codex_skills = selected
+            box.SetFocus()
+            box.SetInsertionPointEnd()
         self._codex_work(lambda: self.sessions.skills(info), loaded)
 
-    def _handle_codex_command(self, info, text):
+    def _handle_codex_command(self, info, text, where=None):
+        """A chat control on the first line of ``text`` (/model, /compact...),
+        done instead of sent, with what follows it left in the box: True.
+        False if the first line isn't one. ``where`` is a box other than
+        the reply box (Express's reply dialog, #742): ``.box``, ``.over``
+        (the dialog, which pickers open over) and ``.skills``."""
         command, separator, draft = text.partition('\n')
-        command = command.strip()
-        if command not in ('/model', '/reasoning', '/plan', '/skills') and command not in CONTROLS:
+        command = codex_command(command)
+        if command is None:
             return False
         # Before anything is asked of Codex, so the box is as it will stay when
         # _codex_may_open compares it.
-        self.reply_text.SetValue(draft if separator else '')
-        if command == '/model':
-            self._change_codex_settings(info, 'model')
-        elif command == '/reasoning':
-            self._change_codex_settings(info, 'effort')
-        elif command == '/plan':
-            self._change_codex_settings(info, 'mode')
-        elif command == '/skills':
-            self._codex_commands(info, skills_only=True)
-        else:
-            self._codex_control(info, command)
+        self._codex_box(where).SetValue(draft if separator else '')
+        # What the command does marks where it was typed (_codex_mark).
+        self._codex_typed_in = where
+        try:
+            if command == '/model':
+                self._change_codex_settings(info, 'model')
+            elif command == '/reasoning':
+                self._change_codex_settings(info, 'effort')
+            elif command == '/plan':
+                self._change_codex_settings(info, 'mode')
+            elif command == '/skills':
+                self._codex_commands(info, skills_only=True)
+            else:
+                self._codex_control(info, command)
+        finally:
+            self._codex_typed_in = None
         return True
 
     def _codex_control(self, info, command):
@@ -460,7 +521,8 @@ class CodexExtras:
                     self._feedback("Codex returned a goal The Chat Place can't read.")
                 else:
                     if self._codex_may_open(mark, "This chat's Codex goal is"):
-                        self._modal(LinesDialog(self, 'Codex Goal', 'Goal', lines, self._copy_text))
+                        self._modal(LinesDialog(self._codex_parent(mark), 'Codex Goal', 'Goal',
+                                                lines, self._copy_text))
             elif command == '/background':
                 self._codex_background(record, result, mark)
             elif command == '/compact':
@@ -494,7 +556,8 @@ class CodexExtras:
         command = command if len(command) <= 200 else command[:199] + '…'
         if wx.MessageBox(f'Stop {command}? The turn and other '
                 'background tasks carry on.',
-                'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) != wx.YES:
+                'Stop Background Task', wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                self._codex_parent(mark)) != wx.YES:
             return
         self._feedback('Stopping the background task.')
         self._codex_work(lambda: self.sessions.owned_action('feature', record,
@@ -502,11 +565,17 @@ class CodexExtras:
             lambda result, error: self._feedback((result or 'Could not stop the background task.')
                                                  if error else terminal_stopped_text(result)))
 
-    def _codex_message(self, info, text):
+    def _codex_message(self, info, text, skills=None, paths=None):
+        """``text`` as a Codex message, with the skills picked for it that it
+        still names ($review) and attached files. By default those are the
+        reply box's (the chat's picked skills and attachments); a message
+        typed elsewhere (#742) passes its own."""
         import re
-        skills = getattr(self, '_codex_skills', {}).get(info.key, {})
+        if skills is None:
+            skills = getattr(self, '_codex_skills', {}).get(info.key, {})
+        if paths is None:
+            paths = self._attachments.get(self._attachment_key(info), [])
         selected = [(name, path) for name, path in skills.items()
                     if re.search(r'(?<!\w)\$' + re.escape(name) + r'(?![\w-])', text)]
         # Over the limit, it's handed over in a file (#625, _codex_sendable).
-        return build_input(text, self._attachments.get(self._attachment_key(info), []),
-                           skills=selected, allow_long=True)
+        return build_input(text, paths, skills=selected, allow_long=True)

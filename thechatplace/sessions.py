@@ -28,6 +28,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from . import platform_paths
 from .transcript import SessionFactsCache
+from .ui_text import one_line
 
 WORKING = "working"
 NEEDS_YOU = "needs you"
@@ -130,6 +131,10 @@ class SessionInfo:
     #: The Last message column (#146), "Claude: ..." or "You: ...", filled
     #: in by the snapshot only while that column is shown ("" otherwise).
     last_message: str = ""
+    #: Its latest reply from the AI, never your own message, as one plain
+    #: line (``ui_text.reply_line``): Express's Last reply (#737). Filled in
+    #: with ``last_message``, while that column or Express is on.
+    last_reply: str = ""
     #: Agent backend, separate from where a session was discovered. Existing
     #: Claude keys stay unchanged so groups, hidden rows and titles survive.
     provider: str = "claude"
@@ -297,6 +302,8 @@ class SessionInfo:
             FIELD_HIDDEN: "hidden" if self.hidden else "",
             FIELD_GROUPS: groups,
             FIELD_LAST_MESSAGE: self.last_message,
+            # Express's column only (#737); cut as the Last message column is.
+            FIELD_LAST_REPLY: one_line(self.last_reply) if self.last_reply else "",
         }
 
 
@@ -350,24 +357,49 @@ OPTIONAL_FIELDS = (FIELD_STARTED, FIELD_LAST_MESSAGE)
 #: just after it.
 DEFAULT_FIELDS = [f for f in FIELD_IDS if f not in OPTIONAL_FIELDS]
 
+#: Express's own columns (#737): one row per chat, with its latest reply.
+#: Chosen apart from the session list's, with the same dialog; saved as
+#: ``SpeechSettings.express_fields``. The ids are saved; never rename one.
+FIELD_LAST_REPLY = "last_reply"
+EXPRESS_FIELDS = [
+    (FIELD_TITLE, "Name"),
+    (FIELD_PROVIDER, "Provider (Claude, Codex or Copilot)"),
+    (FIELD_LAST_REPLY, "Last reply"),
+    (FIELD_ACTIVITY, "Last activity"),
+    (FIELD_STATUS, "Status (needs you, working or idle)"),
+    (FIELD_KIND, "Kind (desktop app, Cowork, terminal or The Chat Place)"),
+    (FIELD_FOLDER, "Folder"),
+]
+EXPRESS_FIELD_IDS = [field_id for field_id, _name in EXPRESS_FIELDS]
+DEFAULT_EXPRESS_FIELDS = [FIELD_TITLE, FIELD_PROVIDER, FIELD_LAST_REPLY, FIELD_ACTIVITY]
 
-def field_short_name(field_id: str) -> str:
-    """A column's name without its explanation, for "Status moved to top"."""
-    return FIELD_NAMES.get(field_id, field_id).split(" (")[0]
+
+def field_short_name(field_id: str, columns=None) -> str:
+    """A column's name without its explanation, for "Status moved to top".
+    ``columns``: another list's (id, name) pairs (Express, #737)."""
+    names = FIELD_NAMES if columns is None else dict(columns)
+    return names.get(field_id, field_id).split(" (")[0]
 
 
-def clean_fields(raw) -> List[str]:
+def clean_fields(raw, known_ids=None, default=None) -> List[str]:
     """A saved column order made safe: known ids only (a newer version's
     columns are dropped, not kept as blanks), each once, in the saved order.
-    Anything unusable, or a list with no known column left, is the default."""
+    Anything unusable, or a list with no known column left, is the default.
+    ``known_ids`` and ``default``: another list's columns (Express, #737)."""
+    default = DEFAULT_FIELDS if default is None else default
     if not isinstance(raw, list):
-        return list(DEFAULT_FIELDS)
-    known = set(FIELD_IDS)
+        return list(default)
+    known = set(FIELD_IDS if known_ids is None else known_ids)
     fields: List[str] = []
     for value in raw:
         if isinstance(value, str) and value in known and value not in fields:
             fields.append(value)
-    return fields or list(DEFAULT_FIELDS)
+    return fields or list(default)
+
+
+def clean_express_fields(raw) -> List[str]:
+    """Express's saved columns made safe, as ``clean_fields`` does (#737)."""
+    return clean_fields(raw, EXPRESS_FIELD_IDS, DEFAULT_EXPRESS_FIELDS)
 
 
 def how_long_ago(then_ms: int, now_ms: Optional[int]) -> str:

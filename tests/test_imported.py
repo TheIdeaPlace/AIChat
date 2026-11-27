@@ -237,6 +237,36 @@ def test_last_reply_comes_from_the_index_and_a_bad_file_hides_nothing(tmp_path):
     assert len(provider.collect().sessions) == 2
 
 
+def test_a_reply_starting_with_a_heading_lists_as_a_line_and_reads_whole(tmp_path):
+    """The index keeps the reply's first line: listed (the Last message
+    column, Express's row) as plain words with a stop (#744). Express's
+    Shift+Enter reads the whole reply from the history (#737)."""
+    store = ImportedStore(tmp_path / "imported")
+    reply = "## What changed\nThe upload test failed one run in ten."
+    store.save(chat(), Transcript(messages=[ChatMessage(USER, "Why?", turn=1),
+                                            ChatMessage(ASSISTANT, reply, turn=1)]))
+    provider = ImportedChats(store)
+    [info] = provider.collect().sessions
+    provider.fill_last_messages([info])
+    assert info.last_message == info.last_reply == "What changed."
+    assert provider.last_reply(info) == reply
+    # The history unreadable: the index's line, as before.
+    (tmp_path / "imported" / f"{info.key.split(':')[1]}.json").write_text("x", encoding="utf-8")
+    assert provider.last_reply(info) == "## What changed"
+
+
+def test_express_keeps_an_imported_reply_as_long_as_the_others(tmp_path):
+    from thechatplace.ui_text import LAST_MESSAGE_LIMIT
+    store = ImportedStore(tmp_path / "imported")
+    long = " ".join(["word"] * 50)  # 249 characters: past the column's 150
+    store.save(chat(), Transcript(messages=[ChatMessage(ASSISTANT, long, turn=1)]))
+    provider = ImportedChats(store)
+    [info] = provider.collect().sessions
+    provider.fill_last_messages([info])
+    assert info.last_reply == long
+    assert info.last_message.endswith("…") and len(info.last_message) <= LAST_MESSAGE_LIMIT + 1
+
+
 def test_a_missing_or_damaged_chat_file_is_replaced_on_restore(tmp_path):
     store = ImportedStore(tmp_path / "imported")
     store.save(chat(), transcript())

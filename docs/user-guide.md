@@ -1678,7 +1678,8 @@ editable.
   reply box and sends the skill with your next message. Controls include `/model`, `/reasoning`,
   `/plan`, `/compact`, `/goal`, `/goal pause`, `/goal clear`, `/memories on`, `/memories off` and
   `/background`. Send a control on its own first line; any draft below it stays in the reply
-  box. These controls are handled here rather than sent as prompts.
+  box. These controls are handled here rather than sent as prompts, and the same goes for a
+  message to a Codex chat from Express (R) or Send Reply to Another Chat (Ctrl+Shift+E).
 - **Plan mode.** `/plan` opens **Plan Mode**, where you choose Codex's **Plan** or **Default** mode
   for later turns. **Plan** is also the last choice in **Change Permission Mode**
   (Ctrl+Shift+O; Chat, Chat Settings), as for Claude, and the two always agree. The chat's heading says when Plan is
@@ -2986,8 +2987,9 @@ the chat began.
 
 **Last message** tells you where each conversation ended without loading it: the provider's
 name ("Claude:" or "Codex:") or "You:" and the start of the last message either of you wrote, as
-plain text on one line, cut at about 150 characters with "…". A link reads as its words, and a
-bare web address as its site. Tool calls and their results don't count. To read the whole
+plain text on one line, cut at about 150 characters with "…". A link reads as its words, a
+bare web address as its site, and a heading ends with a full stop ("What changed. The upload
+test…"). Tool calls and their results don't count. To read the whole
 message, press Enter to load the chat, then Enter on the message. A chat whose conversation is
 missing or can't be read says nothing in this column. While a chat is working, the line you're
 on keeps its last message until the status changes, so you don't hear the line again each time

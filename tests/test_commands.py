@@ -158,6 +158,7 @@ GOLDEN = [
     ('View', 'S&ort Sessions'),
     ('View', 'S&how Sessions'),
     ('View', 'Session List &Columns...'),
+    ('View', 'E&xpress'),
     ('View', 'Show &Tool Activity\tCtrl+T'),
     ('View', 'Re&fresh\tF5'),
     ('View', '---'),

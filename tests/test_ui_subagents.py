@@ -475,7 +475,7 @@ def test_a_subagent_opens_when_focus_moved_within_lists_on_the_same_row(frame, e
         with monkeypatch.context() as patch:
             patch.setattr(wx, "GetTopLevelWindows", lambda: [frame, up])
             patch.setattr(frame, "_codex_mark",
-                          lambda: (object(), frame.reply_text.GetValue()))
+                          lambda: (object(), frame.reply_text.GetValue(), None))
             frame._open_subagent(sub, up, None, lambda: True)
             assert pump(lambda: opened)
     finally:

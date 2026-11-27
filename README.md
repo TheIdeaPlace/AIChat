@@ -94,11 +94,12 @@ too).
   says when the session began ("started 2 days ago"). Last message says
   where each conversation ended without loading it: the provider's name ("Claude:" or "Codex:") or "You:" and the start of the
   last message either of you wrote, as plain text on one line (about 150 characters, cut at a
-  word with "…"; a link reads as its words, a bare web address as its site). Tool calls and their results don't count. Press Enter to load the session and
+  word with "…"; a link reads as its words, a bare web address as its site, and a heading ends
+  with a full stop: "What changed. The upload test…"). Tool calls and their results don't count. Press Enter to load the session and
   read the whole message. A session whose conversation is missing or can't be read says nothing
   there. For Claude chats, only the end of each conversation file is read, in the background, and again only when
   the file has changed. Codex reads its supported history API in cached background batches;
-  neither provider reads Last message while the column isn't shown. While a session is working,
+  neither provider reads Last message while the column isn't shown and Express (below) is off. While a session is working,
   the line you're on keeps its last message until the status changes, so a screen reader doesn't
   read it again each time the provider writes; other lines change at once. The
   dialog has Available columns and Shown columns (in the order they're read), with Add, Remove,
@@ -126,6 +127,52 @@ too).
 - **The session's menu** (Applications key or Shift+F10 in the session list, VO+Shift+M with
   VoiceOver on a Mac, or a right-click) has the commands for the selected session:
   load, open in Claude, continue here, rename, Remote Control, groups, export, and hide or delete.
+
+### Express: the latest reply from every chat
+
+Express is off until you turn it on, with **View, Express** (Alt+V, X) or the check box **Show
+Express at the top of the session list** in Settings (Ctrl+Comma). It works the same for every
+kind of chat: Claude, Codex, Copilot and agent conversations.
+
+- **The Express row** is then always the first row of the session list, whatever the sort, the
+  view or what you've typed to filter it. It reads "Express, 7 chats, 2 with new replies": how
+  many chats it lists, and how many of those have a reply you haven't loaded yet.
+- **Which chats.** The ones the session list is showing right now (the same view, groups and
+  hidden chats, so to cover only some chats, use a view or a group), newest activity first, up to
+  the number Settings gives in **Chats Express shows at most** (10 at first, 1 to 50). Chats with
+  nothing in them yet are left out.
+- **Enter on the Express row** shows Express in the messages list, one row per chat, on the
+  newest one. Each row reads the chat's name, its provider, its latest reply and when it was last
+  active: "Release notes, Claude, Drafted the notes for 0.6.4, active 2 minutes ago". The latest
+  reply is the AI's, never your own message; while a chat is working, its row says so if Status
+  is one of its columns, and its reply stays the previous one until the turn ends. The status bar
+  says "Express, 7 chats". The reply box's place says "Press R to reply to the chat you're on."
+- **In Express**, Up, Down, Home and End move between the chats. **Enter** opens that chat, as
+  Enter on it in the session list does. **Shift+Enter** reads its whole latest reply (the row
+  shows only the start of it; with Settings reading whole messages in the list, a screen reader
+  hears more). **Ctrl+C** copies that reply. **Escape** goes back to the session list, on the
+  Express row; Express stays in the messages until you open a chat, and Enter on its row comes
+  back to it, in order again.
+- **R** opens a small box titled "Reply to Release notes (Claude)", the same words as its text
+  box's name, so you always know where it's going. Enter sends it (Shift+Enter starts a new
+  line), the chat starts working, and you're back in Express on the same row. If it can't be
+  sent, the box stays open with your text in it and you hear why. A Codex or Copilot chat that
+  isn't ready yet is got ready first, and the message goes as soon as it is; if that fails, it's
+  put in that chat's reply box. On a chat you can't reply to here (a desktop app, Cowork or
+  terminal session, or one The Chat Place only lists), R says why and, where the chat allows it,
+  offers Continue Here. In a Codex chat's reply, a chat control on the first line (`/model`,
+  `/compact`, `/skills` and the rest) is done as in its reply box: anything below it stays in
+  the box, and a skill chosen with `/skills` goes with the message. A control needs the chat
+  ready; if it isn't, it's got ready and the control stays in the box to send again.
+- **Live.** Rows change as chats finish. While you're in Express its rows don't move, so the one
+  you're on stays put (a chat that has something new is updated where it is, and a new chat is
+  added at the end); they're put back in order when you come back to Express.
+- **Columns.** View, Session List Columns (Alt+V, C) while Express is open chooses Express's own
+  columns, with the same dialog: Name, Provider, Last reply, Last activity, Status (needs you,
+  working or idle), Kind and Folder. Name, Provider, Last reply and Last activity are shown at
+  first.
+- The Express row isn't a chat: Rename, Hide, groups, Delete and the rest say no session is
+  selected on it.
 
 ### Reading a chat
 
@@ -959,7 +1006,8 @@ Quitting The Chat Place requests a stop for its running Codex replies.
   Codex controls. A selected skill inserts `$name` and sends the skill with the next
   message. Built-in controls include `/model`, `/reasoning`, `/plan`, `/compact`, `/goal`, `/goal pause`,
   `/goal clear`, `/memories on`, `/memories off` and `/background`. Send a control on its own
-  first line; any draft below it stays in the reply box. These controls aren't sent as prompts.
+  first line; any draft below it stays in the reply box. These controls aren't sent as prompts,
+  from Express's reply (R) or Send Reply to Another Chat either.
   Compaction requires an idle chat. After changing its settings, send a normal message before
   compacting, so Codex has applied those settings to the loaded chat. You hear "context
   compacted" when it's done.
@@ -1374,7 +1422,9 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   Ctrl+Enter, or Enter in the list, to send it. The Chat Place goes to that chat and sends it
   as if you'd typed it: queued if that chat is working, and after Codex or Copilot has got the
   chat ready if it wasn't (going to another chat before then leaves it unsent, in that chat's reply box).
-  If it can't be sent, it's left in that chat's reply box. While the chat it comes from is
+  If it can't be sent, it's left in that chat's reply box. Changed to start with a Codex chat
+  control (`/compact`, `/model` and the rest), it's done as in that chat's reply box, with
+  anything below it left there. While the chat it comes from is
   still working, the dialog's title says so: the reply may be a step on the way. The chat it
   came from is first in the list next time, so sending the answer back is Ctrl+Shift+E then
   Enter. It's also on a reply's menu in the messages list (Applications key). A forwarded
@@ -2042,6 +2092,9 @@ kept in `keys.json`. The user guide's "Changing keyboard shortcuts" has the deta
 | Anywhere | Ctrl+Shift+U | Usage and context: a list of how full the context is, and each plan limit |
 | Anywhere | Alt+V, H | Show Sessions: choose which sessions are listed |
 | Anywhere | Alt+V, C | Session List Columns: choose what each session's line says, and in what order |
+| Anywhere | Alt+V, X | Express on or off: one row at the top of the session list with the latest reply from every chat |
+| Express | Enter, Shift+Enter, R | Open that chat; read its whole latest reply; reply to it in a box named for it |
+| Express | Ctrl+C, Escape | Copy the chat's latest reply; back to the session list, on the Express row |
 | Anywhere | Ctrl+Shift+N | Continue the selected (or loaded) chat from the desktop app, a terminal or another app here, as a copy |
 | Anywhere | Ctrl+Shift+O | Change Permission Mode: Claude permission modes, Codex file access, approval reviewer or Plan mode, or Copilot agent mode, plan mode or Auto for the selected (or loaded) Chat Place session |
 | Anywhere | Ctrl+Shift+W | Read the loaded chat as one page, starting at the selected message: 2 moves from message to message; Alt+P reads it as plain text instead |

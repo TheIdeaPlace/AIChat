@@ -211,14 +211,25 @@ class RelayChats:
                 self._relay_kept(text, f"Couldn't find {target.title} in The Chat Place's chats, "
                                        "so the message wasn't sent.")
                 return
-            if target.key in self._codex_preparing:
+            preparing = target.key in self._codex_preparing
+            typed = self._typed_elsewhere(target, text, ready=not preparing)
+            if typed.not_ready or typed.problem:
+                # Never lost: it's in the chat's reply box, to send again.
+                self._restore_codex_text(target.key, (text,))
+                self._feedback((f"{target.title} is still getting ready, so the command wasn't "
+                                "done." if typed.not_ready else typed.problem)
+                               + " It's in that chat's reply box.")
+                return
+            if typed.message is None:
+                return  # a chat control, done as the reply box does it (#742)
+            if preparing:
                 # Codex and Copilot must get a chat ready (reading its
                 # history first) before it takes a message;
                 # _prepare_codex_owned sends it.
-                self._relay_waiting[target.key] = text
+                self._relay_waiting[target.key] = typed.message
                 self._feedback(f"Getting {target.title} ready. The message goes as soon as it is.")
                 return
-            self._send_codex_owned(record, text)
+            self._send_codex_owned(record, typed.message)
             return
         if target.provider != "claude":
             # Only Claude's runner is left, and another provider's ID must
@@ -230,6 +241,51 @@ class RelayChats:
             self._save_draft()
             self._feedback(f"Not sent to {target.title}. The message is in its reply box.")
             self.reply_text.SetFocus()
+
+    def _typed_elsewhere(self, info, text, where=None, ready=True):
+        """A message for one of The Chat Place's own Codex, Codex API or
+        Copilot chats typed somewhere other than its reply box: Express's
+        reply dialog (``where``: its ``box``, ``over`` and ``skills``) or Send
+        Reply to Another Chat (``where`` None: the chat has just been opened,
+        and its reply box takes what's left). It's handled as the reply box
+        handles it (on_send, #742): a Codex chat control on the first line
+        (/model, /compact, /skills...) is done instead of sent, with the rest
+        left in the box, and a skill picked with /skills goes with the
+        message natively. The chat's own attachments and picked skills stay
+        with its reply box.
+
+        Returns ``.message``, what to send (None: nothing to send);
+        ``.not_ready``, a chat control for a chat that isn't ready yet, so
+        nothing was done; and ``.problem``, why it can't go (too long, a
+        skill's file gone). Either of those leaves ``text`` as it was."""
+        result = SimpleNamespace(message=None, problem='', not_ready=False)
+        if info.provider not in ('codex', 'codex-api'):
+            result.message = text  # Copilot's commands go as typed, as from its reply box
+            return result
+        from .codex_extras import codex_command
+        command, _separator, rest = text.partition('\n')
+        if codex_command(command) is not None:
+            if not ready:
+                # As the reply box refuses one while the chat gets ready.
+                result.not_ready = True
+                return result
+            if where is None:
+                # What follows the command goes in front of what was
+                # already in the reply box, as a message put back does,
+                # and a picker opens while you're still in this chat
+                # (_codex_may_open).
+                kept = self.reply_text.GetValue().strip()
+                text = command + '\n' + '\n\n'.join(p for p in (rest.strip(), kept) if p)
+                where = SimpleNamespace(box=self.reply_text, over=None, skills=None,
+                                        chat=info.key)
+            self._handle_codex_command(info, text, where)
+            return result
+        try:
+            result.message = self._codex_message(info, text, skills=getattr(where, 'skills', None) or {},
+                                                 paths=())
+        except (ValueError, OSError) as error:
+            result.problem = str(error)  # too long, too many, or a skill's file gone
+        return result
 
     def _relay_waiting_text(self) -> str:
         """What quitting or updating now would lose, "" if nothing: "the

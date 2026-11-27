@@ -237,7 +237,7 @@ def test_keep_only_forgets_sessions_no_longer_listed(tmp_path):
 
 @pytest.mark.parametrize("markdown,plain", [
     ("# Done\n\nThe **build** passes and `pytest` is green.",
-     "Done The build passes and pytest is green."),
+     "Done. The build passes and pytest is green."),  # a heading is a sentence (#744)
     ("- first\n- second\n1. third\n> quoted", "first second third quoted"),
     ("Run this:\n\n```bash\nls -la\n```\n\nThen *wait*.", "Run this: ls -la Then wait."),
     ("| a | b |\n|---|---|\n| 1 | 2 |", "a b 1 2"),
@@ -252,6 +252,55 @@ def test_keep_only_forgets_sessions_no_longer_listed(tmp_path):
 ])
 def test_one_plain_line(markdown, plain):
     assert one_line(markdown) == plain
+
+
+@pytest.mark.parametrize("markdown,plain", [
+    ("## What changed\nThe upload test failed one run in ten.",
+     "What changed. The upload test failed one run in ten."),
+    ("## What changed\n\nFixed.\n\n### Next steps\n\n- ship it",
+     "What changed. Fixed. Next steps. ship it"),
+    # Already a sentence, or a lead-in: no second stop.
+    ("# Done!\nAll green.", "Done! All green."),
+    ("## Why?\nBecause.", "Why? Because."),
+    ("## Summary:\nAll good.", "Summary: All good."),
+    # Bold: the stop goes after the words, and closing #s go.
+    ("## **What changed**\nIt works.", "What changed. It works."),
+    ("## Summary ##\nIt works.", "Summary. It works."),
+    # "C#" isn't a closing #; "#744" and "#tag" aren't headings at all.
+    ("# Notes on C#\nIt works.", "Notes on C#. It works."),
+    ("#744 is fixed\nnow", "#744 is fixed now"),
+    ("A line with ## in it\nmore", "A line with ## in it more"),
+    ("    ## indented code\nmore", "## indented code more"),
+    # Marks that only end the heading keep the stop after them.
+    ("## Run `pytest`\nThen.", "Run pytest. Then."),
+    ("## Use *args*\nThen.", "Use args. Then."),
+    ("## snake_case_\nThen.", "snake_case_. Then."),
+    # Windows line ends: closing #s still go.
+    ("## Title ##\r\nBody", "Title. Body"),
+    ("## What changed\r\nThe test.", "What changed. The test."),
+    # A "# comment" in a code block isn't a heading: no stop is added.
+    ("```bash\n# install deps\npip install x\n```\nAfter.", "install deps pip install x After."),
+    ("~~~\n# not a heading\n~~~\n## Is one\nYes.", "not a heading Is one. Yes."),
+])
+def test_a_heading_ends_with_a_stop(markdown, plain):
+    """#744: flattened to one line, a heading ran into the text after it
+    ("What changed The upload test…")."""
+    assert one_line(markdown) == plain
+
+
+def test_every_one_line_form_ends_a_heading_with_a_stop():
+    """The Last message column, Express's latest reply and its row (#744)."""
+    from thechatplace.express import row_text
+    from thechatplace.sessions import FIELD_LAST_REPLY, SessionInfo
+    from thechatplace.ui_text import reply_line
+    reply = "## What changed\nThe upload test failed one run in ten."
+    assert last_message_line("Claude", reply) == (
+        "Claude: What changed. The upload test failed one run in ten.")
+    assert reply_line(reply) == "What changed. The upload test failed one run in ten."
+    info = SessionInfo(source="own", key="k", title="Uploads", cwd="/w", cli_session_id="k",
+                       last_reply=reply)
+    assert row_text(info, [FIELD_LAST_REPLY]) == (
+        "What changed. The upload test failed one run in ten.")
 
 
 def test_a_long_message_is_cut_at_a_word():

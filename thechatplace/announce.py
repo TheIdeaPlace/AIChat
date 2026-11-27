@@ -11,6 +11,7 @@ from typing import Optional
 from .speech import (ANNOUNCE_FULL, ANNOUNCE_SILENT, ANNOUNCE_SUMMARY, CODE_NOTE,
                      strip_for_speech, without_code_blocks)
 from .sessions import NEEDS_YOU, STATUS_UNAVAILABLE, end_sentence, state_with_detail
+from .ui_text import headings_as_sentences
 
 
 #: Words a full stop follows without ending the sentence ("e.g. the docs").
@@ -39,8 +40,34 @@ def _cut_at_word(text: str, limit: int) -> str:
     return cut or head
 
 
+#: A heading on the first line with anything in it (#744).
+_LEADING_HEADING = re.compile(r"\A(?:[ \t]*\r?\n)*[ \t]{0,3}#{1,6}[ \t]+[^\n]*(?:\n|\Z)")
+
+
+def _words(text: str) -> str:
+    """A reply as it's spoken whole: each heading a sentence of its own,
+    without its #s, so it doesn't run into the text after it (#744)."""
+    return headings_as_sentences(text or "").strip()
+
+
 def first_sentence(text: str, limit: int = 200) -> str:
-    stripped = " ".join((text or "").split())
+    """The first sentence of ``text`` on one line, at most ``limit``
+    characters. A heading at the start is a sentence of its own, without
+    its #s, and the first sentence after it follows, if there's room:
+    "What changed. The upload test failed one run in ten." (#744); the
+    heading alone says little."""
+    match = _LEADING_HEADING.match(text or "")
+    if match:
+        head = " ".join(headings_as_sentences(match.group().lstrip("\r\n")).split())
+        rest = text[match.end():]
+        if not head:
+            return first_sentence(rest, limit)
+        if len(head) > limit:
+            return _cut_at_word(head, limit) + "…"
+        room = limit - len(head) - 1
+        body = first_sentence(rest, room) if rest.strip() and room >= 40 else ""
+        return f"{head} {body}" if body else head
+    stripped = " ".join(headings_as_sentences(text or "").split())
     for match in _SENTENCE_END.finditer(stripped, 0, limit):
         if match.start() > 0 and _ends_sentence(stripped, match.start()):
             return stripped[: match.start() + 1]
@@ -72,9 +99,9 @@ def reply_text(title: str, reply: str, level: str, cost: str = "") -> Optional[s
         return None
     head = f"{title} replied{cost_after(cost)}"
     if level == ANNOUNCE_SUMMARY:
-        words = len(reply.split())
+        words = len(_words(reply).split())
         return f"{head}: {first_sentence(reply)} {words} words."
-    return f"{head}. {reply.strip()}"
+    return f"{head}. {_words(reply)}"
 
 
 def aside_text(answer: str, level: str) -> Optional[str]:
@@ -83,9 +110,9 @@ def aside_text(answer: str, level: str) -> Optional[str]:
     if level == ANNOUNCE_SILENT or not (answer or "").strip():
         return None
     if level == ANNOUNCE_SUMMARY:
-        words = len(answer.split())
+        words = len(_words(answer).split())
         return f"Answer: {first_sentence(answer)} {words} words."
-    return f"Answer. {answer.strip()}"
+    return f"Answer. {_words(answer)}"
 
 
 def peer_text(title: str, sender: str, message: str, level: str) -> Optional[str]:
@@ -96,7 +123,7 @@ def peer_text(title: str, sender: str, message: str, level: str) -> Optional[str
     who = sender or "another session"
     if level == ANNOUNCE_SUMMARY:
         return f"{title}: message from {who}: {first_sentence(message)}"
-    return f"{title}: message from {who}. {message.strip()}"
+    return f"{title}: message from {who}. {_words(message)}"
 
 
 def turn_end_text(title: str, state: str, detail: str, reply: str, level: str) -> Optional[str]:
@@ -111,7 +138,7 @@ def turn_end_text(title: str, state: str, detail: str, reply: str, level: str) -
         return head
     if level == ANNOUNCE_SUMMARY:
         return f"{head} {first_sentence(reply)}"
-    return f"{head} {reply.strip()}"
+    return f"{head} {_words(reply)}"
 
 
 #: The most of Kelly's own message read back at the full level. It's an echo

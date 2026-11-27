@@ -31,9 +31,9 @@ from typing import Iterable, List, Optional, Tuple
 from .. import platform_paths
 from ..changes import FileEdit, Hunk, parse_git_diff
 from ..sessions import IDLE, NEEDS_YOU, STATUS_UNAVAILABLE, TERMINAL, WORKING, SessionInfo
-from ..transcript import (ASSISTANT, CARRIED, DENIED, ERROR, INTERRUPTED, TOOL, TOOL_RESULT,
-                          USER, ChatMessage, Transcript, split_jsonl)
-from ..ui_text import last_message_line
+from ..transcript import (ASSISTANT, CARRIED, DENIED, ERROR, INTERRUPTED, REPLY_KINDS, TOOL,
+                          TOOL_RESULT, USER, ChatMessage, Transcript, split_jsonl)
+from ..ui_text import last_message_line, reply_line
 from . import copilot_usage
 from .base import SessionCapabilities, Snapshot
 
@@ -730,7 +730,9 @@ class CopilotProvider:
             cache = dict(self._last_messages)
         for info in sessions:
             cached = cache.get(info.identity)
-            info.last_message = cached[1] if cached and cached[0] == info.last_activity_ms else ""
+            fresh = cached and cached[0] == info.last_activity_ms
+            info.last_message = cached[1] if fresh else ""
+            info.last_reply = cached[2] if fresh else ""  # Express (#737)
 
     def fill_last_messages(self, sessions: Iterable[SessionInfo]) -> None:
         """Only while the column is shown, and only once per change: the line
@@ -741,7 +743,7 @@ class CopilotProvider:
             if entry is None or entry.updated_ms != info.last_activity_ms:
                 # A newer collect() has replaced this row's entry: its line
                 # would be for later activity than the row says.
-                info.last_message = ""
+                info.last_message = info.last_reply = ""
                 continue
             if entry.last_line is None:
                 try:
@@ -753,14 +755,19 @@ class CopilotProvider:
                     events = self._events_path(info.cli_session_id)
                     transcript = parse_events(_read_tail(events), own_folder=events.parent)
                 except OSError:
-                    info.last_message = ""
+                    info.last_message = info.last_reply = ""
                     continue
                 last = next((m for m in reversed(transcript.messages)
                              if m.kind in (USER, ASSISTANT) and m.text.strip()), None)
                 entry.last_line = last_message_line(last.label, last.text) if last else ""
-            info.last_message = entry.last_line
+                # Express's latest reply (#737), never your own message.
+                reply = next((m for m in reversed(transcript.messages)
+                              if m.kind in REPLY_KINDS and m.text.strip()), None)
+                entry.last_reply = reply_line(reply.text) if reply is not None else ""
+            info.last_message, info.last_reply = entry.last_line, entry.last_reply
             with self._lock:
-                self._last_messages[info.identity] = (info.last_activity_ms, info.last_message)
+                self._last_messages[info.identity] = (info.last_activity_ms, info.last_message,
+                                                      info.last_reply)
                 self._last_messages.move_to_end(info.identity)
                 while len(self._last_messages) > self.MAX_LAST_MESSAGES:
                     self._last_messages.popitem(last=False)
@@ -1328,7 +1335,7 @@ class _Entry:
     """What one session's files said, and the stamp they said it at."""
 
     __slots__ = ("stamp", "source", "title", "title_from_prompt", "cwd", "created_ms",
-                 "updated_ms", "written_ms", "state", "last_line")
+                 "updated_ms", "written_ms", "state", "last_line", "last_reply")
 
     def __init__(self, **values):
         for name in self.__slots__:
@@ -1366,4 +1373,5 @@ def _read_entry(native_id: str, events: Path, workspace_path: Path, stat,
                   title_from_prompt=from_prompt and title not in (None, "Untitled session"),
                   cwd=workspace.get("cwd", ""), created_ms=created, updated_ms=updated,
                   written_ms=written_ms, state=_log_state(tail),
-                  last_line=None)  # worked out only if the column is shown
+                  # Worked out only if the column (or Express, #737) is shown.
+                  last_line=None, last_reply="")

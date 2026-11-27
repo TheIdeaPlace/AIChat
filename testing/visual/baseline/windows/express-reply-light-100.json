@@ -1,0 +1,97 @@
+{
+ "title": "Reply to Visual probe (Claude)",
+ "class": "ExpressReplyDialog",
+ "size": [
+  560,
+  320
+ ],
+ "client": [
+  544,
+  281
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Reply to Visual probe (Claude):",
+   "rect": [
+    8,
+    8,
+    163,
+    16
+   ],
+   "best": [
+    163,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Reply to Visual probe (Claude)",
+   "label": "",
+   "rect": [
+    10,
+    34,
+    528,
+    210
+   ],
+   "best": [
+    127,
+    120
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": ""
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send",
+   "rect": [
+    380,
+    250,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    461,
+    250,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -812,6 +812,18 @@ The Send Reply to Another Chat dialog with its own title, "Hand Off: Uploader fi
 
 **What looks off:** Nothing; with one possible target the list is mostly empty, as in the relay surface.
 
+## main-express: Express open: the latest reply from each chat (#737)
+
+The main window, about 986 by 713, titled "Express — The Chat Place". In the session list on the left, the first row is "Express, 2 chats", selected, above the probe's four chats. On the right, a line reads "Express: the latest reply from each chat. Enter opens a chat, R replies to it." "Messages in Express, 2 chats:" heads the list, 574 by 481, with one row per chat, the first selected: "Visual probe, Claude, What changed. The upload test failed one run in ten because it read the progress file b…" and "Fix the flaky upload test, Claude, What changed. …". The heading ends with a stop (#744). Below the list, where the reply box would be, "About replying:" sits beside a read-only box one line high, 485 wide, white-backed (it is a multi-line box sized to one line, so Tab stops on it), saying "Press R to reply to the chat you're on." It was a tall box until #741's fixes, and the list took its room. Show tool activity, New Session and Refresh are under it as usual. The status bar's middle part reads "Express, 2 chats". In High Contrast Aquatic the list's selected row is aqua with dark text and the rest white on near-black. Seen in light-100 and hc-aquatic-100 at commit 75391e4b.
+
+**What looks off:** The Express rows run past the list's right edge, as the session list's long rows do; a screen reader reads the whole row.
+
+## express-reply: Express, R: the reply box for one chat (#737)
+
+A 546 by 313 dialog titled "Reply to Visual probe (Claude)". The same words label a multi-line text box, with its caret at the start and a scroll bar, filling most of the dialog. Send (default, S underlined) and Cancel are at the bottom right. Seen in light-100 and hc-aquatic-100 at commit 3b9e290c; in High Contrast Aquatic the box and buttons are white-outlined on near-black.
+
+**What looks off:** Nothing.
+
 ## relay: Send Reply to Another Chat: a Codex reply going to a Claude chat (#248)
 
 This is a 700 by 560 dialog titled "Send Reply to Another Chat: Codex history preview (still working; this is its latest reply so far)", since the probe's Codex chat is mid-turn. "Send to:" heads a list about 120 high with three rows: "Visual probe, Claude, Scratch, idle", selected, then "New Claude chat" and "New Codex chat" (#378). Under it are two radio buttons, "Just send it" (chosen) and "Start an agent conversation with both chats (unavailable: this chat is still working)", on one line that fits the dialog, then "Agent conversation title:" over a one-line box holding "Codex history preview", both greyed while Just send it is chosen. "Message:" heads a large multi-line box filling the rest of the dialog: its first line is "From Codex, another AI agent, forwarded by the user from their chat "Codex history preview":", then the reply's Markdown as plain text, with a scroll bar. "Send" (default) and "Cancel" are at the bottom right. In High Contrast Aquatic the boxes are dark with white text, and the selected row and Send button are cyan with dark text. Measured contrast: 4.53:1 for the light theme's selected row (Windows' highlight), 7.89:1 for High Contrast's, 16:1 or more for the rest.
