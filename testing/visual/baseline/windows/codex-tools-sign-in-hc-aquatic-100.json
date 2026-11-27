@@ -1,0 +1,136 @@
+{
+ "title": "Sign In to project-notes",
+ "class": "ElicitationDialog",
+ "size": [
+  680,
+  380
+ ],
+ "client": [
+  664,
+  341
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Address:",
+   "rect": [
+    8,
+    8,
+    46,
+    16
+   ],
+   "best": [
+    46,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Address",
+   "label": "Opens notes.example: https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&state=probe",
+   "rect": [
+    10,
+    26,
+    648,
+    60
+   ],
+   "best": [
+    127,
+    60
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Opens notes.example: https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&state=probe"
+  },
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    100,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "Open in Browser opens the address above, where you sign in to project-notes. Decline leaves it unopened.",
+   "rect": [
+    10,
+    118,
+    648,
+    178
+   ],
+   "best": [
+    127,
+    110
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Open in Browser opens the address above, where you sign in to project-notes. Decline leaves it unopened."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Open in Browser",
+   "rect": [
+    467,
+    310,
+    108,
+    23
+   ],
+   "best": [
+    108,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Decline",
+   "rect": [
+    581,
+    310,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

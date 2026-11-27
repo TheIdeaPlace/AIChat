@@ -2190,6 +2190,34 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Codex Connected Tools with the ChatGPT apps not set up as one row"
+  },
+  "codex-tools-read-only": {
+   "kind": "dialog",
+   "png": "codex-tools-read-only-hc-aquatic-100.png",
+   "json": "codex-tools-read-only-hc-aquatic-100.json",
+   "title": "Connected Tools: Codex review",
+   "class": "ConnectedToolsDialog",
+   "size": [
+    700,
+    540
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Codex Connected Tools in a chat started elsewhere"
+  },
+  "codex-tools-sign-in": {
+   "kind": "dialog",
+   "png": "codex-tools-sign-in-hc-aquatic-100.png",
+   "json": "codex-tools-sign-in-hc-aquatic-100.json",
+   "title": "Sign In to project-notes",
+   "class": "ElicitationDialog",
+   "size": [
+    680,
+    380
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Connected Tools' Sign In asks before opening a sign-in page"
   }
  },
  "seconds": 280.2,

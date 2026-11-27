@@ -37,7 +37,7 @@
   {
    "class": "TextCtrl",
    "name": "Address",
-   "label": "Opens example.com\r\nhttps://example.com/sign-in?session=probe",
+   "label": "Opens example.com: https://example.com/sign-in?session=probe",
    "rect": [
     10,
     26,
@@ -46,13 +46,13 @@
    ],
    "best": [
     127,
-    83
+    60
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Opens example.com\nhttps://example.com/sign-in?session=probe"
+   "value": "Opens example.com: https://example.com/sign-in?session=probe"
   },
   {
    "class": "StaticText",

@@ -1188,7 +1188,7 @@ A 680 by 522 dialog titled "trip-planner asks: Visual probe". The probe's form h
 
 ## elicitation-url: A connected tool asks you to open a web page (#468)
 
-A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a read-only box, 648 by 60, with the text cursor in it and two lines: "Opens example.com" and "https://example.com/sign-in?session=probe". "Message:" heads a second read-only box, 648 by 178, with "Open this page to finish signing in." Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
+A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a read-only box, 648 by 60, with the text cursor in it and one line: "Opens example.com: https://example.com/sign-in?session=probe". **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that first line, and the box doesn't wrap, so a horizontal scroll bar runs along its bottom, with room above it for two lines (the "won't open this" text has two); it was two lines, "Opens example.com" then the address. "Message:" heads a second read-only box, 648 by 178, with "Open this page to finish signing in." Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
 
 **What looks off:** The Message box is mostly empty for one line.
 
@@ -1323,3 +1323,40 @@ has white on #202020 (16.29:1) for all text and buttons, the selected row #20202
 **What looks off:** The light Details box keeps the native text-box border, #ABADB3 on #F0F0F0
 (1.97:1), below 3:1; this is the native-border limitation tracked in
 [#532](https://github.com/TheIdeaPlace/AIChat/issues/532), not something this screen adds.
+
+## codex-tools-read-only: Connected Tools in a Codex chat started elsewhere (#729)
+
+The 700 by 540 "Connected Tools: Codex review" dialog for a chat started in another Codex client.
+The "Connected tools:" list takes the top half with two rows: "project-notes: configured,
+configured Codex MCP server" (selected) and "everything: configured, configured Codex MCP server".
+Under the list, left to right: Sign In, Reconnect and Refresh, with Close at the right. There's no
+Turn Off for This Chat (or Copy with Tool) button: a chat started elsewhere can't change its tools
+here, so the button is hidden and Refresh moves up beside Reconnect (#729's acceptance test).
+"Details:" heads a read-only box with the selected row, a blank line, and the read-only note: the
+chat wasn't started in The Chat Place, so its tools can't be changed here and how each server is
+doing isn't shown; Sign In connects your account without changing the chat's tools. Nothing is cut
+off and nothing overlaps.
+
+Measured at commit f934d4f9: list and Details text black on white (21:1), button text black on
+#FDFDFD (20.65:1), the selected row white on #0078D4 (4.53:1). High Contrast Aquatic: white on
+#202020 (16.29:1) for text and buttons, the selected row #263B50 on aqua #8EE3F0 (7.89:1).
+
+**What looks off:** Nothing new; the light Details box's native border is the #532 limitation.
+
+## codex-tools-sign-in: Connected Tools' Sign In asks before opening a page (#598, #729)
+
+A 680 by 380 dialog titled "Sign In to project-notes", the question Sign In asks before it opens a
+server's sign-in page. "Address:" heads a read-only box, 648 by 60, with the text cursor in it and
+one line that runs past its right edge: "Opens notes.example: https://notes.example/authorize?
+response_type=code&client_id=probe-client&redirect_uri=http…". The box doesn't wrap, so the
+address stays on the host's line, and a horizontal scroll bar runs along the box's bottom.
+"Message:" heads a second read-only box, 648 by 178: "Open in Browser opens the address above,
+where you sign in to project-notes. Decline leaves it unopened." At the bottom right: Open in
+Browser and Decline (the default, outlined in blue). There's no Answer Later: nothing waits on this
+answer, and Escape declines.
+
+Measured at commit f934d4f9: Address and Message text black on white (21:1), button text black on
+#FDFDFD (20.65:1). High Contrast Aquatic: white on #202020 (16.29:1), and Decline filled aqua
+#8EE3F0 with #263B50 text (7.89:1).
+
+**What looks off:** Nothing; the address being cut at the right edge is the scroll bar's job.
