@@ -341,20 +341,29 @@ that makes the app replace many more objects shows. So:
   opened the chat twice, which no one does; an update and a refresh with the focus in the
   messages, which do happen, have a step of their own that checks the arrows still read the
   rows around it. A step with `after_trigger` presses its keys only once its trigger has
-  finished and Orca's debug log has been quiet for half a second (`OrcaLog.wait_idle`), so
-  Orca has handled the events the trigger made.
+  finished.
+- **No key is pressed until Orca has caught up with the app's events** (#754): its debug log
+  has to have been quiet for half a second (`OrcaLog.wait_idle`). Orca logs every event it
+  takes off its queue, and while idle only a line about every 1.5 seconds. Before most keys
+  Orca is already quiet, so there's no wait. After a trigger the half second is counted from
+  when the trigger finished, since its events may still be on their way. A step whose keys go
+  before Orca catches up (within the step timeout) fails, and the report says why. Orca 46
+  handles a key as soon as it comes, ahead of events still in its queue, and then handles
+  those events by what's true *after* the key. #751 and #754 were both that, so this is one
+  rule for every step rather than a fix for each step that meets it.
 - "a suggestion, then Tab to the message box" failed now and then (#754): Orca said "Write the
   script, selected" but not "Your message". All five failures (in four runs) had the same
-  cause, and it isn't #751's. The trigger puts the suggestion in the message box and selects
-  it while the box isn't focused, and in those failures the Tab followed 6 to 13 ms later. Orca 46 handles
-  a key as soon as it comes, ahead of the events still in its queue, so it handled the Tab
-  before the box's caret move. By the time it got to the caret move, the Tab had focused the
-  box, and `default.onCaretMoved` checks whether the box is focused *now*. It found it was and
-  quietly took the box for its focus. When the box's own focus event came, Orca already had it
-  and said nothing. In passing runs the Tab came about 40 ms later, after Orca had handled the
-  caret move and passed over it because the box wasn't focused. The app's focus and names were
-  right every time. A person can't press Tab within milliseconds of a suggestion appearing, so
-  the check now waits for Orca to handle the trigger's events before the keys.
+  cause. The trigger puts the suggestion in the message box and selects it while the box
+  isn't focused. The keys used to go as soon as the check saw the trigger's `.done` file,
+  which it looked for every 0.1 seconds, so the Tab came anywhere from a few to about 100 ms
+  later; in the failures it came 6 to 13 ms later. Orca handled the Tab before the box's caret
+  move. By the time it got to the caret move, the Tab had focused the box, and
+  `default.onCaretMoved` checks whether the box is focused *now*. It found it was and quietly
+  took the box for its focus. When the box's own focus event came, Orca already had it and
+  said nothing. In a passing run the Tab came 40 ms later, after Orca had handled the caret
+  move and passed over it because the box wasn't focused. The app's focus and names were
+  right every time, and nobody presses Tab within milliseconds of a suggestion appearing. In
+  360 repeats of the step each way, it failed 19 times without the wait and never with it.
 - "answer the tool" and "answer Copilot" failed now and then (3 of about 45 runs looked at,
   #751): Orca said the Answer dialog's title and "frame", but not the box the focus was in. Orca
   46 asks which window is active as it handles each key. When the key opened a dialog that was

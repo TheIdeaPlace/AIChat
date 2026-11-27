@@ -68,10 +68,13 @@ SETTLE = 1.2
 STEP_TIMEOUT = 15.0
 #: The first step waits for the app to start, which a slow runner takes a while over.
 START_TIMEOUT = 60.0
-#: Orca's debug log quiet this long after a trigger, and Orca has handled the
-#: events it made (#754). Orca logs every event it takes from its queue, and
-#: nothing while idle; the app's events reach it within milliseconds.
+#: Once Orca's debug log has been quiet this long, Orca has handled the events
+#: the app sent it, and a key can be pressed (#754). It logs every event it
+#: takes off its queue, and while idle only a line about every 1.5 seconds.
+#: The app's events reach it within milliseconds.
 TRIGGER_QUIET = 0.5
+#: What a step's report says when Orca never went quiet before its keys.
+UNSETTLED = "Orca hadn't caught up with the app's events when the keys were pressed"
 #: What tools/orca-customizations.py writes in Orca's debug log as it loads,
 #: and each time it puts right a live object Orca 46 took for dead (#579).
 LOADED = "TCP #579: dead objects are asked again"
@@ -108,9 +111,10 @@ class Step:
     #: for them, TRIGGERS).
     trigger: str = ""
     #: Press the keys only once the trigger has finished (``serve`` writes
-    #: <name>.done) and Orca has handled what it changed (its debug log has
-    #: gone quiet, ``OrcaLog.wait_idle``), not straight away. Not for one
-    #: that opens a dialog, which finishes only when the dialog closes.
+    #: <name>.done), not straight away, and then, as before every key, once
+    #: Orca has caught up (``OrcaLog.wait_idle``), its quiet counted from
+    #: then. Not for one that opens a dialog, which finishes only when the
+    #: dialog closes.
     after_trigger: bool = False
 
 
@@ -978,11 +982,16 @@ class OrcaLog:
             time.sleep(0.1)
         return seen
 
+    def modified(self) -> float:
+        return self.path.stat().st_mtime if self.path.exists() else 0.0
+
     def wait_idle(self, quiet: float = TRIGGER_QUIET, timeout: float = STEP_TIMEOUT,
-                  clock=time.monotonic, sleep=time.sleep) -> bool:
+                  from_now: bool = True, clock=time.time, sleep=time.sleep) -> bool:
         """Wait until the log hasn't grown for ``quiet`` seconds: Orca has
         taken every event the app sent before now off its queue. True then,
-        False at ``timeout``.
+        False at ``timeout``. ``from_now``: the quiet is counted from now,
+        for events that may still be on their way; otherwise from the log's
+        last change, so an Orca already quiet doesn't wait at all.
 
         Orca 46 handles events in turn, and a key ahead of the ones before
         it. A text box's caret move, made while the box wasn't focused but
@@ -991,15 +1000,17 @@ class OrcaLog:
         now, not when it moved), so the box's own focus event was then
         ignored and the box went unsaid (#754)."""
         end = clock() + timeout
-        size, since = self.size(), clock()
-        while clock() < end:
+        size = self.size()
+        since = clock() if from_now else min(clock(), self.modified())
+        while True:
+            if clock() - since >= quiet:
+                return True
+            if clock() >= end:
+                return False
             sleep(0.05)
             now = self.size()
             if now != size:
                 size, since = now, clock()
-            elif clock() - since >= quiet:
-                return True
-        return False
 
 
 def orca_version() -> tuple:
@@ -1097,10 +1108,13 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
             end = time.time() + STEP_TIMEOUT
             while step.after_trigger and not done_file.exists() and time.time() < end:
                 time.sleep(0.1)
-            if step.after_trigger:
-                # And Orca has handled what the trigger changed, as anyone
-                # would have heard it by then (#754).
-                settled = log.wait_idle()
+        if step.keys:
+            # No key until Orca has caught up with the app's events, as
+            # anyone would have heard them by then (#754). After a trigger,
+            # the quiet is counted from now, since its events may not have
+            # reached Orca yet; otherwise from the log's last line, so an
+            # Orca already quiet costs nothing.
+            settled = log.wait_idle(from_now=step.after_trigger)
         press(step.keys)
         spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
         took = time.time() - started
@@ -1109,7 +1123,9 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         refused = [] if record else [r for r in step.refuse if _found(r, said)]
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
-                         "passed": not missing and not refused,
+                         # Keys pressed before Orca caught up prove nothing
+                         # either way, so the step fails, saying why.
+                         "passed": not missing and not refused and (settled or record),
                          "started": time.strftime("%H:%M:%S", time.localtime(started)),
                          "seconds": round(took, 1),
                          "corrected": log.count_since(before, CORRECTED),
@@ -1120,8 +1136,7 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         print(f"{index + 1}/{len(steps)} {'ok' if results[-1]['passed'] else 'FAIL'} "
               f"[{results[-1]['started']}, {took:.1f}s] "
               f"{step.name}: {' | '.join(said)[:200] or '(nothing)'}"
-              + ("" if settled else " (Orca hadn't gone quiet after the trigger when the "
-                                    "keys were pressed)"), flush=True)
+              + ("" if settled else f" ({UNSETTLED})"), flush=True)
     return results
 
 
@@ -1135,6 +1150,8 @@ def report(results: List[dict], version: tuple, record: bool) -> str:
             lines.append(f"       not said: {m!r}")
         for m in r["refused"]:
             lines.append(f"       said, and shouldn't be: {m!r}")
+        if not r.get("settled", True):
+            lines.append(f"       {UNSETTLED}")
     if not record:
         failed = sum(not r["passed"] for r in results)
         lines += ["", f"{len(results) - failed} of {len(results)} steps passed."]
