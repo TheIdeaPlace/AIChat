@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -55,8 +56,32 @@ MAX_NAMED = 3
 MAX_SAID = 80
 
 #: The sentence's start. Part 2 keeps it for the waits that still can't be
-#: kept (an API-credit chat, the limit reached, Stop or quitting).
+#: kept when the reply ends (an API-credit chat, or the limit reached).
 LOST_START = "This chat ends when Claude's reply does, so "
+#: Part 2: the start when a chat kept open for its waits stops waiting (Stop,
+#: quitting, Claude Code ending, or a check that never came).
+ENDED_START = "This chat stopped waiting, so "
+#: Part 2: the start for a wait too far away to keep the chat open for.
+FAR_START = "That's more than {days} days away, too long to keep the chat open, so "
+#: Part 2: the start when the process ended because the chat went on to
+#: usage credits (the runner's ``waits_stop`` is ``STOP_USAGE``).
+USAGE_START = "This chat went on to usage credits, so The Chat Place ended it, and "
+STOP_USAGE = "usage"
+#: Every start a line kept after a reply may have (``clean_notes``).
+NOTE_STARTS = (LOST_START, ENDED_START, USAGE_START, "That's more than ")
+
+# -- Part 2's limits, each Kelly's to change -------------------------------------
+#: The furthest away a wait can be and still keep the chat's process open.
+MAX_HOLD_DAYS = 7
+#: How many chats Settings lets keep a process open for waits at once, by
+#: default (``SpeechSettings.wait_limit``), and the most it offers.
+DEFAULT_WAIT_LIMIT = 5
+MAX_WAIT_LIMIT = 20
+#: Claude Code ends a repeating timer this long after it was set.
+RECURRING_EXPIRY_DAYS = 30
+#: A one-time wait whose time passed this long ago with no wake seen isn't
+#: kept for any longer: Claude Code would have fired it by now.
+OVERDUE_GRACE_SECONDS = 600
 
 
 @dataclass(frozen=True)
@@ -83,6 +108,10 @@ class Wait:
     #: CRON: written to disk by Claude Code (``durable``), so it can outlive
     #: the process. Not on in Claude Code 2.1.331 by default.
     durable: bool = False
+    #: WAKEUP: when Claude Code said it would fire (seconds since the
+    #: epoch), from its result's "(in 97s)": it rounds the delay up to a whole
+    #: minute, so this is truer than ``set_at`` plus the delay. 0 if not said.
+    fire_at: float = 0.0
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -97,7 +126,7 @@ class Wait:
         that can't be told (a repeating one, a watch, a cron this can't read)."""
         if self.kind == WAKEUP:
             try:
-                return datetime.fromtimestamp(self.set_at + self.delay_seconds)
+                return datetime.fromtimestamp(self.fire_at or self.set_at + self.delay_seconds)
             except (OverflowError, OSError, ValueError):
                 return None
         if self.kind == CRON and not self.recurring:
@@ -184,6 +213,13 @@ def result_text(content) -> str:
 #: "Scheduled recurring job 1a2b3c4d (every 5 minutes)." (2.1.331).
 _SCHEDULED = re.compile(r"Scheduled (one-shot task|recurring job) ([A-Za-z0-9_-]{1,64}) \(")
 _JOB_ID = re.compile(r"\b([0-9a-f]{8})\b")
+#: ScheduleWakeup's result: "Next wakeup scheduled for 10:20:00 (in 97s)."
+#: (2.1.331, probed 2026-11-27): the delay it really used, rounded up.
+_WAKEUP_IN = re.compile(r"\(in (\d{1,5})s\)")
+#: command_lifecycle's ``wakeup_source`` for each kind (probed with 2.1.331):
+#: a CronCreate timer, and a ScheduleWakeup (with its ``scheduled_for``).
+CRON_WAKE = "schedule_wakeup"
+LOOP_WAKE = "loop_wakeup"
 #: A wake this far before a one-time job's time is taken to be that job's,
 #: in case Claude Code fires it a little early.
 WAKE_EARLY_SECONDS = 120
@@ -221,6 +257,12 @@ class WaitBook:
     @property
     def waits(self) -> List[Wait]:
         return list(self._waits)
+
+    @property
+    def listed(self) -> frozenset:
+        """The descriptions in the latest background list, ambient tasks too:
+        a watch is kept open for only while it's there (#749, Part 2)."""
+        return frozenset(self._listed)
 
     @property
     def expecting(self) -> bool:
@@ -265,10 +307,14 @@ class WaitBook:
             if not _flag(tool_input.get("stop"), False):
                 delay = _seconds(tool_input.get("delaySeconds"))
                 if delay is not None:
+                    # "Next wakeup scheduled for 10:20:00 (in 97s)." (2.1.331).
+                    said = _WAKEUP_IN.search(text)
+                    fire_at = at + int(said.group(1)) if said else 0.0
                     kept.append(Wait(WAKEUP, tool_use_id=str(use_id), set_at=at,
                                      prompt=_text(tool_input.get("prompt")),
                                      delay_seconds=delay,
-                                     description=_text(tool_input.get("reason"))))
+                                     description=_text(tool_input.get("reason")),
+                                     fire_at=fire_at))
             return self._replace(kept[-MAX_WAITS:])
         if name == MONITOR:
             description = _text(tool_input.get("description"))
@@ -278,20 +324,24 @@ class WaitBook:
                                   description=description))
         return False
 
-    def woke(self) -> bool:
+    def woke(self, source: str = "") -> bool:
         """Claude Code started a turn of its own for a timer (``command_lifecycle``
         with a ``wakeup_source``): the one-time waits whose time has come ran,
         and aren't waits any more. One due within ``WAKE_EARLY_SECONDS`` counts
         too, in case Claude Code fired it a little early. True when the
         waits changed. Only a wake seen counts: a one-time time that passed
         while Claude was still working may never have fired before the
-        process ended."""
+        process ended. ``source``, the ``wakeup_source``, says which kind
+        fired: a ScheduleWakeup's (there's only ever one) or a timer's."""
+        if source == LOOP_WAKE:
+            return self._replace([w for w in self._waits if w.kind != WAKEUP])
+        kinds = (CRON,) if source == CRON_WAKE else (CRON, WAKEUP)
         # One wake is one job: the soonest due, so a second due a moment
         # later (a wakeup a minute after a timer) is still a wait.
         now = self._clock()
         due = []
         for wait in self._waits:
-            when = wait.fire_time() if wait.one_shot else None
+            when = wait.fire_time() if wait.one_shot and wait.kind in kinds else None
             if when is not None and when.timestamp() <= now + WAKE_EARLY_SECONDS:
                 due.append((when, wait))
         if not due:
@@ -600,15 +650,36 @@ def _plural(count: int, one: str, many: str) -> str:
     return one if count == 1 else many
 
 
-def lost_sentence(waits: Iterable[Wait], now: datetime, dated: bool = False) -> str:
+def lost_sentence(waits: Iterable[Wait], now: datetime, dated: bool = False,
+                  start: str = LOST_START) -> str:
     """What's said when the chat's process ends with waits Claude set
     (#749): "This chat ends when Claude's reply does, so the check Claude set
     for 2:00 PM won't run." Once per turn, naming every wait lost; "" when
     none is. ``dated``: every time with its date, for the copy kept with the
-    reply and read later."""
-    lost = lost_waits(waits)
-    if not lost:
+    reply and read later. ``start``: what comes before the waits
+    (``ENDED_START``, ``far_start``)."""
+    checks, watches, count = _phrases(lost_waits(waits), now, dated)
+    clauses: List[str] = []
+    if checks:
+        clauses.append(_clause(checks) + " won't run")
+    if watches:
+        clauses.append(f"{watches} {_plural(count, 'stops', 'stop')}")
+    if not clauses:
         return ""
+    return f"{start}{', and '.join(clauses)}."
+
+
+def _clause(phrases: Sequence[str]) -> str:
+    """Phrases that may each hold an "and", joined with commas first."""
+    phrases = list(phrases)
+    return ", ".join(phrases[:-1]) + (", and " if len(phrases) > 1 else "") + phrases[-1]
+
+
+def _phrases(lost: Sequence[Wait], now: datetime,
+             dated: bool) -> Tuple[List[str], str, int]:
+    """The waits as noun phrases: the checks ("the check Claude set for
+    2:00 PM", one phrase per kind), the watches ("the watch Claude started
+    (Watch PR 749)", or ""), and how many watches."""
     times: List[str] = []
     repeating: List[str] = []
     unknown = 0
@@ -645,10 +716,7 @@ def lost_sentence(waits: Iterable[Wait], now: datetime, dated: bool = False) -> 
         else:
             checks.append("the check Claude set" if unknown == 1
                           else f"the {unknown} checks Claude set")
-    clauses: List[str] = []
-    if checks:
-        clauses.append(", ".join(checks[:-1]) + (", and " if len(checks) > 1 else "")
-                       + checks[-1] + " won't run")
+    watch_phrase = ""
     if watches:
         named = [w for w in dict.fromkeys(watches) if w]
         unnamed = len(watches) - len([w for w in watches if w])
@@ -657,9 +725,8 @@ def lost_sentence(waits: Iterable[Wait], now: datetime, dated: bool = False) -> 
         if listed and more:
             listed.append(f"{more} more")
         noun = _plural(len(watches), "the watch Claude started", "the watches Claude started")
-        verb = _plural(len(watches), "stops", "stop")
-        clauses.append(f"{noun} ({_joined(listed)}) {verb}" if listed else f"{noun} {verb}")
-    return f"{LOST_START}{', and '.join(clauses)}."
+        watch_phrase = f"{noun} ({_joined(listed)})" if listed else noun
+    return checks, watch_phrase, len(watches)
 
 
 # -- Kept with the reply -----------------------------------------------------------
@@ -676,7 +743,14 @@ def remember_note(notes: Dict[str, str], key: str, line: str) -> Dict[str, str]:
     kept = dict(notes or {})
     if not key or not line or len(key) > MAX_KEY or len(line) > MAX_NOTE:
         return kept
-    kept.pop(key, None)
+    before = kept.pop(key, None)
+    if before and line not in before:
+        # A second line after the same reply (Part 2: a far check said with
+        # it, then the rest when the chat stopped waiting): both are kept.
+        joined = f"{before} {line}"
+        line = joined if len(joined) <= MAX_NOTE else before
+    elif before:
+        line = before
     kept[key] = line
     while len(kept) > MAX_NOTES:
         kept.pop(next(iter(kept)))
@@ -689,7 +763,7 @@ def clean_notes(raw) -> Dict[str, str]:
         return {}
     kept = {key: value for key, value in raw.items()
             if isinstance(key, str) and isinstance(value, str) and key and len(key) <= MAX_KEY
-            and value.startswith(LOST_START) and len(value) <= MAX_NOTE
+            and value.startswith(NOTE_STARTS) and len(value) <= MAX_NOTE
             and "\n" not in value and "\x00" not in key}
     while len(kept) > MAX_NOTES:
         kept.pop(next(iter(kept)))
@@ -712,3 +786,223 @@ def with_notes(messages: Iterable, notes: Dict[str, str], assistant_kind: str = 
         if line:
             messages[index] = dataclasses.replace(message, note=line)
     return messages
+
+
+# -- Keeping the chat open for them (#749, Part 2) ---------------------------------
+#
+# A Claude turn that's answered and idle, with nothing running in the
+# background but with waits Claude set, keeps its ``claude`` process (the
+# runner's "scheduled" outcome), so Claude Code can fire them. Which waits
+# hold it, and for how long, is decided here, as plain data.
+
+_DAY = 86400.0
+
+
+def next_time(wait: Wait, now: datetime) -> Optional[datetime]:
+    """When a timed wait fires next, in local time: a one-time one's time,
+    a repeating one's next match after ``now``. None for a watch, or a time
+    that can't be read."""
+    if wait.kind == WATCH:
+        return None
+    if wait.one_shot:
+        return wait.fire_time()
+    return next_cron_time(wait.cron, now)
+
+
+def _local(now: float) -> Optional[datetime]:
+    try:
+        return datetime.fromtimestamp(now)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def held_waits(waits: Iterable[Wait], listed, now: float) -> List[Wait]:
+    """The waits that keep the chat's process open at ``now`` (seconds since
+    the epoch): a timer or wakeup due within ``MAX_HOLD_DAYS`` (one whose time
+    can't be read, for that long after it was set), and a watch while its
+    task is in Claude Code's background list (``listed``, descriptions). Not
+    one Claude Code wrote to disk, a repeating one past Claude Code's own
+    expiry, or a one-time one ``OVERDUE_GRACE_SECONDS`` past its time with no
+    wake seen."""
+    local = _local(now)
+    if local is None:
+        return []
+    horizon = now + MAX_HOLD_DAYS * _DAY
+    held: List[Wait] = []
+    for wait in waits:
+        if wait.durable:
+            continue
+        if wait.kind == WATCH:
+            if wait.description and wait.description in listed:
+                held.append(wait)
+            continue
+        if not wait.one_shot and now - wait.set_at > RECURRING_EXPIRY_DAYS * _DAY:
+            continue
+        when = next_time(wait, local)
+        if when is None:
+            if now - wait.set_at <= MAX_HOLD_DAYS * _DAY:
+                held.append(wait)
+            continue
+        fires = when.timestamp()
+        if wait.one_shot and fires < now - OVERDUE_GRACE_SECONDS:
+            continue
+        if fires <= horizon:
+            held.append(wait)
+    return held
+
+
+def far_waits(waits: Iterable[Wait], now: float) -> List[Wait]:
+    """The timed waits more than ``MAX_HOLD_DAYS`` away, which don't keep the
+    chat open: said when Claude's reply is, as they won't run."""
+    local = _local(now)
+    if local is None:
+        return []
+    horizon = now + MAX_HOLD_DAYS * _DAY
+    far = []
+    for wait in waits:
+        if wait.durable or wait.kind == WATCH:
+            continue
+        if not wait.one_shot and now - wait.set_at > RECURRING_EXPIRY_DAYS * _DAY:
+            continue
+        when = next_time(wait, local)
+        if when is not None and when.timestamp() > horizon:
+            far.append(wait)
+    return far
+
+
+def far_start() -> str:
+    """``lost_sentence``'s start for the waits ``far_waits`` gives."""
+    return FAR_START.format(days=MAX_HOLD_DAYS)
+
+
+def next_recheck(held: Iterable[Wait], now: float) -> Optional[float]:
+    """When, at the soonest, one of the ``held`` waits may stop holding the
+    chat open with nothing to say so (seconds since the epoch): a one-time
+    one that never fired, a repeating one Claude Code expires, one whose time
+    can't be read. None when only watches hold it, which the background list
+    says the end of."""
+    local = _local(now)
+    if local is None:
+        return None
+    times = []
+    for wait in held:
+        if wait.kind == WATCH:
+            continue
+        if not wait.one_shot:
+            times.append(wait.set_at + RECURRING_EXPIRY_DAYS * _DAY)
+            continue
+        when = next_time(wait, local)
+        if when is None:
+            times.append(wait.set_at + MAX_HOLD_DAYS * _DAY)
+        else:
+            times.append(when.timestamp() + OVERDUE_GRACE_SECONDS)
+    return min(times) if times else None
+
+
+def _interval(words: str) -> bool:
+    """"every 30 minutes", "every hour": a plain interval, which reads
+    well as "and every 30 minutes after that"."""
+    return words.startswith("every ") and " at " not in words and " on " not in words
+
+
+def waiting_words(held: Iterable[Wait], now: datetime) -> str:
+    """What a chat kept open is waiting for, for Turn Status, Properties and
+    the reply's announcement: "Scheduled check at 2:00 PM, and every 30
+    minutes after that." "Watching: Watch PR 749." "" for nothing."""
+    held = list(held)
+    sentences: List[str] = []
+    times = sorted(t for t in (w.fire_time() for w in held if w.one_shot) if t is not None)
+    unknown = sum(1 for w in held if w.one_shot and w.fire_time() is None)
+    if times:
+        noun = _plural(len(times), "check", "checks")
+        sentences.append(f"Scheduled {noun} at {_named([when_words(t, now) for t in times])}.")
+    repeating = [w for w in held if w.kind == CRON and w.recurring]
+    for wait in repeating[:MAX_NAMED]:
+        when = next_cron_time(wait.cron, now)
+        words = schedule_words(wait.cron)
+        if when is None:
+            sentences.append(f"A repeating scheduled check is set{', ' + words if words else ''}.")
+        elif not words:
+            sentences.append(f"Scheduled check at {when_words(when, now)}, repeating.")
+        elif _interval(words):
+            sentences.append(f"Scheduled check at {when_words(when, now)}, "
+                             f"and {words} after that.")
+        else:
+            sentences.append(f"Scheduled check at {when_words(when, now)}, then {words}.")
+    if len(repeating) > MAX_NAMED:
+        more = len(repeating) - MAX_NAMED
+        sentences.append(f"And {more} more repeating {_plural(more, 'check', 'checks')}.")
+    if unknown:
+        sentences.append("A scheduled check is set." if unknown == 1
+                         else f"{unknown} scheduled checks are set.")
+    watches = [_text(w.description, MAX_SAID) for w in held if w.kind == WATCH]
+    if watches:
+        sentences.append(f"Watching: {_named(watches)}.")
+    return " ".join(sentences)
+
+
+def row_detail(held: Iterable[Wait], now: datetime) -> str:
+    """The session list's detail for a chat kept open for its waits: "next
+    check at 2:00 PM", else "watching: Watch PR 749"."""
+    held = list(held)
+    times = sorted(t for t in (next_time(w, now) for w in held) if t is not None)
+    if times:
+        return f"next check at {when_words(times[0], now)}"
+    watch = next((w for w in held if w.kind == WATCH), None)
+    if watch is not None:
+        return f"watching: {_text(watch.description, MAX_SAID)}"
+    return "a scheduled check is set" if held else ""
+
+
+def stop_words(held: Iterable[Wait], now: datetime) -> str:
+    """Said as Stop is pressed on a chat kept open for its waits: "Stopping
+    ends the check Claude set for 2:00 PM too." "" for none."""
+    checks, watches, _count = _phrases(lost_waits(held), now, False)
+    phrases = checks + ([watches] if watches else [])
+    if not phrases:
+        return ""
+    return f"Stopping ends {_clause(phrases)} too."
+
+
+def quit_words(count: int, doing: str = "quit") -> str:
+    """For the "Work is running" question as you quit (#749), or ``doing``
+    something else that closes the app ("install the update now")."""
+    if count <= 0:
+        return ""
+    if count == 1:
+        return f"1 chat is waiting for checks Claude set, which won't run if you {doing}."
+    return f"{count} chats are waiting for checks Claude set, which won't run if you {doing}."
+
+
+class WaitSlots:
+    """How many chats may keep a process open for waits at once (#749): a
+    Settings choice, read each time, so a change applies to the next chat
+    that asks. Thread-safe: runners ask from their worker threads."""
+
+    def __init__(self, limit: Callable[[], int]) -> None:
+        self._limit = limit
+        self._holders: set = set()
+        self._lock = threading.Lock()
+
+    def take(self, holder) -> bool:
+        """A slot for ``holder``, which may have one already. False when
+        they're all taken."""
+        try:
+            limit = int(self._limit())
+        except Exception:  # noqa: BLE001 - a broken setting holds nothing
+            limit = 0
+        with self._lock:
+            if holder in self._holders:
+                return True
+            if len(self._holders) >= limit:
+                return False
+            self._holders.add(holder)
+            return True
+
+    def release(self, holder) -> None:
+        with self._lock:
+            self._holders.discard(holder)
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._holders)

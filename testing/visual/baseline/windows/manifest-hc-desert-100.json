@@ -225,7 +225,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    938
+    984
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -589,7 +589,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    963
+    1009
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -771,7 +771,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    923
+    969
    ],
    "capture": "PrintWindow",
    "problems": [],
@@ -1275,7 +1275,7 @@
    "class": "SettingsDialog",
    "size": [
     680,
-    990
+    1032
    ],
    "capture": "PrintWindow",
    "problems": [],

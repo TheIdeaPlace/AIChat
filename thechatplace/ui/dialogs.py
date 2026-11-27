@@ -14,6 +14,7 @@ import wx
 from theideaplace_appkit import difftext
 
 from .. import chat_permissions, claude_settings, lists, workplaces, platform_paths
+from .. import scheduled_waits
 from ..claude_cli import (DEFAULT_PERMISSION_MODE, EFFORT_NOTE, EFFORTS, MODELS,
                           PERMISSION_MODES, fable_in_plan, models_for)
 from ..sessions import (DEFAULT_FIELDS, FIELD_IDS, FIELD_NAMES, clean_fields, field_short_name,
@@ -39,6 +40,10 @@ CHROME_SETTING_LABEL = ("Let Claude use Chrome in Claude chats on your subscript
 #: same reason as the Chrome one: every letter in it is taken.
 SUGGESTIONS_SETTING_LABEL = ("Suggest what to send next after each reply in Claude chats on "
                              "your subscription (from the next turn)")
+#: Settings' limit on Claude chats kept open for Claude's checks for later
+#: (#749). No access key, as with the two above: the letters left (j, q, z)
+#: aren't in it, so it's reached with Tab.
+WAIT_LIMIT_LABEL = "Claude chats kept open at once for checks Claude sets for later:"
 #: Added to it when Claude Code's own flag says it isn't offering them to
 #: this account (platform_paths.claude_offers_prompt_suggestions, #709).
 SUGGESTIONS_NOT_OFFERED = (". Claude Code isn't offering suggestions to your account yet, so "
@@ -1780,6 +1785,18 @@ class SettingsDialog(wx.Dialog):
             recent_row.Add(self.clear_recent_btn, 0)
         outer.Add(recent_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        # #749: how many Claude chats may stay open at once for the checks
+        # Claude sets for later. Its label is its name on Windows; set
+        # again for the Mac's text box and stepper.
+        waits_row = wx.BoxSizer(wx.HORIZONTAL)
+        waits_row.Add(wx.StaticText(body, label=WAIT_LIMIT_LABEL), 0,
+                      wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.wait_limit = wx.SpinCtrl(body, min=0, max=scheduled_waits.MAX_WAIT_LIMIT,
+                                      initial=speech.wait_limit)
+        set_accessible_name(self.wait_limit, WAIT_LIMIT_LABEL.replace("&", "").rstrip(":"))
+        waits_row.Add(self.wait_limit, 0)
+        outer.Add(waits_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         # The label wraps onto several lines: as one it ran past the dialog's
         # edge (#176). A check box's label is its spoken name, so screen
         # readers hear the same sentence as before.
@@ -1878,7 +1895,11 @@ class SettingsDialog(wx.Dialog):
         outer.Add(wx.StaticText(body, label="Histor&y retention and kept copies:"),
                   0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
         self.retention = wx.TextCtrl(body, value=describe_retention(),
-                                    size=(-1, self.FromDIP(110)),
+                                    # 58, not 110: the room the limit on
+                                    # chats kept open for Claude's checks
+                                    # takes (#749), so Settings doesn't
+                                    # start to scroll. The box scrolls.
+                                    size=(-1, self.FromDIP(58)),
                                     style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
         set_accessible_name(self.retention, "History retention and kept copies")
         self.retention.SetInsertionPoint(0)
@@ -2024,6 +2045,7 @@ class SettingsDialog(wx.Dialog):
                                    agent_auto_mode=self.agent_auto.GetValue(),
                                    change_marks=self._marks_style(),
                                    recent_folder_limit=self.recent_limit.GetValue(),
+                                   wait_limit=self.wait_limit.GetValue(),
                                    # API credits (#658)
                                    api_send_notice=(
                                        API_NOTICES[max(self.api_notice.GetSelection(), 0)]

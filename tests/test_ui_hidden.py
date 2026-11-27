@@ -9899,6 +9899,207 @@ def test_quitting_mid_turn_keeps_the_lost_timer_after_its_reply(frame, env, fake
         "m1": LOST_2PM.replace("2:00 PM", "2:00 PM on Friday, November 27")}
 
 
+# -- #749 Part 2: the chat stays open for Claude's checks --------------------------------------
+
+def _two_pm():
+    return Wait("cron", tool_use_id="t1", set_at=WAITS_NOW.timestamp(), cron="0 14 27 11 *")
+
+
+@pytest.fixture
+def kept_now(monkeypatch, waits_now):
+    from thechatplace import scheduled_waits
+    monkeypatch.setattr(scheduled_waits, "wall_clock", lambda: WAITS_NOW.timestamp())
+
+
+def _kept_open(frame, runner, text="I'll check again at 2:00 PM.", far=(), **more):
+    """The runner kept the turn open for a check at 2:00 PM, and said so."""
+    runner.waiting_for_waits = True
+    runner.held = [_two_pm()]
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("waiting", text=text, data={
+        "tasks": [], "scheduled": True, "waits": [_two_pm().to_dict()],
+        "far": [w.to_dict() for w in far], "reply_message_id": "m1", **more}))
+
+
+def test_a_chat_kept_open_for_a_check_says_so_with_its_reply(frame, env, fake_runner, kept_now,
+                                                             monkeypatch):
+    monkeypatch.setattr(frame, "_app_is_active", lambda: False)
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    assert env["spoken"][-1] == ("Hub probe replied. I'll check again at 2:00 PM. "
+                                 "Scheduled check at 2:00 PM.")
+    assert env["notified"][-1][:2] == ("Hub probe answered",
+                                       "I'll check again at 2:00 PM. Scheduled check at 2:00 PM.")
+    assert frame._runners["own-1"] is runner  # still open: Stop still ends it
+    assert frame.turn_status.GetLabel() == (
+        "Claude answered. Scheduled check at 2:00 PM. What you send goes to Claude now.")
+    frame.on_turn_status()
+    assert env["feedback"][-1] == (
+        "Hub probe: Claude answered. Scheduled check at 2:00 PM. The chat stays open for it, "
+        "and what you send goes to Claude now.")
+    # The row: working, with the next check.
+    assert frame._kept_open_detail(runner) == "answered, next check at 2:00 PM"
+    assert frame.store.get("own-1").reply_notes == {}  # nothing lost
+
+
+def test_a_check_too_far_away_is_said_and_kept_after_the_reply(frame, env, fake_runner, kept_now):
+    runner = _start(frame, fake_runner)
+    far = Wait("cron", tool_use_id="t9", set_at=WAITS_NOW.timestamp(), cron="0 14 10 12 *")
+    _kept_open(frame, runner, far=[far])
+    line = ("That's more than 7 days away, too long to keep the chat open, so the check Claude "
+            "set for 2:00 PM on Thursday, December 10 won't run.")
+    assert env["spoken"][-1].endswith(f"Scheduled check at 2:00 PM. {line}")
+    assert frame.store.get("own-1").reply_notes == {"m1": line}
+
+
+def test_a_scheduled_checks_answer_is_said_as_one(frame, env, fake_runner, kept_now, monkeypatch):
+    monkeypatch.setattr(frame, "_app_is_active", lambda: False)
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    # Claude Code starts the check by itself: the chat is working again.
+    runner.waiting_for_waits = False
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "woke", data={"source": "schedule_wakeup"}))
+    assert frame.turn_status.GetLabel().startswith("Claude is working")
+    assert not frame._kept_open(runner)
+    # A repeating one: its answer, and it stays open for the next.
+    _kept_open(frame, runner, text="The checks passed.", woke="schedule_wakeup")
+    assert env["spoken"][-1] == ("Hub probe, scheduled check: The checks passed. "
+                                 "Scheduled check at 2:00 PM.")
+    assert env["notified"][-1][0] == "Hub probe, scheduled check"
+    # The last one: its answer ends the turn as any reply does.
+    runner.waiting_for_waits = False
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text="All green.", data={"woke": "schedule_wakeup"}))
+    assert env["spoken"][-1] == "Hub probe, scheduled check: All green."
+    assert env["notified"][-1][:2] == ("Hub probe, scheduled check", "All green.")
+    assert "own-1" not in frame._runners
+
+
+def test_a_message_sent_while_kept_open_goes_straight_in(frame, env, fake_runner, kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame.reply_text.SetValue("Any news?")
+    frame.on_send()
+    assert runner.follow_ups == [("Any news?", [])]
+    assert len(fake_runner.instances) == 1  # the same process: Claude Code keeps its timer
+
+
+def test_stop_on_a_chat_kept_open_says_first_which_checks_it_ends(frame, env, fake_runner,
+                                                                  kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame.on_stop()
+    assert runner.cancelled
+    assert env["feedback"][-1] == "Stopping ends the check Claude set for 2:00 PM too."
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "failed", text="Stopped.", is_error=True,
+        data={"waits": [_two_pm().to_dict()], "held": True, "reply_message_id": "m1"}))
+    # Not said twice, but kept after the reply: "stopped waiting".
+    assert "won't run" not in env["spoken"][-1]
+    assert frame.store.get("own-1").reply_notes == {
+        "m1": "This chat stopped waiting, so the check Claude set for 2:00 PM on Friday, "
+              "November 27 won't run."}
+
+
+def test_quitting_names_chats_kept_open_in_the_work_is_running_question(frame, env, fake_runner,
+                                                                       kept_now, monkeypatch):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox",
+                        lambda text, caption, style, *a, **k: asked.append((text, style)) or wx.NO)
+    event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW)
+    event.SetCanVeto(True)
+    frame._on_close(event)
+    text, style = asked[-1]
+    assert text == "1 chat is waiting for checks Claude set, which won't run if you quit. Quit anyway?"
+    assert style & wx.NO_DEFAULT and style & wx.YES_NO
+    assert event.GetVeto() and not runner.cancelled
+    # With work running too, it's added to the same question.
+    frame._runners["own-2"] = fake_runner(["claude"], "C:\\G\\Scratch", "go", lambda e: None)
+    frame._on_close(event)
+    assert asked[-1][0].startswith("Work is running in 1 Chat Place session. Quit anyway?")
+    assert asked[-1][0].endswith(" 1 chat is waiting for checks Claude set, which won't run if you quit.")
+
+
+def test_an_update_isnt_held_back_by_chats_kept_open_but_says_they_end(frame, env, fake_runner,
+                                                                       kept_now, monkeypatch):
+    from thechatplace.updater import AVAILABLE, CheckResult
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame.updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    asked = []
+    monkeypatch.setattr(wx, "MessageBox",
+                        lambda text, caption, style, *a, **k: asked.append((text, style)) or wx.NO)
+    run_check(frame)
+    text, style = asked[-1]
+    assert text.endswith("1 chat is waiting for checks Claude set, which won't run if you "
+                         "install it now.")
+    assert style & wx.NO_DEFAULT
+
+
+def test_installing_an_update_ends_waiting_chats_and_keeps_their_line(frame, env, fake_runner,
+                                                                      kept_now, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.updater import AVAILABLE, CheckResult
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    runner.parser = SimpleNamespace(reply_message_id="m1", reply_uuid="")
+    frame.updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    run_check(frame)
+    assert pump(lambda: frame.updates.calls == ["check", "download", "apply"])
+    assert runner.cancelled
+    assert frame.store.get("own-1").reply_notes == {
+        "m1": "This chat stopped waiting, so the check Claude set for 2:00 PM on Friday, "
+              "November 27 won't run."}
+
+
+def test_a_chat_that_starts_waiting_after_the_update_question_holds_it_back(frame, env,
+                                                                           fake_runner,
+                                                                           kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame._update_scheduled_ok = 0            # the question named none
+    assert frame._update_blocked_by_turns()
+    frame._update_scheduled_ok = 1
+    assert not frame._update_blocked_by_turns()
+
+
+def test_a_setting_changed_while_kept_open_says_it_waits_for_the_checks(frame, env, fake_runner,
+                                                                        kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    runner.held_for_waits = True
+    own = frame.store.get("own-1")
+    assert frame._from_next_turn(own) == (
+        "from its next turn; it's waiting for checks Claude set, and until they end, they and "
+        "what you send keep the old settings. Stop ends them")
+
+
+def test_the_limit_on_chats_kept_open_is_a_setting(frame, env):
+    from thechatplace.ui.dialogs import SettingsDialog
+    assert speech.SpeechSettings().wait_limit == 5
+    dialog = SettingsDialog(frame, speech.SpeechSettings(wait_limit=2), speech.default_options())
+    try:
+        assert dialog.wait_limit.GetValue() == 2
+        assert dialog.wait_limit.GetMax() == 20 and dialog.wait_limit.GetMin() == 0
+        dialog.wait_limit.SetValue(0)
+        assert dialog.get_settings().wait_limit == 0
+    finally:
+        dialog.Destroy()
+    path = env["tmp"] / "limit.json"
+    speech.SpeechSettings(wait_limit=3).save(path)
+    assert speech.SpeechSettings.load(path).wait_limit == 3
+    for bad in (-1, 21, True, "5", None):
+        path.write_text(json.dumps({"wait_limit": bad}), encoding="utf-8")
+        assert speech.SpeechSettings.load(path).wait_limit == 5
+    # The window's slots follow it.
+    frame.speech.wait_limit = 1
+    assert frame._wait_slots.take("a") and not frame._wait_slots.take("b")
+    frame._wait_slots.release("a")
+
+
 def test_send_now_on_a_queued_message_while_waiting_sends_it_without_stopping(frame, env,
                                                                           fake_runner):
     runner = _start(frame, fake_runner)

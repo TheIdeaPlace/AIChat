@@ -190,7 +190,10 @@ class RelayChats:
         if info.provider == "claude":
             runner = self._runners.get(info.cli_session_id)
             if runner is not None:
-                return not runner.waiting_on_background
+                # Answered and kept open, for background work (#161) or for
+                # Claude's checks for later (#749): its answer is in.
+                return not (getattr(runner, "waiting_on_background", False)
+                            or getattr(runner, "waiting_for_waits", False))
         elif info.provider in ("codex", "codex-api", "copilot"):
             state = self._codex_states.get(info.key)
             if state is not None:

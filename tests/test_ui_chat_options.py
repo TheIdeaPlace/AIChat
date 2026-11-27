@@ -792,6 +792,113 @@ def test_chat_options_change_a_chat_from_its_next_turn(frame, env, tmp_path, mon
     assert env["feedback"][-1] == "Chat options unchanged."
 
 
+def _waiting_with_folder(frame, tmp_path):
+    """Mine, with a folder added, kept open for a check Claude set (#749)."""
+    other = str(tmp_path)
+    frame.store.update("own-1", allowed_dirs=[other], allowed_dirs_at={other: 1})
+    runner = FakeRunner(["claude"], str(tmp_path), "go", lambda e: None)
+    runner.waiting_for_waits = runner.held_for_waits = True
+    frame._runners["own-1"] = runner
+    return runner, other
+
+
+def test_removing_a_folder_ends_a_chat_waiting_for_checks_at_once(frame, env, tmp_path,
+                                                                 monkeypatch):
+    from thechatplace.ui import claude_extras
+    monkeypatch.setattr(claude_extras, "ChatOptionsDialog", _Chosen)
+    runner, _other = _waiting_with_folder(frame, tmp_path)
+    _Chosen.result = (ChatOptions(), [])            # the folder taken away
+    select(frame, "Mine")
+    frame.on_chat_options()
+    assert runner.cancelled
+    assert frame.store.get("own-1").allowed_dirs == []
+    assert env["feedback"][-1].endswith(
+        "; it was open for checks Claude set, so it's stopped now, and they end with it.")
+    # The turn's end: said once, after the confirmation, as a stop for the
+    # options rather than a failure, with the line kept after the reply.
+    import datetime
+    from thechatplace import scheduled_waits
+    from thechatplace.claude_cli import TurnEvent
+    from thechatplace.scheduled_waits import Wait
+    now = datetime.datetime(2026, 11, 27, 13, 0)
+    monkeypatch.setattr(scheduled_waits, "local_now", lambda: now)
+    wait = Wait("cron", tool_use_id="t1", set_at=now.timestamp(), cron="0 14 27 11 *")
+    spoken_before = len(env["spoken"]) + len(env["feedback"])
+    frame._on_turn_event({"id": "own-1"}, "Mine", TurnEvent(
+        "failed", text="Stopped.", is_error=True,
+        data={"waits": [wait.to_dict()], "held": True, "reply_message_id": "m1"}))
+    said = (env["spoken"] + env["feedback"])
+    line = ("Mine stopped for its new chat options. This chat stopped waiting, so the check "
+            "Claude set for 2:00 PM won't run.")
+    assert line in said and len(said) > spoken_before
+    assert not any("the turn failed" in s for s in said[-3:])
+    assert sum(s.count("stopped waiting") for s in said) == 1
+    assert frame.store.get("own-1").reply_notes == {
+        "m1": "This chat stopped waiting, so the check Claude set for 2:00 PM on Friday, "
+              "November 27 won't run."}
+
+
+def test_removing_a_folder_mid_answer_stops_the_chat_from_staying_open(frame, env, tmp_path,
+                                                                      monkeypatch):
+    from thechatplace.ui import claude_extras
+    monkeypatch.setattr(claude_extras, "ChatOptionsDialog", _Chosen)
+    runner, _other = _waiting_with_folder(frame, tmp_path)
+    runner.waiting_for_waits = runner.held_for_waits = False   # still answering
+    _Chosen.result = (ChatOptions(), [])
+    select(frame, "Mine")
+    frame.on_chat_options()
+    assert not runner.cancelled and runner.no_hold_for_waits
+    assert env["feedback"][-1].endswith(
+        "; the turn running now carries on as it started, then ends, even if Claude sets a "
+        "check for later.")
+
+
+def test_removing_a_folder_while_a_check_runs_says_its_answer_stops_and_gives_back_the_queue(
+        frame, env, tmp_path, monkeypatch):
+    from thechatplace.ui import claude_extras
+    monkeypatch.setattr(claude_extras, "ChatOptionsDialog", _Chosen)
+    runner, _other = _waiting_with_folder(frame, tmp_path)
+    runner.waiting_for_waits = False                  # a wake turn under way
+    frame._queued["own-1"] = ["after that"]
+    _Chosen.result = (ChatOptions(), [])
+    select(frame, "Mine")
+    frame.on_chat_options()
+    assert runner.cancelled and "own-1" not in frame._queued
+    assert env["feedback"][-1].endswith(
+        "they end with it, and so does the answer Claude was writing. Your queued message is "
+        "back in the message box.")
+
+
+def test_other_changes_leave_a_waiting_chat_waiting_and_say_so(frame, env, tmp_path,
+                                                              monkeypatch):
+    from thechatplace.ui import claude_extras
+    monkeypatch.setattr(claude_extras, "ChatOptionsDialog", _Chosen)
+    runner, other = _waiting_with_folder(frame, tmp_path)
+    _Chosen.result = (ChatOptions("Explore", "", ""), [other])
+    select(frame, "Mine")
+    frame.on_chat_options()
+    assert not runner.cancelled
+    assert env["feedback"][-1].endswith(
+        "it's waiting for checks Claude set, and until they end, they and what you send keep "
+        "the old settings. Stop ends them.")
+
+
+def test_hide_delete_and_put_files_back_on_a_waiting_chat_say_stop_ends_it(frame, env, tmp_path):
+    runner, _other = _waiting_with_folder(frame, tmp_path)
+    select(frame, "Mine")
+    frame.on_hide()
+    assert env["feedback"][-1] == "That chat is waiting for a check Claude set. Stop ends it."
+    frame.on_delete_permanently()
+    assert env["feedback"][-1] == "That chat is waiting for a check Claude set. Stop ends it."
+    assert frame.store.get("own-1") is not None
+    info = frame._selected_session()
+    assert frame._files_reason(info) == (
+        "That chat is waiting for a check Claude set. Stop ends it.")
+    runner.waiting_for_waits = False                 # working: as before
+    frame.on_hide()
+    assert env["feedback"][-1] == "A turn is running in that session. Stop it first."
+
+
 def test_chat_options_only_for_chats_started_here(frame, env, monkeypatch):
     from thechatplace.ui import claude_extras
     monkeypatch.setattr(claude_extras, "ChatOptionsDialog",

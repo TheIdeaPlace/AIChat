@@ -223,6 +223,8 @@ This uses the same 820 by 620 frame as the other formatted pages, titled "Full c
 
 ## settings: Settings
 
+**Since #749 (2026-11-27):** 680 by 984 in light-100, 19 pixels shorter than before. A new row sits under "Recent folders New Session offers", lined up with it at the left: the label "Claude chats kept open at once for checks Claude sets for later:" (no underlined letter) and a spin box showing 5. The History retention box is shorter (58 rather than 110 DIP, about four lines, and it scrolls), which more than pays for the row, so Settings doesn't scroll in light-100, the High Contrast variants, the Codex one or the Copilot one; speech-problem scrolled before and still does. The label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic (#FFFFFF on #202020), as the rows around it do. Every variant (light-100, 150, 175, dark-100, hc-aquatic-100, hc-desert-100) of settings, settings-codex, settings-copilot and settings-speech-problem was run and accepted, with no layout problems flagged.
+
 **Since #474 (2026-11-23):** 680 by 1003 in light-100, 25 pixels taller, for an unchecked "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)" check box. It sits just under the Chrome one, wrapped onto two lines, lined up with the others at the left, and has no underlined letter. Everything below moves down 25 pixels. Its label measures 18.4:1 in light (#000000 on #F0F0F0) and 16.3:1 in High Contrast Aquatic (#FFFFFF on #202020), as the boxes around it do. Only light-100 and hc-aquatic-100 were run; the Codex, Copilot and speech-problem Settings pictures weren't run again.
 
 **Since #319 (2026-11-22):** the light-100 picture is 680 by 978, 40 pixels taller, for an

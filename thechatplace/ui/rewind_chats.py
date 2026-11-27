@@ -235,9 +235,12 @@ class RewindChats:
 
     def _files_reason(self, info: SessionInfo) -> str:
         if info.cli_session_id in self._runners:
-            # Waiting for it to finish is no use when it's waiting for you.
-            return ("Claude is working or waiting on you in this chat. Answer it, stop it or let "
-                    "it finish before putting its files back.")
+            # Waiting for it to finish is no use when it's waiting for you,
+            # or for a check Claude set for later (#749).
+            return self._running_refusal(
+                info.cli_session_id,
+                "Claude is working or waiting on you in this chat. Answer it, stop it or let "
+                "it finish before putting its files back.")
         if info.cli_session_id in self._rewinding_files:
             return "The files in this chat are already being put back."
         if self._files_going_back_in(info.cwd):

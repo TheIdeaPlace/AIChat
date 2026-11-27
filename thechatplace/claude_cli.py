@@ -95,7 +95,8 @@ from . import platform_paths
 from .billing import (KEY_REFUSED, ROUTE_API, account_problem, budget_flags, failure_text,
                       key_refused, normalize_route, scrub, source_problem)
 from .chat_options import ChatChoices, ChatOptions, choices_from_init
-from .scheduled_waits import WaitBook, Wait
+from . import scheduled_waits as waits_policy
+from .scheduled_waits import WaitBook, Wait, WaitSlots
 from .transcript import compaction_text
 
 #: (value passed to --permission-mode, label shown in the New Session dialog)
@@ -1023,7 +1024,7 @@ class TurnEvent:
     kind: str               # started | text | tool | denied | permission | background |
     #                         waiting | finished | failed | mode | retry | fallback |
     #                         memory | context (#468) | api_sent (#663) |
-    #                         waits (#749) | …
+    #                         waits | woke (#749) | …
     text: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -1172,13 +1173,23 @@ class StreamParser:
             return []
         if etype == "command_lifecycle":
             # A turn Claude Code started by itself for a timer (#749), as the
-            # probe of 2026-11-27 saw it ("state": "started", "wakeup_source":
-            # "schedule_wakeup"): the one-time waits due by now have run.
-            # Part 2 makes this a turn of its own.
-            if event.get("state") == "started" and event.get("wakeup_source") \
-                    and self.waits.woke():
-                return [self._waits_event()]
-            return []
+            # probes of 2026-11-27 saw it ("state": "started", "wakeup_source":
+            # "schedule_wakeup" for a CronCreate timer, "loop_wakeup" with
+            # "scheduled_for" for a ScheduleWakeup): the one-time waits due by
+            # now have run. A "woke" event starts it as a turn of its own,
+            # which the runner checks as it would one you sent (Part 2).
+            # "completed" adds nothing: the turn's result and idle say it.
+            source = event.get("wakeup_source")
+            if event.get("state") != "started" or not isinstance(source, str) or not source:
+                return []
+            # "woke" first: the runner is then no longer idle for the waits,
+            # so the timer leaving the list can't end the turn it started,
+            # whichever of this and "running" Claude Code sends first.
+            events = [TurnEvent("woke", session_id=self.session_id,
+                                data={"source": source[:100]})]
+            if self.waits.woke(source):
+                events.append(self._waits_event())
+            return events
         if etype == "rate_limit_event":
             info = event.get("rate_limit_info")
             if isinstance(info, dict) and info:
@@ -1668,8 +1679,17 @@ class TurnRunner:
                  billing: str = "subscription", api_key_name: str = "",
                  ledger=None, chat_id: str = "", purpose: str = "turn",
                  cost_baselines=None, suggestions: bool = False,
-                 allow_overage: bool = False) -> None:
+                 allow_overage: bool = False,
+                 wait_slots: Optional[WaitSlots] = None) -> None:
         self.command = command
+        #: Where a turn asks to keep its process open for Claude's waits
+        #: (#749, Part 2): the window's, shared by every chat, with Settings'
+        #: limit. None never keeps one open for them (Part 1's behaviour).
+        self.wait_slots = wait_slots
+        #: Set by the window when a folder is taken from the chat mid-turn
+        #: (#749): this process isn't kept open for waits, since it still
+        #: reaches the folder. A plain flag, read without the lock.
+        self.no_hold_for_waits = False
         #: You chose to keep going on usage credits for this one turn (#722);
         #: never kept for the next.
         self.allow_overage = allow_overage
@@ -1873,9 +1893,36 @@ class TurnRunner:
         self.waiting_on_background = False
         #: The timers, wakeups and watches Claude has set in this process
         #: (#749), as the latest "waits" event said. Each ends with the
-        #: process, so for now the turn's end says which won't happen; later
-        #: they'll keep the process open (#749, Part 2).
+        #: process; with ``wait_slots``, those due soon keep it open (Part 2).
         self.pending_waits: List[Wait] = []
+        #: The descriptions in Claude Code's latest background list, ambient
+        #: tasks too: a watch keeps the process open only while it's there.
+        self._listed: frozenset = frozenset()
+        #: Claude has answered and is idle, with nothing in the background,
+        #: and the process is kept open for Claude's waits (#749, Part 2):
+        #: "waiting for a scheduled check". A message sent now goes straight
+        #: in (``send_follow_up``), as with background work.
+        self.waiting_for_waits = False
+        #: The process has been kept open for waits at some point: when it
+        #: ends, the waits left "stopped waiting" rather than ending with
+        #: the reply.
+        self.held_for_waits = False
+        #: The waits already said, with a reply, to be too far away to keep
+        #: the chat open for, by tool_use id: not said again at the end.
+        self._told_far: frozenset = frozenset()
+        #: One-time waits found past their time, with no wake, at a check:
+        #: given one more grace before the process ends, as Claude Code fires
+        #: a timer late after the computer sleeps (#749).
+        self._overdue_seen: frozenset = frozenset()
+        #: A turn Claude Code started for a timer (command_lifecycle), from
+        #: its "woke" until its reply is said: its wakeup_source.
+        self._woke_source = ""
+        #: The latest usage limits Claude Code reported, so a wake turn is
+        #: checked against usage credits even if they don't change (#722).
+        self._limits_info: Optional[dict] = None
+        #: Ends the process if its waits stop holding it with nothing said
+        #: (a one-time check that never fired), checked at the time it could.
+        self._wait_timer: Optional[threading.Timer] = None
 
     def elapsed(self) -> float:
         return self._clock() - self.started_at
@@ -1899,17 +1946,43 @@ class TurnRunner:
         self._flush_sent()
         return ok
 
+    @property
+    def kept_open(self) -> bool:
+        """Claude has answered and is idle, and the process is kept open for
+        background work (#161) or for Claude's waits (#749): what's sent now
+        goes in at once, as the next message."""
+        return self.waiting_on_background or self.waiting_for_waits
+
+    def held_waits(self) -> List[Wait]:
+        """The waits keeping, or that would keep, the process open now (#749).
+        Without ``_lock``: the window asks on its own thread, Stop included,
+        and a write holding the lock may wait for good (#663). Both lists are
+        only ever replaced whole, so reading them is safe."""
+        waits, listed, late = list(self.pending_waits), self._listed, self._overdue_seen
+        held = waits_policy.held_waits(waits, listed, waits_policy.wall_clock())
+        # One past its time that's given one more grace still holds it.
+        return held + [w for w in waits if w.tool_use_id in late and w not in held]
+
+    def waits_to_lose(self) -> List[Wait]:
+        """Every wait that ends with the process now, but those already said
+        to be too far away: what Stop says it ends (#749). Without ``_lock``,
+        as ``held_waits``."""
+        told = frozenset(self._told_far)
+        return [w for w in list(self.pending_waits) if w.tool_use_id not in told]
+
     def send_follow_up(self, prompt: str, images: Optional[List[dict]] = None) -> bool:
         """Send a message while Claude is idle, waiting on background work
-        (#161): a plain next message, nothing to interrupt. False unless the
-        turn is waiting that way, so the caller queues it as usual."""
+        (#161) or kept open for its waits (#749): a plain next message,
+        nothing to interrupt. False unless the turn is waiting that way, so
+        the caller queues it as usual."""
         with self._lock:
             if (not self._stdin_open or self._cancelled or self.stopped_before_answer
-                    or not self.waiting_on_background):
+                    or not (self.waiting_on_background or self.waiting_for_waits)):
                 return False
             ok = self._write_message("follow_up", prompt, images)
             if ok:
                 self.waiting_on_background = False
+                self.waiting_for_waits = False
                 self.last_activity = "starting on your new message"
         self._flush_sent()
         return ok
@@ -1927,12 +2000,15 @@ class TurnRunner:
             if not self._prompt_sent:
                 self._waiting.append(("steer", prompt))
                 return True
-            late = self._answered or self.waiting_on_background
+            idle = self.waiting_on_background or self.waiting_for_waits
+            late = self._answered or idle
             ok = self._write_message("steer", prompt, late=late)
-            if ok and self.waiting_on_background:
-                # Claude was idle, waiting on background work: nothing to
-                # join, so it's simply the next message (#161).
+            if ok and idle:
+                # Claude was idle, waiting on background work or for its
+                # waits: nothing to join, so it's simply the next message
+                # (#161, #749).
                 self.waiting_on_background = False
+                self.waiting_for_waits = False
                 self.last_activity = "starting on your new message"
         self._flush_sent()
         return ok
@@ -2013,18 +2089,134 @@ class TurnRunner:
     def _end_or_wait(self) -> str:
         """Claude Code is idle with the turn answered: end the turn by closing
         stdin ("closed"), or keep it open while background work runs
-        ("waiting", or "started waiting" the first time). "unanswered" if a
-        message sent since is still to be answered. One step under
-        ``_lock``, so nothing can be sent in between."""
+        ("waiting", or "started waiting" the first time), or for Claude's
+        waits ("scheduled", #749). "unanswered" if a message sent since is
+        still to be answered. One step under ``_lock``, so nothing can be
+        sent in between."""
         with self._lock:
             if self._unanswered:
                 return "unanswered"
             if self.background_tasks:
+                self.waiting_for_waits = False
                 started = not self.waiting_on_background
                 self.waiting_on_background = True
                 return "started waiting" if started else "waiting"
+            if self._hold_for_waits_locked():
+                self.waiting_for_waits = True
+                self.held_for_waits = True
+                # A yes to usage credits was for the message that got it:
+                # never for a turn Claude starts by itself while it waits.
+                self.allow_overage = False
+                return "scheduled"
+            self.waiting_for_waits = False
             self._close_after_context_locked()
             return "closed"
+
+    def _hold_for_waits_locked(self) -> bool:
+        """Whether the process stays open for Claude's waits (#749, Part 2):
+        some due soon enough (``scheduled_waits.held_waits``), on the
+        subscription, and a place under Settings' limit. Never on API
+        credits: a process has one reservation and one budget, so a wake turn
+        couldn't be given a fresh, checked one. Call with ``_lock`` held."""
+        if (self.wait_slots is None or self.billing == ROUTE_API or self._cancelled
+                or not self._stdin_open or self.no_hold_for_waits):
+            return False
+        held = waits_policy.held_waits(self.pending_waits, self._listed,
+                                       waits_policy.wall_clock())
+        if not held:
+            return False
+        return self.wait_slots.take(self)
+
+    def _waits_waiting_data(self) -> dict:
+        """For the "waiting" event of a process kept open for waits (#749):
+        those holding it, and any too far away to, said once, with the reply
+        they came in, and kept by it."""
+        now = waits_policy.wall_clock()
+        with self._lock:
+            waits, listed = list(self.pending_waits), self._listed
+            far = [w for w in waits_policy.far_waits(waits, now)
+                   if w.tool_use_id not in self._told_far]
+            # Replaced whole, never changed in place: ``waits_to_lose`` reads
+            # it without the lock.
+            self._told_far = self._told_far | {w.tool_use_id for w in far}
+        held = waits_policy.held_waits(waits, listed, now)
+        return {"scheduled": True, "waits": [w.to_dict() for w in held],
+                "far": [w.to_dict() for w in far],
+                "reply_uuid": self.parser.reply_uuid,
+                "reply_message_id": self.parser.reply_message_id}
+
+    def _arm_wait_timer(self) -> None:
+        """While kept open for waits, check again when one could stop holding
+        the process with nothing to say so: a one-time check that never
+        fired, a repeating one Claude Code has expired."""
+        self._cancel_wait_timer()
+        # The policy's own list, not ``held_waits``: a check given its extra
+        # grace has its own timer, and here would come due at once, again
+        # and again.
+        now = waits_policy.wall_clock()
+        held = waits_policy.held_waits(list(self.pending_waits), self._listed, now)
+        when = waits_policy.next_recheck(held, now)
+        if when is None:
+            return
+        # A timer's wait is capped, so a clock changed meanwhile (or a
+        # sleep) is caught within the hour.
+        wait = min(max(1.0, when - waits_policy.wall_clock() + 1.0), 3600.0)
+        timer = self._timer(wait, self._recheck_waits)
+        timer.daemon = True
+        with self._lock:
+            if not self.waiting_for_waits or not self._stdin_open:
+                return
+            self._wait_timer = timer
+        timer.start()
+
+    def _cancel_wait_timer(self) -> None:
+        with self._lock:
+            timer, self._wait_timer = self._wait_timer, None
+        if timer is not None:
+            timer.cancel()
+
+    def _recheck_waits(self) -> None:
+        """Claude is idle, kept open for its waits: if none holds the process
+        now (a check that never came, a watch that's gone), it ends, and the
+        turn's end says which won't run; otherwise check again later."""
+        regrace = False
+        with self._lock:
+            if not self.waiting_for_waits or not self._stdin_open or self._cancelled:
+                return
+            now = waits_policy.wall_clock()
+            held = waits_policy.held_waits(self.pending_waits, self._listed, now)
+            if not held:
+                # A one-time check past its grace is given one more, counted
+                # from now, before the process ends: after the computer
+                # sleeps across its time, Claude Code fires it late, and the
+                # first check after waking mustn't beat it (#749).
+                overdue = {w.tool_use_id for w in self.pending_waits
+                           if w.one_shot and w.kind != waits_policy.WATCH
+                           and w.tool_use_id not in self._overdue_seen
+                           and w.fire_time() is not None
+                           and w.fire_time().timestamp() < now}
+                if overdue:
+                    self._overdue_seen = self._overdue_seen | overdue
+                    regrace = True
+                else:
+                    self.waiting_for_waits = False
+                    self._close_stdin_locked()
+                    return
+        if regrace:
+            self._arm_timer_in(waits_policy.OVERDUE_GRACE_SECONDS)
+            return
+        self._arm_wait_timer()
+
+    def _arm_timer_in(self, seconds: float) -> None:
+        """Check the waits again in ``seconds``."""
+        self._cancel_wait_timer()
+        timer = self._timer(seconds, self._recheck_waits)
+        timer.daemon = True
+        with self._lock:
+            if not self.waiting_for_waits or not self._stdin_open:
+                return
+            self._wait_timer = timer
+        timer.start()
 
     # -- Live control of the running turn (#468) --------------------------------
 
@@ -2244,16 +2436,34 @@ class TurnRunner:
         closing here stopped agents 10 or 20 minutes in, with nothing left to
         pick them up. The check and the close are one step under ``_lock``, so
         a Send Now can't slip in between. True if closed (or already closed)."""
+        return self._close_or_hold(False)
+
+    def _close_or_hold(self, hold: bool) -> bool:
+        """``_close_stdin_if_answered``, and with ``hold``, when Claude is
+        idle after its background work with no turn after it: kept open for
+        Claude's waits instead, if any hold it (#749). The answer was said
+        already, so nothing more is."""
         with self._lock:
-            if self._unanswered or self.background_tasks:
+            # Nor while it's kept open, idle, for Claude's waits (#749): a
+            # ceiling left from before mustn't end them.
+            if self._unanswered or self.background_tasks or self.waiting_for_waits:
                 return False
-            self._close_stdin_locked()
-            return True
+            if not (hold and self._hold_for_waits_locked()):
+                self._close_stdin_locked()
+                return True
+            self.waiting_on_background = False
+            self.waiting_for_waits = True
+            self.held_for_waits = True
+            self.allow_overage = False  # as in _end_or_wait
+            self.last_activity = "waiting for a scheduled check"
+        self._arm_wait_timer()
+        return False
 
     def _close_stdin_if_no_work(self) -> None:
-        """End the turn, answered or not, unless background work is running."""
+        """End the turn, answered or not, unless background work is running
+        or it's kept open for Claude's waits (#749)."""
         with self._lock:
-            if not self.background_tasks:
+            if not self.background_tasks and not self.waiting_for_waits:
                 self._close_stdin_locked()
 
     def respond(self, request_id: str, response: dict) -> bool:
@@ -2594,15 +2804,18 @@ class TurnRunner:
             ceiling: List[threading.Timer] = []
 
             def arm_ceiling(unanswered_too: bool = False,
-                            wait: float = IDLE_AFTER_RESULT_WAIT) -> None:
+                            wait: float = IDLE_AFTER_RESULT_WAIT,
+                            hold: bool = False) -> None:
                 """``unanswered_too``: Claude Code says it's idle with a Send
                 Now message seemingly unanswered; end the turn even so, after
                 the same while, rather than leave it open for ever. Running
                 background work holds it off either way, and the ceiling armed
-                when that's done takes over."""
+                when that's done takes over. ``hold``: idle, so Claude's
+                waits may keep it open instead (#749)."""
                 disarm_ceiling()
                 timer = self._timer(wait,
                                     self._close_stdin_if_no_work if unanswered_too
+                                    else (lambda: self._close_or_hold(True)) if hold
                                     else self._close_stdin_if_answered)
                 timer.daemon = True
                 ceiling.append(timer)
@@ -2625,28 +2838,51 @@ class TurnRunner:
             stop_reading = False
 
             def settle(outcome: str, final_event: TurnEvent) -> None:
-                """After ``_end_or_wait`` said "closed" or "…waiting": the turn
-                ended, or it now waits for background work (said once, with
-                the reply so far)."""
+                """After ``_end_or_wait`` said "closed", "…waiting" or
+                "scheduled": the turn ended, or it now waits for background
+                work or for Claude's waits (#749). Each answer that came since
+                the last said is said once, with what it waits for: the first,
+                and each one Claude gives by itself while it waits (a timer's
+                wake turn, a watch's news, a background agent's follow-up)."""
                 nonlocal said_while_waiting
                 disarm_ceiling()
-                if outcome == "started waiting":
-                    said_while_waiting = True
-                    self._unsaid_reply = ""  # said now, with the background work
+                if outcome == "closed":
+                    self._cancel_wait_timer()
+                    return
+                if outcome == "scheduled":
+                    self.last_activity = "waiting for a scheduled check"
+                else:
+                    self._cancel_wait_timer()
                     self.last_activity = ("waiting for background work: "
                                           + "; ".join(self.background_tasks))
-                    waiting = TurnEvent("waiting", text=final_event.text,
-                                        session_id=final_event.session_id,
-                                        is_error=final_event.is_error,
-                                        denials=list(final_event.denials),
-                                        raw_type=final_event.raw_type,
-                                        data={"tasks": list(self.background_tasks)})
-                    # What the reply cost so far, said with it (#663).
-                    self._cost_data(waiting)
-                    self._emit(waiting)
-                    # Said now; the turn's end mustn't say them again.
-                    final_event.denials = []
-                    final_event.is_error = False
+                if said_while_waiting:
+                    if outcome == "scheduled":
+                        self._arm_wait_timer()
+                    return  # nothing new since it was said
+                said_while_waiting = True
+                woke = (final_event.data or {}).get("woke", "")
+                if outcome == "waiting" and not (final_event.text or final_event.is_error
+                                                 or final_event.denials):
+                    return  # an empty result after the answer: nothing to say
+                self._unsaid_reply = ""  # said now, with what it waits for
+                data = {"tasks": list(self.background_tasks)}
+                if outcome == "scheduled":
+                    data.update(self._waits_waiting_data())
+                if woke:
+                    data["woke"] = woke
+                waiting = TurnEvent("waiting", text=final_event.text,
+                                    session_id=final_event.session_id,
+                                    is_error=final_event.is_error,
+                                    denials=list(final_event.denials),
+                                    raw_type=final_event.raw_type, data=data)
+                # What the reply cost so far, said with it (#663).
+                self._cost_data(waiting)
+                self._emit(waiting)
+                # Said now; the turn's end mustn't say them again.
+                final_event.denials = []
+                final_event.is_error = False
+                if outcome == "scheduled":
+                    self._arm_wait_timer()
             sent_lock = threading.Lock()
 
             def send_message() -> bool:
@@ -2718,6 +2954,49 @@ class TurnRunner:
                         # send the message, or a sign Claude is carrying on.
                         with self._lock:
                             self.pending_waits = list(self.parser.waits.waits)
+                            self._listed = self.parser.waits.listed
+                        self._emit(event)
+                        # Kept open for them, idle: a watch that ended may
+                        # have been the last thing holding it.
+                        self._recheck_waits()
+                        continue
+                    if event.kind == "woke":
+                        # Claude Code started a turn by itself, for a timer
+                        # (#749): a new turn in the same chat, checked as one
+                        # you send is. Its system/init comes next, and gets
+                        # the key and Fable checks below; usage credits are
+                        # checked now, on what Claude Code last said, and
+                        # never allowed for it: your yes was for your message.
+                        if (final is not None and not said_while_waiting
+                                and not self._unanswered and self.wait_slots is not None
+                                and self.billing != ROUTE_API):
+                            # The answer before it was never said (the timer
+                            # came due while Claude worked, and fired with no
+                            # idle between): said now, with what's next,
+                            # before the check's own answer replaces it. The
+                            # list first, so the check starting now isn't
+                            # named as still to come.
+                            with self._lock:
+                                self.pending_waits = list(self.parser.waits.waits)
+                            settle("scheduled", final)
+                        self._cancel_wait_timer()
+                        with self._lock:
+                            self.waiting_for_waits = False
+                            self._answered = False
+                        self.allow_overage = False
+                        self._woke_source = str((event.data or {}).get("source") or "")
+                        self.last_activity = "doing a scheduled check"
+                        self.retry = None
+                        problem = overage_problem(self._limits_info, self._turn_model(),
+                                                  self.billing, False)
+                        if problem:
+                            self.stopped_for_overage = True
+                            self.overage_model = self._turn_model()
+                            self.stopped_mid_turn = True
+                            self._kill()
+                            final = TurnEvent("failed", text=problem, is_error=True,
+                                              session_id=self.parser.session_id)
+                            break
                         self._emit(event)
                         continue
                     if event.kind == "mode":
@@ -2752,7 +3031,7 @@ class TurnRunner:
                         # (seen in 2.1.316's code), so with the turn answered
                         # and nothing new under way one doesn't mean the turn
                         # is retrying.
-                        if not (self.waiting_on_background
+                        if not (self.waiting_on_background or self.waiting_for_waits
                                 or (final is not None and not carrying_on
                                     and not self._unanswered)):
                             self.retry = {**(event.data or {}), "at": self._clock()}
@@ -2765,6 +3044,8 @@ class TurnRunner:
                         # status or isUsingOverage changes, so the request
                         # that tipped it over brings it, mid-turn.
                         self._emit(event)
+                        if isinstance(event.data, dict):
+                            self._limits_info = dict(event.data)  # for a wake turn (#749)
                         problem = overage_problem(event.data, self._turn_model(),
                                                   self.billing, self.allow_overage)
                         if problem:
@@ -2787,6 +3068,10 @@ class TurnRunner:
                                 # stands, and the next Send asks. With
                                 # background work going, that work was
                                 # stopped too, so the reason is the ending.
+                                # Claude's checks for later end with it, and
+                                # the line saying so says why (#749).
+                                final.data = {**(final.data or {}),
+                                              "waits_stop": waits_policy.STOP_USAGE}
                                 stop_reading = True
                                 break
                             self.stopped_mid_turn = not unsent
@@ -2850,12 +3135,20 @@ class TurnRunner:
                         self.session_started = True
                         if event.text:
                             self._mode = normalize_permission_mode(event.text)
+                        # Every system/init, a wake turn's too (#749): Claude
+                        # Code sends one for each turn it starts by itself.
                         problem = (source_problem(self.billing, self.parser.api_key_source)
                                    or fable_problem(self.parser.model, self.chosen, sent=True,
                                                     billing=self.billing))
                         if problem:
                             self._stopped_for_key = True
-                            self.stopped_before_answer = True
+                            if final is not None:
+                                # After an answer (a wake turn, a turn Claude
+                                # starts after background work): your message
+                                # was answered, so it doesn't come back.
+                                self.stopped_mid_turn = True
+                            else:
+                                self.stopped_before_answer = True
                             self._kill()
                             final = TurnEvent("failed", text=problem, is_error=True,
                                               session_id=self.parser.session_id)
@@ -2893,8 +3186,18 @@ class TurnRunner:
                             had_tasks = bool(self.background_tasks)
                             self.background_tasks = tasks
                             self.background_entries = entries
+                            # Ambient tasks too: a watch holds only while
+                            # it's listed (#749).
+                            self._listed = self.parser.waits.listed
                             if not tasks:
                                 self.waiting_on_background = False
+                            elif self.waiting_for_waits:
+                                # Work started while idle for the waits: it
+                                # holds the process now, as background work.
+                                self.waiting_for_waits = False
+                                self.waiting_on_background = True
+                        if not tasks:
+                            self._recheck_waits()
                         if tasks and (self.waiting_on_background
                                       or (final is not None and not carrying_on
                                           and not self._unanswered)):
@@ -2911,7 +3214,7 @@ class TurnRunner:
                             if self._unanswered:
                                 arm_ceiling(unanswered_too=True)
                             else:
-                                arm_ceiling(wait=BACKGROUND_DONE_WAIT)
+                                arm_ceiling(wait=BACKGROUND_DONE_WAIT, hold=True)
                         elif (had_tasks and not tasks and final is not None
                               and last_state == "running" and not self._unanswered
                               and not said_while_waiting and not carrying_on):
@@ -2951,9 +3254,13 @@ class TurnRunner:
                             self._cost_known = False
                             with self._lock:
                                 self.waiting_on_background = False
+                                # Running again (a wake, a watch's news):
+                                # not idle for the waits until its end (#749).
+                                self.waiting_for_waits = False
                                 self._answered = False
                                 # Back at work: the next idle ends the turn.
                                 self._closing = False
+                            self._cancel_wait_timer()
                             # Read without the lock on purpose: a Send Now
                             # landing just after only meets the ceiling that
                             # checks again before closing.
@@ -3017,6 +3324,10 @@ class TurnRunner:
                             event.denials = list(final.denials) + [
                                 d for d in event.denials if d not in final.denials]
                             event.is_error = event.is_error or final.is_error
+                        if self._woke_source:
+                            # A timer's wake turn's answer (#749): said as one.
+                            event.data = {**(event.data or {}), "woke": self._woke_source}
+                            self._woke_source = ""
                         final = event
                         if not event.is_error:
                             self._unsaid_reply = event.text or ""
@@ -3110,6 +3421,13 @@ class TurnRunner:
             final = TurnEvent("failed", text=f"Couldn't run claude: {exc}", is_error=True)
         finally:
             self._tree.close()
+            # The process is over: its place for waits goes to another chat.
+            # The flag first, so a recheck running now can't arm another timer.
+            with self._lock:
+                self.waiting_for_waits = False
+            self._cancel_wait_timer()
+            if self.wait_slots is not None:
+                self.wait_slots.release(self)
             with self._lock:
                 self.pending.clear()
             self._fail_controls()  # before the final event: their callers hear first
@@ -3125,12 +3443,18 @@ class TurnRunner:
         (#749): they go on the turn's last event, with the reply they're
         kept beside, so the window can say which won't happen."""
         with self._lock:
-            waits = list(self.pending_waits)
+            # Not one said already, with its reply, to be too far away.
+            waits = [w for w in self.pending_waits if w.tool_use_id not in self._told_far]
+            held = self.held_for_waits
         if not waits:
             return
         event.data = {**(event.data or {}), "waits": [w.to_dict() for w in waits],
                       "reply_uuid": self.parser.reply_uuid,
                       "reply_message_id": self.parser.reply_message_id}
+        if held:
+            # Kept open for them a while, then ended (Stop, quitting, Claude
+            # Code exiting, a check that never came): "stopped waiting".
+            event.data["held"] = True
 
     def _refuse_unsupported(self) -> None:
         """Control requests other than permission checks and MCP servers'

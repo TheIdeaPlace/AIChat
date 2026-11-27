@@ -138,6 +138,12 @@ STEPS = [
     Step("settings", ["ctrl+comma"], expect=["Settings", "Announcements", "Full"],
          refuse=["unlabeled", "unlabelled"]),
     Step("settings, tab", ["Tab"], expect=["Announce when any listed session", "check box"]),
+    # The limit on chats kept open for Claude's checks (#749) has no access
+    # key: it's two Tabs past Recent folders, after Clear Recent Folders.
+    Step("settings, recent folders", ["alt+f"], expect=["Recent folders New Session offers"]),
+    Step("settings, chats kept open for checks", ["Tab", "Tab"],
+         expect=["Claude chats kept open at once for checks Claude sets for later"],
+         refuse=["unlabeled", "unlabelled"]),
     Step("settings, history retention", ["alt+y"],
          expect=["History retention and kept copies"]),
     # Its access key may also toggle it (GTK clicks a check box's mnemonic);

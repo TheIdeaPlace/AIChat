@@ -204,7 +204,9 @@ class SoundHost:
     def _sound_member_working(self, provider: str, native: str) -> bool:
         if provider == "claude":
             runner = self._runners.get(native)
-            if runner is None or getattr(runner, "waiting_on_background", False):
+            # Answered and kept open (#161, #749): not working.
+            if runner is None or getattr(runner, "waiting_on_background", False) \
+                    or getattr(runner, "waiting_for_waits", False):
                 return False
             return not self._pending.get(native)
         state = self._codex_states.get(f"{provider}:{native}")

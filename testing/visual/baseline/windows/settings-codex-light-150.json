@@ -495,12 +495,50 @@
    "problems": []
   },
   {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "Claude chats kept open at once for checks Claude sets for later:",
+   "rect": [
+    10,
+    691,
+    501,
+    26
+   ],
+   "best": [
+    501,
+    26
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "SpinCtrl",
+   "name": "Claude chats kept open at once for checks Claude sets for later",
+   "label": "",
+   "rect": [
+    519,
+    688,
+    64,
+    33
+   ],
+   "best": [
+    64,
+    33
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
    "class": "CheckBox",
    "name": "check",
    "label": "T&urn on Remote Control for The Chat Place's sessions, so you can reach them from claude.ai and other devices.\nTheir conversations are copied to claude.ai and kept there. (Session, Remote Control changes one session.)",
    "rect": [
     10,
-    688,
+    731,
     937,
     50
    ],
@@ -519,7 +557,7 @@
    "label": "Let Claude &keep a task list in The Chat Place's sessions, as it does in the desktop app, so Tools, Tasks shows\nhow far along it is (from the next turn)",
    "rect": [
     10,
-    748,
+    791,
     908,
     50
    ],
@@ -535,10 +573,48 @@
   {
    "class": "CheckBox",
    "name": "check",
+   "label": "Let Claude use Chrome in Claude chats on your subscription (needs the Claude in Chrome extension; from the\nnext turn)",
+   "rect": [
+    10,
+    851,
+    927,
+    50
+   ],
+   "best": [
+    927,
+    50
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
+   "label": "Suggest what to send next after each reply in Claude chats on your subscription (from the next turn)",
+   "rect": [
+    10,
+    911,
+    825,
+    25
+   ],
+   "best": [
+    825,
+    25
+   ],
+   "depth": 1,
+   "parent": 0,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "CheckBox",
+   "name": "check",
    "label": "Include Code&x chats (restart required)",
    "rect": [
     10,
-    808,
+    946,
     330,
     25
    ],
@@ -557,7 +633,7 @@
    "label": "Let a&gent conversations hand replies across automatically",
    "rect": [
     10,
-    843,
+    981,
     489,
     25
    ],
@@ -576,7 +652,7 @@
    "label": "Check for up&dates when The Chat Place starts",
    "rect": [
     10,
-    874,
+    1012,
     394,
     25
    ],
@@ -595,7 +671,7 @@
    "label": "&Tell me when an update has been installed, with a link to what's new",
    "rect": [
     10,
-    909,
+    1047,
     572,
     25
    ],
@@ -614,7 +690,7 @@
    "label": "Histor&y retention and kept copies:",
    "rect": [
     10,
-    954,
+    1092,
     269,
     26
    ],
@@ -633,9 +709,9 @@
    "label": "Claude Code: cleanupPeriodDays is 30 days in readable global settings (default 30). Folder settings or administrator policy can override this. Recent Claude versions exempt desktop-host transcripts by default.\r\nCodex: no documented automatic age limit for saved threads. Prompt history limits are separate.\r\nCopilot CLI: no documented automatic age limit for saved sessions.\r\nThe Chat Place keeps copies of Claude transcripts it sees, including terminal chats. After the original disappears, the copy is read-only. Copies have no automatic expiry and are unencrypted. Back Up Now includes them; a copy on this disk still needs a backup.\r\nKept Claude chats: 2. Copy or catalog problems: 0. New copies may still be running in the background.",
    "rect": [
     12,
-    982,
+    1120,
     952,
-    165
+    87
    ],
    "best": [
     191,
@@ -653,7 +729,7 @@
    "label": "Open Claude's retention settings",
    "rect": [
     10,
-    1155,
+    1215,
     291,
     36
    ],

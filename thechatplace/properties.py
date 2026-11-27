@@ -92,7 +92,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
                        own=None, reported_window: int = 0,
                        now_ms: Optional[int] = None, read_error: str = "", saved_rule_count=None,
                        subagent_count: Optional[int] = None, running_model: str = "",
-                       api_spent: Optional[float] = None, api_cost: str = '') -> List[str]:
+                       api_spent: Optional[float] = None, api_cost: str = '',
+                       waits: str = "") -> List[str]:
     """The session's properties. ``transcript`` is None when it isn't on
     disk, or couldn't be read (``read_error`` says why); ``own`` is its
     ``OwnSession`` for one of The Chat Place's own; ``reported_window`` the
@@ -100,7 +101,9 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     ``subagent_count`` how many subagents' transcripts it has (#468), None
     when that isn't known; ``running_model`` the model a Codex chat is on
     now, named for one that follows Codex's default (#596); ``api_spent``
-    what a chat on API credits has spent in all (#658)."""
+    what a chat on API credits has spent in all (#658); ``waits`` what a
+    Claude chat kept open for Claude's checks for later is waiting for
+    (#749: "Scheduled check at 2:00 PM.")."""
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     # A restored chat (#436) or an agent conversation names its AI here.
     name = info.provider_label or info.provider.capitalize()
@@ -117,6 +120,8 @@ def session_properties(info: SessionInfo, transcript: Optional[Transcript] = Non
     state = "unavailable" if info.state == STATUS_UNAVAILABLE else info.state
     status = state_with_detail(state, info.detail)
     lines.append(f"Status: {status[:1].upper()}{status[1:]}")
+    if waits:
+        lines.append(f"Waiting for: {waits}")
     lines.append(f"Started: {describe_ms(info.created_ms, now_ms)}")
     lines.append(f"Last activity: {describe_ms(info.last_activity_ms, now_ms)}")
     if transcript is not None and transcript.model:

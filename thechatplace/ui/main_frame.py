@@ -420,6 +420,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         #: row under the reader changed only in those (#146).
         self._row_basis: Dict[str, Tuple[str, str]] = {}
         self._runners: Dict[str, TurnRunner] = {}
+        #: How many Claude chats may keep their process open for Claude's
+        #: waits at once (#749, Part 2): Settings' limit, read as each asks.
+        #: How many chats waiting for checks an update's question named (#749).
+        self._update_scheduled_ok = 0
+        self._wait_slots = scheduled_waits.WaitSlots(
+            lambda: getattr(self.speech, "wait_limit", scheduled_waits.DEFAULT_WAIT_LIMIT))
+        #: Chats whose Stop said already which of Claude's waits it ends
+        #: (#749): the turn's end doesn't say it again.
+        self._stop_said_waits: set = set()
+        #: Chats stopped because a folder was taken away in Chat Options
+        #: while they waited for Claude's checks (#749): their end is said
+        #: as that, after the change's own confirmation, not as a failure.
+        self._options_stopped: set = set()
         #: API chats whose first send this run was confirmed (#658), once a
         #: message really went (#663), and those confirmed with a message
         #: on its way.
@@ -1279,8 +1292,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         owned = deepcopy(self.store.all(provider=None))
         own = [s for s in owned if s.provider == "claude"]
         running = set(self._runners)
-        background = {sid for sid, runner in self._runners.items()
-                      if getattr(runner, "waiting_on_background", False)}
+        # Answered and kept open: for background work (#161), or for
+        # Claude's waits, with the next one as the row's detail (#749).
+        background = {sid: self._kept_open_detail(runner)
+                      for sid, runner in self._runners.items() if self._kept_open(runner)}
         waiting = self._waiting()
         order = self.speech.session_order
         # Each transcript's end is read only while the column is shown (#146).
@@ -1593,7 +1608,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            "returns it to the list.")
             return
         if info.is_own and info.cli_session_id in self._runners:
-            self._feedback("A turn is running in that session. Stop it first.")
+            self._feedback(self._running_refusal(
+                info.cli_session_id, "A turn is running in that session. Stop it first."))
             return
         try:
             self.hidden.hide(info.key)
@@ -1752,7 +1768,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            "its files aren't deleted here. It can be hidden.")
             return
         if info.cli_session_id in self._runners:
-            self._feedback("A turn is running in that session. Stop it first.")
+            self._feedback(self._running_refusal(
+                info.cli_session_id, "A turn is running in that session. Stop it first."))
             return
         if info.cli_session_id in self._rewinding_files:
             # Claude Code has the transcript open, reading its checkpoints.
@@ -3684,11 +3701,15 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                     api_cost = chat_cost_words(ledger, info.key)
             except Exception:  # noqa: BLE001 - Properties without it, not an error
                 api_spent = None
+        # A Claude chat kept open for the checks Claude set (#749).
+        runner = self._runners.get(info.cli_session_id) if info.provider == "claude" else None
+        waits = (self._waits_words(runner)
+                 if getattr(runner, "waiting_for_waits", False) else "")
         try:
             lines = properties.session_properties(
                 info, transcript, path, size, own, self._reported_window(info, model),
                 read_error=error, subagent_count=subagent_count, running_model=running,
-                api_spent=api_spent, api_cost=api_cost)
+                api_spent=api_spent, api_cost=api_cost, waits=waits)
         except Exception as exc:  # noqa: BLE001 - a dialog that says so, not a traceback
             lines = [f"Error: couldn't list this session's properties ({exc})"]
         lines = properties.with_branch_facts(lines, branch_facts)
@@ -4284,6 +4305,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 # Answered; kept open only so the work can finish (#161).
                 label = (f"Claude answered. {announce.background_text(runner.background_tasks)} "
                          "What you send goes to Claude now.")
+            elif running and getattr(runner, "waiting_for_waits", False):
+                # Answered; kept open for Claude's checks for later (#749).
+                label = (f"Claude answered. {self._waits_words(runner)} "
+                         "What you send goes to Claude now.")
             elif running:
                 elapsed = describe_elapsed(self._runners[info.cli_session_id].elapsed())
                 label = f"Claude is working ({elapsed})."
@@ -4717,30 +4742,81 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                          needs_you=True)
         elif not (event.data or {}).get("after_background"):
             # After background work that brought no new answer, the answer
-            # before it was already notified (#161).
-            self._notify(key, f"{title} finished",
-                         body(event.text or "Claude finished its turn."))
+            # before it was already notified (#161). A check Claude set for
+            # later is headed as one (#749).
+            heading = (f"{title}, {announce.SCHEDULED_CHECK}" if (event.data or {}).get("woke")
+                       else f"{title} finished")
+            self._notify(key, heading, body(event.text or "Claude finished its turn."))
         elif lost:
             self._notify(key, f"{title} finished", lost)
 
-    def _keep_lost_waits(self, session_id: str, event) -> str:
+    def _keep_lost_waits(self, session_id: str, event, field: str = "waits",
+                         start: Optional[str] = None) -> str:
         """The line saying which of Claude's timers and watches won't run
         now its process has ended (#749), kept after the reply it follows
         so it's still there when the chat is read later; "" for none. The
-        times are worked out now, in local time."""
+        times are worked out now, in local time. ``field``: the event's list
+        of them ("far": those too far away to keep the chat open for, said
+        with the reply, Part 2); ``start``: how the line begins, by default
+        as the turn ended (with its reply, or after the chat was kept open
+        for them a while)."""
         data = getattr(event, "data", None) or {}
-        waits = scheduled_waits.from_dicts(data.get("waits"))
+        waits = scheduled_waits.from_dicts(data.get(field))
+        if start is None:
+            start = (scheduled_waits.USAGE_START
+                     if data.get("waits_stop") == scheduled_waits.STOP_USAGE
+                     else scheduled_waits.ENDED_START if data.get("held")
+                     else scheduled_waits.LOST_START)
         now = scheduled_waits.local_now()
-        lost = scheduled_waits.lost_sentence(waits, now)
+        lost = scheduled_waits.lost_sentence(waits, now, start=start)
         key = reply_costs.claude_reply_key(data)
         if lost and key:
             try:
                 # Dated, as it's read on some later day.
-                self.store.add_reply_note(session_id, key,
-                                          scheduled_waits.lost_sentence(waits, now, dated=True))
+                self.store.add_reply_note(session_id, key, scheduled_waits.lost_sentence(
+                    waits, now, dated=True, start=start))
             except (OSError, ValueError):
                 pass  # still said; only the line after the reply is lost
         return lost
+
+    @staticmethod
+    def _kept_open(runner) -> bool:
+        """Claude has answered and the turn is kept open, idle: for background
+        work (#161) or for Claude's waits (#749). A message goes in at once."""
+        return bool(getattr(runner, "waiting_on_background", False)
+                    or getattr(runner, "waiting_for_waits", False))
+
+    def _running_refusal(self, session_id: str, default: str) -> str:
+        """Why Hide, Delete or Put Files Back can't go ahead while a chat has
+        a turn: ``default``, or for one waiting for Claude's checks for later
+        (#749), that, and that Stop ends it."""
+        runner = self._runners.get(session_id)
+        if getattr(runner, "waiting_for_waits", False):
+            return "That chat is waiting for a check Claude set. Stop ends it."
+        return default
+
+    @staticmethod
+    def _held_waits(runner) -> list:
+        """The waits keeping a Claude turn open (#749), or none."""
+        held = getattr(runner, "held_waits", None)
+        try:
+            return list(held()) if callable(held) else []
+        except Exception:  # noqa: BLE001 - a status line must not fail
+            return []
+
+    def _kept_open_detail(self, runner) -> str:
+        """The row's detail for a turn kept open (#161, #749)."""
+        if getattr(runner, "waiting_for_waits", False):
+            detail = scheduled_waits.row_detail(self._held_waits(runner),
+                                                scheduled_waits.local_now())
+            return f"answered, {detail}" if detail else "answered"
+        return "answered, background work running"
+
+    def _waits_words(self, runner) -> str:
+        """What a turn kept open for Claude's waits waits for (#749):
+        "Scheduled check at 2:00 PM." for Turn Status and Properties."""
+        return scheduled_waits.waiting_words(self._held_waits(runner),
+                                             scheduled_waits.local_now())
 
     @staticmethod
     def _own_key(session_id: str) -> str:
@@ -4903,7 +4979,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         runner = self._runners.get(session_id)
         allow_overage = False
-        if runner is None or runner.waiting_on_background:
+        if runner is None or self._kept_open(runner):
             # Fable's plan, and usage credits asked about, as Send does (#722).
             problem, allow_overage = self._fable_send_problem(self.store.get(session_id))
             if problem is not None:
@@ -4912,8 +4988,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 else:
                     self._feedback("Not sent.")
                 return
-        if runner is not None and runner.waiting_on_background:
-            # Answered and only waiting on background work (#161): it goes in.
+        if runner is not None and self._kept_open(runner):
+            # Answered and only waiting on background work (#161) or for
+            # Claude's waits (#749): it goes in.
             if allow_overage:
                 runner.allow_overage = True  # you said yes for this one (#722)
             if runner.send_follow_up(message):
@@ -5033,9 +5110,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     def _from_next_turn(self, own: OwnSession) -> str:
         """When a change to a session's setting starts to count."""
-        if own.cli_session_id in self._runners:
-            return "from its next turn; the turn running now carries on as it started"
-        return "from its next turn"
+        return "from its next turn" + self._running_turn_note(own)
+
+    def _running_turn_note(self, own: OwnSession) -> str:
+        """What a settings change says of the chat's turn still running: a
+        chat kept open for Claude's checks for later (#749) keeps its old
+        settings for them, and for what you send meanwhile, until Stop."""
+        runner = self._runners.get(own.cli_session_id)
+        if runner is None:
+            return ""
+        if getattr(runner, "held_for_waits", False) or getattr(runner, "waiting_for_waits",
+                                                              False):
+            return ("; it's waiting for checks Claude set, and until they end, they and what "
+                    "you send keep the old settings. Stop ends them")
+        return "; the turn running now carries on as it started"
 
     def _copilot_models(self):
         """The models a new Copilot chat can start with: a small file read,
@@ -5338,6 +5426,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                            f"The turn has run for {describe_elapsed(runner.elapsed())}; "
                            f"Claude carries on when the work finishes.{tasks}")
             return
+        if runner is not None and getattr(runner, "waiting_for_waits", False):
+            # Kept open for Claude's checks for later (#749).
+            self._feedback(f"{info.title}: Claude answered. {self._waits_words(runner)} "
+                           "The chat stays open for it, and what you send goes to Claude "
+                           f"now.{tasks}")
+            return
         if runner is not None:
             count = len(self._queued.get(info.cli_session_id, []))
             waiting = f"{self._queued_words(count)} " if count else ""
@@ -5358,12 +5452,23 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if not self._runners:
             self._feedback(f"No turns are running.{loaded}")
             return
-        parts = []
+        parts, kept = [], []
         for session_id, other in self._runners.items():
             own = self.store.get(session_id)
             name = own.title if own else "A session"
-            parts.append(f"{name}, {describe_elapsed(other.elapsed())}")
-        self._feedback("Working: " + "; ".join(parts) + f".{loaded}")
+            if getattr(other, "waiting_for_waits", False):
+                # Idle, open for Claude's checks for later (#749).
+                detail = scheduled_waits.row_detail(self._held_waits(other),
+                                                    scheduled_waits.local_now())
+                kept.append(f"{name}, {detail}" if detail else name)
+            else:
+                parts.append(f"{name}, {describe_elapsed(other.elapsed())}")
+        said = []
+        if parts:
+            said.append("Working: " + "; ".join(parts) + ".")
+        if kept:
+            said.append("Waiting for checks Claude set: " + "; ".join(kept) + ".")
+        self._feedback(" ".join(said) + loaded)
 
     # ------------------------------------------- answering Claude (#187, #188)
 
@@ -6324,7 +6429,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._feedback("Still stopping. Send again in a moment.")
             return False
         allow_overage = False
-        if runner is None or runner.waiting_on_background:
+        if runner is None or self._kept_open(runner):
             # A message that goes now, on Fable (#722): only on a plan that
             # includes it, and on usage credits only if you say so, asked
             # each time you press Send. An agent conversation's relay
@@ -6340,10 +6445,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 else:
                     self._feedback("Not sent.")
                 return False
-        if runner is not None and runner.waiting_on_background:
+        if runner is not None and self._kept_open(runner):
             # Claude has answered and is only waiting for background work
-            # (#161): the message goes in now, as the next one, rather than
-            # waiting for work that may take an hour.
+            # (#161), or for its checks for later (#749): the message goes in
+            # now, as the next one, rather than waiting for work that may take
+            # an hour. Claude Code keeps its timers.
             if allow_overage:
                 runner.allow_overage = True  # you said yes for this one (#722)
             prompt, images = attachments.build(message, attached)
@@ -6549,6 +6655,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                          and not prompt.lstrip().startswith("/")
                                          and not self._agent_quiet("claude", session_id)),
                             allow_overage=allow_overage,  # this turn only (#722)
+                            # Kept open for Claude's waits, up to Settings'
+                            # limit (#749); never on API credits.
+                            wait_slots=self._wait_slots,
                             # Charged as the chat was made to be (#658).
                             **self._billing_kwargs(session_id))
         # What came after the last reply is out of date once a turn starts.
@@ -6781,7 +6890,16 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         if event.kind == "waits":
             # Claude set a timer or a watch (#749). The runner keeps the
-            # list; what it means is said when the turn ends.
+            # list; what it means is said with the reply.
+            return
+        if event.kind == "woke":
+            # Claude Code started a turn by itself, for a check Claude set
+            # (#749, Part 2): the chat is working again, and its answer is
+            # said like any reply when it comes.
+            self._status(f"{title}: Claude is doing a scheduled check.")
+            if is_open_now:
+                self._update_send_state()
+            self.refresh_sessions()
             return
         if event.kind == "steer_taken":
             data = event.data or {}
@@ -6889,9 +7007,19 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # won't run is said once, after however the turn ended, and kept
             # after the reply it follows.
             lost = self._keep_lost_waits(session_id, event)
+            if session_id in self._stop_said_waits:
+                # Stop said which it ends as you pressed it (#749): kept
+                # after the reply, but not said twice.
+                self._stop_said_waits.discard(session_id)
+                lost = ""
+            options_stopped = session_id in self._options_stopped
+            self._options_stopped.discard(session_id)
             lost_said = False
             self._note_worktree_move(session_id, title)
-            quiet = self._agent_quiet("claude", session_id)
+            # A check Claude set for later is said in the chat's own name,
+            # even for an agent conversation's member (#749).
+            quiet = (self._agent_quiet("claude", session_id)
+                     and not (event.data or {}).get("woke"))
             self._sound_claude_turn_end(session_id, event, denials, runner, prompt, command_result,
                                         quiet)
             if not quiet:
@@ -6923,6 +7051,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                                        title, session_id, interrupt=False)
                 else:
                     self._status(f"{title} finished.")
+            elif options_stopped and runner is not None and runner.cancelled:
+                # Stopped as a folder was taken away in Chat Options (#749):
+                # not a failure, and queued behind the change's confirmation.
+                spoken = f"{title} stopped for its new chat options."
+                if lost:
+                    spoken, lost_said = announce.then(spoken, lost), True
+                self._say(spoken, interrupt=False, about=session_id)
             elif event.kind == "failed" or event.is_error:
                 # A Stop or a failure says what it cost too (#663).
                 spoken = self._with_cost(
@@ -6932,8 +7067,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._say_turn_end(spoken, cost, title, session_id)
             else:
                 # On API credits, what the reply cost (#658), unless
-                # Settings turned that off.
-                text = announce.reply_text(title, event.text, self.speech.announce, cost=cost)
+                # Settings turned that off. A check Claude set for later is
+                # said as one (#749).
+                text = announce.reply_text(title, event.text, self.speech.announce, cost=cost,
+                                           woke=bool((event.data or {}).get("woke")))
                 if denials and self.speech.enabled:
                     text = ((text or f"{title} finished{announce.cost_after(cost)}.")
                             + f" {detail}: " + "; ".join(denials))
@@ -7048,8 +7185,26 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Claude answered and left work running in the background (#161).
         The turn stays open so the work can finish and Claude can carry on;
         the reply is said now, as a finished turn's is, with what's still
-        running, and anything queued goes in now rather than after the work."""
-        background = announce.background_text((event.data or {}).get("tasks") or [])
+        running, and anything queued goes in now rather than after the work.
+
+        Or kept open for the checks Claude set for later (#749, Part 2): the
+        reply is said with what's next ("Scheduled check at 2:00 PM."), and
+        any too far away to keep the chat open for, kept after the reply.
+        Each answer Claude gives by itself meanwhile (a check's, a watch's)
+        comes here too; a check's is said as one ("…, scheduled check: …")."""
+        data = event.data or {}
+        woke = bool(data.get("woke"))
+        if data.get("scheduled"):
+            background = scheduled_waits.waiting_words(
+                scheduled_waits.from_dicts(data.get("waits")), scheduled_waits.local_now())
+            far = self._keep_lost_waits(session_id, event, field="far",
+                                        start=scheduled_waits.far_start())
+            background = announce.then(background, far) if far else background
+            if far and (self._open is not None and self._open.provider == "claude"
+                        and self._open.cli_session_id == session_id):
+                self._refresh_chat()  # the line after the reply
+        else:
+            background = announce.background_text(data.get("tasks") or [])
         # What the answer cost so far, on API credits (#663); the turn's end
         # says only what came after.
         cost = self._api_cost_words(event, session_id, turn_over=False)
@@ -7091,9 +7246,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._clear_activity()
         self._store_write(self.store.update, session_id, unread=not is_open,
                           last_activity_ms=int(time.time() * 1000))
-        if quiet:
+        if quiet and not woke:
             pass  # its conversation says it when the turn ends (#248)
         elif event.is_error:
+            # A check Claude set for later is said in the member's name even
+            # in an agent conversation, which isn't waiting for it (#749).
             self._notify(key, f"{title}: something failed",
                          f"{usage.friendly_error(event.text)} {background}", needs_you=True)
             self._say_turn_end(self._with_cost(
@@ -7107,19 +7264,22 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._notify(key, f"{title} needs you", f"{detail}: " + "; ".join(denials),
                              needs_you=True)
             else:
-                self._notify(key, f"{title} answered",
-                             f"{event.text or 'Claude answered.'} {background}")
-            text = announce.reply_text(title, event.text, self.speech.announce, cost=cost)
+                heading = (f"{title}, {announce.SCHEDULED_CHECK}" if woke
+                           else f"{title} answered")
+                self._notify(key, heading,
+                             announce.then(event.text or "Claude answered.", background))
+            text = announce.reply_text(title, event.text, self.speech.announce, cost=cost,
+                                       woke=woke)
             if denials and self.speech.enabled:
                 text = ((text or f"{title} answered{announce.cost_after(cost)}.")
                         + f" {detail}: " + "; ".join(denials))
             if text:
                 # Settles a "Sent on API credits" only with its cost (#663).
-                self._say(f"{text} {background}", about=session_id if cost else "")
+                self._say(announce.then(text, background), about=session_id if cost else "")
             else:
                 reply = announce.first_sentence(event.text) if event.text else ""
                 said = f"{title} answered{announce.cost_after(cost)}."
-                self._status(f"{said} {reply} {background}")
+                self._status(f"{said} {reply} {background}".strip())
                 if cost:
                     # Silent: the cost is still said, as Settings asks (#663).
                     self._speak_announcement(said, interrupt=False, about=session_id)
@@ -7610,9 +7770,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         text = waiting[index]
         if not self._running_overage_ok(info.cli_session_id, runner):
             return  # Fable on usage credits: asked as Send asks (#722)
-        if runner.waiting_on_background and runner.send_follow_up(text):
-            # Claude is idle, waiting on background work (#161): nothing to
-            # stop, so it simply goes as the next message.
+        if self._kept_open(runner) and runner.send_follow_up(text):
+            # Claude is idle, waiting on background work (#161) or for its
+            # checks for later (#749): nothing to stop, so it simply goes as
+            # the next message.
             del waiting[index]
             if not waiting:
                 self._queued.pop(info.cli_session_id, None)
@@ -7687,15 +7848,29 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if runner is None:
             self._feedback("Nothing is running.")
             return
+        # Stop ends the process, and every check Claude set in it (#749):
+        # said first, and not again when the turn ends. There's no stopping
+        # one check alone: that would take a turn asking Claude to.
+        # Every wait the turn's end would name, so not saying it then loses
+        # nothing (read without the runner's lock: Stop must never wait).
+        to_lose = getattr(runner, "waits_to_lose", None)
+        try:
+            losing = list(to_lose()) if callable(to_lose) else []
+        except Exception:  # noqa: BLE001 - Stop must still stop
+            losing = []
+        ends = scheduled_waits.stop_words(losing, scheduled_waits.local_now())
+        if ends:
+            self._stop_said_waits.add(info.cli_session_id)
         runner.cancel()
         queued = self._take_queued(info.cli_session_id)
         if queued:
             self._rebuild_chat_list()
             self._give_back(info.cli_session_id, queued, True)
             self._update_send_state()
-            self._feedback("Stopping. Your queued message is back in the message box.")
+            self._feedback(announce.then(ends or "Stopping.",
+                                         "Your queued message is back in the message box."))
             return
-        self._feedback("Stopping.")
+        self._feedback(ends or "Stopping.")
 
     # ------------------------------------------------------- settings, about
 
@@ -8831,7 +9006,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._say(f"{text} Help, {item} installs it, or the Update "
                       "button on the status bar.")
             return
-        if self._running_turn_count():
+        scheduled = self._scheduled_chat_count()
+        if self._running_turn_count() - scheduled:
             self._say(f"{text} It can be installed once the running turns finish; use Help, "
                       f"{item} then.", force=True)
             return
@@ -8846,11 +9022,17 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._unsent_text():
             question += ("\n\nText you haven't sent in a reply box will be lost, so "
                          "you may want to send or copy it first.")
+        if scheduled:
+            # A chat kept open for Claude's checks can wait for days (#749):
+            # it doesn't hold the update back, but you're told it ends.
+            question += "\n\n" + scheduled_waits.quit_words(scheduled, "install it now")
         answer = wx.MessageBox(question, "Update The Chat Place",
                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
         if answer != wx.YES:
             self._feedback(f"Not now. Help, {item} installs it later.")
             return
+        # The chats waiting for checks that the question named (#749).
+        self._update_scheduled_ok = scheduled
         self._update_busy = True
         self._feedback(f"Downloading The Chat Place {result.version}.")
 
@@ -8977,6 +9159,47 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def _running_turn_count(self) -> int:
         return len(self._runners) + len(self._running_codex_keys())
 
+    def _scheduled_chat_count(self) -> int:
+        """Claude chats kept open only for Claude's checks for later (#749):
+        among the running turns, but idle, and able to wait for days."""
+        return sum(1 for runner in self._runners.values()
+                   if getattr(runner, "waiting_for_waits", False))
+
+    def _update_blocked_by_turns(self) -> bool:
+        """Whether running work holds an update back. Chats waiting for
+        Claude's checks don't, as long as no more are waiting than the
+        update's question named (#749): one that began waiting since
+        wasn't asked about."""
+        scheduled = self._scheduled_chat_count()
+        allowed = min(scheduled, getattr(self, "_update_scheduled_ok", 0))
+        return self._active_owned_turn_count() - allowed > 0
+
+    def _end_waiting_chats_for_update(self) -> None:
+        """Installing an update exits at once, with no quit to save how each
+        chat ended: the chats waiting for Claude's checks are stopped first,
+        and the line saying which won't run kept after each one's reply, as
+        quitting keeps it (#749)."""
+        now = scheduled_waits.local_now()
+        waiting = [(sid, r) for sid, r in self._runners.items()
+                   if getattr(r, "waiting_for_waits", False)]
+        for session_id, runner in waiting:
+            parser = getattr(runner, "parser", None)
+            key = (getattr(parser, "reply_message_id", "") or getattr(parser, "reply_uuid", "")
+                   if parser is not None else "")
+            to_lose = getattr(runner, "waits_to_lose", None)
+            line = scheduled_waits.lost_sentence(list(to_lose()) if callable(to_lose) else [],
+                                                 now, dated=True,
+                                                 start=scheduled_waits.ENDED_START)
+            if line and key:
+                try:
+                    self.store.add_reply_note(session_id, key, line)
+                except (OSError, ValueError):
+                    pass  # the update still goes ahead; only the line is lost
+            runner.cancel()
+        deadline = time.monotonic() + 1.0
+        for _session_id, runner in waiting:
+            runner.join(max(0.0, deadline - time.monotonic()))
+
     def _active_owned_turn_count(self) -> int:
         """Protect quits and updates for every currently supported runtime.
         A reply forwarded to a Codex chat that is still getting ready (#248)
@@ -9005,7 +9228,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             return
         later = self._install_later_text(result)
         # The download took a while; things may have changed since the yes.
-        if self._active_owned_turn_count() or self._modal_open():
+        # Chats only waiting for Claude's checks were in the question (#749).
+        if self._update_blocked_by_turns() or self._modal_open():
             self._say(later, force=True)
             return
         if self._unsent_text():
@@ -9013,7 +9237,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 f"The Chat Place {result.version} is downloaded. Restart now to install it? "
                 "Text you haven't sent in a reply box will be lost.",
                 "Update The Chat Place", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
-            if answer != wx.YES or self._active_owned_turn_count():
+            if answer != wx.YES or self._update_blocked_by_turns():
                 self._say(later, force=True)
                 return
         self._say(f"Installing The Chat Place {result.version} and restarting.", force=True)
@@ -9044,10 +9268,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_busy = False
         # Applying exits at once; a turn sent, a dialog opened or a reply begun
         # while the announcement played would be lost.
-        if self._active_owned_turn_count() or self._modal_open() or self._unsent_text():
+        if self._update_blocked_by_turns() or self._modal_open() or self._unsent_text():
             self._restart_timers()
             self._say(self._install_later_text(result), force=True)
             return
+        self._end_waiting_chats_for_update()
         speaker.stop()
         if not self.updates.apply_and_restart():
             self._restart_timers()
@@ -9864,9 +10089,13 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     # ---------------------------------------------------------------- close
 
     def _on_close(self, event: wx.CloseEvent):
-        count = self._running_turn_count()
+        # Chats kept open only for Claude's checks for later (#749) aren't
+        # work running: they're named apart, in the same question, with the
+        # same answers and default.
+        scheduled = self._scheduled_chat_count()
+        count = self._running_turn_count() - scheduled
         waiting = self._relay_waiting_text()
-        if (count or waiting) and event.CanVeto():
+        if (count or waiting or scheduled) and event.CanVeto():
             queued = (bool(self._queued)
                       or any(state.queued for state in self._codex_states.values())
                       or any(getattr(runner, "steering", ()) for runner in self._runners.values()))
@@ -9875,6 +10104,12 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                             f"{'s' if count != 1 else ''}. Quit anyway? The running turn"
                             f"{'s' if count != 1 else ''} will be stopped"
                             f"{', and messages still waiting will not be sent.' if queued else '.'}")
+                if waiting:
+                    question += f" {waiting[0].upper()}{waiting[1:]} will not be sent."
+                if scheduled:
+                    question += f" {scheduled_waits.quit_words(scheduled)}"
+            elif scheduled:
+                question = f"{scheduled_waits.quit_words(scheduled)} Quit anyway?"
                 if waiting:
                     question += f" {waiting[0].upper()}{waiting[1:]} will not be sent."
             else:

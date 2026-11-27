@@ -77,17 +77,29 @@ def then(text: str, more: str) -> str:
     return f"{text}{end} {more}"
 
 
-def reply_text(title: str, reply: str, level: str, cost: str = "") -> Optional[str]:
+def reply_text(title: str, reply: str, level: str, cost: str = "",
+               woke: bool = False) -> Optional[str]:
     """A session's reply. None means say nothing. ``cost``: what a reply on
     API credits cost, in words ("6 cents", billing.cost_words), said before
-    the reply so a long one doesn't hide it (#658)."""
+    the reply so a long one doesn't hide it (#658). ``woke``: the answer to a
+    check Claude set for later, in a turn it started by itself (#749):
+    "PR 749, scheduled check: The checks passed." """
     if level == ANNOUNCE_SILENT or not (reply or "").strip():
         return None
+    if woke:
+        head = f"{title}, {SCHEDULED_CHECK}{cost_after(cost)}"
+        if level == ANNOUNCE_SUMMARY:
+            return f"{head}: {first_sentence(reply)} {len(reply.split())} words."
+        return f"{head}: {reply.strip()}"
     head = f"{title} replied{cost_after(cost)}"
     if level == ANNOUNCE_SUMMARY:
         words = len(reply.split())
         return f"{head}: {first_sentence(reply)} {words} words."
     return f"{head}. {reply.strip()}"
+
+
+#: Before the answer to a check Claude set for later (#749).
+SCHEDULED_CHECK = "scheduled check"
 
 
 def aside_text(answer: str, level: str) -> Optional[str]:
