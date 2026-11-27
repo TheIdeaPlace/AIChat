@@ -2316,10 +2316,10 @@ background work with it.
 A check or watch Claude sets for later isn't background work: nothing is running while it waits, so
 the turn still ends with the reply, and the check with it. Once a turn, after the reply, you hear
 which ones won't run: "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM
-won't run." A repeating one is said by how often ("the check Claude set to run every 30 minutes"),
-and a watch by what it watches. The same line stays after that reply in the messages list, in the
-full message and in exports, so it's there when you come back to the chat; Copy Message leaves it
-out. If the turn was kept open for background work, the line comes when the turn ends, with the
+won't run." A repeating one is said by how often ("the repeating check Claude set to run every 30
+minutes"), and a watch by what it watches ("the watch Claude started (Watch PR 749) stops"). The
+same line, with the date, stays after that reply in the messages list, in the full message and in
+exports, so it's there when you come back to the chat; Copy Message leaves it out. If the turn was kept open for background work, the line comes when the turn ends, with the
 chat's name.
 
 To end just one piece of background work and keep the turn, choose

@@ -94,6 +94,7 @@ def test_clock_and_when_words():
     ("0 * * * *", "every hour"),
     ("15 * * * *", "every hour at 15 past"),
     ("0 */2 * * *", "every 2 hours"),
+    ("30 */2 * * *", "every 2 hours at 30 past"),
     ("0 9 * * *", "every day at 9:00 AM"),
     ("0 9,17 * * *", "every day at 9:00 AM and 5:00 PM"),
     ("30 8 * * 1-5", "every weekday at 8:30 AM"),
@@ -129,29 +130,46 @@ def test_the_sentence_names_every_kind_once():
              Wait(WATCH, set_at=at(NOW), description="Watch PR 749")]
     assert lost_sentence(waits, NOW) == (
         "This chat ends when Claude's reply does, so the checks Claude set for 2:00 PM, "
-        "9:00 AM on Saturday, November 28 and 1:20 PM and to run every 30 minutes and the "
-        "watch Claude started (Watch PR 749) won't run.")
+        "9:00 AM on Saturday, November 28 and 1:20 PM, and the repeating check Claude set "
+        "to run every 30 minutes won't run, and the watch Claude started (Watch PR 749) stops.")
+
+
+def test_two_checks_at_one_time_are_still_checks():
+    twice = [one_shot_at(datetime(2026, 11, 27, 14, 0))] * 2
+    assert lost_sentence(twice, NOW).endswith("the checks Claude set for 2:00 PM won't run.")
+
+
+def test_the_kept_copy_has_the_date_even_today():
+    assert lost_sentence([one_shot_at(datetime(2026, 11, 27, 14, 0))], NOW, dated=True) == (
+        "This chat ends when Claude's reply does, so the check Claude set for 2:00 PM on "
+        "Friday, November 27 won't run.")
 
 
 def test_the_sentence_with_nothing_lost_is_empty():
     assert lost_sentence([], NOW) == ""
-    # A one-time check whose time came while the process lived ran then.
-    ran = one_shot_at(datetime(2026, 11, 27, 12, 30), set_at=datetime(2026, 11, 27, 12, 0))
-    assert lost_sentence([ran], NOW) == ""
     # One Claude Code wrote to disk is Claude Code's to run.
     durable = Wait(CRON, set_at=at(NOW), cron="0 14 27 11 *", durable=True)
     assert lost_sentence([durable], NOW) == ""
+
+
+def test_a_time_that_passed_with_no_wake_seen_is_still_lost():
+    # Claude may have kept working past it: it may never have fired.
+    passed = one_shot_at(datetime(2026, 11, 27, 12, 30), set_at=datetime(2026, 11, 27, 12, 0))
+    assert lost_sentence([passed], NOW).endswith("for 12:30 PM won't run.")
 
 
 def test_the_sentence_without_readable_times_or_names():
     odd = [Wait(CRON, set_at=at(NOW), cron="0 9-17 * * *", recurring=True)]
     assert lost_sentence(odd, NOW) == (
         "This chat ends when Claude's reply does, so the check Claude set won't run.")
+    assert lost_sentence(odd * 2, NOW).endswith("so the 2 checks Claude set won't run.")
     mixed = odd + [one_shot_at(datetime(2026, 11, 27, 14, 0))]
     assert lost_sentence(mixed, NOW).endswith(
-        "the checks Claude set for 2:00 PM, and 1 more won't run.")
+        "the check Claude set for 2:00 PM, and another check Claude set won't run.")
     assert lost_sentence([Wait(WATCH), Wait(WATCH)], NOW).endswith(
-        "so the watches Claude started won't run.")
+        "so the watches Claude started stop.")
+    assert lost_sentence([Wait(WATCH), Wait(WATCH, description="x")], NOW).endswith(
+        "so the watches Claude started (x and 1 more) stop.")
 
 
 def test_the_sentence_names_at_most_three_and_counts_the_rest():
@@ -279,6 +297,68 @@ def test_a_watch_ends_once_its_task_is_gone():
     assert not waits.tasks_changed("not a list")
 
 
+def test_a_watch_listed_before_its_result_still_ends_when_its_task_goes():
+    # The task starts while the tool runs, so it's listed before the result.
+    waits = book()
+    waits.tool_use("Monitor", "t1", {"description": "Watch PR 749"})
+    waits.tasks_changed([{"task_id": "m1", "description": "Watch PR 749", "ambient": True}])
+    waits.tool_result("t1", "Monitor started", False)
+    assert len(waits.waits) == 1
+    assert waits.tasks_changed([])
+    assert waits.waits == []
+
+
+def test_cron_delete_still_works_with_a_result_worded_differently():
+    waits = book()
+    waits.tool_use("CronCreate", "t1", {"cron": "0 14 27 11 *", "recurring": False})
+    waits.tool_result("t1", "Timer 9a8b7c6d is set.", False)  # an 8-hex id in other words
+    assert waits.waits[0].job_id == "9a8b7c6d"
+    waits.tool_use("CronDelete", "t2", {"id": "9a8b7c6d"})
+    assert waits.tool_result("t2", "Cancelled job 9a8b7c6d.", False)
+    # With no id at all, a deleted job is the one timer whose id is unknown.
+    waits.tool_use("CronCreate", "t3", {"cron": "0 15 27 11 *", "recurring": False})
+    waits.tool_result("t3", "Done.", False)
+    assert waits.waits[0].job_id == ""
+    waits.tool_use("CronDelete", "t4", {"id": "abc"})
+    assert waits.tool_result("t4", "Cancelled.", False)
+    assert waits.waits == []
+    # But not when that can't be told: two unknown timers both stay.
+    for use in ("t5", "t6"):
+        waits.tool_use("CronCreate", use, {"cron": "0 16 27 11 *"})
+        waits.tool_result(use, "Done.", False)
+    waits.tool_use("CronDelete", "t7", {"id": "abc"})
+    assert not waits.tool_result("t7", "Cancelled.", False)
+    assert len(waits.waits) == 2
+
+
+def test_a_wake_removes_the_one_time_waits_that_were_due():
+    clock = {"now": at(NOW)}
+    waits = WaitBook(lambda: clock["now"])
+    for use, cron in (("t1", "5 13 27 11 *"), ("t2", "0 14 27 11 *")):
+        waits.tool_use("CronCreate", use, {"cron": cron, "recurring": False})
+        waits.tool_result(use, "Done.", False)
+    waits.tool_use("CronCreate", "t3", {"cron": "*/5 * * * *"})
+    waits.tool_result("t3", "Done.", False)
+    clock["now"] = at(datetime(2026, 11, 27, 13, 4, 30))  # a little early: counts
+    assert waits.woke()
+    assert [w.cron for w in waits.waits] == ["0 14 27 11 *", "*/5 * * * *"]  # repeating stays
+    assert not waits.woke()
+
+
+def test_the_parser_takes_a_wake_turn_as_the_due_timer_having_run():
+    parser = StreamParser()
+    parser.waits = book()
+    feed(parser, type="assistant", parent_tool_use_id=None, message={"content": [
+        {"type": "tool_use", "id": "t1", "name": "ScheduleWakeup", "input": {"delaySeconds": 60}}]})
+    feed(parser, type="user", parent_tool_use_id=None, message={"content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]})
+    parser.waits._clock = lambda: at(NOW) + 61
+    assert feed(parser, type="command_lifecycle", state="completed") == []
+    [event] = feed(parser, type="command_lifecycle", command_uuid="c", state="started",
+                   wakeup_source="schedule_wakeup", session_id="abc-1")
+    assert event.kind == "waits" and event.data["waits"] == []
+
+
 def test_waits_round_trip_through_an_events_data():
     original = [Wait(CRON, "t1", 12.5, "0 14 * * *", True, "Ping", 0, "", "aa", False),
                 Wait(WAKEUP, "t2", 1.0, delay_seconds=60), Wait(WATCH, description="W")]
@@ -392,8 +472,8 @@ def test_a_watch_and_a_repeating_timer_are_on_the_last_event(tmp_path, monkeypat
     waits = sw.from_dicts(events[-1].data["waits"])
     assert [(w.kind, w.recurring) for w in waits] == [(CRON, True), (WATCH, False)]
     assert lost_sentence(waits, NOW) == (
-        "This chat ends when Claude's reply does, so the check Claude set to run every "
-        "30 minutes and the watch Claude started (Watch PR 749) won't run.")
+        "This chat ends when Claude's reply does, so the repeating check Claude set to run "
+        "every 30 minutes won't run, and the watch Claude started (Watch PR 749) stops.")
 
 
 # -- Kept with the reply -------------------------------------------------------------------

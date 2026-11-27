@@ -9805,11 +9805,11 @@ def test_a_timer_lost_with_the_turn_is_said_after_the_reply(frame, env, fake_run
 def test_a_turn_without_waits_says_nothing_of_them(frame, env, fake_runner, waits_now):
     _start(frame, fake_runner)
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("waits", data=_waits_data()))
-    # A timer whose time came while the process lived ran then.
-    ran = _waits_data(Wait("cron", set_at=(WAITS_NOW - datetime.timedelta(hours=2)).timestamp(),
-                           cron="30 11 27 11 *"))
+    # One Claude Code wrote to disk is its own to run.
+    kept = _waits_data(Wait("cron", set_at=WAITS_NOW.timestamp(), cron="0 14 27 11 *",
+                            durable=True))
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent("finished", text="Done.",
-                                                                 data=ran))
+                                                                 data=kept))
     assert env["spoken"][-1] == "Hub probe replied. Done."
     assert frame.store.get("own-1").reply_notes == {}
 
@@ -9830,7 +9830,9 @@ def test_a_lost_timer_after_background_work_is_said_with_the_chats_name(frame, e
     runner.waiting_on_background = False
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "finished", data=_waits_data(after_background=True)))
-    assert env["spoken"][-1] == f"Hub probe: {LOST_2PM}"
+    # Queued behind whatever is being said, not cutting it off.
+    assert env["feedback"][-1] == f"Hub probe: {LOST_2PM}"
+    assert frame._last_announcement == f"Hub probe: {LOST_2PM}"
 
 
 def test_a_lost_timer_is_kept_after_its_reply_in_the_messages_list(frame, env, fake_runner,
@@ -9842,17 +9844,53 @@ def test_a_lost_timer_is_kept_after_its_reply_in_the_messages_list(frame, env, f
     frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
         "finished", text="I'll check again at 2:00 PM.",
         data=_waits_data(reply_message_id="m1", reply_uuid="u1")))
-    assert frame.store.get("own-1").reply_notes == {"m1": LOST_2PM}
-    row = f"Claude: I'll check again at 2:00 PM. {LOST_2PM}"
+    # Kept with its date, as it's read on a later day.
+    kept = LOST_2PM.replace("2:00 PM", "2:00 PM on Friday, November 27")
+    assert frame.store.get("own-1").reply_notes == {"m1": kept}
+    row = f"Claude: I'll check again at 2:00 PM. {kept}"
     assert pump(lambda: row in list(frame.chat_list.GetStrings()))
     reply = next(m for m in frame._chat_messages if m.key == "m1")
-    assert reply.whole == f"I'll check again at 2:00 PM.\n\n{LOST_2PM}"
+    assert reply.whole == f"I'll check again at 2:00 PM.\n\n{kept}"
     frame.speech.full_messages_in_list = True
     assert frame._message_item_text(frame._chat_keys.index("m1")) == row
     # Kept in The Chat Place's own store, so it's there after a restart.
     again = OwnSessionStore(env["tmp"] / "own.json")
     again.load()
-    assert again.get("own-1").reply_notes == {"m1": LOST_2PM}
+    assert again.get("own-1").reply_notes == {"m1": kept}
+
+
+def test_an_agent_conversation_member_says_its_lost_timer_after_the_conversation_does(
+        frame, env, fake_runner, waits_now, monkeypatch):
+    said = []
+    monkeypatch.setattr(frame, "_agent_quiet", lambda provider, session_id: True)
+    monkeypatch.setattr(frame, "_agent_turn_ended",
+                        lambda *a, **k: said.append(("conversation", frame._last_announcement)))
+    _start(frame, fake_runner)
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text="I'll check again at 2:00 PM.", data=_waits_data()))
+    assert said and "This chat ends" not in said[0][1]  # not before the conversation's word
+    assert pump(lambda: frame._last_announcement == f"Hub probe: {LOST_2PM}")
+    assert env["feedback"][-1] == f"Hub probe: {LOST_2PM}"
+
+
+def test_a_long_replys_notification_still_has_the_lost_timer(frame, env, fake_runner, waits_now,
+                                                             monkeypatch):
+    monkeypatch.setattr(frame, "_app_is_active", lambda: False)
+    _start(frame, fake_runner)
+    long_reply = "I'll check again at 2:00 PM. " + "Here is a lot more about it. " * 20
+    frame._on_turn_event({"id": "own-1"}, "Hub probe", TurnEvent(
+        "finished", text=long_reply, data=_waits_data()))
+    assert env["notified"][-1][1] == f"I'll check again at 2:00 PM. {LOST_2PM}"
+    assert env["spoken"][-1].endswith(LOST_2PM)
+
+
+def test_quitting_mid_turn_keeps_the_lost_timer_after_its_reply(frame, env, fake_runner,
+                                                                waits_now):
+    _start(frame, fake_runner)
+    frame._save_turn_end_while_closing("own-1", TurnEvent(
+        "failed", text="Stopped.", is_error=True, data=_waits_data(reply_message_id="m1")))
+    assert frame.store.get("own-1").reply_notes == {
+        "m1": LOST_2PM.replace("2:00 PM", "2:00 PM on Friday, November 27")}
 
 
 def test_send_now_on_a_queued_message_while_waiting_sends_it_without_stopping(frame, env,

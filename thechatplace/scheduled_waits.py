@@ -183,6 +183,10 @@ def result_text(content) -> str:
 #: CronCreate's result: "Scheduled one-shot task f0d1911f (9 6 27 11 *)." or
 #: "Scheduled recurring job 1a2b3c4d (every 5 minutes)." (2.1.331).
 _SCHEDULED = re.compile(r"Scheduled (one-shot task|recurring job) ([A-Za-z0-9_-]{1,64}) \(")
+_JOB_ID = re.compile(r"\b([0-9a-f]{8})\b")
+#: A wake this far before a one-time job's time is taken to be that job's,
+#: in case Claude Code fires it a little early.
+WAKE_EARLY_SECONDS = 120
 
 
 def wall_clock() -> float:
@@ -210,6 +214,9 @@ class WaitBook:
         #: Watches seen among the ambient background tasks, by description:
         #: one that has been listed and isn't any more has ended.
         self._watching: set = set()
+        #: The latest list's descriptions: a Monitor's task is listed while
+        #: the tool runs, before its result comes.
+        self._listed: set = set()
 
     @property
     def waits(self) -> List[Wait]:
@@ -241,7 +248,15 @@ class WaitBook:
             return self._add(self._cron(use_id, tool_input, at, text))
         if name == CRON_DELETE:
             job = tool_input.get("id")
-            kept = [w for w in self._waits if not (w.kind == CRON and job and w.job_id == job)]
+            if not isinstance(job, str) or not job:
+                return False
+            kept = [w for w in self._waits if not (w.kind == CRON and w.job_id == job)]
+            unnamed = [w for w in self._waits if w.kind == CRON and not w.job_id]
+            if len(kept) == len(self._waits) and len(unnamed) == 1:
+                # Claude Code deleted a job, and the one timer whose id
+                # couldn't be read from its result must be it: no other
+                # timer of this process could have been deleted.
+                kept = [w for w in self._waits if w is not unnamed[0]]
             return self._replace(kept)
         if name == SCHEDULE_WAKEUP:
             # /loop has one wakeup at a time: each call sets the next one in
@@ -256,9 +271,29 @@ class WaitBook:
                                      description=_text(tool_input.get("reason"))))
             return self._replace(kept[-MAX_WAITS:])
         if name == MONITOR:
+            description = _text(tool_input.get("description"))
+            if description in self._listed:
+                self._watching.add(description)  # listed already, while it started
             return self._add(Wait(WATCH, tool_use_id=str(use_id), set_at=at,
-                                  description=_text(tool_input.get("description"))))
+                                  description=description))
         return False
+
+    def woke(self) -> bool:
+        """Claude Code started a turn of its own for a timer (``command_lifecycle``
+        with a ``wakeup_source``): the one-time waits whose time has come ran,
+        and aren't waits any more. One due within ``WAKE_EARLY_SECONDS`` counts
+        too, in case Claude Code fired it a little early. True when the
+        waits changed. Only a wake seen counts: a one-time time that passed
+        while Claude was still working may never have fired before the
+        process ended."""
+        now = self._clock()
+        kept = []
+        for wait in self._waits:
+            when = wait.fire_time() if wait.one_shot else None
+            if when is not None and when.timestamp() <= now + WAKE_EARLY_SECONDS:
+                continue
+            kept.append(wait)
+        return self._replace(kept)
 
     def tasks_changed(self, tasks) -> bool:
         """``background_tasks_changed``'s whole list, ambient tasks and all.
@@ -267,6 +302,7 @@ class WaitBook:
         changed."""
         listed = {_text(t.get("description")) for t in tasks if isinstance(t, dict)} \
             if isinstance(tasks, list) else set()
+        self._listed = listed
         kept = []
         for wait in self._waits:
             if wait.kind == WATCH and wait.description in self._watching \
@@ -284,6 +320,12 @@ class WaitBook:
             # What Claude Code did, over what was asked.
             recurring = found.group(1) == "recurring job"
             job = found.group(2)
+        else:
+            # Worded differently in some later Claude Code: its ids are 8
+            # hex digits ("f0d1911f"), which is enough for CronDelete.
+            ids = _JOB_ID.findall(text)
+            if len(ids) == 1:
+                job = ids[0]
         return Wait(CRON, tool_use_id=str(use_id), set_at=at,
                     cron=_text(tool_input.get("cron"), 100), recurring=recurring,
                     prompt=_text(tool_input.get("prompt")), job_id=job,
@@ -400,7 +442,10 @@ def next_cron_time(expression: str, after: datetime) -> Optional[datetime]:
     """The first minute after ``after`` that ``expression`` matches, as a
     naive local time like ``after``; None if it can't be read or never
     matches (the 31st of February). The minute ``after`` is in doesn't
-    count: a job made at 6:08:30 for "8 6 * * *" first runs tomorrow."""
+    count: a job made at 6:08:30 for "8 6 * * *" first runs tomorrow.
+    Wall-clock time throughout, so a time in the hour a spring DST change
+    skips (2:30 AM) is given as it's written, though the clock never shows
+    it; that's rare enough to leave as it is."""
     spec = parse_cron(expression)
     if spec is None:
         return None
@@ -428,12 +473,13 @@ def clock_time(hour: int, minute: int) -> str:
     return f"{hour % 12 or 12}:{minute:02d} {suffix}"
 
 
-def when_words(when: datetime, now: datetime) -> str:
+def when_words(when: datetime, now: datetime, dated: bool = False) -> str:
     """A fire time, as said: "2:00 PM" today, else with its day and date
     ("9:00 AM on Friday, November 28"), and its year if it isn't this one.
-    Never "tomorrow": the words are kept with the reply, and read later."""
+    Never "tomorrow". ``dated``: the date even today, for words kept with
+    the reply and read on some later day."""
     at = clock_time(when.hour, when.minute)
-    if when.date() == now.date():
+    if when.date() == now.date() and not dated:
         return at
     date = f"{_DAY_NAMES[when.isoweekday() % 7]}, {_MONTH_NAMES[when.month - 1]} {when.day}"
     if when.year != now.year:
@@ -498,7 +544,8 @@ def schedule_words(expression: str) -> str:
         step = _step(hour)
         fixed = _single(minute, 0, 59)
         if step and fixed is not None:
-            return "every hour" if step == 1 else f"every {step} hours"
+            words = "every hour" if step == 1 else f"every {step} hours"
+            return words if fixed == 0 else f"{words} at {fixed} past"
     fixed_minute = _single(minute, 0, 59)
     if fixed_minute is None or not all(h.isdigit() for h in hour.split(",")):
         return ""
@@ -519,28 +566,25 @@ def schedule_words(expression: str) -> str:
     return ""
 
 
-def lost_waits(waits: Iterable[Wait], now: datetime) -> List[Wait]:
-    """The waits that end with the process: all but a one-time one whose
-    time has come (it ran while the process lived, kept open by background
-    work) and one Claude Code wrote to disk."""
-    lost = []
-    for wait in waits:
-        if wait.durable:
-            continue  # Claude Code keeps it; whether it runs is its own
-        if wait.one_shot:
-            when = wait.fire_time()
-            if when is not None and when <= now:
-                continue
-        lost.append(wait)
-    return lost
+def lost_waits(waits: Iterable[Wait]) -> List[Wait]:
+    """The waits that end with the process: all but one Claude Code wrote to
+    disk, which is its own to run. A one-time one that fired while the
+    process lived is gone already (``WaitBook.woke``); one whose time passed
+    with no wake seen may never have fired, so it's still lost."""
+    return [wait for wait in waits if not wait.durable]
 
 
-def lost_sentence(waits: Iterable[Wait], now: datetime) -> str:
-    """What's said, and kept with the reply, when the chat's process ends
-    with waits Claude set (#749): "This chat ends when Claude's reply does,
-    so the check Claude set for 2:00 PM won't run." Once per turn, naming
-    every wait lost; "" when none is."""
-    lost = lost_waits(waits, now)
+def _plural(count: int, one: str, many: str) -> str:
+    return one if count == 1 else many
+
+
+def lost_sentence(waits: Iterable[Wait], now: datetime, dated: bool = False) -> str:
+    """What's said when the chat's process ends with waits Claude set
+    (#749): "This chat ends when Claude's reply does, so the check Claude set
+    for 2:00 PM won't run." Once per turn, naming every wait lost; "" when
+    none is. ``dated``: every time with its date, for the copy kept with the
+    reply and read later."""
+    lost = lost_waits(waits)
     if not lost:
         return ""
     times: List[str] = []
@@ -555,37 +599,45 @@ def lost_sentence(waits: Iterable[Wait], now: datetime) -> str:
             if when is None:
                 unknown += 1
             else:
-                times.append(when_words(when, now))
+                times.append(when_words(when, now, dated))
         else:
             words = schedule_words(wait.cron)
             if words:
                 repeating.append(words)
             else:
                 unknown += 1
-    times = list(dict.fromkeys(times))
-    repeating = list(dict.fromkeys(repeating))
+    # Each kind in a clause of its own, so the "and"s inside one never run
+    # into the next. Counted before repeats are merged: two checks at 2:00
+    # are still "the checks".
     checks: List[str] = []
     if times:
-        checks.append(f"for {_named(times)}")
+        checks.append(f"the {_plural(len(times), 'check', 'checks')} Claude set "
+                      f"for {_named(times)}")
     if repeating:
-        checks.append(f"to run {_named(repeating)}")
-    count = len(times) + len(repeating) + unknown
-    groups: List[str] = []
-    if count:
-        noun = "check" if count == 1 else "checks"
+        checks.append(f"the repeating {_plural(len(repeating), 'check', 'checks')} "
+                      f"Claude set to run {_named(repeating)}")
+    if unknown:
         if checks:
-            said = f"the {noun} Claude set {_joined(checks)}"
-            if unknown:
-                said += f", and {unknown} more"
+            checks.append("another check Claude set" if unknown == 1
+                          else f"{unknown} other checks Claude set")
         else:
-            said = f"the {noun} Claude set"
-        groups.append(said)
+            checks.append("the check Claude set" if unknown == 1
+                          else f"the {unknown} checks Claude set")
+    clauses: List[str] = []
+    if checks:
+        clauses.append(", ".join(checks[:-1]) + (", and " if len(checks) > 1 else "")
+                       + checks[-1] + " won't run")
     if watches:
         named = [w for w in dict.fromkeys(watches) if w]
-        noun = "watch" if len(watches) == 1 else "watches"
-        groups.append(f"the {noun} Claude started ({_named(named)})" if named
-                      else f"the {noun} Claude started")
-    return f"{LOST_START}{_joined(groups)} won't run."
+        unnamed = len(watches) - len([w for w in watches if w])
+        listed = named[:MAX_NAMED]
+        more = len(named) - len(listed) + unnamed
+        if listed and more:
+            listed.append(f"{more} more")
+        noun = _plural(len(watches), "the watch Claude started", "the watches Claude started")
+        verb = _plural(len(watches), "stops", "stop")
+        clauses.append(f"{noun} ({_joined(listed)}) {verb}" if listed else f"{noun} {verb}")
+    return f"{LOST_START}{', and '.join(clauses)}."
 
 
 # -- Kept with the reply -----------------------------------------------------------

@@ -1170,6 +1170,15 @@ class StreamParser:
                     body = {"error": str(response.get("error") or "it was refused")}
                 return [TurnEvent("remote_control", session_id=self.session_id, data=body)]
             return []
+        if etype == "command_lifecycle":
+            # A turn Claude Code started by itself for a timer (#749), as the
+            # probe of 2026-11-27 saw it ("state": "started", "wakeup_source":
+            # "schedule_wakeup"): the one-time waits due by now have run.
+            # Part 2 makes this a turn of its own.
+            if event.get("state") == "started" and event.get("wakeup_source") \
+                    and self.waits.woke():
+                return [self._waits_event()]
+            return []
         if etype == "rate_limit_event":
             info = event.get("rate_limit_info")
             if isinstance(info, dict) and info:
