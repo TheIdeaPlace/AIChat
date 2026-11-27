@@ -69,6 +69,122 @@ def test_the_customization_writes_what_the_report_counts():
         assert any(text.startswith(marker) for text in strings), marker
 
 
+class GrowingLog:
+    """A clock and a debug log that grows by a line on each of the ticks
+    given, so OrcaLog.wait_idle is tested without waiting."""
+
+    def __init__(self, path, grows_at):
+        self.path, self.grows_at, self.now = path, set(grows_at), 0.0
+        path.write_text("", encoding="utf-8")
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now = round(self.now + seconds, 2)
+        if self.now in self.grows_at:
+            with self.path.open("a", encoding="utf-8") as log:
+                log.write(f"{self.now} - EVENT MANAGER: Dequeued an event\n")
+
+
+def test_orca_is_idle_only_once_its_log_stops_growing(tmp_path):
+    """#754: a key pressed while Orca still had the trigger's events queued
+    left the message box unsaid, so the keys wait for the log to go quiet."""
+    fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[0.1, 0.3, 0.6])
+    log = orca_speech.OrcaLog(fake.path)
+    assert log.wait_idle(quiet=0.5, timeout=5, clock=fake.clock, sleep=fake.sleep)
+    assert fake.now == 1.1  # half a second after the last line, not before
+
+
+def test_orca_already_quiet_costs_no_wait(tmp_path, monkeypatch):
+    """Counted from the log's last change, a quiet Orca doesn't hold up the
+    keys; one that changed a moment ago is waited for, the rest of the
+    half second."""
+    fake = GrowingLog(tmp_path / "orca-debug.log", grows_at=[])
+    log = orca_speech.OrcaLog(fake.path)
+    # Fixed wall-clock times, exact in binary, so nothing depends on how
+    # long the test takes (the real clock made it fail now and then).
+    monkeypatch.setattr(log, "modified", lambda: 998.0)
+    assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep,
+                         wall=lambda: 1000.0)
+    assert fake.now == 0.0
+    monkeypatch.setattr(log, "modified", lambda: 999.75)
+    assert log.wait_idle(quiet=0.5, from_now=False, clock=fake.clock, sleep=fake.sleep,
+                         wall=lambda: 1000.0)
+    assert fake.now == 0.25
+
+
+def test_orca_that_never_goes_quiet_is_said_to_have_not(tmp_path):
+    fake = GrowingLog(tmp_path / "orca-debug.log",
+                      grows_at=[round(0.05 * n, 2) for n in range(1, 200)])
+    log = orca_speech.OrcaLog(fake.path)
+    assert not log.wait_idle(quiet=0.5, timeout=2, clock=fake.clock, sleep=fake.sleep)
+
+
+class StepLog:
+    """Stands in for OrcaLog in run_steps, noting each wait for Orca: how
+    it counted, and whether the trigger had finished by then."""
+
+    def __init__(self, events, world, settles=True):
+        self.events, self.world, self.settles = events, world, settles
+
+    def mark(self):
+        pass
+
+    def size(self):
+        return 0
+
+    def wait_idle(self, from_now):
+        done = sorted(p.name for p in self.world.glob("*.done"))
+        self.events.append(("idle", from_now, done))
+        return self.settles
+
+    def wait_quiet(self, done, timeout):
+        return ["Your message", "Write the script"]
+
+    def count_since(self, offset, needle):
+        return 0
+
+
+def _serve_after_a_moment(world, monkeypatch):
+    """Stands in for serve: a trigger's .done appears while run_steps waits
+    for it, not before."""
+    def sleep(_seconds):
+        for trigger in world.glob("*.trigger"):
+            trigger.unlink()
+            (world / trigger.name.replace(".trigger", ".done")).write_text("", encoding="utf-8")
+    monkeypatch.setattr(orca_speech.time, "sleep", sleep)
+
+
+def test_no_key_until_orca_has_caught_up(tmp_path, monkeypatch):
+    """Every key waits for Orca to catch up with the app's events (#754).
+    After a trigger, only once the trigger is done, and counted from then,
+    as its events may still be on their way; a step with no keys doesn't
+    wait."""
+    events = []
+    _serve_after_a_moment(tmp_path, monkeypatch)
+    monkeypatch.setattr(orca_speech, "press", lambda keys: events.append(("press", keys)))
+    steps = [orca_speech.Step("after", ["Tab"], trigger="suggestion", after_trigger=True),
+             orca_speech.Step("no keys", [], trigger="suggestion-done"),
+             orca_speech.Step("plain", ["Up"])]
+    results = orca_speech.run_steps(StepLog(events, tmp_path), steps, (46, 1), record=False,
+                                    world=tmp_path)
+    assert events == [("idle", True, ["suggestion.done"]), ("press", ["Tab"]),
+                      ("press", []),
+                      ("idle", False, ["suggestion.done"]), ("press", ["Up"])]
+    assert all(r["settled"] and r["passed"] for r in results)
+
+
+def test_keys_pressed_before_orca_caught_up_fail_the_step(tmp_path, monkeypatch):
+    events = []
+    monkeypatch.setattr(orca_speech, "press", lambda keys: None)
+    steps = [orca_speech.Step("plain", ["Tab"], expect=["Your message"])]
+    results = orca_speech.run_steps(StepLog(events, tmp_path, settles=False), steps, (46, 1),
+                                    record=False, world=tmp_path)
+    assert not results[0]["passed"] and not results[0]["settled"]
+    assert f"       {orca_speech.UNSETTLED}" in orca_speech.report(results, (46, 1), False)
+
+
 def _load_customizations(monkeypatch, keep_quiet_move=False):
     """Runs tools/orca-customizations.py against stand-ins for the parts of
     Orca 46 it touches, and returns them."""
