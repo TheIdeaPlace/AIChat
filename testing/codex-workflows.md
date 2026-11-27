@@ -3,6 +3,32 @@
 Use an expendable Codex chat started here. Repeat with JAWS and NVDA on Windows,
 VoiceOver on macOS, or Orca on Linux. Automated CI checks do not prove human speech.
 
+## First: set up a connected tool in Codex
+
+Checks 4 and 5 need a connected tool (an MCP server) configured in Codex itself. Signing in to
+Codex doesn't add one, and The Chat Place has no Add Server form: if `codex mcp list` shows
+nothing, Tools, Connected Tools (MCP) has nothing to turn on. Add one in a terminal.
+
+- **A harmless local test server**, MCP's own "everything" server (it needs Node.js; its tools
+  echo text and add numbers):
+
+  ```
+  codex mcp add everything -- npx -y @modelcontextprotocol/server-everything
+  codex mcp list
+  ```
+
+- **A web service that signs in through your browser**, for the Sign In check, for example
+  GitHub's (it needs an account that includes it):
+
+  ```
+  codex mcp add github --url https://api.githubcopilot.com/mcp/
+  ```
+
+Then, in a Codex chat started here: Tools, Connected Tools (MCP) (Alt+T, C), select the tool
+(it's "off for this chat"), and choose **Copy with Tool On** (Alt+O). Continue in the copy it
+opens, and ask for a task by name, for example "Use the everything tool's add tool to add 2 and
+3." Remove a test server afterward with `codex mcp remove everything`.
+
 1. While Codex is working, queue two different messages. In Messages, select the
    first, press the Applications key (Shift+F10), and choose Edit Queued Message.
    Expect the turn to continue, that message before your current draft, and focus
