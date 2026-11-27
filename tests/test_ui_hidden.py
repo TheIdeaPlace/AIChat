@@ -10038,6 +10038,34 @@ def test_an_update_isnt_held_back_by_chats_kept_open_but_says_they_end(frame, en
     assert style & wx.NO_DEFAULT
 
 
+def test_installing_an_update_ends_waiting_chats_and_keeps_their_line(frame, env, fake_runner,
+                                                                      kept_now, monkeypatch):
+    from types import SimpleNamespace
+    from thechatplace.updater import AVAILABLE, CheckResult
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    runner.parser = SimpleNamespace(reply_message_id="m1", reply_uuid="")
+    frame.updates = FakeUpdates(CheckResult(AVAILABLE, "0.1.0", "0.2.0"))
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    run_check(frame)
+    assert pump(lambda: frame.updates.calls == ["check", "download", "apply"])
+    assert runner.cancelled
+    assert frame.store.get("own-1").reply_notes == {
+        "m1": "This chat stopped waiting, so the check Claude set for 2:00 PM on Friday, "
+              "November 27 won't run."}
+
+
+def test_a_chat_that_starts_waiting_after_the_update_question_holds_it_back(frame, env,
+                                                                           fake_runner,
+                                                                           kept_now):
+    runner = _start(frame, fake_runner)
+    _kept_open(frame, runner)
+    frame._update_scheduled_ok = 0            # the question named none
+    assert frame._update_blocked_by_turns()
+    frame._update_scheduled_ok = 1
+    assert not frame._update_blocked_by_turns()
+
+
 def test_a_setting_changed_while_kept_open_says_it_waits_for_the_checks(frame, env, fake_runner,
                                                                         kept_now):
     runner = _start(frame, fake_runner)

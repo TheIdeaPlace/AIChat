@@ -422,6 +422,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._runners: Dict[str, TurnRunner] = {}
         #: How many Claude chats may keep their process open for Claude's
         #: waits at once (#749, Part 2): Settings' limit, read as each asks.
+        #: How many chats waiting for checks an update's question named (#749).
+        self._update_scheduled_ok = 0
         self._wait_slots = scheduled_waits.WaitSlots(
             lambda: getattr(self.speech, "wait_limit", scheduled_waits.DEFAULT_WAIT_LIMIT))
         #: Chats whose Stop said already which of Claude's waits it ends
@@ -9005,6 +9007,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if answer != wx.YES:
             self._feedback(f"Not now. Help, {item} installs it later.")
             return
+        # The chats waiting for checks that the question named (#749).
+        self._update_scheduled_ok = scheduled
         self._update_busy = True
         self._feedback(f"Downloading The Chat Place {result.version}.")
 
@@ -9137,6 +9141,41 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         return sum(1 for runner in self._runners.values()
                    if getattr(runner, "waiting_for_waits", False))
 
+    def _update_blocked_by_turns(self) -> bool:
+        """Whether running work holds an update back. Chats waiting for
+        Claude's checks don't, as long as no more are waiting than the
+        update's question named (#749): one that began waiting since
+        wasn't asked about."""
+        scheduled = self._scheduled_chat_count()
+        allowed = min(scheduled, getattr(self, "_update_scheduled_ok", 0))
+        return self._active_owned_turn_count() - allowed > 0
+
+    def _end_waiting_chats_for_update(self) -> None:
+        """Installing an update exits at once, with no quit to save how each
+        chat ended: the chats waiting for Claude's checks are stopped first,
+        and the line saying which won't run kept after each one's reply, as
+        quitting keeps it (#749)."""
+        now = scheduled_waits.local_now()
+        waiting = [(sid, r) for sid, r in self._runners.items()
+                   if getattr(r, "waiting_for_waits", False)]
+        for session_id, runner in waiting:
+            parser = getattr(runner, "parser", None)
+            key = (getattr(parser, "reply_message_id", "") or getattr(parser, "reply_uuid", "")
+                   if parser is not None else "")
+            to_lose = getattr(runner, "waits_to_lose", None)
+            line = scheduled_waits.lost_sentence(list(to_lose()) if callable(to_lose) else [],
+                                                 now, dated=True,
+                                                 start=scheduled_waits.ENDED_START)
+            if line and key:
+                try:
+                    self.store.add_reply_note(session_id, key, line)
+                except (OSError, ValueError):
+                    pass  # the update still goes ahead; only the line is lost
+            runner.cancel()
+        deadline = time.monotonic() + 1.0
+        for _session_id, runner in waiting:
+            runner.join(max(0.0, deadline - time.monotonic()))
+
     def _active_owned_turn_count(self) -> int:
         """Protect quits and updates for every currently supported runtime.
         A reply forwarded to a Codex chat that is still getting ready (#248)
@@ -9166,7 +9205,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         later = self._install_later_text(result)
         # The download took a while; things may have changed since the yes.
         # Chats only waiting for Claude's checks were in the question (#749).
-        if self._active_owned_turn_count() - self._scheduled_chat_count() or self._modal_open():
+        if self._update_blocked_by_turns() or self._modal_open():
             self._say(later, force=True)
             return
         if self._unsent_text():
@@ -9174,8 +9213,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 f"The Chat Place {result.version} is downloaded. Restart now to install it? "
                 "Text you haven't sent in a reply box will be lost.",
                 "Update The Chat Place", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self)
-            if answer != wx.YES or (self._active_owned_turn_count()
-                                    - self._scheduled_chat_count()):
+            if answer != wx.YES or self._update_blocked_by_turns():
                 self._say(later, force=True)
                 return
         self._say(f"Installing The Chat Place {result.version} and restarting.", force=True)
@@ -9206,11 +9244,11 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         self._update_busy = False
         # Applying exits at once; a turn sent, a dialog opened or a reply begun
         # while the announcement played would be lost.
-        if (self._active_owned_turn_count() - self._scheduled_chat_count() or self._modal_open()
-                or self._unsent_text()):
+        if self._update_blocked_by_turns() or self._modal_open() or self._unsent_text():
             self._restart_timers()
             self._say(self._install_later_text(result), force=True)
             return
+        self._end_waiting_chats_for_update()
         speaker.stop()
         if not self.updates.apply_and_restart():
             self._restart_timers()

@@ -408,9 +408,11 @@ if mode == "cron":
                 session_id="abc-1", **COST)
             out(type="command_lifecycle", command_uuid=f"wake-{number}", state="completed",
                 session_id="abc-1")
-            out(type="system", subtype="session_state_changed", state="idle")
+            # Logged before idle: idle can end the process (stdin closes and
+            # the main thread exits), which would cut this thread off.
             log(waited=True, wakes=number, answers=[a.get("response", {}).get("response", {})
                                                     .get("behavior") for a in answers])
+            out(type="system", subtype="session_state_changed", state="idle")
 
     if wake_after:
         threading.Thread(target=wake, daemon=True).start()

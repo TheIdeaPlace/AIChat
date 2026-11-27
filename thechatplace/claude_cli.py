@@ -1954,8 +1954,10 @@ class TurnRunner:
         Without ``_lock``: the window asks on its own thread, Stop included,
         and a write holding the lock may wait for good (#663). Both lists are
         only ever replaced whole, so reading them is safe."""
-        waits, listed = list(self.pending_waits), self._listed
-        return waits_policy.held_waits(waits, listed, waits_policy.wall_clock())
+        waits, listed, late = list(self.pending_waits), self._listed, self._overdue_seen
+        held = waits_policy.held_waits(waits, listed, waits_policy.wall_clock())
+        # One past its time that's given one more grace still holds it.
+        return held + [w for w in waits if w.tool_use_id in late and w not in held]
 
     def waits_to_lose(self) -> List[Wait]:
         """Every wait that ends with the process now, but those already said
@@ -2144,8 +2146,12 @@ class TurnRunner:
         the process with nothing to say so: a one-time check that never
         fired, a repeating one Claude Code has expired."""
         self._cancel_wait_timer()
-        held = self.held_waits()
-        when = waits_policy.next_recheck(held, waits_policy.wall_clock())
+        # The policy's own list, not ``held_waits``: a check given its extra
+        # grace has its own timer, and here would come due at once, again
+        # and again.
+        now = waits_policy.wall_clock()
+        held = waits_policy.held_waits(list(self.pending_waits), self._listed, now)
+        when = waits_policy.next_recheck(held, now)
         if when is None:
             return
         # A timer's wait is capped, so a clock changed meanwhile (or a
@@ -2963,7 +2969,11 @@ class TurnRunner:
                             # The answer before it was never said (the timer
                             # came due while Claude worked, and fired with no
                             # idle between): said now, with what's next,
-                            # before the check's own answer replaces it.
+                            # before the check's own answer replaces it. The
+                            # list first, so the check starting now isn't
+                            # named as still to come.
+                            with self._lock:
+                                self.pending_waits = list(self.parser.waits.waits)
                             settle("scheduled", final)
                         self._cancel_wait_timer()
                         with self._lock:

@@ -233,6 +233,21 @@ class Run:
         return [e for e in self.events if e.kind == "waiting"]
 
 
+def fake_log(run, field, timeout=10):
+    """A field of the fake's log, once written whole: the fake rewrites it
+    as it goes, and a read can land mid-write (seen on a Linux arm64 runner)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            value = json.loads(run.log.read_text(encoding="utf-8"))
+            if field in value:
+                return value[field]
+        except (OSError, ValueError):
+            pass
+        assert time.monotonic() < deadline, f"no {field} in the fake's log"
+        time.sleep(0.05)
+
+
 def test_a_one_time_timer_holds_the_turn_then_wakes_and_closes(tmp_path, monkeypatch):
     run = Run(tmp_path, monkeypatch, FAKE_CLAUDE_WAKE="0.5")
     final = run.done()
@@ -249,7 +264,7 @@ def test_a_one_time_timer_holds_the_turn_then_wakes_and_closes(tmp_path, monkeyp
     assert "waits" not in final.data          # it ran: nothing lost
     assert run.runner.held_for_waits and not run.runner.waiting_for_waits
     assert len(run.slots) == 0                # its place is free again
-    assert json.loads(run.log.read_text(encoding="utf-8"))["wakes"] == 1
+    assert fake_log(run, "wakes") == 1
 
 
 def test_a_repeating_timer_keeps_the_turn_through_each_wake(tmp_path, monkeypatch):
@@ -350,7 +365,7 @@ def test_a_wake_turn_asking_permission_waits_for_the_answer(tmp_path, monkeypatc
                                                    "updatedInput": request.input})
     final = run.done()
     assert final.kind == "finished" and final.data["woke"] == "schedule_wakeup"
-    assert json.loads(run.log.read_text(encoding="utf-8"))["answers"] == ["allow"]
+    assert fake_log(run, "answers") == ["allow"]
 
 
 def test_a_message_sent_while_kept_open_goes_straight_in(tmp_path, monkeypatch):
@@ -384,6 +399,7 @@ def test_a_check_that_never_comes_ends_the_turn_and_says_so(tmp_path, monkeypatc
     # Given one more grace first, from now: after a sleep, Claude Code
     # fires a missed timer late, and this mustn't beat it.
     assert run.runner.waiting_for_waits
+    assert [w.cron for w in run.runner.held_waits()] == [SOON]  # still said as waiting
     regrace = [t for t in timers.made
                if t.started and not t.cancelled and t.function == run.runner._recheck_waits]
     assert regrace[-1].interval == sw.OVERDUE_GRACE_SECONDS
@@ -421,6 +437,7 @@ def test_your_answer_is_said_even_when_the_check_fires_with_no_idle_between(tmp_
     [waiting] = run.waiting()
     assert waiting.text == "I'll check the pull request again at 2:00 PM."
     assert "woke" not in waiting.data
+    assert waiting.data["waits"] == []        # the check starting now isn't still to come
     assert final.text == "Scheduled check 1: the checks passed."
     assert final.data["woke"] == "schedule_wakeup"
 
