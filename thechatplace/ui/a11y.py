@@ -55,12 +55,21 @@ class _ReadOnlyBoxAccessible(_NamedAccessible):
 
 
 def current_line(box) -> str:
-    """The line the caret is on in a text box, as shown (a wrapped line is
-    one of its parts, as a screen reader's Say Line reads it), stripped; ""
-    if there's none or it can't be told."""
+    """The line the caret is in, in a text box, stripped: all of it, from
+    one line break to the next, however the box wraps it. "" if it's blank
+    or can't be told.
+
+    Not the line as shown: as Claude's permission dialog opened, JAWS asked
+    before the box had its width, and the shown line was "Claude wants to"
+    (#763, in the test VM)."""
     try:
-        found, _column, line = box.PositionToXY(box.GetInsertionPoint())
-        return box.GetLineText(line).strip() if found else ""
+        # GetRange gives the text with "\n" breaks, whatever the box counts
+        # a break as, so its length is the caret's place in GetValue.
+        before = box.GetRange(0, box.GetInsertionPoint())
+        text = box.GetValue()
+        start = before.rfind("\n") + 1
+        end = text.find("\n", len(before))
+        return text[start:end if end >= 0 else len(text)].strip()
     except Exception:  # noqa: BLE001 - never break a screen reader's question
         return ""
 
