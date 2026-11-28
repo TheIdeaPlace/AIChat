@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -183,6 +185,39 @@ def test_keys_pressed_before_orca_caught_up_fail_the_step(tmp_path, monkeypatch)
                                     record=False, world=tmp_path)
     assert not results[0]["passed"] and not results[0]["settled"]
     assert f"       {orca_speech.UNSETTLED}" in orca_speech.report(results, (46, 1), False)
+
+
+class _SaysLog(StepLog):
+    def __init__(self, events, world, said):
+        super().__init__(events, world)
+        self.said, self.timeouts = said, []
+
+    def wait_idle(self, from_now):
+        return True
+
+    def wait_quiet(self, done, timeout):
+        self.timeouts.append(timeout)
+        assert not done(self.said)  # a silent step listens the whole time
+        return self.said
+
+
+@pytest.mark.parametrize("said, passed", [([], True), (["left alt", "o"], True),
+                                          (["Tools: notes dialog"], False)])
+def test_a_silent_step_fails_on_anything_said_but_a_key_echo(tmp_path, monkeypatch, said, passed):
+    """Alt+O with no Turn Off button must do nothing (#729)."""
+    monkeypatch.setattr(orca_speech, "press", lambda keys: None)
+    log = _SaysLog([], tmp_path, said)
+    steps = [orca_speech.Step("Alt+O does nothing", ["alt+o"], silent=True)]
+    results = orca_speech.run_steps(log, steps, (46, 1), record=False, world=tmp_path)
+    assert log.timeouts == [orca_speech.SILENT_WAIT]
+    assert results[0]["passed"] is passed
+
+
+def test_the_alt_o_step_follows_the_chat_started_elsewhere(tmp_path):
+    names = [s.name for s in orca_speech.STEPS]
+    at = names.index("Alt+O does nothing, with no Turn Off button")
+    assert names[at - 1] == "then Refresh, with no Turn Off button between"
+    assert orca_speech.STEPS[at].silent and orca_speech.STEPS[at].keys == ["alt+o"]
 
 
 def _load_customizations(monkeypatch, keep_quiet_move=False):
