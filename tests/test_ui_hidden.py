@@ -20,6 +20,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
+from thechatplace.providers import copilot_runtime  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
@@ -225,17 +226,10 @@ def frame(env):
     assert not window.IsShown()
     assert pump(lambda: window.session_list.GetCount() == 3)
     yield window
-    window._runners.clear()
-    # All of them, as closing does: a delayed call left running (the
+    # Every timer stopped, as closing does: a delayed call left running (the
     # sign-in check, 4 seconds in) would fire into this destroyed window
     # during a later test, which crashes wx on a Mac.
-    window.stop_timers()
-    window._pool.shutdown(wait=True)
-    # What the background work handed back runs now, while the window is
-    # whole, not after Destroy, when a Mac still has it half there.
-    wx.GetApp().ProcessPendingEvents()
-    window.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    fake_env.close_frame(window)
 
 
 def select(frame, title):
@@ -3160,10 +3154,7 @@ def test_saved_sort_order_is_used_and_checked_at_start(env):
         assert [o for o, item in window.sort_items.items() if item.IsChecked()] == ["folder"]
         assert window.session_list.GetString(0).startswith("Other, Claude, Alpha")
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 # -- F6, Shift+F6 and the status bar (#10) ---------------------------------------------------
@@ -6133,9 +6124,7 @@ def test_long_session_titles_leave_the_reply_box_its_width(env):
         assert window.reply_text.GetSize().width > 300
         assert window.session_list.GetSize().width < window.GetSize().width / 2
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        window.Destroy()
+        fake_env.close_frame(window)
 
 
 def test_a_hidden_session_is_not_said_counted_or_notified(frame, env, monkeypatch):
@@ -7872,10 +7861,7 @@ def test_a_speech_problem_after_the_window_closed_is_ignored(env):
     from thechatplace.ui.main_frame import MainFrame
     closed = MainFrame()
     report = closed._on_speech_problem
-    closed.stop_timers()  # its delayed calls must not reach it once it's gone
-    closed._pool.shutdown(wait=True)
-    closed.Destroy()
-    wx.Yield()
+    fake_env.close_frame(closed)  # its delayed calls must not reach it once it's gone
     report("not spoken: NVDA is running but didn't answer (error 1722)")  # no error
 
 
@@ -8094,11 +8080,7 @@ def test_startup_schedules_the_notice_and_close_stops_it(env, monkeypatch):
         assert not window._startup_update_notice.IsRunning()
         assert not window._update_notice_wait.IsRunning()
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        if window:
-            window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 def test_update_installed_dialog(frame, env):
@@ -8250,11 +8232,7 @@ def test_startup_update_check_follows_the_setting(env, on):
             assert pump(lambda: not window._update_busy)
             assert updates.calls == ["check"]
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        if window:
-            window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 # -- links to sessions (#144) --------------------------------------------------------------
@@ -10571,11 +10549,7 @@ def test_the_messages_label_keeps_its_whole_text_and_key(env):
         window.Layout()
         assert heading.GetSize().width <= window.GetClientSize().width
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 # -- a first run (#182) -----------------------------------------------------------------
@@ -10598,11 +10572,7 @@ def test_with_no_sessions_the_messages_say_how_to_start_one(env):
         assert window.chat_list.GetStrings() == [
             key_name("No session loaded. Choose one in the session list and press Enter.")]
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 
@@ -10646,11 +10616,7 @@ def test_when_the_last_session_goes_the_first_run_line_comes_back(env):
         settle(window)
         assert window.chat_list.GetStrings() == [NO_SESSIONS_YET]
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 def test_the_first_run_line_names_this_platform_s_key():
@@ -11192,12 +11158,7 @@ def test_opt_in_startup_lists_and_opens_synthetic_codex_history(env, monkeypatch
         else:
             assert not calls
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.sessions.close()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 @pytest.mark.parametrize('state,heard', [('status unavailable', False), ('idle', True)])
@@ -13959,11 +13920,7 @@ def test_copilot_off_means_no_provider_and_no_rows(env, enabled):
             assert pump(lambda: not window._snapshot_busy and window._pending_refresh is None)
             assert window._snapshot.sessions and not found()
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 # -- the owned-chat path is shared by every runtime provider (#352) --------
@@ -15661,7 +15618,7 @@ def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return Stopped((), cancelled=False, answered=True)
+        return Stopped((), copilot_runtime.CHECKING)
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
     frame._stop_codex_owned(info)
@@ -15712,7 +15669,7 @@ def test_stop_before_the_message_went_says_so(frame, env, monkeypatch):
     monkeypatch.setattr(frame, "_open", info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(before_sending=True))
+                        lambda action, record, *args: Stopped(report=copilot_runtime.BEFORE_SENDING))
     frame._stop_codex_owned(info)
     assert pump(lambda: "Early Copilot: Stopped before your message went to Copilot."
                 in env["feedback"])
@@ -15733,7 +15690,7 @@ def test_stop_again_says_copilot_was_already_asked(frame, env, monkeypatch):
     monkeypatch.setattr(frame, "_open", info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(cancelled=True, already_asked=True))
+                        lambda action, record, *args: Stopped(report=copilot_runtime.ALREADY_ASKED))
     frame._stop_codex_owned(info)
     assert pump(lambda: "Again Copilot: Already asked Copilot to stop; "
                 "The Chat Place closes it if it doesn't." in env["feedback"])
@@ -15757,7 +15714,7 @@ def test_stop_is_worded_from_what_the_runtime_saw_not_the_windows_state(frame, e
     frame._codex_states[info.key] = CopilotChatState("cp-race", "working", "1", "inProgress",
                                                      checking=True, queued=("Two", "Three"))
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(("Three",), cancelled=True))
+                        lambda action, record, *args: Stopped(("Three",), copilot_runtime.CANCELLED))
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)
     assert pump(lambda: frame.reply_text.GetValue() == "Three")
@@ -15784,7 +15741,7 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return Stopped(("Two",), cancelled=False, answered=True) if action == "stop" else None
+        return Stopped(("Two",), copilot_runtime.CHECKING) if action == "stop" else None
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)

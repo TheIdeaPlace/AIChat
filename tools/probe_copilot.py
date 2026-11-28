@@ -68,9 +68,10 @@ def main(argv=None) -> int:
                 follow(runtime, chat, states, seen)
             except KeyboardInterrupt:
                 print("\nStopping this turn.")
-                waiting = runtime.stop(chat)
-                if waiting:
-                    print("Not sent:", " | ".join(waiting))
+                stopped = runtime.stop(chat)
+                print(stopped.said("This chat", "Copilot", stopped.waiting))
+                if stopped.waiting:
+                    print("Not sent:", " | ".join(stopped.waiting))
                 follow(runtime, chat, states, seen)
     except (CopilotChatError, AcpError, OSError) as exc:
         print("Couldn't use Copilot:", exc)

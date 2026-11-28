@@ -160,6 +160,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     # The frame points the shared speaker at itself (#98); put it back after,
     # so no later test reaches a destroyed frame through it.
     patch(speech.speaker, "on_problem", None)
+    # And on Linux announces through the window (#757 review): the same.
+    patch(speech.speaker, "window_announcer", None)
     patch(speech.speaker, "last_problem", "")
     patch(main_frame, "list_speech_options", lambda: speech.default_options())
     if formatted_view:
@@ -304,6 +306,109 @@ def add_transcript(env, cwd, cli, records):
     path = folder / f"{cli}.jsonl"
     path.write_text("\n".join(lines(*records)) + "\n", encoding="utf-8")
     return path
+
+
+#: wx's own, kept before any test replaces them: a test that fakes the list
+#: of windows (to stand in a modal dialog) still has its frame closed, after
+#: it, by these.
+top_level_windows = wx.GetTopLevelWindows
+_yield_if_needed = wx.YieldIfNeeded
+
+
+def delete_destroyed(rounds: int = 20) -> bool:
+    """Do what wx's event loop would do between events once a window is
+    destroyed: run the queued calls, then its idle time, when it deletes each
+    window ``Destroy()`` only scheduled for deletion. The tests run no event
+    loop, so without this a closed window lived on into the tests after it
+    (#757). Nothing is run when nothing is scheduled: a test with no windows
+    mustn't run calls queued for another test's. True once nothing is left
+    scheduled."""
+    app = wx.GetApp()
+    if app is None:
+        return True
+
+    def scheduled():
+        return any(app.IsScheduledForDestruction(w) for w in top_level_windows())
+    for _ in range(rounds):
+        if not scheduled():
+            return True
+        app.ProcessPendingEvents()
+        _yield_if_needed()
+    return not scheduled()
+
+
+def close_frame(window, delete: bool = True) -> None:
+    """Close a test's MainFrame the one way every test does (#757): what the
+    app's own close does that needs no answer from you, and the window then
+    actually deleted. In order: its pool's threads ended (a frame closed
+    without that left up to three threads, and the frame they hold, alive
+    for the rest of the run: 427 of them by the end on macOS), marked
+    closing, timers stopped, its sounds, session tools and providers closed
+    and the speaker no longer pointed at it, as ``MainFrame._on_close``
+    does. Then what all that handed back is run while the window is whole
+    (on a Mac a destroyed one is still half there), and only then is it
+    destroyed: deleting a window before that crashed a later test on every
+    platform. What ``_on_close`` (or ``_close_providers``) already did, if a
+    test called it, isn't done twice: its provider cleanup is waited for.
+    ``delete=False`` leaves the deleting to the caller (conftest's guard).
+
+    Not done, unlike the app: ``speaker.stop()``, which on Linux can cancel
+    the computer's own speech-dispatcher, and the tests never speak."""
+    cleanup = window._provider_cleanup  # _close_providers starts it
+    on_close_ran = window._closing and cleanup is not None  # set past every question
+    try:
+        window._pool.shutdown(wait=True)
+        if not window:  # already deleted: nothing of it is left to close
+            return
+        app = wx.GetApp()
+        window._closing = True
+        window._runners.clear()
+        window.stop_timers()
+        app.ProcessPendingEvents()  # what the pool handed back, before anything is closed
+        closes = [window.sessions.close] if cleanup is None else []
+        if not on_close_ran:
+            closes = [window._sound_close, window._notifier.close, window._close_session_tools,
+                      window._forget_long_messages] + closes
+            _unpoint_speaker(window)
+        for close in closes:
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - as _close_providers: one that fails
+                pass           # mustn't keep the window open
+        app.ProcessPendingEvents()  # and what the closes handed back
+        if not app.IsScheduledForDestruction(window):
+            window.Destroy()
+        if delete:
+            delete_destroyed()
+    finally:
+        _reopen_history_keepers(cleanup)
+
+
+def _unpoint_speaker(window) -> None:
+    """The shared speaker no longer calls into this window, as _on_close
+    leaves it: its problem report is a lambda holding the window, which
+    would keep it alive and call into it once deleted."""
+    if speech.speaker.window_announcer == window._announce_through_window:
+        speech.speaker.window_announcer = None
+    report = speech.speaker.on_problem
+    cells = getattr(report, "__closure__", None) or ()
+    if any(cell.cell_contents is window for cell in cells):
+        speech.speaker.on_problem = None
+
+
+def _reopen_history_keepers(cleanup) -> None:
+    """Claude's provider closes the history keepers for good, as the app
+    does on exit. A test process goes on to make more windows (the probe
+    makes one per surface), so they start open again, as conftest does per
+    test: after the provider cleanup has finished (else its close could
+    land after this), and without any keeper made closed in between."""
+    from thechatplace import history_keeper
+    if cleanup is not None:
+        cleanup.join(timeout=10)
+        if cleanup.is_alive():
+            return  # still closing: leave them shut rather than race it
+    history_keeper._closed_all = False
+    history_keeper.close_all()  # drops a keeper made, already closed, meanwhile
 
 
 def pump(condition, timeout=5.0):

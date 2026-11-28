@@ -88,6 +88,9 @@ MAX_TEXT_CHARS = 65_536
 MAX_REQUESTS = 8
 #: How long Copilot gets to honour Stop before its process is closed.
 CANCEL_GRACE_SECONDS = 15.0
+#: Makes the clock a cancel starts; a test can swap it without touching
+#: threading.Timer for the whole process.
+_Timer = threading.Timer
 #: Streamed text is shown at most this often, so a long answer in many tiny
 #: chunks can't flood the window or hold up the reader thread.
 CHUNK_NOTIFY_SECONDS = 0.05
@@ -353,30 +356,116 @@ class ContextReport:
     context_window: int
 
 
+# -- A turn, and Stop (#758) ---------------------------------------------------
+#
+# Each turn has one record, _Turn, and Stop's report comes only from it.
+# Four local fixes (#386, #395, #414, #758) had each patched a gap between
+# flags read at one moment and acted on at another; now every change to a
+# turn's record is made under the runtime's lock, in the same locked step as
+# whatever it records (the prompt queued, the cancel queued), so a Stop sees
+# a turn either before or after each step, never in the middle of one.
+#
+# Where the prompt is (_Turn.prompt). The turn's thread moves it, except
+# PENDING to HELD_BACK, which Stop does:
+#: Begun; the turn hasn't yet decided to send its prompt.
+PENDING = "pending"
+#: Stop came first: the prompt is never sent and comes back unsent.
+HELD_BACK = "held back"
+#: Queued to Copilot, in the locked step that decided to send it. Only now
+#: can a cancel follow it (one sent before would be ignored, #372).
+QUEUED = "queued"
+#: The prompt couldn't be queued (Copilot closing, or too much waiting).
+NOT_QUEUED = "not queued"
+#: Copilot's prompt has returned (or never went): only this app's checks
+#: are left, so there's nothing for Stop to cancel. Not necessarily an
+#: answer: a cancel, a refusal or Copilot's process ending return it too.
+RETURNED = "returned"
+#: Over: the chat isn't busy, and the next turn has a record of its own.
+FINISHED = "finished"
+#
+# What Stop has done in a turn (_Turn.stop). Only stop() moves it:
+#: No Stop yet.
+NOT_STOPPED = "not stopped"
+#: Stopped, with nothing to send: the prompt was held back, never went, or
+#: had already returned.
+ASKED = "asked"
+#: A cancel is queued to Copilot, and _Turn.timer closes Copilot if it
+#: doesn't stop in time.
+CANCEL_SENT = "cancel sent"
+#: The cancel couldn't go out: Copilot is closing, and the turn ends with it.
+CANCEL_NOT_SENT = "cancel not sent"
+#: Sending the cancel failed for another reason (_cancel raised): nothing
+#: will close Copilot, and another Stop tries again.
+CANCEL_FAILED = "cancel failed"
+
+# What Stop tells the window (Stopped.report), worked out from the turn's
+# record by _stop_report:
+#: No turn was running.
+NOTHING_RUNNING = "nothing running"
+#: Stopped before the message went: it comes back unsent (#405).
+BEFORE_SENDING = "before sending"
+#: Copilot's prompt had returned; the turn was only being checked (#386).
+CHECKING = "checking"
+#: Nothing could be cancelled: Copilot is closing, or the message never
+#: went to it (#405, #758).
+NOT_ANSWERING = "not answering"
+#: A cancel went, with the clock that closes Copilot if it doesn't stop.
+CANCELLED = "cancelled"
+#: A cancel had already gone in this turn, with its clock running: this
+#: Stop sent nothing and left the clock alone, so the forced close comes
+#: when the first Stop said it would, not a full grace from now (#405).
+ALREADY_ASKED = "already asked"
+#: The cancel couldn't be sent for a reason of this app's own.
+COULDNT_ASK = "couldn't ask"
+
+
+def _stop_report(prompt: str, before: str, after: str) -> str:
+    """What a Stop says, from where the turn's prompt was and what Stop had
+    done in the turn before and after this Stop, all read in one locked
+    step."""
+    if prompt == HELD_BACK:
+        return BEFORE_SENDING
+    if prompt == RETURNED:
+        return CHECKING
+    if prompt != QUEUED:
+        return NOT_ANSWERING  # NOT_QUEUED: the message never went
+    if before == CANCEL_SENT:
+        return ALREADY_ASKED
+    return {CANCEL_SENT: CANCELLED, CANCEL_FAILED: COULDNT_ASK}.get(after, NOT_ANSWERING)
+
+
 class Stopped(NamedTuple):
     """What a Stop found, read under the runtime's lock: the window's own
     copy of the chat's state can lag behind it (Kelly, #372)."""
     #: The messages that were still waiting, given back unsent.
     waiting: tuple = ()
-    #: Whether a cancel went to Copilot, with the timer that closes it if
-    #: it doesn't stop: a turn was running, unanswered, on a live connection.
-    cancelled: bool = False
-    #: Copilot's prompt had returned and the turn was only being checked,
-    #: so nothing was cancelled. Not necessarily an answer: a cancel, a
-    #: refusal or its process ending return the prompt too.
-    answered: bool = False
-    #: The turn hadn't decided to send its message: it sees the stop and
-    #: gives the message back unsent, so nothing went to Copilot (#405).
-    before_sending: bool = False
-    #: A cancel had already gone for this turn, with its timer running: this
-    #: Stop sent nothing and left the timer alone, so the forced close comes
-    #: when the first Stop said it would, not a full grace from now (#405).
-    already_asked: bool = False
+    #: What happened (NOTHING_RUNNING, BEFORE_SENDING, CHECKING,
+    #: NOT_ANSWERING, CANCELLED, ALREADY_ASKED or COULDNT_ASK): the window
+    #: says only this, through said().
+    report: str = NOTHING_RUNNING
 
-
-#: What _cancel did.
-CANCEL_SENT, ANSWERED_FIRST, NOT_SENT = "sent", "answered first", "not sent"
-ALREADY_SENT = "already sent"
+    def said(self, title: str, name: str, waiting: tuple = ()) -> str:
+        """The window's words for this Stop, for chat ``title`` on provider
+        ``name``, before any messages given back are mentioned. ``waiting``:
+        the messages coming back to the message box, which mean something
+        did happen, so it isn't "nothing to stop" (#386)."""
+        end = "." if waiting else ", so there's nothing to stop."
+        if self.report == CHECKING:
+            # Neutral: the prompt also returns for a cancel, a refusal or
+            # Copilot ending, and only the checks after it say which (#386).
+            return f"{title}: The Chat Place is checking how {name}'s turn ended{end}"
+        if self.report == BEFORE_SENDING:
+            return f"{title}: Stopped before your message went to {name}."
+        if self.report == ALREADY_ASKED:
+            return f"{title}: Already asked {name} to stop; The Chat Place closes it if it doesn't."
+        if self.report == CANCELLED:
+            return (f"Stop requested. If {name} does not stop within "
+                    f"{CANCEL_GRACE_SECONDS:g} seconds, The Chat Place closes it.")
+        if self.report == COULDNT_ASK:
+            return f"{title}: The Chat Place couldn't ask {name} to stop. Press Stop to try again."
+        # NOTHING_RUNNING or NOT_ANSWERING: the turn ended meanwhile, Copilot
+        # is closing and the turn ends with it, or the message never went.
+        return f"{title}: {name} isn't answering{end}"
 
 
 #: Said, and nothing sent, when a chat meant to start in plan mode couldn't.
@@ -1049,9 +1138,27 @@ class _Folder:
         return any(call in live for _chat, call in self.background)
 
 
+class _Turn:
+    """One turn's record, the only place where it stands with Copilot and
+    with Stop (#758). Read and changed only under the runtime's lock. A new
+    turn gets a new record, so nothing of an earlier turn's (its cancel, its
+    timer) can be taken for this one's."""
+
+    def __init__(self, number: int, connection, prompt: str = PENDING):
+        self.number = number
+        #: The connection the turn's prompt goes to, and so its cancel too.
+        self.connection = connection
+        self.prompt = prompt  # PENDING … FINISHED
+        self.stop = NOT_STOPPED  # NOT_STOPPED … CANCEL_FAILED
+        #: With CANCEL_SENT: closes Copilot if it doesn't stop in time.
+        self.timer: Optional[threading.Timer] = None
+
+
 class _Chat:
     def __init__(self, native_id: str, cwd: str):
         self.native_id, self.cwd = native_id, cwd
+        #: The current (or last) turn's record; none has run yet.
+        self.turn = _Turn(0, None, FINISHED)
         #: Shared with every chat in the same real folder (_Folder); the
         #: runtime gives it the folder's own when it's opened.
         self.folder = _Folder()
@@ -1061,9 +1168,6 @@ class _Chat:
         self.mode = ""
         self.allow_all = ""
         self.busy = False
-        #: Copilot has answered this turn's prompt: what's left (the billing
-        #: check) is ours, so there's nothing for Stop to cancel.
-        self.answered = False
         self.turns = 0
         self.replies: List[list] = []
         #: The files the last turn changed, from its stretch of the log.
@@ -1087,14 +1191,6 @@ class _Chat:
         self.edit_calls = set()  # toolCallIds of edits not known to have worked
         self.started_at = 0.0
         self.loading = False
-        self.stopping = False
-        #: This turn's prompt is queued to be written to Copilot: a cancel
-        #: sent before then would reach Copilot first, and be ignored.
-        self.prompt_queued = False
-        #: This turn has decided to send its prompt (it wasn't stopped
-        #: first): only then can a Stop's cancel lead to Copilot being
-        #: closed, and the window warn that it will be (Kelly, #405).
-        self.sending = False
         self.context = (0, 0)
         #: Counts compactions (context use dropping sharply), as Codex's state
         #: does, so the window's context warning can be said again after one.
@@ -1115,7 +1211,6 @@ class _Chat:
         #: Copilot won't load it again until it's closed there.
         self.open_on = None
         self.last_chunk_notice = 0.0
-        self.cancel_timer = None
         #: Continue Here (#352): the earlier conversation, to go ahead of
         #: this chat's first message when that message is sent; kept until
         #: then, so a message that doesn't go doesn't lose it.
@@ -1131,9 +1226,6 @@ class _Chat:
         #: one's reply look old.
         self.settings_gen = 0
         self.settings_applied = 0
-        #: The turn ``cancel_timer`` is for: a second Stop in that turn
-        #: mustn't put the forced close off again (Kelly, #405).
-        self.cancel_turn = 0
         #: Auto (copilot_folder): on only when you choose it, after a
         #: warning; the window keeps the choice for the chat.
         self.auto = False
@@ -1180,6 +1272,18 @@ class _Chat:
     @property
     def safe(self) -> bool:
         return self.mode in SAFE_MODES and self.allow_all == "off"
+
+    # Read from the turn's record (_Turn), never kept beside it.
+    @property
+    def answered(self) -> bool:
+        """Copilot is done with this turn's prompt: what's left (the billing
+        check) is ours, so there's nothing for Stop to cancel."""
+        return self.turn.prompt in (RETURNED, FINISHED)
+
+    @property
+    def stopping(self) -> bool:
+        """This turn has been stopped (by you, or by this app)."""
+        return self.turn.stop != NOT_STOPPED
 
     # The folder's shared state, as this chat sees it (_Folder).
     @property
@@ -1348,8 +1452,8 @@ class CopilotChatRuntime:
             self._closed = True
             connection, self._connection = self._connection, None
             for chat in self._chats.values():
-                if chat.cancel_timer is not None:
-                    chat.cancel_timer.cancel()
+                if chat.turn.timer is not None:
+                    chat.turn.timer.cancel()
         if connection is not None:
             connection.close()
 
@@ -2013,10 +2117,8 @@ class CopilotChatRuntime:
         ``start`` off, the caller starts the returned thread, once it has
         said the previous turn ended."""
         chat.busy, chat.outcome, chat.notice = True, "inProgress", ""
-        chat.answered = False
-        chat.prompt_queued = False
-        chat.sending = False
         chat.turns += 1
+        chat.turn = _Turn(chat.turns, chat.connection)  # PENDING, not stopped
         chat.started_at = time.monotonic()
         chat.reply_open = False
         chat.replies = []  # this turn's replies, as Codex's state has
@@ -2042,34 +2144,35 @@ class CopilotChatRuntime:
     def _run_turn(self, chat: _Chat, connection, text: str) -> None:
         outcome = "failed"
         not_sent = ()
+        pending, refused = None, None
         with self._lock:
-            # Stopped between the last turn's end and this one's start: the
-            # message goes back unsent, never to Copilot.
-            stopped_first = chat.stopping
-            turn = chat.turns
+            turn = chat.turn
+            # Decided and queued in one locked step, the step Stop reads the
+            # turn in (#758): a Stop either comes first and holds the prompt
+            # back (HELD_BACK: stopped since _begin, it goes back unsent,
+            # never to Copilot), or finds it QUEUED and sends its own cancel,
+            # which then reaches Copilot after it (#372), or finds it
+            # NOT_QUEUED, with nothing to cancel. Queuing never waits on
+            # Copilot (copilot_acp.begin), so the lock is held only a moment.
+            held_back = turn.prompt == HELD_BACK
             preamble = chat.preamble
-            # Decided in the same locked step a Stop reads it in, so a Stop
-            # either finds the prompt going out or stops it going.
-            chat.sending = not stopped_first
-        if stopped_first:
+            if not held_back:
+                try:
+                    pending = connection.begin(
+                        "session/prompt", {"sessionId": chat.native_id,
+                                           "prompt": [{"type": "text", "text": preamble + text}]})
+                except Exception as exc:  # noqa: BLE001 - raised below, where it's said
+                    turn.prompt, refused = NOT_QUEUED, exc
+                else:
+                    turn.prompt = QUEUED
+                    if preamble and chat.preamble is preamble:
+                        chat.preamble = ""  # gone with this prompt
+        if held_back:
             not_sent = (text,)
-
-        def queued():
-            # A Stop from here on sends its own cancel, which now reaches
-            # Copilot after the prompt. One that came while the prompt was
-            # on its way left the cancel to this turn, to send now.
-            with self._lock:
-                chat.prompt_queued = True
-                if preamble and chat.preamble is preamble:
-                    chat.preamble = ""  # gone with this prompt
-                cancel = chat.stopping and not chat.answered and chat.turns == turn
-            if cancel:
-                self._cancel(chat, connection, turn)
         try:
-            result = {"stopReason": "cancelled"} if stopped_first else connection.request(
-                "session/prompt", {"sessionId": chat.native_id,
-                                   "prompt": [{"type": "text", "text": preamble + text}]},
-                timeout=None, on_queued=queued)
+            if refused is not None:
+                raise refused
+            result = {"stopReason": "cancelled"} if held_back else pending.result(None)
             reason = result.get("stopReason")
             outcome = {"end_turn": "completed", "cancelled": "interrupted"}.get(reason, "failed")
             if outcome == "failed":
@@ -2096,12 +2199,13 @@ class CopilotChatRuntime:
                 chat.notice = chat.notice or ("Copilot stopped before finishing. Your message "
                                               "wasn't sent again.")
         with self._lock:
-            # Copilot is done with this turn: a Stop from here on has nothing
-            # to cancel, and must not start the timer that closes Copilot.
-            chat.answered = True
-            if chat.cancel_timer is not None:
-                chat.cancel_timer.cancel()  # it stopped in time
-                chat.cancel_timer = None
+            # Copilot is done with this turn (or never had it): a Stop from
+            # here on has nothing to cancel, and must not start the timer
+            # that closes Copilot.
+            turn.prompt = RETURNED
+            if turn.timer is not None:
+                turn.timer.cancel()  # it stopped in time
+                turn.timer = None
         self._notify(chat)  # the window knows Stop has nothing left to cancel
         try:
             self._check_billing(chat, outcome)
@@ -2143,13 +2247,13 @@ class CopilotChatRuntime:
             if hook_ran:
                 chat.problem = HOOK_ANSWERED
             chat.busy, chat.outcome, chat.activity = False, outcome, ""
+            turn.prompt = FINISHED  # with busy, in the same step
             if chat.preamble and PREAMBLE_WAITING not in chat.notice:
                 # Continue Here's history didn't go: it waits, in memory only.
                 chat.notice = f"{chat.notice} {PREAMBLE_WAITING}".strip()
             chat.requests.clear()
             chat.notice = _without_asks(chat.notice)  # nothing waits now
             held, chat.held = chat.held, ()
-            chat.stopping = False
             refusal = self._refusal(chat) or hooks
             if outcome != "completed" or refusal or held:
                 # Never carry on with queued messages after a stop, a failure,
@@ -2217,13 +2321,21 @@ class CopilotChatRuntime:
         Waiting permission requests are answered "cancelled" first, as ACP
         asks of a client that cancels. With ``hold`` (a stop the person
         didn't ask for) the messages are kept and given back as unsent when
-        the turn ends, rather than returned."""
+        the turn ends, rather than returned.
+
+        All of it is one locked step (#758): what the turn's record says,
+        what's sent, and what's reported can't come apart, since the turn
+        and any other Stop change the record only under the same lock. What
+        it sends (the answers, the cancel) is only queued, never waited on,
+        so the lock is held only a moment, whichever thread calls this: the
+        window's worker, a turn's (_halt), or Copilot's reader (a settings
+        change that means Copilot won't ask first)."""
         with self._lock:
             chat = self._chats.get(native_id)
             if chat is None or not chat.busy:
                 return Stopped()
-            chat.stopping = True
-            turn = chat.turns  # the turn being stopped, read under the lock
+            turn = chat.turn
+            before = turn.stop
             waiting, chat.queue = tuple(chat.queue), []
             if hold:
                 chat.held += waiting
@@ -2231,92 +2343,98 @@ class CopilotChatRuntime:
             requests = list(chat.requests)
             chat.requests.clear()
             chat.notice = _without_asks(chat.notice)  # nothing waits now
-            answered = chat.answered
-            prompt_queued = chat.prompt_queued
-            sending = chat.sending
-            connection = chat.connection
-        if connection is not None and not connection.closed:
-            for request_id in requests:
+            connection = turn.connection
+            if connection is not None and not connection.closed:
+                for request_id in requests:
+                    try:
+                        connection.respond(request_id, {"outcome": {"outcome": "cancelled"}})
+                    except copilot_acp.AcpError:
+                        pass
+            if turn.prompt == PENDING:
+                # The turn hasn't decided to send: it sees this and gives its
+                # message back unsent. Nothing to cancel, and nothing will be
+                # closed, so the window mustn't warn that it will be (#405).
+                turn.prompt = HELD_BACK
+            if turn.prompt == QUEUED and before != CANCEL_SENT:
+                # The prompt is queued, so a cancel queued now reaches
+                # Copilot after it (#372). Not once it has returned: the turn
+                # is only being checked, and the timer that closes a Copilot
+                # ignoring the cancel would end every other chat's turn for
+                # nothing (#386). Nor a second time: the first cancel's clock
+                # keeps running, so pressing Stop again can't put the forced
+                # close off (#405).
                 try:
-                    connection.respond(request_id, {"outcome": {"outcome": "cancelled"}})
-                except copilot_acp.AcpError:
-                    pass
-        # Once Copilot has answered, the turn is only being checked:
-        # cancelling it, and the timer that closes a Copilot ignoring the
-        # cancel, would end every other chat's turn for nothing.
-        cancel = connection is not None and not connection.closed and not answered
-        # A turn that hasn't decided to send will see this stop and give its
-        # message back unsent: there's nothing to cancel, and nothing will be
-        # closed, so the window mustn't warn that it will be (Kelly, #405).
-        # (The prompt can still fail to go after that, AcpNotSent for a
-        # message too big or too many requests waiting: a moment's gap in
-        # which the warning is said for nothing. Its message comes back
-        # unsent, and says so.)
-        before_sending = cancel and not sending
-        cancel = cancel and sending
-        # Before its prompt is queued, the turn sends the cancel itself, right
-        # after the prompt (_run_turn): sent now, it would reach Copilot
-        # first, be ignored, and the timer would close a Copilot that was
-        # only answering (Kelly, #372). Or the turn sees the stop before
-        # sending, and the message comes back unsent.
-        sent = self._cancel(chat, connection, turn) if cancel and prompt_queued else None
-        if sent == ANSWERED_FIRST:
-            # No timer, so nothing will be closed: the window mustn't
-            # warn that it will be. Copilot answered first (Kelly, #386).
-            cancel, answered = False, True
-        elif sent == NOT_SENT:
-            # The cancel couldn't go out (Copilot is closing): no timer
-            # either, and the turn ends with the connection (Kelly, #405).
-            cancel = False
+                    turn.stop = self._cancel(chat, turn)
+                except Exception:  # noqa: BLE001 - said as a Stop that couldn't ask
+                    turn.stop = CANCEL_FAILED
+            elif turn.stop == NOT_STOPPED:
+                turn.stop = ASKED
+            report = _stop_report(turn.prompt, before, turn.stop)
+            # An automatic stop (Copilot stopped asking before it acts, or
+            # billing couldn't be confirmed) has nobody to press Stop again:
+            # if its cancel couldn't be sent, Copilot is closed instead, as
+            # for one that ignores a cancel (review of #758).
+            close = hold and report == COULDNT_ASK and connection is not None
+            if close:
+                self._closing(chat, connection,
+                              "The Chat Place couldn't ask Copilot to stop, so it closed it. "
+                              "Open the chat again to carry on.",
+                              "Copilot was closed because another chat couldn't be stopped. "
+                              "Open this chat again to carry on.")
+        if close:
+            connection.close()
         self._notify(chat)
-        return Stopped(waiting, cancelled=cancel, answered=answered,
-                       before_sending=before_sending,
-                       already_asked=sent == ALREADY_SENT)
+        return Stopped(waiting, report)
 
-    def _cancel(self, chat: _Chat, connection, turn: int) -> str:
-        """Ask Copilot to cancel ``turn``, and close it if it doesn't stop in
-        time. CANCEL_SENT; ALREADY_SENT if a cancel for this turn already
-        went and its timer is running (nothing is sent and that timer is
-        kept); ANSWERED_FIRST if Copilot answered first, or NOT_SENT if the
-        cancel couldn't go out, neither of which keeps a timer."""
-        timer = threading.Timer(self._cancel_grace, self._cancel_overdue,
-                                args=(chat, connection, turn))
+    def _closing(self, chat: _Chat, connection, notice: str, others: str) -> None:
+        """With the lock held, before ``connection`` is closed to end
+        ``chat``'s turn: say why in it, and in every other chat whose turn
+        ends with it."""
+        chat.notice = notice
+        for other in self._chats.values():
+            if other is not chat and other.connection is connection and other.busy:
+                other.notice = others
+
+    def _cancel(self, chat: _Chat, turn: _Turn) -> str:
+        """Ask Copilot to cancel ``turn``, whose prompt is queued, and start
+        the clock that closes Copilot if it doesn't stop in time. With the
+        lock held (stop()). CANCEL_SENT, or CANCEL_NOT_SENT if the cancel
+        couldn't go out (Copilot is closing, and the turn ends with it),
+        which starts no clock. Anything else raised leaves no clock either."""
+        connection = turn.connection
+        if connection is None or connection.closed:
+            return CANCEL_NOT_SENT
+        timer = _Timer(self._cancel_grace, self._cancel_overdue, args=(chat, turn))
         timer.daemon = True  # never keeps the app open after it quits
-        with self._lock:
-            # Checked and queued in one step: once the turn has ended, the
-            # next waiting message's turn may have begun, and a cancel
-            # queued after its prompt would stop that one instead. Queuing
-            # never waits on Copilot, so the lock is held only a moment.
-            if chat.answered or chat.turns != turn:
-                return ANSWERED_FIRST
-            if chat.cancel_timer is not None and chat.cancel_turn == turn:
-                # Already asked, and the clock is running: pressing Stop
-                # again mustn't put the forced close off (Kelly, #405).
-                return ALREADY_SENT
-            try:
-                connection.notify("session/cancel", {"sessionId": chat.native_id})
-            except copilot_acp.AcpError:
-                return NOT_SENT  # never queued: Copilot is closing
-            if chat.cancel_timer is not None:
-                chat.cancel_timer.cancel()
-            chat.cancel_timer, chat.cancel_turn = timer, turn
+        # Started before the cancel goes, so a clock that can't start sends
+        # nothing; it can't act before this locked step has recorded the
+        # cancel (_cancel_overdue takes the lock and checks the record).
         timer.start()
+        try:
+            connection.notify("session/cancel", {"sessionId": chat.native_id})
+        except copilot_acp.AcpError:
+            timer.cancel()
+            return CANCEL_NOT_SENT  # never queued: Copilot is closing
+        except BaseException:
+            timer.cancel()
+            raise
+        turn.timer = timer
         return CANCEL_SENT
 
-    def _cancel_overdue(self, chat: _Chat, connection, turn: int) -> None:
+    def _cancel_overdue(self, chat: _Chat, turn: _Turn) -> None:
         """Copilot didn't stop when asked. Ending the turn here alone would
         leave it free to keep acting, so its process is closed: every turn on
         it ends, and chats are opened again to carry on."""
         with self._lock:
-            overdue = (chat.busy and not chat.answered and chat.turns == turn
-                       and chat.connection is connection)
+            connection = turn.connection
+            overdue = (chat.turn is turn and turn.prompt == QUEUED
+                       and turn.stop == CANCEL_SENT and chat.connection is connection)
             if overdue:
-                chat.notice = ("Copilot didn't stop when asked, so The Chat Place closed it. "
-                               "Open the chat again to carry on.")
-                for other in self._chats.values():
-                    if other is not chat and other.connection is connection and other.busy:
-                        other.notice = ("Copilot was closed because another chat didn't stop "
-                                        "when asked. Open this chat again to carry on.")
+                self._closing(chat, connection,
+                              "Copilot didn't stop when asked, so The Chat Place closed it. "
+                              "Open the chat again to carry on.",
+                              "Copilot was closed because another chat didn't stop "
+                              "when asked. Open this chat again to carry on.")
         if overdue:
             connection.close()
 

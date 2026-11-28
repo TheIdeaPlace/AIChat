@@ -976,27 +976,10 @@ class CodexChats(SoundHost, CodexExtras):
                 text = f'{name} chat reconnected after verifying its previous turn ended. No message was resent.'
             elif record.provider in ('codex', 'codex-api'):
                 text = f'Stop requested. If the turn does not finish, press Stop again to check whether {name} has ended it.'
-            elif stopped is not None and stopped.answered:
-                # Copilot's prompt has returned, which needn't be an answer: a
-                # cancel, a refusal or its process ending return it too. Only
-                # the checks after it say which, so this doesn't (Kelly, #386).
-                text = f'{record.title}: The Chat Place is checking how {name}\'s turn ended'
-                text += '.' if waiting else ', so there\'s nothing to stop.'
-            elif stopped is not None and getattr(stopped, 'before_sending', False):
-                # Stopped before its message went: that message comes back
-                # unsent with the turn's end, which says where (#405).
-                text = f'{record.title}: Stopped before your message went to {name}.'
-            elif stopped is not None and getattr(stopped, 'already_asked', False):
-                # Stop pressed again: the first Stop's timer still runs, so
-                # promising a fresh grace period would be wrong (#405).
-                text = (f'{record.title}: Already asked {name} to stop; '
-                        "The Chat Place closes it if it doesn't.")
-            elif stopped is not None and not stopped.cancelled:
-                # The turn ended meanwhile, or Copilot's process has gone and
-                # the turn is ending with it (a cancel that couldn't go out,
-                # #405): either way it isn't answering.
-                text = f'{record.title}: {name} isn\'t answering'
-                text += '.' if waiting else ', so there\'s nothing to stop.'
+            elif stopped is not None:
+                # Worded only from what the runtime's record of the turn said
+                # (copilot_runtime.Stopped.report, #758).
+                text = stopped.said(record.title, name, waiting)
             else:
                 from ..providers.copilot_runtime import CANCEL_GRACE_SECONDS
                 text = (f'Stop requested. If {name} does not stop within '
@@ -1022,7 +1005,7 @@ class CodexChats(SoundHost, CodexExtras):
                 return recover()
             if record.provider in ('codex', 'codex-api'):
                 return False, (), None
-            if hasattr(stopped, 'cancelled'):  # copilot_runtime.Stopped
+            if hasattr(stopped, 'report'):  # copilot_runtime.Stopped
                 return False, tuple(stopped.waiting), stopped
             # A provider that gives back only the waiting messages, or
             # nothing, is taken to have cancelled.

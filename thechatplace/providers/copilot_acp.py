@@ -134,12 +134,18 @@ class AcpConnection:
                 self.close()
                 return
 
-    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS,
-                on_queued: Optional[Callable[[], None]] = None):
+    def request(self, method: str, params: dict, timeout: Optional[float] = REQUEST_SECONDS):
         """Send a request and wait for its result (None waits until it comes
-        or Copilot exits). Raises AcpError on an error reply or a timeout.
-        ``on_queued`` is called once the request is queued to be written,
-        before the wait: whatever is sent after that reaches Copilot after it."""
+        or Copilot exits). Raises AcpError on an error reply or a timeout."""
+        return self.begin(method, params).result(timeout)
+
+    def begin(self, method: str, params: dict) -> "PendingRequest":
+        """Queue a request to be written, without waiting for its answer:
+        whatever is sent after this returns reaches Copilot after it. Never
+        waits on the pipe, so a caller may hold its own lock across it and
+        decide, queue and record in one step (a Copilot turn's prompt and
+        Stop, #758). Raises AcpNotSent if it couldn't be queued; the
+        returned request's result() waits for the answer."""
         done = threading.Event()
         with self._lock:
             if self._closed:
@@ -152,9 +158,15 @@ class AcpConnection:
             self._pending[request_id] = slot
         try:
             self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
-            if on_queued is not None:
-                on_queued()
-            if not done.wait(timeout):
+        except BaseException:
+            with self._lock:
+                self._pending.pop(request_id, None)
+            raise
+        return PendingRequest(self, request_id, slot)
+
+    def _result(self, request_id, slot, timeout: Optional[float]):
+        try:
+            if not slot["done"].wait(timeout):
                 # Only this request gives up: other chats' turns share the
                 # process. Its id is never reused, so a late answer is ignored.
                 raise AcpError("Copilot didn't answer in time.")
@@ -268,6 +280,19 @@ class AcpConnection:
                 self._on_closed()
             except Exception:  # noqa: BLE001 - telling chats is best effort
                 pass
+
+
+class PendingRequest:
+    """A request AcpConnection.begin queued: result() waits for its answer,
+    once (None waits until it comes or Copilot exits)."""
+
+    def __init__(self, connection: AcpConnection, request_id: int, slot: dict):
+        self._connection, self._id, self._slot = connection, request_id, slot
+
+    def result(self, timeout: Optional[float] = REQUEST_SECONDS):
+        """The answer's result. Raises AcpError on an error reply or a
+        timeout, AcpAuthRequired for a sign-in that stopped working."""
+        return self._connection._result(self._id, self._slot, timeout)
 
 
 def check_initialize(result: dict) -> None:
