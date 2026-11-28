@@ -307,13 +307,29 @@ def add_transcript(env, cwd, cli, records):
 
 
 def pump(condition, timeout=5.0):
-    end = time.time() + timeout
+    """Run the window's events until ``condition()`` is true, for up to
+    ``timeout`` seconds. If it never is, say where the time went (#761), in
+    the output a failing test shows: a load that didn't finish in time once
+    turned out to be one yield to the system that alone took most of the
+    time, the macOS window server stalled by native windows piling up
+    (#757), not slow work in the app."""
+    start = time.time()
+    end = start + timeout
+    rounds, waiting, longest = 0, 0.0, 0.0
     while time.time() < end:
+        before = time.perf_counter()
         wx.GetApp().ProcessPendingEvents()
         wx.YieldIfNeeded()
+        took = time.perf_counter() - before
+        rounds, waiting, longest = rounds + 1, waiting + took, max(longest, took)
         if condition():
             return True
         time.sleep(0.02)
+    if condition():  # one last look: the deadline may have passed while asleep
+        return True
+    if timeout >= 2:  # shorter pumps on a condition never met are waits on purpose
+        print(f"pump: not true after {time.time() - start:.1f} s of {timeout:g}: {rounds} "
+              f"rounds, {waiting:.1f} s running events, the longest one {longest:.1f} s")
     return False
 
 
