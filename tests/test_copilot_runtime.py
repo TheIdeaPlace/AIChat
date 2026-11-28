@@ -62,7 +62,7 @@ class Process:
 
 @pytest.fixture
 def make(tmp_path):
-    made = []
+    made, gated_ = [], []
 
     def build(mode="answer", rules=None, auto_ended=None, gated=False):
         """``gated``: the first prompt waits for ``release(tmp_path)``, for a
@@ -71,6 +71,7 @@ def make(tmp_path):
                    FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
         if gated:
             env["FAKE_COPILOT_GATE"] = str(tmp_path / "gate")
+            gated_.append(tmp_path / "gate")
         updates = []
         runtime = CopilotChatRuntime(updates.append, start=lambda: Process(mode, env),
                                      sessions_dir=tmp_path / "sessions", billing_wait=1.0,
@@ -81,6 +82,9 @@ def make(tmp_path):
     yield build
     for runtime in made:
         runtime.close()
+    # Else its first turn just waited out the gate's 30 s, and a failure
+    # would read as a plain timeout.
+    assert all(gate.exists() for gate in gated_), "a gated test never called release()"
 
 
 def release(tmp_path):
@@ -146,10 +150,11 @@ def test_the_client_offers_copilot_no_files_or_terminal(make, tmp_path):
 
 
 def test_a_message_sent_while_working_waits_its_turn(make, tmp_path):
-    runtime, _ = make()
+    runtime, _ = make(gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
@@ -658,10 +663,11 @@ def test_a_sign_in_that_stops_working_says_what_to_do(make, tmp_path):
     """A prompt refused for want of a sign-in says to sign in. Copilot had
     already logged it (it may even have acted), so it isn't given back, nor
     taken for another Copilot's message; the one waiting comes back unsent."""
-    runtime, _ = make("expired")
+    runtime, _ = make("expired", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True  # queued behind it
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).outcome == "failed")
     state = runtime.snapshot(chat)
     assert state.notice == copilot_acp.NOT_SIGNED_IN_SENT
@@ -1667,10 +1673,11 @@ def test_every_running_process_has_its_real_start_on_windows():
 def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
     """The window hears turn 1 complete, with its reply, before turn 2 starts:
     one update for both skipped turn 1's announcement."""
-    runtime, updates = make("slow")
+    runtime, updates = make("slow", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
@@ -1684,7 +1691,7 @@ def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
 def test_a_stop_between_two_turns_sends_nothing_more(make, tmp_path, monkeypatch):
     """Stop pressed just as one turn ends and the waiting message's begins:
     that message comes back unsent and never reaches Copilot."""
-    runtime, _ = make("slow")
+    runtime, _ = make("slow", gated=True)
     chat = runtime.create(str(tmp_path))
     real = runtime._deliver
     stopped = []
@@ -1696,6 +1703,7 @@ def test_a_stop_between_two_turns_sends_nothing_more(make, tmp_path, monkeypatch
     monkeypatch.setattr(runtime, "_deliver", stop_in_the_gap)
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: stopped and runtime.snapshot(chat).turn_id == "2"
                 and not runtime._chats[chat].busy)
     assert runtime.snapshot(chat).unsent == ("Second",)
