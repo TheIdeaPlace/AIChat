@@ -376,6 +376,11 @@ def close_frame(window, delete: bool = True) -> None:
             pass           # fails to close mustn't keep the window open
     else:
         cleanup.join(timeout=10)
+    # Claude's provider closes the history keepers for good, as the app does
+    # on exit. A test process goes on to make more windows (the probe makes
+    # one per surface), so they start open again, as conftest does per test.
+    from thechatplace import history_keeper
+    history_keeper._closed_all = False
     app.ProcessPendingEvents()  # and what the closes handed back
     if not app.IsScheduledForDestruction(window):
         window.Destroy()
