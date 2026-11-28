@@ -34,6 +34,78 @@ def pytest_unconfigure(config):
         os._exit(status)
 
 
+#: A test still running after this long has hung (the slowest take under a
+#: minute on a busy macOS runner). TCP_HANG_SECONDS changes it, to try it.
+HANG_SECONDS = float(__import__("os").environ.get("TCP_HANG_SECONDS", "300"))
+
+
+import subprocess as _subprocess  # noqa: E402
+
+#: The real one, kept before any test can replace it: a hang inside a test
+#: that fakes subprocess must still get its native report.
+_RUN = _subprocess.run
+_DEVNULL = _subprocess.DEVNULL
+
+
+def _report_hang(config, nodeid):
+    """Say where a hung test is, then end the run (#757): every thread's
+    Python stack, and on a Mac each command's output under its own heading:
+    the native stacks (sample), whether the display is asleep (pmset), and
+    the window server. The test run hung in the middle on macOS CI and was
+    cut off at the job's limit with nothing to say where: pytest -q doesn't
+    name the running test, and a thread stuck in native code answers no
+    signal. Whatever goes wrong while reporting, the run still ends."""
+    import faulthandler
+    import os
+    try:
+        capture = config.pluginmanager.getplugin("capturemanager")
+        try:
+            if capture is not None:
+                capture.suspend_global_capture(in_=False)  # back to the real stderr
+        except Exception:  # noqa: BLE001 - say what's known regardless
+            pass
+        err = sys.__stderr__
+        err.write(f"\n\n#757: {nodeid} has run for {HANG_SECONDS:g} seconds. Every thread:\n")
+        err.flush()
+        faulthandler.dump_traceback(file=err, all_threads=True)
+        err.flush()
+        if sys.platform == "darwin":
+            # The window server too: the first hang caught was the main thread
+            # waiting on it for a new window's fence (#757). sudo needs no
+            # password only on CI; -n makes it fail at once anywhere else.
+            for command in (["/usr/bin/sample", str(os.getpid()), "3"],
+                            ["/usr/bin/pmset", "-g"], ["/usr/bin/pmset", "-g", "assertions"],
+                            ["/usr/bin/sudo", "-n", "/usr/bin/sample", "WindowServer", "2"]):
+                err.write(f"\n$ {' '.join(command)}\n")
+                err.flush()
+                try:
+                    _RUN(command, stdout=err, stderr=err, stdin=_DEVNULL, timeout=60)
+                except Exception as exc:  # noqa: BLE001
+                    err.write(f"failed: {exc}\n")
+                err.flush()
+    finally:
+        os._exit(3)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """On CI, a test that hangs ends the run with every stack (#757), rather
+    than running out the job's time. Setup and teardown count too: the frame
+    fixtures build and destroy whole windows."""
+    import os
+    import threading
+    if not os.environ.get("CI"):
+        yield
+        return
+    timer = threading.Timer(HANG_SECONDS, _report_hang, args=(item.config, item.nodeid))
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths
