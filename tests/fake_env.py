@@ -160,6 +160,8 @@ def install(root: Path, patch, formatted_view: bool = False) -> dict:
     # The frame points the shared speaker at itself (#98); put it back after,
     # so no later test reaches a destroyed frame through it.
     patch(speech.speaker, "on_problem", None)
+    # And on Linux announces through the window (#757 review): the same.
+    patch(speech.speaker, "window_announcer", None)
     patch(speech.speaker, "last_problem", "")
     patch(main_frame, "list_speech_options", lambda: speech.default_options())
     if formatted_view:
@@ -313,41 +315,60 @@ top_level_windows = wx.GetTopLevelWindows
 _yield_if_needed = wx.YieldIfNeeded
 
 
-def settle(rounds: int = 20) -> bool:
-    """Do what wx's event loop would do between events: run the queued
-    calls, then its idle time, when it deletes each window ``Destroy()``
-    only scheduled for deletion. The tests run no event loop, so without
-    this a closed window lived on into the tests after it (#757). True once
-    nothing is left scheduled."""
+def delete_destroyed(rounds: int = 20) -> bool:
+    """Do what wx's event loop would do between events once a window is
+    destroyed: run the queued calls, then its idle time, when it deletes each
+    window ``Destroy()`` only scheduled for deletion. The tests run no event
+    loop, so without this a closed window lived on into the tests after it
+    (#757). Nothing is run when nothing is scheduled: a test with no windows
+    mustn't run calls queued for another test's. True once nothing is left
+    scheduled."""
     app = wx.GetApp()
     if app is None:
         return True
 
     def scheduled():
         return any(app.IsScheduledForDestruction(w) for w in top_level_windows())
-    if not scheduled() and not app.HasPendingEvents():
-        return True  # a test with no windows: nothing to run
     for _ in range(rounds):
-        app.ProcessPendingEvents()
-        _yield_if_needed()
         if not scheduled():
             return True
-    return False
+        app.ProcessPendingEvents()
+        _yield_if_needed()
+    return not scheduled()
 
 
 def close_frame(window) -> None:
-    """Close a test's MainFrame the one way every test does (#757): its
-    timers stopped and its pool's threads ended first, what they handed back
-    run while the window is whole (on a Mac a destroyed one is still half
-    there), then the window destroyed and actually deleted. A frame closed
-    without ending its pool left up to three threads, and the frame they
-    hold, alive for the rest of the run: 427 of them by the end on macOS."""
+    """Close a test's MainFrame the one way every test does (#757): what the
+    app's own close does that needs no answer from you, and the window then
+    actually deleted. In order: marked closing, timers stopped, its pool's
+    threads ended (a frame closed without that left up to three threads,
+    and the frame they hold, alive for the rest of the run: 427 of them by
+    the end on macOS), what they handed back run while the window is whole
+    (on a Mac a destroyed one is still half there), then its sounds, session
+    tools and providers closed and the speaker no longer pointed at it, as
+    ``MainFrame._on_close`` does. A test that already closed it (so
+    ``_on_close`` ran) leaves only its pool and provider cleanup to end."""
+    window._pool.shutdown(wait=True)
+    cleanup = getattr(window, "_provider_cleanup", None)
+    if not window or cleanup is not None:  # _on_close starts the provider cleanup
+        if cleanup is not None:
+            cleanup.join(timeout=10)
+        if window and not wx.GetApp().IsScheduledForDestruction(window):
+            window.Destroy()
+        delete_destroyed()
+        return
+    window._closing = True
     window._runners.clear()
     window.stop_timers()
-    window._pool.shutdown(wait=True)
     wx.GetApp().ProcessPendingEvents()
+    window._sound_close()
+    window._notifier.close()
+    window._close_session_tools()
+    window.sessions.close()  # on this thread, not the app's cleanup thread: it's ended here
+    if speech.speaker.window_announcer == window._announce_through_window:
+        speech.speaker.window_announcer = None
     window.Destroy()
-    settle()
+    delete_destroyed()
 
 
 def pump(condition, timeout=5.0):

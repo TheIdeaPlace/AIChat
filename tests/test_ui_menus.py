@@ -124,11 +124,7 @@ def test_the_menus_start_with_the_keys_in_keys_json(env):
         assert items["sounds"].GetItemLabel() == "S&ounds...\tCtrl+J"
         assert items["find"].GetItemLabel() == "F&ind..." and items["find"].GetAccel() is None
     finally:
-        window.stop_timers()
-        window._pool.shutdown(wait=True)
-        wx.GetApp().ProcessPendingEvents()
-        window.Destroy()
-        wx.GetApp().ProcessPendingEvents()
+        fake_env.close_frame(window)
 
 
 def test_a_changed_key_shows_at_once_in_the_menus(frame):

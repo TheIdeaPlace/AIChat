@@ -123,31 +123,43 @@ def _libobjc():
 
 
 def _window_key(window):
+    """A window's native address and class. A window deleted during the test
+    could in principle give its address to a new one; with the class too,
+    such a leak goes unnoticed only if it's the same kind of window."""
     try:
         import wx
-        return wx.siplib.unwrapinstance(window)
+        return (wx.siplib.unwrapinstance(window), type(window).__name__)
     except Exception:  # noqa: BLE001 - an older wx: the wrapper stands for it
-        return id(window)
+        return (id(window), type(window).__name__)
 
 
-def _close_left_windows(wx, fake_env, before) -> list:
-    """Each top-level window this test made and didn't destroy: closed, as
-    the tests' own close_frame does, and named. Ones it destroyed are left
-    to settle, which deletes them."""
+def _close_left_windows(wx, fake_env, before) -> tuple:
+    """Each top-level window this test made and didn't destroy: closed (a
+    MainFrame as the tests' own close_frame does) and named. Ones it
+    destroyed are left for delete_destroyed. Also whether it's safe to run
+    the event loop to delete them: a leftover dialog may have a timer or a
+    delayed call of its own still set, which could fire into it as it goes,
+    so then the run carries on without, rather than risk a crash."""
     app = wx.GetApp()
-    left = []
+    left, safe = [], True
     for window in list(fake_env.top_level_windows()):
-        if _window_key(window) in before or app.IsScheduledForDestruction(window):
-            continue
-        left.append(f"{type(window).__name__} {window.GetTitle()!r}")
-        if hasattr(window, "stop_timers"):
-            window.stop_timers()
-        pool = getattr(window, "_pool", None)
-        if pool is not None:
-            pool.shutdown(wait=True)
-        app.ProcessPendingEvents()
-        window.Destroy()
-    return left
+        try:
+            if _window_key(window) in before or app.IsScheduledForDestruction(window):
+                continue
+            left.append(f"{type(window).__name__} {window.GetTitle()!r}")
+            if hasattr(window, "_pool"):
+                fake_env.close_frame(window)
+                continue
+            safe = False
+            window.Destroy()
+        except Exception as exc:  # noqa: BLE001 - a half-made frame: close the rest anyway
+            left.append(f"{type(window).__name__} (couldn't close: {exc})")
+            safe = False
+            try:
+                window.Destroy()
+            except Exception:  # noqa: BLE001
+                pass
+    return left, safe
 
 
 def _hub_threads_left(before) -> list:
@@ -171,11 +183,14 @@ def _windows_gone_after_each_test(monkeypatch):
     The tests drive wx with no event loop. So nothing did what a running
     app does after each event: delete the windows ``Destroy()`` scheduled
     (wx does that in idle time), and drain the main thread's autorelease
-    pool. AppKit's autoreleased objects were never released: native windows
-    piled up (336 of them, all hidden: combo box lists and text input
-    popups, 2.5 GB by the end), and window creation then sometimes waited
-    forever on the window server (#757, and #711's hang at exit). Each test
-    now runs in a pool of its own, drained once its windows are deleted.
+    pool. AppKit's autoreleased objects were never released. In a full
+    macOS CI run, native windows piled up to 336 (all hidden: combo box lists
+    and text input popups), the process's Mach ports to 11,000 and its size
+    to 2.5 GB, against 2 windows, 400 ports and 0.7 GB with this in place.
+    That pile is the likely cause of window creation sometimes waiting
+    forever on the window server (#757): each hang came after it started.
+    Each test now runs in a pool of its own, drained once its windows are
+    deleted.
 
     A window left undestroyed, or a frame's pool left running, fails the
     test: the tests close frames with ``fake_env.close_frame``.
@@ -199,10 +214,10 @@ def _windows_gone_after_each_test(monkeypatch):
             wx = sys.modules.get("wx")
             if wx is not None and wx.GetApp() is not None:
                 import fake_env
-                left = _close_left_windows(wx, fake_env, before)
+                left, safe = _close_left_windows(wx, fake_env, before)
                 if left:
                     problems.append(f"windows left open: {left}")
-                if not fake_env.settle():
+                if safe and not fake_env.delete_destroyed():
                     problems.append("destroyed windows were never deleted")
             threads = _hub_threads_left(threads_before)
             if threads:
