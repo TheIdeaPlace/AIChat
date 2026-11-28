@@ -284,6 +284,8 @@ def test_a_codex_chat_from_elsewhere_reads_as_read_only(frame, env):
         assert "can't be changed here" in details and "off for this chat" not in details
         # No button that can only say "can't" once pressed (#729's acceptance test).
         assert not dialog.toggle_btn.IsShown()
+        # Nor pressed by Alt+O while hidden, as Windows still did (seen under NVDA).
+        assert not dialog.toggle_btn.IsEnabled() and "&" not in dialog.toggle_btn.GetLabel()
         dialog.on_toggle()
         assert env["boxes"][-1] == READ_ONLY_TOOLS
     finally:
@@ -1556,7 +1558,7 @@ def test_unavailable_apps_row_never_performs_a_tool_action(frame, env, action):
     try:
         assert dialog._list_name() == "Connected tools, 0"
         # Not "Copy with Tool On": the row isn't a tool (#729's review).
-        assert dialog.toggle_btn.GetLabel() == "Change T&ool"
+        assert dialog.toggle_btn.GetLabelText() == "Change Tool"
         getattr(dialog, action)()
         assert env["boxes"][-1] == notice.text()
         assert dialog.details.GetValue().startswith(notice.text())
@@ -1584,7 +1586,7 @@ def test_the_more_apps_row_is_information_and_isnt_counted(frame, env, action):
         assert dialog.list.GetString(2) == rows[2].text()
         dialog.list.SetSelection(2)
         dialog._show_selected()
-        assert dialog.toggle_btn.GetLabel() == "Change T&ool"
+        assert dialog.toggle_btn.GetLabelText() == "Change Tool"
         getattr(dialog, action)()
         assert env["boxes"][-1] == rows[2].text()
         assert "5,022 more aren't connected" in env["boxes"][-1]

@@ -6477,6 +6477,11 @@ class ConnectedToolsDialog(wx.Dialog):
         # only said "can't" once pressed (#729's acceptance test). Delete in
         # the list still says why.
         self.toggle_btn.Show(bool(host.can_turn_off))
+        # Hidden isn't enough: Windows still pressed it on Alt+O, seen under
+        # NVDA in the test VM. Disabled, and with no access key, it can't be.
+        self.toggle_btn.Enable(bool(host.can_turn_off))
+        if not host.can_turn_off:
+            self.toggle_btn.SetLabel(self.toggle_btn.GetLabel().replace("&", ""))
         row.AddStretchSpacer()
         self.close_btn = wx.Button(self, wx.ID_CANCEL, "C&lose")
         row.Add(self.close_btn, 0)
@@ -6521,8 +6526,11 @@ class ConnectedToolsDialog(wx.Dialog):
     def _show_selected(self):
         server = self._selected()
         label = getattr(self.host, 'toggle_label', None)
-        self.toggle_btn.SetLabel(label(server) if label else
-            ("Turn &On for This Chat" if server is not None and server.off_for_chat else "Turn &Off for This Chat"))
+        text = (label(server) if label else
+                ("Turn &On for This Chat" if server is not None and server.off_for_chat
+                 else "Turn &Off for This Chat"))
+        # Not shown (a chat started elsewhere): no access key to press it by.
+        self.toggle_btn.SetLabel(text if self.host.can_turn_off else text.replace("&", ""))
         if self.new_chats_btn is not None:
             wanted = ("Turn On for &New Chats" if server is not None and server.off_for_new
                       else "Turn Off for &New Chats")
