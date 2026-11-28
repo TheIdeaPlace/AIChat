@@ -21,12 +21,7 @@ def frame(env):
     window = MainFrame(store=OwnSessionStore(env["tmp"] / "own.json"),
                        check_updates_at_start=False)
     yield window
-    window._runners.clear()
-    window.stop_timers()
-    window._pool.shutdown(wait=True)
-    wx.GetApp().ProcessPendingEvents()
-    window.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    fake_env.close_frame(window)
 
 
 def test_every_command_has_a_handler_and_every_handler_a_command(frame):

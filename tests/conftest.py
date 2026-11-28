@@ -106,6 +106,112 @@ def pytest_runtest_protocol(item, nextitem):
         timer.cancel()
 
 
+_LIBOBJC = None
+
+
+def _libobjc():
+    global _LIBOBJC
+    if _LIBOBJC is None:
+        import ctypes
+        lib = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+        lib.objc_autoreleasePoolPush.restype = ctypes.c_void_p
+        lib.objc_autoreleasePoolPush.argtypes = []
+        lib.objc_autoreleasePoolPop.restype = None
+        lib.objc_autoreleasePoolPop.argtypes = [ctypes.c_void_p]
+        _LIBOBJC = lib
+    return _LIBOBJC
+
+
+def _window_key(window):
+    try:
+        import wx
+        return wx.siplib.unwrapinstance(window)
+    except Exception:  # noqa: BLE001 - an older wx: the wrapper stands for it
+        return id(window)
+
+
+def _close_left_windows(wx, before) -> list:
+    """Each top-level window this test made and didn't destroy: closed, as
+    the tests' own close_frame does, and named. Ones it destroyed are left
+    to settle, which deletes them."""
+    app = wx.GetApp()
+    left = []
+    for window in list(wx.GetTopLevelWindows()):
+        if _window_key(window) in before or app.IsScheduledForDestruction(window):
+            continue
+        left.append(f"{type(window).__name__} {window.GetTitle()!r}")
+        if hasattr(window, "stop_timers"):
+            window.stop_timers()
+        pool = getattr(window, "_pool", None)
+        if pool is not None:
+            pool.shutdown(wait=True)
+        app.ProcessPendingEvents()
+        window.Destroy()
+    return left
+
+
+def _hub_threads_left(before) -> list:
+    """A MainFrame's pool threads ("hub_N") this test started and didn't end."""
+    import threading
+    left = []
+    for thread in threading.enumerate():
+        if thread.ident in before or not thread.name.startswith("hub"):
+            continue
+        thread.join(timeout=5)  # a pool shut down without waiting is still finishing
+        if thread.is_alive():
+            left.append(thread.name)
+    return left
+
+
+@pytest.fixture(autouse=True)
+def _windows_gone_after_each_test(monkeypatch):
+    """Every test ends with its windows deleted and their threads ended, and
+    on a Mac with what AppKit made for them released (#757).
+
+    The tests drive wx with no event loop. So nothing did what a running
+    app does after each event: delete the windows ``Destroy()`` scheduled
+    (wx does that in idle time), and drain the main thread's autorelease
+    pool. AppKit's autoreleased objects were never released: native windows
+    piled up (336 of them, all hidden: combo box lists and text input
+    popups, 2.5 GB by the end), and window creation then sometimes waited
+    forever on the window server (#757, and #711's hang at exit). Each test
+    now runs in a pool of its own, drained once its windows are deleted.
+
+    A window left undestroyed, or a frame's pool left running, fails the
+    test: the tests close frames with ``fake_env.close_frame``.
+
+    It asks for ``monkeypatch`` so that its end comes before the test's
+    patches are undone: a window still being deleted never reaches the
+    real speech, paths or clipboard."""
+    import threading
+    pool = _libobjc().objc_autoreleasePoolPush() if sys.platform == "darwin" else None
+    wx = sys.modules.get("wx")
+    before = ({_window_key(w) for w in wx.GetTopLevelWindows()}
+              if wx is not None and wx.GetApp() is not None else set())
+    threads_before = {t.ident for t in threading.enumerate()}
+    problems = []
+    try:
+        yield
+    finally:
+        try:
+            wx = sys.modules.get("wx")
+            if wx is not None and wx.GetApp() is not None:
+                left = _close_left_windows(wx, before)
+                if left:
+                    problems.append(f"windows left open: {left}")
+                import fake_env
+                if not fake_env.settle():
+                    problems.append("destroyed windows were never deleted")
+            threads = _hub_threads_left(threads_before)
+            if threads:
+                problems.append(f"a window's pool left running: {threads}")
+        finally:
+            if pool is not None:
+                _libobjc().objc_autoreleasePoolPop(pool)
+    if problems:
+        pytest.fail("; ".join(problems) + " (#757: close frames with fake_env.close_frame)")
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths

@@ -53,12 +53,7 @@ def frame(env, folder, monkeypatch):
         return original_action(action, record, *args, **kwargs)
     monkeypatch.setattr(window.sessions, 'owned_action', owned_action)
     yield window
-    window._runners.clear()
-    window.stop_timers()
-    window._pool.shutdown(wait=True)
-    wx.GetApp().ProcessPendingEvents()
-    window.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    fake_env.close_frame(window)
 
 
 def add_key():

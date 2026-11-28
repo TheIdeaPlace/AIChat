@@ -306,6 +306,43 @@ def add_transcript(env, cwd, cli, records):
     return path
 
 
+def settle(rounds: int = 20) -> bool:
+    """Do what wx's event loop would do between events: run the queued
+    calls, then its idle time, when it deletes each window ``Destroy()``
+    only scheduled for deletion. The tests run no event loop, so without
+    this a closed window lived on into the tests after it (#757). True once
+    nothing is left scheduled."""
+    app = wx.GetApp()
+    if app is None:
+        return True
+
+    def scheduled():
+        return any(app.IsScheduledForDestruction(w) for w in wx.GetTopLevelWindows())
+    if not scheduled() and not app.HasPendingEvents():
+        return True  # a test with no windows: nothing to run
+    for _ in range(rounds):
+        app.ProcessPendingEvents()
+        wx.YieldIfNeeded()
+        if not scheduled():
+            return True
+    return False
+
+
+def close_frame(window) -> None:
+    """Close a test's MainFrame the one way every test does (#757): its
+    timers stopped and its pool's threads ended first, what they handed back
+    run while the window is whole (on a Mac a destroyed one is still half
+    there), then the window destroyed and actually deleted. A frame closed
+    without ending its pool left up to three threads, and the frame they
+    hold, alive for the rest of the run: 427 of them by the end on macOS."""
+    window._runners.clear()
+    window.stop_timers()
+    window._pool.shutdown(wait=True)
+    wx.GetApp().ProcessPendingEvents()
+    window.Destroy()
+    settle()
+
+
 def pump(condition, timeout=5.0):
     end = time.time() + timeout
     while time.time() < end:

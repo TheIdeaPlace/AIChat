@@ -225,17 +225,10 @@ def frame(env):
     assert not window.IsShown()
     assert pump(lambda: window.session_list.GetCount() == 3)
     yield window
-    window._runners.clear()
-    # All of them, as closing does: a delayed call left running (the
+    # Every timer stopped, as closing does: a delayed call left running (the
     # sign-in check, 4 seconds in) would fire into this destroyed window
     # during a later test, which crashes wx on a Mac.
-    window.stop_timers()
-    window._pool.shutdown(wait=True)
-    # What the background work handed back runs now, while the window is
-    # whole, not after Destroy, when a Mac still has it half there.
-    wx.GetApp().ProcessPendingEvents()
-    window.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    fake_env.close_frame(window)
 
 
 def select(frame, title):
