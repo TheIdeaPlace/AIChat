@@ -51,9 +51,7 @@ def frame(env):
     assert pump(lambda: window.session_list.GetCount() >= 2)
     window._open = next(s for s in window._snapshot.sessions if s.key == "own:own-1")
     yield window
-    window.stop_timers()
-    window.Destroy()
-    wx.YieldIfNeeded()
+    fake_env.close_frame(window)  # its pool too, which this once left running (#757)
 
 
 def turn(frame, event, session="own-1", title="Loaded"):

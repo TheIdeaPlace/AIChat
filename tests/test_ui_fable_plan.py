@@ -55,12 +55,7 @@ def frame(env, folder, monkeypatch):
     window = MainFrame(store=store, check_updates_at_start=False)
     assert pump(lambda: window.session_list.GetCount() == 2)
     yield window
-    window._runners.clear()
-    window.stop_timers()
-    window._pool.shutdown(wait=True)
-    wx.GetApp().ProcessPendingEvents()
-    window.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    fake_env.close_frame(window)
 
 
 def signed_in(frame, plan):

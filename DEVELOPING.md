@@ -162,6 +162,14 @@ name. It also selects and copies on a real formatted page in WebKit. Both of 0.6
 reports (#725, #726) were found and fixed this way; how VoiceOver sounds is still heard by a
 person. The windows come to the front, so run it with the screen unlocked and the Mac left alone.
 
+**Every test leaves no window behind (#757).** The tests run wx with no event loop, so
+`tests/conftest.py` does after each test what a running app does after each event: it deletes
+the windows the test destroyed and, on a Mac, drains an autorelease pool of the test's own,
+which releases what AppKit made for them. Without that, a full macOS run piled up hundreds of
+hidden native windows and thousands of Mach ports, and window creation sometimes hung. A test
+that leaves a window open, or a window's thread pool running, fails. Close a test's main window
+with `fake_env.close_frame`.
+
 **API credits are checked against the real API before a build reaches anyone.**
 `tests/test_live_api.py` runs Test Key, a new chat and its second message, and Stop through
 the app's own code, on a real key, for about a cent on Haiku:
