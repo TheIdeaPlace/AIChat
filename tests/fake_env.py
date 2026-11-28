@@ -337,21 +337,22 @@ def delete_destroyed(rounds: int = 20) -> bool:
     return not scheduled()
 
 
-def close_frame(window) -> None:
+def close_frame(window, delete: bool = True) -> None:
     """Close a test's MainFrame the one way every test does (#757): what the
     app's own close does that needs no answer from you, and the window then
-    actually deleted. In order: marked closing, timers stopped, its pool's
-    threads ended (a frame closed without that left up to three threads,
-    and the frame they hold, alive for the rest of the run: 427 of them by
-    the end on macOS), what they handed back run while the window is whole
-    (on a Mac a destroyed one is still half there), then its sounds, session
-    tools and providers closed and the speaker no longer pointed at it, as
-    ``MainFrame._on_close`` does. If a test already closed it, so
-    ``_on_close`` ran, those closes aren't done twice: its provider cleanup
-    is waited for instead. Whatever was done, the window is never deleted
-    before what was handed back to it has run: skipping that, for a window
-    a test had closed, crashed a later test on every platform."""
-    cleanup = window._provider_cleanup  # _on_close starts it
+    actually deleted. In order: its pool's threads ended (a frame closed
+    without that left up to three threads, and the frame they hold, alive
+    for the rest of the run: 427 of them by the end on macOS), marked
+    closing, timers stopped, its sounds, session tools and providers closed
+    and the speaker no longer pointed at it, as ``MainFrame._on_close``
+    does. Then what all that handed back is run while the window is whole
+    (on a Mac a destroyed one is still half there), and only then is it
+    destroyed: deleting a window before that crashed a later test on every
+    platform. What ``_on_close`` (or ``_close_providers``) already did, if a
+    test called it, isn't done twice: its provider cleanup is waited for.
+    ``delete=False`` leaves the deleting to the caller (conftest's guard)."""
+    cleanup = window._provider_cleanup  # _close_providers starts it
+    on_close_ran = window._closing and cleanup is not None  # set past every question
     window._pool.shutdown(wait=True)
     if not window:  # already deleted: nothing of it is left to close
         if cleanup is not None:
@@ -361,19 +362,25 @@ def close_frame(window) -> None:
     window._closing = True
     window._runners.clear()
     window.stop_timers()
-    app.ProcessPendingEvents()
-    if cleanup is not None:
-        cleanup.join(timeout=10)
-    else:
+    app.ProcessPendingEvents()  # what the pool handed back, before anything is closed
+    if not on_close_ran:
         window._sound_close()
         window._notifier.close()
         window._close_session_tools()
-        window.sessions.close()  # on this thread, not the app's cleanup thread: it's ended here
         if speech.speaker.window_announcer == window._announce_through_window:
             speech.speaker.window_announcer = None
+    if cleanup is None:
+        try:
+            window.sessions.close()  # on this thread, not the app's cleanup thread
+        except Exception:  # noqa: BLE001 - as _close_providers: a backend that
+            pass           # fails to close mustn't keep the window open
+    else:
+        cleanup.join(timeout=10)
+    app.ProcessPendingEvents()  # and what the closes handed back
     if not app.IsScheduledForDestruction(window):
         window.Destroy()
-    delete_destroyed()
+    if delete:
+        delete_destroyed()
 
 
 def pump(condition, timeout=5.0):

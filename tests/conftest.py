@@ -142,13 +142,17 @@ def _close_left_windows(wx, fake_env, before) -> tuple:
     so then the run carries on without, rather than risk a crash."""
     app = wx.GetApp()
     left, safe = [], True
-    for window in list(fake_env.top_level_windows()):
+    windows = [w for w in fake_env.top_level_windows()
+               if _window_key(w) not in before and not app.IsScheduledForDestruction(w)]
+    # Main windows first, which run what was handed back before any is
+    # destroyed; then the rest. Nothing is deleted here: the guard does that
+    # once, and only if it's safe.
+    windows.sort(key=lambda w: not hasattr(w, "_pool"))
+    for window in windows:
         try:
-            if _window_key(window) in before or app.IsScheduledForDestruction(window):
-                continue
             left.append(f"{type(window).__name__} {window.GetTitle()!r}")
             if hasattr(window, "_pool"):
-                fake_env.close_frame(window)
+                fake_env.close_frame(window, delete=False)
                 continue
             safe = False
             window.Destroy()
