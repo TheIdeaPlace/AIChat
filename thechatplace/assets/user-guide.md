@@ -3131,7 +3131,7 @@ the other commands for the selected chat.
 When the open chat gets a reply, when one of the chats started here finishes a turn, or when
 any listed chat stops working, it's announced through your screen reader (or a system voice
 when no screen reader is running) and put on the status bar. **Ctrl+Shift+R** repeats the last
-announcement; before there's been one, it says "Nothing to repeat yet."
+announcement; before there's been one, it says "No announcement to repeat yet."
 
 **Settings** (Ctrl+Comma) chooses how much is said:
 

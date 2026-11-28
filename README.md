@@ -1540,7 +1540,7 @@ unavailable ("waiting in Copilot for over a day"). Sessions started in Copilot C
   reply), summary (the session's name and the first sentence) or silent (status bar only), whether
   every listed session is announced or just the open one, and the speech route; its Reading
   messages group chooses whether full messages open as a formatted page or plain text.
-  Ctrl+Shift+R repeats the last announcement, or says "Nothing to repeat yet." before there's
+  Ctrl+Shift+R repeats the last announcement, or says "No announcement to repeat yet." before there's
   been one.
 - **Sounds.** Off until you turn them on, in Tools, **Sounds**. They let you hear what a chat is doing
   without tool activity on: a soft tick for each tool that runs, a soft settling chord when a file

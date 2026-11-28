@@ -17953,8 +17953,8 @@ def test_repeat_last_announcement_says_when_theres_nothing_to_repeat_yet(frame, 
     frame.speech.announce = ANNOUNCE_SILENT  # Repeat is asked for, so it speaks even so
     repeat = frame._command_handlers()["repeat_last_announcement"]
     repeat(None)
-    assert env["spoken"][-1] == MainFrame.NOTHING_TO_REPEAT == "Nothing to repeat yet."
-    assert frame._status_latest == "Nothing to repeat yet."
+    assert env["spoken"][-1] == MainFrame.NOTHING_TO_REPEAT == "No announcement to repeat yet."
+    assert frame._status_latest == "No announcement to repeat yet."
     # It isn't an announcement itself, so it's never what's repeated later.
     assert frame._last_announcement == ""
     frame._say("Loaded Hub probe.")

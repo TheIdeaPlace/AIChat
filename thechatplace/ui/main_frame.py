@@ -1151,7 +1151,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
     #: What Repeat Last Announcement says before anything has been announced:
     #: a key that does nothing and says nothing sounds broken (#729).
-    NOTHING_TO_REPEAT = "Nothing to repeat yet."
+    NOTHING_TO_REPEAT = "No announcement to repeat yet."
 
     def on_repeat_last_announcement(self):
         """Ctrl+Shift+R: say the last announcement again, or that there's
