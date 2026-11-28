@@ -350,42 +350,65 @@ def close_frame(window, delete: bool = True) -> None:
     destroyed: deleting a window before that crashed a later test on every
     platform. What ``_on_close`` (or ``_close_providers``) already did, if a
     test called it, isn't done twice: its provider cleanup is waited for.
-    ``delete=False`` leaves the deleting to the caller (conftest's guard)."""
+    ``delete=False`` leaves the deleting to the caller (conftest's guard).
+
+    Not done, unlike the app: ``speaker.stop()``, which on Linux can cancel
+    the computer's own speech-dispatcher, and the tests never speak."""
     cleanup = window._provider_cleanup  # _close_providers starts it
     on_close_ran = window._closing and cleanup is not None  # set past every question
-    window._pool.shutdown(wait=True)
-    if not window:  # already deleted: nothing of it is left to close
-        if cleanup is not None:
-            cleanup.join(timeout=10)
-        return
-    app = wx.GetApp()
-    window._closing = True
-    window._runners.clear()
-    window.stop_timers()
-    app.ProcessPendingEvents()  # what the pool handed back, before anything is closed
-    if not on_close_ran:
-        window._sound_close()
-        window._notifier.close()
-        window._close_session_tools()
-        if speech.speaker.window_announcer == window._announce_through_window:
-            speech.speaker.window_announcer = None
-    if cleanup is None:
-        try:
-            window.sessions.close()  # on this thread, not the app's cleanup thread
-        except Exception:  # noqa: BLE001 - as _close_providers: a backend that
-            pass           # fails to close mustn't keep the window open
-    else:
-        cleanup.join(timeout=10)
-    # Claude's provider closes the history keepers for good, as the app does
-    # on exit. A test process goes on to make more windows (the probe makes
-    # one per surface), so they start open again, as conftest does per test.
+    try:
+        window._pool.shutdown(wait=True)
+        if not window:  # already deleted: nothing of it is left to close
+            return
+        app = wx.GetApp()
+        window._closing = True
+        window._runners.clear()
+        window.stop_timers()
+        app.ProcessPendingEvents()  # what the pool handed back, before anything is closed
+        closes = [window.sessions.close] if cleanup is None else []
+        if not on_close_ran:
+            closes = [window._sound_close, window._notifier.close, window._close_session_tools,
+                      window._forget_long_messages] + closes
+            _unpoint_speaker(window)
+        for close in closes:
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - as _close_providers: one that fails
+                pass           # mustn't keep the window open
+        app.ProcessPendingEvents()  # and what the closes handed back
+        if not app.IsScheduledForDestruction(window):
+            window.Destroy()
+        if delete:
+            delete_destroyed()
+    finally:
+        _reopen_history_keepers(cleanup)
+
+
+def _unpoint_speaker(window) -> None:
+    """The shared speaker no longer calls into this window, as _on_close
+    leaves it: its problem report is a lambda holding the window, which
+    would keep it alive and call into it once deleted."""
+    if speech.speaker.window_announcer == window._announce_through_window:
+        speech.speaker.window_announcer = None
+    report = speech.speaker.on_problem
+    cells = getattr(report, "__closure__", None) or ()
+    if any(cell.cell_contents is window for cell in cells):
+        speech.speaker.on_problem = None
+
+
+def _reopen_history_keepers(cleanup) -> None:
+    """Claude's provider closes the history keepers for good, as the app
+    does on exit. A test process goes on to make more windows (the probe
+    makes one per surface), so they start open again, as conftest does per
+    test: after the provider cleanup has finished (else its close could
+    land after this), and without any keeper made closed in between."""
     from thechatplace import history_keeper
+    if cleanup is not None:
+        cleanup.join(timeout=10)
+        if cleanup.is_alive():
+            return  # still closing: leave them shut rather than race it
     history_keeper._closed_all = False
-    app.ProcessPendingEvents()  # and what the closes handed back
-    if not app.IsScheduledForDestruction(window):
-        window.Destroy()
-    if delete:
-        delete_destroyed()
+    history_keeper.close_all()  # drops a keeper made, already closed, meanwhile
 
 
 def pump(condition, timeout=5.0):
