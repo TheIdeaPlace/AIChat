@@ -20,7 +20,7 @@ import wx
 from .. import commands as command_list
 from ..keymap import KeyMap, customizable, normalize, spoken
 from . import gtk_a11y, mac_a11y
-from .a11y import set_accessible_name, set_list_items_accessible
+from .a11y import give_focus_later, set_accessible_name, set_list_items_accessible
 from .dialogs import _fit_width, press_focused_button_on_a_mac
 from .sizes import dialog_size, dip
 
@@ -126,7 +126,7 @@ class KeyCaptureDialog(wx.Dialog):
         self.assign_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_assign())
         self.again_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_again())
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        wx.CallAfter(self.box.SetFocus)
+        give_focus_later(self.box)
 
     def _on_key(self, event):
         if wx.Window.FindFocus() is not self.box:
@@ -260,7 +260,7 @@ class KeyboardShortcutsDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
         self._fill(None)
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     # -- the list -------------------------------------------------------------
 

@@ -68,6 +68,10 @@ SETTLE = 1.2
 STEP_TIMEOUT = 15.0
 #: The first step waits for the app to start, which a slow runner takes a while over.
 START_TIMEOUT = 60.0
+#: How long a silent step listens for anything said. A pressed button's box
+#: or a moved focus is said within a second or two (SETTLE, and most steps
+#: finish within 3 seconds of their key).
+SILENT_WAIT = 4.0
 #: Once Orca's debug log has been quiet this long, Orca has handled the events
 #: the app sent it, and a key can be pressed (#754). It logs every event it
 #: takes off its queue, and while idle only a line about every 1.5 seconds.
@@ -99,6 +103,10 @@ class Step:
     expect: List[str] = field(default_factory=list)
     #: None of these may be.
     refuse: List[str] = field(default_factory=list)
+    #: Nothing may be said at all, apart from Orca echoing a key: the keys
+    #: must do nothing (Alt+O where no button has that key, #729). The step
+    #: listens for SILENT_WAIT seconds.
+    silent: bool = False
     #: Only with Orca 49 and later, which take announcements from the app
     #: through D-Bus whatever window is active.
     expect_dbus: List[str] = field(default_factory=list)
@@ -503,8 +511,31 @@ STEPS = [
          refuse=["Make a new copy of this chat"]),
     Step("message closed, back on the tool", ["Return"], expect=["project-notes"]),
     Step("Codex Connected Tools closed", ["Escape"], expect=["Fix the flaky upload test"]),
+    # Sign In asks first, titled for what it is, on the address's line; Escape
+    # declines, a box says so, and focus goes back to Sign In, not Refresh
+    # (#729's acceptance test). A chat started elsewhere: no Turn Off button.
+    Step("Codex Connected Tools, chat started elsewhere", [], trigger="codex-tools-sign-in",
+         expect=["Connected Tools: Codex review", "notes"], refuse=["unlabeled", "unlabelled"]),
+    Step("Sign In asks before opening the page", ["alt+s"],
+         expect=["Sign In to notes", "Opens notes.example"]),
+    Step("Escape declines, and says so", ["Escape"], expect=["Sign-in page was not opened"]),
+    Step("back on Sign In", ["Return"], expect=["Sign In"], refuse=["Refresh"]),
+    Step("Tab to Reconnect", ["Tab"], expect=["Reconnect"]),
+    Step("then Refresh, with no Turn Off button between", ["Tab"], expect=["Refresh"],
+         refuse=["Turn Off for This Chat"]),
+    # Alt+O, Turn Off for This Chat's key elsewhere, does nothing here: the
+    # hidden button was still pressed by it on Windows, seen under NVDA in
+    # the test VM, so it's disabled and has no access key there (#729).
+    Step("Alt+O does nothing, with no Turn Off button", ["alt+o"], silent=True),
+    Step("Codex Connected Tools closed again", ["Escape"], expect=["Fix the flaky upload test"]),
     # A GTK message box is read as "alert Warning" and its text, not its title
     # (CI on #634), so the question is checked, and No, the default, focused.
+    Step("Codex tool-call approval", [], trigger="codex-tool-approval",
+         expect=["Message", "Allow project-notes"], refuse=["unlabeled", "unlabelled"]),
+    Step("Codex tool-call approval, Send", ["Tab"], expect=["Send"]),
+    Step("Codex tool-call approval, Decline", ["Tab"], expect=["Decline"]),
+    Step("Codex tool-call approval, Answer Later", ["Tab"], expect=["Answer Later"]),
+    Step("Codex tool-call approval closed", ["Escape"], expect=["Fix the flaky upload test"]),
     Step("Codex permanent deletion confirmation", [], trigger="codex-delete",
          expect=["permanently?", "subagent chats", "No push button"],
          refuse=["unlabeled", "unlabelled"]),
@@ -791,6 +822,38 @@ def codex_tools(frame, env) -> None:
         wx.MessageBox = stand_in
 
 
+def codex_tools_sign_in(frame, env) -> None:
+    """Connected Tools' Sign In on a server that needs it, through the host's
+    real path (#729's acceptance test): its sign-in question, Escape, the box
+    that says so, and focus back on Sign In. Codex is a stand-in that answers
+    with a sign-in address; nothing is opened. The boxes are real."""
+    from types import SimpleNamespace
+    import wx
+    import wx._core
+    from thechatplace.providers.codex_tools import CodexTool
+    from thechatplace.ui.codex_tools_host import CodexConnectedTools
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+
+    class Codex:
+        """The window, but Codex's sign-in answers at once."""
+        def __getattr__(self, name):
+            return getattr(frame, name)
+
+        def _codex_work(self, action, done):
+            wx.CallAfter(done, {"authorizationUrl": "https://notes.example/authorize?state=orca",
+                                "loginId": "orca-login"}, False)
+    host = CodexConnectedTools(Codex(), SimpleNamespace(cli_session_id="codex-orca", is_own=False,
+                                                        title="Codex review"))
+    host.load = lambda done: done([CodexTool("notes", "configured", off_for_chat=False,
+                                             read_only=True)], "")
+    stand_in = wx.MessageBox
+    wx.MessageBox = wx._core.MessageBox
+    try:
+        frame._modal(ConnectedToolsDialog(frame, "Codex review", host))
+    finally:
+        wx.MessageBox = stand_in
+
+
 def copilot_chat(frame, env) -> None:
     """A Copilot chat of the app's own (tools/ui_probe.py's made-up Copilot
     session), open in agent mode, with npm run lint allowed for it and Copilot
@@ -927,6 +990,8 @@ TRIGGERS = {
     "codex-commands": lambda frame, env: _codex_dialog("d_codex_commands", frame, env),
     "codex-aside": lambda frame, env: _codex_dialog("d_codex_aside", frame, env),
     "codex-tools": codex_tools,
+    "codex-tools-sign-in": codex_tools_sign_in,
+    "codex-tool-approval": lambda frame, env: _codex_dialog("d_codex_tool_approval", frame, env),
     "codex-delete": codex_delete_confirmation,
     "copilot": copilot_chat,
     "copilot-asks": lambda frame, env: env.pop("copilot_asks")(),
@@ -1095,8 +1160,10 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
         expect = (step.expect + (step.expect_dbus if version >= (49, 0) else [])
                   + (step.expect_50 if version >= (50, 0) else []))
 
-        def done(spoken, expect=expect):
+        def done(spoken, expect=expect, silent=step.silent):
             said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
+            if silent:
+                return False  # listen the whole SILENT_WAIT
             if expect and not record:
                 return all(_found(e, said) for e in expect)
             return bool(spoken)
@@ -1121,11 +1188,15 @@ def run_steps(log: OrcaLog, steps: List[Step], version: tuple, record: bool,
             # Orca already quiet costs nothing.
             settled = log.wait_idle(from_now=step.after_trigger)
         press(step.keys)
-        spoken = log.wait_quiet(done, timeout=START_TIMEOUT if index == 0 else STEP_TIMEOUT)
+        spoken = log.wait_quiet(done, timeout=(SILENT_WAIT if step.silent else START_TIMEOUT
+                                               if index == 0 else STEP_TIMEOUT))
         took = time.time() - started
         said = [s for s in spoken if s.casefold().rstrip(".") not in _KEY_ECHO]
         missing = [] if record else [e for e in expect if not _found(e, said)]
         refused = [] if record else [r for r in step.refuse if _found(r, said)]
+        if step.silent and not record:
+            # A letter Orca echoes as it's typed isn't the app saying anything.
+            refused += [s for s in said if len(s.strip()) > 1]
         results.append({"step": step.name, "keys": step.keys, "spoken": said, "heard": spoken,
                          "missing": missing, "refused": refused,
                          # Keys pressed before Orca caught up prove nothing

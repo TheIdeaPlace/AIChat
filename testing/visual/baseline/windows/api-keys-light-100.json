@@ -45,14 +45,14 @@
     23
    ],
    "best": [
-    129,
+    170,
     23
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Claude (Anthropic)"
+   "value": "Claude (Anthropic), no key"
   },
   {
    "class": "StaticText",
@@ -269,7 +269,7 @@
   {
    "class": "TextCtrl",
    "name": "Stop API chats once The Chat Place has spent, in dollars",
-   "label": "190.00",
+   "label": "20.00",
    "rect": [
     457,
     324,
@@ -284,7 +284,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "190.00"
+   "value": "20.00"
   },
   {
    "class": "StaticText",
@@ -308,7 +308,7 @@
   {
    "class": "TextCtrl",
    "name": "Stop any one message at about, in dollars",
-   "label": "5.00",
+   "label": "2.00",
    "rect": [
     457,
     353,
@@ -323,7 +323,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "5.00"
+   "value": "2.00"
   },
   {
    "class": "StaticText",
@@ -362,7 +362,7 @@
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Spent since the total was reset: nothing. Held for running messages: nothing. Left: $190.00."
+   "value": "Spent since the total was reset: nothing. Held for running messages: nothing. Left: $20.00."
   },
   {
    "class": "Button",

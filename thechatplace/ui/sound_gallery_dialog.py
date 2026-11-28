@@ -13,6 +13,7 @@ from theideaplace_appkit import soundgallery as shared
 
 from .. import sound_events, sound_gallery
 from .a11y import set_accessible_name, set_list_items_accessible
+from .dialogs import READ_ONLY_BOX_STYLE
 from .sizes import dialog_size, dip
 
 LOADING = "Loading the sound scheme gallery…"
@@ -47,7 +48,7 @@ class SoundGalleryDialog(wx.Dialog):
         outer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         outer.Add(wx.StaticText(self, label="&Details:"), 0, wx.LEFT | wx.RIGHT, 10)
         # Read-only text, not a label, so it's in the Tab order and read by line.
-        self.details = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.details = wx.TextCtrl(self, style=READ_ONLY_BOX_STYLE)
         set_accessible_name(self.details, "Details", read_only_box=True)
         self.details.SetMinSize(dip(self, -1, 70))
         outer.Add(self.details, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)

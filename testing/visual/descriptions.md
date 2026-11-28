@@ -7,6 +7,7 @@ Columns, the help pages and the main window.
 Regenerate it with `tools/ui_review_prompt.md` whenever screens change.
 Updated on 2026-11-02 for 0.5 (#468) from light-100 and hc-aquatic-100 pictures of every screen changed or added: the Lists dialog's Subagents kind, Chat Options, the connected-tool forms, Rewind to Here, Stop Background Task, a subagent's conversation and what fills the context. The 0.5 pictures are from the probe run at commit 9e97c5b.
 Updated on 2026-11-03 for 0.5 (#468) from light-100 and hc-aquatic-100 pictures of every screen changed or added since: Continue Here's Folder box in its three dialogs, the connected-tool form, Rewind to Here and its warning, and the settings that lost their underlined letter when turned off. In the same run the High Contrast Aquatic main-window pictures lost the one-pixel black line under the menu bar: that row is now #202020, like the window. Nothing else in them moved.
+Updated on 2026-11-28 for #763 from light-100 and hc-aquatic-100 pictures (probe run at commit 3a47d696, compared with one at 16810318 before the change) of the 31 screens with a read-only box: every read-only box of text is now a plain multi-line box, not a rich one. They look as before (white, or the Folder box's button grey, the same text in the same place, give or take a pixel), except that the one with focus now shows its text cursor and the blue focus line at its foot, and the web page request's Address box (below). Nothing moved anywhere else, and nothing is cut off.
 
 **Since 0.1.6, in every main-window picture:** each session row now says which AI it is
 straight after the title ("Fix the flaky upload test, Claude, AIChat, needs you: ..."), so
@@ -1188,7 +1189,7 @@ A 680 by 522 dialog titled "trip-planner asks: Visual probe". The probe's form h
 
 ## elicitation-url: A connected tool asks you to open a web page (#468)
 
-A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a read-only box, 648 by 60, with the text cursor in it and two lines: "Opens example.com" and "https://example.com/sign-in?session=probe". "Message:" heads a second read-only box, 648 by 178, with "Open this page to finish signing in." Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
+A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a white read-only box, 648 by 44, with the text cursor in its one line, "Opens example.com: https://example.com/sign-in?session=probe", a sideways scroll bar under it and the blue focus line at its foot. **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that one line. **Since #763 (2026-11-28):** it's a multi-line box holding that line, not the one-line grey box (648 by 23) that Tab and Shift+Tab went past; JAWS reads the line with the box's name. A longer address runs past the box's right edge. "Message:" heads a second read-only box, 648 by 194, with "Open this page to finish signing in." All the boxes' text is black on white (21:1), white on #202020 in High Contrast Aquatic (16.3:1), measured at commit 3a47d696. Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
 
 **What looks off:** The Message box is mostly empty for one line.
 
@@ -1250,3 +1251,114 @@ The Lists dialog for "Codex history preview", on "Auto Approvals (5)", the eight
 
 **What looks off:** Nothing. The denied row is told apart by its first word only, as the list has no colours of its own.
 
+
+
+## Codex workflows (2026-11-25, #729)
+
+The light and High Contrast Aquatic pictures at 100% were captured in the Windows
+VM. All eight pictures have zero measured clipping, overlap or outside-window
+problems. The independent review opened every picture, changed baseline and diff.
+
+**main-codex-queue-edited:** The main window retains the session list on the left,
+messages at upper right and reply box below. The queued row has gone; its returned
+request appears above the previous draft in the reply box, with the caret visible.
+The running status remains visible. The owned-chat picture has the same layout;
+compared with its baseline the menus include Session, Chat and Tools, session text
+mentions subscription and Attach Files has a different mnemonic.
+
+**codex-tool-approval:** Message fills most of the dialog above Send, Decline and
+Answer Later at lower right. It shows the server and tool name, the complete JSON
+arguments, and “Your answer covers this call only.” The Send button has the default
+blue outline in light and cyan in High Contrast. Nothing overlaps or is clipped.
+
+**codex-tools:** The existing list and lower Details box retain their positions.
+The note adds that an off tool can be signed in and an enabled tool should be
+reconnected afterward; its extra lines fit fully.
+
+Measured normal text is black on white, 21:1, or black on #F0F0F0, 18.43:1.
+Light selected white text on #0078D4 is 4.53:1. High Contrast uses white on
+#202020, 16.29:1, selected #202074 on #8EE3F0, 9.47:1, and cyan focus against
+dark, 11.17:1. All four High Contrast pictures pass the checklist. All four
+light pictures retain the existing native text-control border #ABADB3 against
+white, 2.24:1 (1.97:1 against dialog gray), below the 3:1 border criterion.
+Accepting these baselines records the reviewed layout, without claiming this
+existing contrast defect is fixed.
+
+## codex-tools-apps-unavailable: Connected Tools when Codex can't list apps (#729)
+
+A 686 by 533 dialog titled "Connected Tools: Codex review". "Connected tools:" heads a list of
+three rows: "project-notes: connected, configured Codex MCP server, 1 tool", "reference-search:
+off for this chat, configured Codex MCP server", and the selected "Apps unavailable: Codex timed
+out while listing apps. This does not mean your account has no apps. Press Refresh to try
+again." The last row is longer than the list, so a horizontal scroll bar shows under it, as in
+other lists with long rows. Under the list, left to right: Sign In, Reconnect, "Change Tool"
+(the button that reads "Copy with Tool On" or "Off" for a real tool; neutral for this row) and
+Refresh, with Close at the right. "Details:" heads a read-only box with the whole message, then
+the usual paragraph about turning tools on or off in a Codex chat. Seen in light-100 and
+hc-aquatic-100 at commit 730f3cb4; in High Contrast Aquatic the selected row is aqua with dark
+text and everything else white on near-black.
+
+**What looks off:** Nothing beyond the long row's scroll bar.
+
+## codex-tools-more-apps: Connected Tools with the ChatGPT apps not connected as one row (#729)
+
+The same 700 by 540 dialog, "Connected Tools: Codex review", in the same layout. The
+"Connected tools:" list takes the top half and shows five rows: "project-notes: connected,
+configured Codex MCP server, 1 tool", "reference-search: off for this chat, configured Codex MCP
+server", "Project documents: off for this chat, Codex app", "Trail maps: off for this chat, Codex
+app", and, selected, "More ChatGPT apps: 5,022 more aren't connected to your account. To use one,
+connect it in ChatGPT's settings, under Apps, then press Refresh here." That last row is wider
+than the list, so it runs to the list's right edge and a horizontal scroll bar shows under the
+rows, as on the apps-unavailable screen. Under the list, left to right: Sign In, Reconnect, Change
+Tool (the neutral label for an information row) and Refresh, with Close at the right. "Details:"
+heads a read-only box that fills the lower half: the whole More ChatGPT apps sentence, a blank
+line, then the paragraph about turning tools on or off in a Codex chat. Nothing is cut off apart
+from the scrolled row, and nothing overlaps.
+
+Measured at commit 27f691a9: light text is black on white (21:1) in the list and Details, and on
+#F0F0F0 (18.43:1) for the labels; button text is black on #FDFDFD (20.65:1); the selected row is
+white on #0078D4 (4.53:1). The list's border is #828790 on #F0F0F0 (3.17:1). High Contrast Aquatic
+has white on #202020 (16.29:1) for all text and buttons, the selected row #202020 on aqua #8EE3F0
+(11.17:1), and #A6A6A6 borders (6.69:1).
+
+**What looks off:** The light Details box keeps the native text-box border, #ABADB3 on #F0F0F0
+(1.97:1), below 3:1; this is the native-border limitation tracked in
+[#532](https://github.com/TheIdeaPlace/AIChat/issues/532), not something this screen adds.
+
+## codex-tools-read-only: Connected Tools in a Codex chat started elsewhere (#729)
+
+The 700 by 540 "Connected Tools: Codex review" dialog for a chat started in another Codex client.
+The "Connected tools:" list takes the top half with two rows: "project-notes: configured,
+configured Codex MCP server" (selected) and "everything: configured, configured Codex MCP server".
+Under the list, left to right: Sign In, Reconnect and Refresh, with Close at the right. There's no
+Turn Off for This Chat (or Copy with Tool) button: a chat started elsewhere can't change its tools
+here, so the button is hidden and Refresh moves up beside Reconnect (#729's acceptance test).
+"Details:" heads a read-only box with the selected row, a blank line, and the read-only note: the
+chat wasn't started in The Chat Place, so its tools can't be changed here and how each server is
+doing isn't shown; Sign In connects your account without changing the chat's tools. Nothing is cut
+off and nothing overlaps.
+
+Measured at commit f934d4f9: list and Details text black on white (21:1), button text black on
+#FDFDFD (20.65:1), the selected row white on #0078D4 (4.53:1). High Contrast Aquatic: white on
+#202020 (16.29:1) for text and buttons, the selected row #263B50 on aqua #8EE3F0 (7.89:1).
+
+**What looks off:** Nothing new; the light Details box's native border is the #532 limitation.
+
+## codex-tools-sign-in: Connected Tools' Sign In asks before opening a page (#598, #729)
+
+A 680 by 380 dialog titled "Sign In to project-notes", the question Sign In asks before it opens a
+server's sign-in page. "Address:" heads a white read-only box, 648 by 44: one line of text over a
+sideways scroll bar, with the focus line under it, "Opens notes.example:
+https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%…"
+running past its right edge. **Since #763 (2026-11-28):** it's a multi-line box holding one line,
+as the one-line grey box (648 by 23) was left out of the Tab order; JAWS now reads the line with
+the box's name. "Message:" heads a second read-only box, 648 by 194: "Open in Browser opens the
+address above, where you sign in to project-notes. Decline leaves it unopened." At the bottom
+right: Open in Browser and Decline (the default, outlined in blue). There's no Answer Later:
+nothing waits on this answer, and Escape declines.
+
+Measured at commit 3a47d696: Address and Message text black on white (21:1). High Contrast
+Aquatic: white on #202020 (16.29:1), and Decline filled aqua #8EE3F0 with #263B50 text (7.89:1).
+
+**What looks off:** Nothing; a long address runs past the box's right edge, and the scroll bar,
+Home and End reach it all.

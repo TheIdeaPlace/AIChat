@@ -195,6 +195,56 @@ _UNKNOWN_METHOD = re.compile(r'unknown variant|unknown method|method not found',
 #: rollout" answers don't count: thread/resume refuses an archived chat, and
 #: a chat that exists mustn't be taken for gone.
 _MISSING_THREAD = re.compile(r'thread not found: ([A-Za-z0-9_-]{1,128})')
+#: Why mcpServer/oauth/login refused, as Codex 0.163 words it, so Sign In can
+#: say a fixed sentence of the app's own rather than "could not start" (#729).
+#: A server with no dynamic client registration (GitHub's): -32603 "...
+#: Dynamic client registration not supported". A stdio server: -32600
+#: "OAuth login is only supported for streamable HTTP servers."
+_SIGN_IN_REFUSALS = (
+    ('no_registration', re.compile(r'dynamic client registration not supported', re.IGNORECASE)),
+    ('not_needed', re.compile(r'oauth login is only supported for streamable http', re.IGNORECASE)),
+)
+
+
+class CodexSignInRefused(CodexRpcError):
+    """Why Sign In for a configured server can't go ahead, in the app's own
+    words (#729). Never Codex's or the server's text."""
+    REASONS = {
+        'no_registration': ("This service doesn't support signing in through Codex. Give Codex a "
+                            "token for it instead: set one in an environment variable and add the "
+                            "server with codex mcp add and --bearer-token-env-var, or follow the "
+                            "service's own instructions for Codex."),
+        'not_needed': ("This tool doesn't need signing in: Codex starts it on this computer "
+                       "without an account."),
+        'token': ("This tool signs in with a token set up in Codex's configuration, so there's "
+                  "nothing to sign in to here. To change the token, change its environment variable."),
+        'not_configured': "This server is no longer configured for the chat folder.",
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'not_configured'
+        super().__init__(self.REASONS[self.code])
+
+
+class CodexReconnectRefused(CodexRpcError):
+    """Why Reconnect in Connected Tools didn't reconnect a server, in the
+    app's own words, each with a next step (#729's acceptance test). Never
+    Codex's or the server's text, which can carry the server's own."""
+    REASONS = {
+        'not_own': ("This chat wasn't started in The Chat Place, so its tools aren't connected "
+                    "here and there's nothing to reconnect. Sign In still works. To use a tool "
+                    "here, start a Codex chat in The Chat Place and turn the tool on for it."),
+        'not_enabled': ("This tool is off for this chat, so there's nothing to reconnect. Copy "
+                        "with Tool On makes a copy of the chat with it on."),
+        'timeout': ("Codex took too long to reconnect its tools. Press Reconnect to try again; "
+                    "a server that has to be downloaded first can take a while the first time."),
+        'failed': ("Codex couldn't reconnect its tools. Check the server's settings in Codex "
+                   "(codex mcp list, in a terminal, shows them), then press Reconnect again."),
+    }
+
+    def __init__(self, code):
+        self.code = code if code in self.REASONS else 'failed'
+        super().__init__(self.REASONS[self.code])
 
 
 class CodexDeleteUnanswered(CodexRpcError):
@@ -446,6 +496,8 @@ class ReadOnlyCodexConnection:
             category = 'reply' if event.kind in ('text_delta', 'text_completed') else event.kind
             key = (event.thread_id, event.turn_id, event.item_id, category, event.part)
             previous = pending.get(key)
+            if previous is not None and previous.tool:
+                event = replace(event, tool=True)  # completed activity must retain its tool-start sound
             if event.kind in ('text_delta', 'reasoning_delta') and previous is not None:
                 if previous.kind == 'text_completed':
                     return
@@ -457,6 +509,9 @@ class ReadOnlyCodexConnection:
                     cuts.pop(next(iter(cuts)))
                 cuts[(old.thread_id, old.turn_id)] = True
             pending[key] = event
+
+    def _prepare_event(self, event):
+        return event
 
     def _bind_server_request(self, request):
         return request
@@ -524,7 +579,10 @@ class ReadOnlyCodexConnection:
         # request half-registered if it raises.
         if on_sent is not None:
             on_sent()
-        if not pending.ready.wait(self._timeout):
+        # Account app discovery can spend longer fetching the remote catalog.
+        # Keep the ordinary budget for chat/history requests on this connection.
+        timeout = self._timeout * 3 if method == "app/list" else self._timeout
+        if not pending.ready.wait(timeout):
             with self._lock:
                 expired = self._pending.pop(request_id, None) is pending
                 if expired:
@@ -648,6 +706,7 @@ class ReadOnlyCodexConnection:
                     event = decode_event(message["method"], message.get("params"))
                 if event is not None:
                     if isinstance(event, CodexEvent):
+                        event = self._prepare_event(event)
                         if getattr(self, 'billing_route', '') == 'api' and event.kind not in ('text_delta', 'reasoning_delta'):
                             from ..billing import scrub
                             event = replace(event, text=scrub(event.text),
@@ -714,6 +773,9 @@ class ReadOnlyCodexConnection:
                 # the id, which the request already had, and nothing else.
                 missing = _MISSING_THREAD.fullmatch(said) if isinstance(said, str) else None
                 pending.error.missing_thread = missing.group(1) if missing and code == -32600 else None
+                # Which known sign-in refusal it was, if any: a code, not the text.
+                pending.error.sign_in_refusal = next((name for name, pattern in _SIGN_IN_REFUSALS
+                    if isinstance(said, str) and pattern.search(said[:4096])), None)
             elif "error" not in message and isinstance(message.get("result"), dict):
                 pending.result = message["result"]
             else:

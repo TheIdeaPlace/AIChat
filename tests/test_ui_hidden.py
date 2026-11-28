@@ -456,13 +456,14 @@ def test_return_on_a_focused_button_presses_it_on_a_mac(frame, monkeypatch):
     assert len(pressed) == 2  # Windows presses the button itself
 
 
-def test_message_dialog_is_a_labelled_read_only_rich_edit(frame):
+def test_message_dialog_is_a_labelled_plain_read_only_box(frame):
+    # Plain, as every box of text to read (#763).
     from thechatplace.ui.dialogs import MessageDialog
     dialog = MessageDialog(frame, "Claude", "Line one\nLine two")
     try:
         assert dialog.text.GetValue() == "Line one\nLine two"
-        assert not dialog.text.IsEditable()
-        assert dialog.text.GetWindowStyle() & wx.TE_RICH2
+        assert not dialog.text.IsEditable() and dialog.text.IsMultiLine()
+        assert not dialog.text.GetWindowStyle() & (wx.TE_RICH2 | wx.TE_RICH)
         assert dialog.text.GetName() == "Claude"
         assert dialog.GetEscapeId() == wx.ID_CANCEL
     finally:
@@ -17899,3 +17900,22 @@ def test_the_numpad_arrows_play_the_edge_sound_too(frame, env):
     frame._list_end_held = None
     frame._list_end_cue(_edge_key(wx.WXK_NUMPAD_END), wx.WXK_NUMPAD_END, listing)
     assert env["sounds"] == [se.LIST_END] * 4
+
+
+def test_repeat_last_announcement_says_when_theres_nothing_to_repeat_yet(frame, env):
+    """Ctrl+Shift+R said nothing at all before the first announcement, which
+    sounds like a broken key (#729's acceptance test)."""
+    from thechatplace.ui.main_frame import MainFrame
+    frame._last_announcement = ""
+    from thechatplace.speech import ANNOUNCE_SILENT
+    frame.speech.announce = ANNOUNCE_SILENT  # Repeat is asked for, so it speaks even so
+    repeat = frame._command_handlers()["repeat_last_announcement"]
+    repeat(None)
+    assert env["spoken"][-1] == MainFrame.NOTHING_TO_REPEAT == "No announcement to repeat yet."
+    assert frame._status_latest == "No announcement to repeat yet."
+    # It isn't an announcement itself, so it's never what's repeated later.
+    assert frame._last_announcement == ""
+    frame._say("Loaded Hub probe.")
+    repeat(None)
+    assert env["spoken"][-1] == "Loaded Hub probe."
+    assert env["no_resay"][-1] == "Loaded Hub probe."

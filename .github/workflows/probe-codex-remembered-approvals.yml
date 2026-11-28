@@ -4,6 +4,8 @@ on:
     paths:
       - thechatplace/providers/codex_permissions.py
       - thechatplace/providers/codex_requests.py
+      - thechatplace/providers/codex_tools.py
+      - tools/probe_codex_workflows.py
       - thechatplace/platform_paths.py
       - tools/probe_codex_remembered_approvals.py
       - .github/workflows/probe-codex-remembered-approvals.yml
@@ -28,14 +30,26 @@ jobs:
         with:
           node-version: '22'
       - run: npm install -g @openai/codex@${{ matrix.codex }}
-      - name: Exercise real Codex with a local synthetic model
+      - name: Install the shared library used by tool approval forms
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          import sys
+          requirement = next(line for line in Path('requirements.txt').read_text().splitlines()
+                             if line.startswith('theideaplace-appkit'))
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', requirement], check=True)
+      - name: Exercise real Codex approvals and workflows with local synthetic services
         shell: bash
         run: |
           root="$(npm root -g)/@openai/codex"
           binary=$(find "$root" -type f \( -name codex -o -name codex.exe \) -path '*vendor*' | head -1)
           python tools/probe_codex_remembered_approvals.py --codex "$binary" --out "$RUNNER_TEMP/native-approvals.json"
+          python tools/probe_codex_workflows.py --binary "$binary" --out "$RUNNER_TEMP/native-workflows.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: native-approvals-${{ runner.os }}-${{ matrix.codex }}
-          path: ${{ runner.temp }}/native-approvals.json
+          path: |
+            ${{ runner.temp }}/native-approvals.json
+            ${{ runner.temp }}/native-workflows.json

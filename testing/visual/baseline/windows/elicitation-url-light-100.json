@@ -37,22 +37,22 @@
   {
    "class": "TextCtrl",
    "name": "Address",
-   "label": "Opens example.com\r\nhttps://example.com/sign-in?session=probe",
+   "label": "Opens example.com: https://example.com/sign-in?session=probe",
    "rect": [
     10,
     26,
     648,
-    60
+    44
    ],
    "best": [
-    127,
-    83
+    110,
+    55
    ],
    "depth": 0,
    "parent": -1,
    "enabled": true,
    "problems": [],
-   "value": "Opens example.com\nhttps://example.com/sign-in?session=probe"
+   "value": "Opens example.com: https://example.com/sign-in?session=probe"
   },
   {
    "class": "StaticText",
@@ -60,7 +60,7 @@
    "label": "&Message:",
    "rect": [
     8,
-    100,
+    84,
     50,
     16
    ],
@@ -79,9 +79,9 @@
    "label": "Open this page to finish signing in.",
    "rect": [
     10,
-    118,
+    102,
     648,
-    178
+    194
    ],
    "best": [
     127,

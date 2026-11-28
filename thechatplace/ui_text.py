@@ -184,8 +184,8 @@ SHORTCUTS = [
          "code block); Alt+P reads it as plain text instead; Escape comes back to it"),
         ("Ctrl+C", "Copy the whole message"),
         ("Ctrl+Shift+C", "Copy the message's last code block"),
-        ("Ctrl+Enter on a queued message", "Send it now (Claude chats): Claude stops what it's doing and "
-                                           "answers it"),
+        ("Ctrl+Enter on a queued message", "Send it now: Claude interrupts to answer it; Codex steers it "
+                                           "into the running turn without interruption"),
         ("Ctrl+Alt+Enter on a queued message", "Steer it: into the running turn now, without "
                                                "stopping it"),
         ("Ctrl+Shift+Z on one of your messages", "Retry from Here (Claude and Codex chats): start a new "

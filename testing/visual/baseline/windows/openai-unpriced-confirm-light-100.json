@@ -1,0 +1,78 @@
+{
+ "title": "Send with price unknown?",
+ "class": "UnpricedApiDialog",
+ "size": [
+  600,
+  340
+ ],
+ "client": [
+  584,
+  301
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "TextCtrl",
+   "name": "Price unknown warning",
+   "label": "This spends OpenAI API credits. The Chat Place has no price for future-model, so it can't estimate the cost, and your dollar limits can't stop a message.\r\n\r\nAn allowance of up to $2.00 will be held for each message against your overall limit. This allowance limits later sends; it cannot limit what this message costs. Stop keeps the allowance when the cost is unknown.",
+   "rect": [
+    14,
+    14,
+    560,
+    230
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "This spends OpenAI API credits. The Chat Place has no price for future-model, so it can't estimate the cost, and your dollar limits can't stop a message.\n\nAn allowance of up to $2.00 will be held for each message against your overall limit. This allowance limits later sends; it cannot limit what this message costs. Stop keeps the allowance when the cost is unknown."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Cancel",
+   "rect": [
+    366,
+    266,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send on API credits",
+   "rect": [
+    449,
+    266,
+    123,
+    23
+   ],
+   "best": [
+    123,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

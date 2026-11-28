@@ -45,7 +45,7 @@
     120
    ],
    "best": [
-    220,
+    331,
     120
    ],
    "depth": 0,
@@ -53,7 +53,7 @@
    "enabled": true,
    "problems": [],
    "items": [
-    "Visual probe, Claude, Scratch, idle",
+    "Visual probe, Claude, Claude subscription, Scratch, idle",
     "New Claude chat",
     "New Codex chat"
    ],

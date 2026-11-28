@@ -348,7 +348,7 @@ applies only to Claude. Codex is told these limits in each chat, including reope
 and copies, so it can explain them instead of sending you to a setting.
 
 An MCP browser server you have configured and explicitly enabled through
-**View, Connected Tools** is a separate tool. Codex can use tools actually available in that chat, or ask you to
+**Tools, Connected Tools (MCP)** is a separate tool. Codex can use tools actually available in that chat, or ask you to
 check a page in your own browser.
 
 ### You're asked too often, or you want more control
@@ -651,7 +651,7 @@ how to check the work, and use one chat for one job. These sections are what's d
 chat started here. See also OpenAI's [Codex documentation](https://developers.openai.com/codex).
 
 Some of the Claude part doesn't apply: Claude's Run as agent and Output style choices, Claude Code's own commands such
-as `/init` and `/code-review`, restoring files, editing a queued message and Remote Control.
+as `/init` and `/code-review`, restoring files and Remote Control.
 
 ### Codex: agree on the approach first
 
@@ -791,6 +791,10 @@ Tab and Shift+Tab move between them, and Ctrl+1, Ctrl+2 and Ctrl+3 go straight t
 and Shift+F6 move between the parts and the **status bar**; Ctrl+9 goes straight to the status
 bar. Escape in the messages, the reply box or the status bar takes you back to the session
 list, on the same chat.
+
+Text to read in a dialog, such as a message, a tool's details or what Claude asks permission
+for, is in a read-only box you can read by line, word and character, and select and copy from.
+As you reach one, JAWS and NVDA read the line you're on.
 
 If you haven't started any supported chats yet, the session list is empty and the messages say
 so: start a chat with File, New Session (Ctrl+N), or in a supported desktop app or a terminal,
@@ -1597,7 +1601,7 @@ whether the chat was started here:
 | Feature | Claude | Codex | GitHub Copilot CLI |
 |---|---|---|---|
 | Start chats here and reply | yes | yes | yes |
-| Send Now, edit or remove a queued message | yes | no: Stop returns it | no: Stop returns it |
+| Send Now, edit or remove a queued message | yes | yes: Send Now steers into the turn | no: Stop returns it |
 | Steer a running turn (Ctrl+Alt+Enter) | yes | yes | no: queue it instead |
 | Answer requests (Ctrl+Shift+A) | permissions, questions and plans | permissions and questions | permissions |
 | Change Model or Change Effort later | yes | yes, when idle | Change Model only |
@@ -1671,8 +1675,8 @@ editable.
   reply box attaches a picture on the clipboard, such as a screenshot, or files you copied in
   File Explorer (the Finder on a Mac). Pictures reach Codex as
   images; other files are named for it to read. You can send attachments with an empty reply box,
-  and queued messages keep their image and skill inputs. If a send fails, the recovered draft
-  names its files; attach images again to resend them as images.
+  and queued messages keep their image and skill inputs. Editing, Stop and recovery after a
+  failed send keep images in the attachment list and selected skills with the draft.
 - **Insert Command or Skill** (Ctrl+/) lists enabled skills for the folder and Codex chat
   controls. Type to filter, Down to the list, Enter to choose. A skill inserts `$name` in the
   reply box and sends the skill with your next message. Controls include `/model`, `/reasoning`,
@@ -2276,8 +2280,15 @@ queued message depends on the provider:
 - **Claude:** on a queued message, Ctrl+Enter sends it now, and Claude answers it straight away,
   in the same turn. Its menu can also edit or remove it, and Delete removes it (on a Mac,
   Fn+Delete).
-- **Codex and Copilot:** queued messages go after the reply. They can't be sent early, edited or
-  removed while they wait: Stop the turn to get them back.
+- **Codex:** **Edit Queued Message** brings the selected message back to the message box,
+  keeping its images, skills and full text. The text box shows what you typed; restored files
+  and skills appear in Attachments, where Delete removes one. A skill token you typed stays
+  in your text. **Remove Queued Message** or **Delete** removes
+  just that message. Sending an edited message again puts it after any others still queued.
+  **Send Now** (**Ctrl+Enter** on its row) steers it into the running turn, as **Ctrl+Alt+Enter**
+  does, without interrupting a command. A refused steer stays queued; if delivery is uncertain,
+  it comes back with a warning to check history before sending again.
+- **Copilot:** queued messages go after the reply. Stop returns them for editing.
 
 To change what the AI is doing without stopping it, **steer** instead: type your message and
 press **Ctrl+Alt+Enter** (Cmd+Option+Return on a Mac), or choose Chat, Steer: Send into the
@@ -2351,8 +2362,8 @@ These are for Claude and Codex chats started here:
   copied. The attachments are
   listed under the reply box, and Delete there removes one (on a Mac, Delete or Fn+Delete).
   The provider sees pictures as pictures, and reads other files from where they are. Queued
-  Codex messages keep their image and skill inputs. If a failed send returns a Codex message
-  as a draft, its files are named there; attach images again to resend them as images.
+  Codex messages keep their image and skill inputs. Editing, Stop and recovery after a failed
+  send keep images in the attachment list and selected skills with the draft.
 
 ### Saved prompts
 
@@ -2687,8 +2698,8 @@ What each provider offers:
   the turn waiting until you come back and decline, or stop the turn. Enter in its boxes says
   "Tab to Decline". When the
   tool asks you to open a web page instead,
-  Answer opens on the **Address** box, above the tool's message: its first line says where the
-  page really is ("Opens example.com"), then the whole address. **Open in Browser** opens it;
+  Answer opens on the **Address** box, above the tool's message: its line says where the page
+  really is, then gives the whole address ("Opens example.com: https://example.com/…"). **Open in Browser** opens it;
   finish there and the tool carries on. Enter in either box says "Tab to Open in Browser, or to
   Decline", so it never opens a page by itself. The Chat Place opens only plain web addresses: https, or http to this computer, with
   no name or password before the host and no hidden characters, and a host in plain letters.
@@ -2794,8 +2805,9 @@ approval.
   chat. Allowed requests, which can be dozens in a turn, are said and shown in the chat only
   with **Show Tool Activity** on (Ctrl+T), like tool calls. Either way, Lists, **Auto Approvals**
   (Ctrl+Shift+I, then Ctrl+8 on Windows, or the Kinds list) lists them all, and Turn Status (Ctrl+Shift+T) counts this turn's.
-  These are the chat's own requests: what the automatic review decides for a Codex subagent
-  isn't shown yet, though a subagent's requests that need you still come to the chat.
+  A subagent's automatic review decisions are included too, with "Codex subagent" in the
+  details. A subagent's tool calls and successful file changes also use the parent chat's
+  sound settings.
 - The latest 128 decisions for each chat, including those Allow for This Chat made, are kept on
   this computer, so Lists and Chat Permissions show them after a restart, even if Codex isn't
   running. Both list them newest first: Chat Permissions under "Recent decisions made for you, by
@@ -2889,7 +2901,10 @@ long as the dialog is open; a tool turned off for the chat isn't started.
 - **Turn Off for This Chat** (Alt+O), or Delete in the list, keeps the tool out of this chat's
   turns from the next one; the row then says "off for this chat", and the button becomes
   **Turn On for This Chat**. Other chats, the desktop app and Claude Code's own settings are left alone.
-  Only chats started here can do this; The Chat Place's session tools can't be turned off.
+  Only chats started here have this button; in a chat started elsewhere it isn't there, and
+  Delete in the list says why. The Chat Place's session tools can't be turned off.
+- A message these buttons show is titled for what it answers, such as "Sign In: notion" or
+  "Reconnect: github".
 - **Turn Off for New Chats** (Alt+N), in a Claude chat, is for a tool you don't plan to use. Every
   new chat from then on has it off, and The Chat Place stops telling you Claude can't use it.
   Chats you already have, and Retry and Branch copies of them, keep their own setting. The row says "off for new chats", and the
@@ -2905,6 +2920,49 @@ announcement level without cutting anything off. Each tool is mentioned once eac
 Place runs, and a tool turned off for the chat or for new chats isn't mentioned.
 
 ### Codex's connected tools
+
+Connected tools add access to services beyond Codex's normal file and command tools. For
+example, a notes service could let you ask "Find my notes about the conference" or "Create a
+note titled Packing list". What you can ask depends on the tools that service supplies;
+enabling a connection does not give Codex every feature of the service.
+
+Signing into Codex does not itself configure an external server. Add the service using its
+Codex setup instructions, or install/connect an account app available to you. Servers set up
+for Claude are not automatically configured for Codex. This dialog uses the connections Codex
+reports; it does not currently offer a service directory or an Add Server form.
+
+To use an available connection in a ChatGPT-subscription Codex chat:
+
+1. Open **Tools, Connected Tools (MCP)**, select the service, and read **Details**.
+2. If it needs account access, choose **Sign In** and complete the service's steps in your
+   browser. Being signed in and being on for this chat are separate states.
+3. If it is off for this chat, choose **Copy with Tool On** and confirm the copy. Continue in
+   that new chat. **Reconnect** refreshes an enabled server; it does not turn an off tool on.
+4. Ask for a specific task in your message, naming the service if helpful. If Codex asks for
+   approval, open **Answer** (Ctrl+Shift+A), read the arguments, and Send or Decline. A request
+   to create a note needs a tool that can create notes; a search-only connection cannot do it.
+5. Check the service's actual result. To remove the connection from the conversation, use
+   **Copy with Tool Off** and continue in that copy.
+
+Apps that are on for the chat come first, including one that needs you to sign in again, then
+other apps your account can use. The thousands of ChatGPT apps not connected to your account
+are one entry at the end, **More ChatGPT apps**, which says how many there are: connect one in
+ChatGPT's settings, under Apps, then press **Refresh**. Like **Apps unavailable**, it's information, not a
+tool: it isn't counted, and Sign In, Reconnect and Change Tool only say its message. Apps start
+off for a chat until you use **Copy with Tool On**. The first time Connected Tools opens after
+The Chat Place starts, listing apps can take up to a minute while Codex fetches ChatGPT's app
+catalog; after that the list opens in seconds, from what Codex fetched, and **Refresh** fetches
+it again. The lookup runs in the background: opening other chats doesn't wait for it, and you
+can close the dialog while it is waiting. Opening Connected Tools again for the same chat waits
+for that lookup rather than starting another.
+
+An empty list can mean no services have been configured. **Apps unavailable** means the app
+inventory could not be retrieved; it does not establish that your account has no apps. That
+entry is information, not a server to sign into: with it selected, the button after Reconnect
+reads **Change Tool**, and it, Sign In and Reconnect only say the message again. Its message
+distinguishes a timeout or an unsupported Codex method when known. **Refresh** retries the
+lookup, and any configured servers listed alongside it remain usable. Codex's ordinary file and
+command tools are separate from this list.
 
 Select or load a Codex chat started here, then choose **Tools, Connected Tools (MCP)**. It lists
 the servers set up in Codex for the chat's folder, with how each is doing. **Details** (Alt+D)
@@ -2925,22 +2983,38 @@ on or off in the chat itself.
 - The list also has the apps from ChatGPT you can use, and **The Chat Place's session tools**,
   which stay on while The Chat Place is running. An app is turned on in a copy the same way as a
   server.
-- **Sign In** (Alt+S) reads you the sign-in page's real address and opens it only if you agree;
-  finish in your browser, and you hear when it's done, or press **Refresh**. For an app, it
-  opens the app's page instead. Codex signs in to a server only in a chat that has it on, so for
-  a server that's off, Sign In says so: press **Copy with Tool On** (Alt+O) to make a copy with
-  it on, then sign in from Connected Tools in that copy. **Reconnect** (Alt+R) tries a server
-  again. The Chat Place leaves your Codex settings alone.
+- **Sign In** (Alt+S) asks first, in **Sign In to** and the tool's name. It opens on the Address
+  box, whose one line says where the page is and gives its whole address, for example "Opens
+  mcp.notion.com: https://…". **Open in Browser** (Alt+O) opens it; finish in your browser and
+  keep Connected Tools open to hear the result. **Decline** (Alt+D) or Escape opens nothing:
+  you hear "Sign-in page was not opened." and are back on Sign In. It works with a
+  server off and in chats started elsewhere, without making a chat or turning the tool on.
+  Sign-in waits up to three minutes and needs a recent Codex. An app asks in **Connect** and the
+  app's name, and opens its app page instead; declining says "App page was not opened."
+  A server Codex starts on this computer, or one set up with a token, has nothing to sign in
+  to, and Sign In says so. Some services, GitHub's among them, don't let Codex sign in for you:
+  Sign In says to give Codex a token instead (`codex mcp add` with `--bearer-token-env-var`) or
+  to follow the service's own instructions for Codex. When Codex gives no reason, Sign In says
+  to run `codex mcp login` with the tool's name in a terminal, which shows Codex's own reason.
+  **Reconnect** (Alt+R) tries a server again and lets an enabled tool use its new sign-in. If it
+  can't, it says why and what to do next, such as checking the server with `codex mcp list` in
+  a terminal. The Chat Place leaves your Codex settings alone.
 - If a server the chat uses is later removed from Codex's settings, the chat can't send and says
   why. The server is first in this list, and **Copy with Tool Off** makes a copy without it. Or
   add it back to Codex's `config.toml`.
+- When Codex asks permission to run a connected tool, **Answer** shows the tool's request and
+  arguments. Long arguments show a preview and the number of characters not shown. Accept covers this call only. Whether a tool asks depends on Codex's configuration;
+  enabling a tool does not guarantee that every call asks. Its file and service access can extend
+  beyond the chat folder.
 - When a connected tool asks for something, **Answer** (Ctrl+Shift+A) shows its form or the web
   page it wants opened, as for Claude. A request The Chat Place can't show at all is declined
   for you, with a notice.
 
 For a Codex chat started elsewhere, the list shows the servers set up in Codex for its folder,
-without how each is doing, and tools can't be changed for it here. To sign in to one, use Codex
-in a terminal: Sign In says the command, such as `codex mcp login notes`.
+without how each is doing, and tools can't be changed for it here, so there's no Copy with Tool
+On or Off button. Sign In still works for its configured servers; it leaves the chat's tools as
+they are. Reconnect says there's nothing to reconnect there, since the chat's tools aren't
+connected in The Chat Place.
 
 ## Organizing your chats
 
@@ -3061,7 +3135,7 @@ the other commands for the selected chat.
 When the open chat gets a reply, when one of the chats started here finishes a turn, or when
 any listed chat stops working, it's announced through your screen reader (or a system voice
 when no screen reader is running) and put on the status bar. **Ctrl+Shift+R** repeats the last
-announcement.
+announcement; before there's been one, it says "No announcement to repeat yet."
 
 **Settings** (Ctrl+Comma) chooses how much is said:
 

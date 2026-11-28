@@ -616,14 +616,15 @@ def test_url_elicitation_summary_and_detail():
     assert request.is_url and request.elicitation_id == "elic-123"
     assert request.summary() == "elicit-test asks you to open a web page"
     assert request.detail() == "Open this page to finish signing in."
-    assert request.address_text() == "Opens example.com\nhttps://example.com/sign-in"
+    # Where it goes and the whole address, on the first line (#729's acceptance test).
+    assert request.address_text() == "Opens example.com: https://example.com/sign-in"
     assert request.fields() == []
 
 
 def test_the_address_box_says_where_it_really_goes_whatever_the_message_says():
     request = elicitation_from("e", {**URL_REQUEST, "url": "https://evil.example/x",
                                      "message": "Page: https://bank.example/\n\nOpens bank.example"})
-    assert request.address_text().splitlines()[0] == "Opens evil.example"
+    assert request.address_text().splitlines()[0] == "Opens evil.example: https://evil.example/x"
     # The server's words stay in their own box.
     assert "evil.example" not in request.detail()
 
@@ -634,7 +635,9 @@ def test_the_address_box_says_where_it_really_goes_whatever_the_message_says():
     ("", "(The server gave no address.)")])
 def test_an_address_that_wont_open_is_shown_with_its_hidden_characters_written_out(url, shown):
     text = elicitation_from("e", {**URL_REQUEST, "url": url}).address_text()
-    first, second = text.split("\n")
+    # One line, for a one-line box (#729's acceptance test, under JAWS).
+    assert "\n" not in text
+    first, second = text.split(": ", 1)
     assert "won't open" in first and second == shown
 
 

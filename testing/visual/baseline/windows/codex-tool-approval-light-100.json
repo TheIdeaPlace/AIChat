@@ -1,0 +1,116 @@
+{
+ "title": "project-notes asks: Codex review",
+ "class": "ElicitationDialog",
+ "size": [
+  680,
+  540
+ ],
+ "client": [
+  664,
+  501
+ ],
+ "dpi": [
+  96,
+  96
+ ],
+ "content_scale": 1.0,
+ "controls": [
+  {
+   "class": "StaticText",
+   "name": "staticText",
+   "label": "&Message:",
+   "rect": [
+    8,
+    8,
+    50,
+    16
+   ],
+   "best": [
+    50,
+    16
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "TextCtrl",
+   "name": "Message",
+   "label": "Allow project-notes to run tool \"update_note\"?\r\n\r\nTool arguments:\r\n{\r\n  \"note\": \"build checklist\",\r\n  \"text\": \"Run the tests before publishing.\"\r\n}\r\n\r\nYour answer covers this call only.",
+   "rect": [
+    10,
+    26,
+    648,
+    430
+   ],
+   "best": [
+    127,
+    158
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": [],
+   "value": "Allow project-notes to run tool \"update_note\"?\n\nTool arguments:\n{\n  \"note\": \"build checklist\",\n  \"text\": \"Run the tests before publishing.\"\n}\n\nYour answer covers this call only."
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Send",
+   "rect": [
+    405,
+    470,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "&Decline",
+   "rect": [
+    486,
+    470,
+    75,
+    23
+   ],
+   "best": [
+    75,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  },
+  {
+   "class": "Button",
+   "name": "button",
+   "label": "Answer &Later",
+   "rect": [
+    567,
+    470,
+    89,
+    23
+   ],
+   "best": [
+    89,
+    23
+   ],
+   "depth": 0,
+   "parent": -1,
+   "enabled": true,
+   "problems": []
+  }
+ ],
+ "capture": "PrintWindow"
+}

@@ -1067,6 +1067,27 @@ def _linux_processes(proc: str = "/proc") -> dict:
     return found
 
 
+#: JAWS's own window class, there while JAWS runs in this Windows session.
+JAWS_WINDOW_CLASS = "JFWUI2"
+
+
+def jaws_running() -> bool:
+    """True while JAWS runs in this Windows session (its window is there),
+    False elsewhere and whenever it can't tell. Quick enough to ask each time
+    a screen reader asks a control its name: one FindWindow (#763)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        user32 = ctypes.WinDLL("user32")
+        user32.FindWindowW.restype = ctypes.c_void_p
+        user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        return bool(user32.FindWindowW(JAWS_WINDOW_CLASS, None))
+    except Exception:  # noqa: BLE001 - never break a screen reader's question
+        return False
+
+
 def windows_locked() -> bool:
     """True while Windows is locked or showing a secure screen (a UAC prompt,
     Ctrl+Alt+Del). Screen readers keep running there, and NV Access asks apps
@@ -2560,7 +2581,7 @@ def codex_child_environment(environ=None) -> dict:
             and not key.upper().startswith(("OPENAI_", "AZURE_OPENAI_"))}
 
 
-def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
+def start_codex_server(executable: Optional[str] = None, *, cwd=None) -> CodexServerProcess:
     """Start stdio without a shell, in the existing kill-on-close tree."""
     import subprocess
 
@@ -2569,7 +2590,7 @@ def start_codex_server(executable: Optional[str] = None) -> CodexServerProcess:
         raise OSError("Install the Codex app or CLI, then restart.")
     tree = ProcessTree()
     process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
-                               env=codex_child_environment(),
+                               env=codex_child_environment(), cwd=cwd,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, **tree.popen_kwargs())
     owned = CodexServerProcess(process, tree)

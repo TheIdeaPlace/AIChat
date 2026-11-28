@@ -108,7 +108,7 @@ from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_
                        release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
+from .a11y import (announce_list_emptied, give_focus, refresh_list_item, set_accessible_name,
                    set_empty_list_text, set_list_items_accessible, set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
@@ -144,7 +144,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, PLAN_HOLD, AboutYouDi
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, FORMATTED_BROKEN_TEXT, show_formatted_page, press_focused_button_on_a_mac,
-                      remove_whole_chat_page,
+                      remove_whole_chat_page, READ_ONLY_BOX_STYLE,
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
@@ -845,8 +845,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             "turn_status": self.on_turn_status,
             "usage_and_context": lambda e: self.on_usage(),
             "changed_files": lambda e: self.on_changes(),
-            "repeat_last_announcement": lambda e: self._say(self._last_announcement, force=True,
-                                                            resay=False),
+            "repeat_last_announcement": lambda e: self.on_repeat_last_announcement(),
             "what_ai_knows": lambda e: self.on_about_you(),
             "connected_tools": lambda e: self.on_connected_tools(),
             "user_guide": self.on_user_guide,
@@ -991,9 +990,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # explanation is what's heard on tabbing to where the reply box would be.
         dsizer.Add(wx.StaticText(self.desktop_reply, label="About replying:"), 0, wx.BOTTOM, 4)
         self.desktop_note = wx.TextCtrl(
-            self.desktop_reply, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
+            self.desktop_reply, style=READ_ONLY_BOX_STYLE,
             value=_DESKTOP_NOTE)
-        set_accessible_name(self.desktop_note, "About replying")
+        set_accessible_name(self.desktop_note, "About replying", read_only_box=True)
         self.desktop_note.SetMinSize(dip(self, -1, 120))
         dsizer.Add(self.desktop_note, 1, wx.EXPAND)
         drow = wx.BoxSizer(wx.HORIZONTAL)
@@ -1151,6 +1150,20 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if force or self.speech.enabled:
             self._speak_announcement(text, interrupt=interrupt, window=window, about=about,
                                      resay=resay)
+
+    #: What Repeat Last Announcement says before anything has been announced:
+    #: a key that does nothing and says nothing sounds broken (#729).
+    NOTHING_TO_REPEAT = "No announcement to repeat yet."
+
+    def on_repeat_last_announcement(self):
+        """Ctrl+Shift+R: say the last announcement again, or that there's
+        none yet. That answer isn't itself an announcement, so it's never
+        what the next Ctrl+Shift+R repeats."""
+        if self._last_announcement:
+            self._say(self._last_announcement, force=True, resay=False)
+            return
+        self._status(self.NOTHING_TO_REPEAT)
+        self._speak_announcement(self.NOTHING_TO_REPEAT, interrupt=True)
 
     def _speak_announcement(self, text: str, interrupt: bool, window: Optional[wx.Window] = None,
                             keep: bool = False, about: str = "", again: str = "",
@@ -5145,8 +5158,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
             finally:
                 host.close()
-            if focus and wx.Window.FindFocus() is not focus:
-                focus.SetFocus()
+            give_focus(focus)
             return
         if info.provider != "claude":
             self._feedback(f"Connected Tools is for Claude and Codex chats. {info.title} is a "
@@ -5168,8 +5180,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             host.close()  # the idle Claude Code ends with the dialog
         # Only if Windows hasn't put it back already: setting it again had a
         # screen reader say the message twice (#468).
-        if returning_to and wx.Window.FindFocus() is not returning_to:
-            returning_to.SetFocus()
+        give_focus(returning_to)
 
     def _say_mcp_problems(self, session_id: str, title: str, servers) -> None:
         """At a turn's start: the connected tools Claude can't use (they need
@@ -7339,6 +7350,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
     def remove_queued(self):
         """Remove the selected queued message (Delete, or the context menu)."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self._take_codex_queued(info, editing=False)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
                            "messages for editing.")
@@ -7523,6 +7537,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         and takes it straight away, in the same turn, as the desktop app's
         Send Now does."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self.steer_queued()  # Codex accepts input at its next step, without interruption (#526).
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"{provider_name(info.provider)} sends queued messages after its reply. "
                            "Stop returns them for editing.")
@@ -7566,6 +7583,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """Take the selected queued message back into the reply box, to
         change it and send it again."""
         info = self._open
+        if info is not None and info.provider in ('codex', 'codex-api') and self._can_edit(info):
+            self._take_codex_queued(info, editing=True)
+            return
         if info is not None and info.provider in RUNTIME_PROVIDERS and self._can_edit(info):
             self._feedback(f"Stop this {provider_name(info.provider)} turn to return its queued "
                            "messages for editing.")

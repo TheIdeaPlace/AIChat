@@ -505,8 +505,10 @@ class CodexExtras:
     def _codex_message(self, info, text):
         import re
         skills = getattr(self, '_codex_skills', {}).get(info.key, {})
+        paths = self._attachments.get(self._attachment_key(info), [])
         selected = [(name, path) for name, path in skills.items()
-                    if re.search(r'(?<!\w)\$' + re.escape(name) + r'(?![\w-])', text)]
+                    if path in paths or re.search(r'(?<!\w)\$' + re.escape(name) + r'(?![\w-])', text)]
         # Over the limit, it's handed over in a file (#625, _codex_sendable).
-        return build_input(text, self._attachments.get(self._attachment_key(info), []),
+        skill_paths = {path for name, path in selected}
+        return build_input(text, [path for path in paths if path not in skill_paths],
                            skills=selected, allow_long=True)

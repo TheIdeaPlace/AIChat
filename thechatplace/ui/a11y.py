@@ -5,6 +5,7 @@ import re
 
 import wx
 
+from .. import platform_paths
 from . import gtk_a11y, mac_a11y
 
 
@@ -31,12 +32,117 @@ class _NamedAccessible(wx.Accessible):
 class _ReadOnlyBoxAccessible(_NamedAccessible):
     """A read-only box holds text to read, which isn't a label: Windows took
     the "&" in a server's "Pick & choose" for an access key and reported a
-    shortcut of "Alt+ ". It has no shortcut of its own."""
+    shortcut of "Alt+ ". It has no shortcut of its own.
+
+    While JAWS runs, its name ends with the line the caret is on (#763).
+    JAWS 2027 reads no text at all as focus lands on a multi-line box, plain
+    or rich, editable or not, whatever its value, description or role says:
+    only "Details, read only edit" (seen in the test VM). It does read the
+    name, so the line goes there, as NVDA reads it itself. Not for NVDA,
+    which would read the line twice."""
+
+    #: The most of the line that goes in the name, cut at a word: a long
+    #: paragraph or command is read in the box itself, by line.
+    LINE_MOST = 250
+
+    def GetName(self, childId):
+        status, label = super().GetName(childId)
+        box = self.GetWindow()
+        # A box of one unwrapped line with no up-and-down scroll bar (the
+        # Address box) JAWS reads itself as it gets focus, as it does a
+        # one-line box: the line in the name was then said twice (#763, in
+        # the VM). Only that kind: wrapping ones weren't shown to be read.
+        one_line = box.HasFlag(wx.TE_NO_VSCROLL) and box.HasFlag(wx.TE_DONTWRAP)
+        if childId or not platform_paths.jaws_running() or one_line:
+            return (status, label)
+        line = current_line(box)
+        if len(line) > self.LINE_MOST:
+            cut = line[:self.LINE_MOST]
+            # At a word, unless there's none near the end (an address).
+            at = cut.rfind(" ")
+            line = (cut[:at] if at > self.LINE_MOST // 2 else cut) + "…"
+        return (status, f"{label}, {line}" if line else label)
 
     def GetKeyboardShortcut(self, childId):
         if childId:
             return (wx.ACC_NOT_IMPLEMENTED, "")
         return (wx.ACC_OK, "")
+
+
+def current_line(box) -> str:
+    """The line the caret is in, in a text box, stripped: all of it, from
+    one line break to the next, however the box wraps it. "" if it's blank
+    or can't be told.
+
+    Not the line as shown: as Claude's permission dialog opened, JAWS asked
+    before the box had its width, and the shown line was "Claude wants to"
+    (#763, in the test VM)."""
+    try:
+        text = box.GetValue()  # once: a whole chat can be in the box
+        at = _text_index(text, box.GetInsertionPoint(), box.GetLastPosition())
+        start = text.rfind("\n", 0, at) + 1
+        end = text.find("\n", at)
+        return text[start:end if end >= 0 else len(text)].strip()
+    except Exception:  # noqa: BLE001 - never break a screen reader's question
+        return ""
+
+
+#: A character a Windows box counts as two places (beyond 16 bits).
+_WIDE = re.compile("[\U00010000-\U0010FFFF]")
+
+
+def _text_index(text: str, position: int, last_position: int) -> int:
+    """Where box ``position`` is in ``text`` (the box's GetValue). A plain
+    Windows box counts each line break as two places ("\\r\\n") and a
+    character beyond 16 bits (most emoji) as two, which its last position
+    shows; other boxes count each as one. Line by line, so a whole chat
+    with the caret near its end is quick (#763's review)."""
+    def wide(part: str) -> int:
+        return len(_WIDE.findall(part))
+    if last_position == len(text):
+        return min(position, len(text))
+    breaks_count = last_position - len(text) - wide(text) == text.count("\n")
+    index = places = 0
+    while index < len(text):
+        end = text.find("\n", index)
+        line_end = len(text) if end < 0 else end
+        line = text[index:line_end]
+        line_places = len(line) + wide(line)
+        if places + line_places >= position:
+            break
+        places += line_places + (2 if breaks_count else 1)
+        index = line_end + 1
+        if end < 0:
+            return len(text)
+    # Within the caret's line.
+    for c in text[index:]:
+        if places >= position or c == "\n":
+            break
+        places += 2 if ord(c) > 0xFFFF else 1
+        index += 1
+    return min(index, len(text))
+
+
+def give_focus(window) -> None:
+    """Put the keyboard focus on ``window``, unless it's there already.
+
+    Windows often has put it there by itself: on a dialog's first control as
+    the dialog opens, and back where it was as a message box closes. Setting
+    it again could have a screen reader read the control twice (#468), and
+    every "focus goes here" in a dialog goes through this (#729's review).
+    Win32's SetFocus already does nothing for the window that has focus, so
+    on Windows this mostly tidies up; Connected Tools' first row read twice
+    was the list filling as the dialog opened (ConnectedToolsDialog.ShowModal).
+    """
+    if window and wx.Window.FindFocus() is not window:
+        window.SetFocus()
+
+
+def give_focus_later(window) -> None:
+    """``give_focus`` once the events already queued have run: from a
+    dialog's constructor, after Windows has given the dialog its first focus
+    as it opens. A window destroyed meanwhile is left alone."""
+    wx.CallAfter(give_focus, window)
 
 
 def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = False) -> None:
@@ -92,6 +198,10 @@ def _msaa_name(control: wx.Window):
     accessible = getattr(control, "_hub_accessible", None)
     if accessible is None:
         return None
+    if isinstance(accessible, _ReadOnlyBoxAccessible):
+        # Its label, not the line JAWS hears with it: the label before the
+        # box would be read with the line too (#763's review).
+        return accessible._label or None
     try:
         status, name = accessible.GetName(0)
     except Exception:  # noqa: BLE001 - never break the screen reader
