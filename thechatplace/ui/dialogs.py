@@ -6978,9 +6978,11 @@ class ElicitationDialog(wx.Dialog):
             # wrapped, as a long address has no spaces: the box broke the
             # line after "Opens host:" (#729's review). Not a one-line box:
             # Tab and Shift+Tab went past one, and NVDA read it twice as the
-            # dialog opened (#763).
+            # dialog opened (#763). One line high, with the scroll bar for
+            # sideways only.
             self.address_text = _read_only_text(self, request.address_text(), "Address",
-                                                min_height=60, style=wx.TE_DONTWRAP)
+                                                min_height=44,
+                                                style=wx.TE_DONTWRAP | wx.TE_NO_VSCROLL)
             outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
