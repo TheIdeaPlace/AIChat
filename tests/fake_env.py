@@ -309,26 +309,29 @@ def add_transcript(env, cwd, cli, records):
 def pump(condition, timeout=5.0):
     """Run the window's events until ``condition()`` is true, for up to
     ``timeout`` seconds. If it never is, say where the time went (#761), in
-    the output a failing test shows: a load that didn't finish in time once
-    turned out to be one yield to the system that alone took most of the
-    time, the macOS window server stalled by native windows piling up
-    (#757), not slow work in the app."""
-    start = time.time()
+    the output a failing test shows. A load that didn't finish in time (#761)
+    came late in a macOS run where single yields to the system were measured
+    taking up to 5 s, the window server stalled by native windows piling up
+    (#757): the likely cause, which this would show next time."""
+    start = time.monotonic()
     end = start + timeout
     rounds, waiting, longest = 0, 0.0, 0.0
-    while time.time() < end:
-        before = time.perf_counter()
+    while time.monotonic() < end:
+        before = time.monotonic()
         wx.GetApp().ProcessPendingEvents()
         wx.YieldIfNeeded()
-        took = time.perf_counter() - before
+        took = time.monotonic() - before
         rounds, waiting, longest = rounds + 1, waiting + took, max(longest, took)
         if condition():
             return True
         time.sleep(0.02)
-    if condition():  # one last look: the deadline may have passed while asleep
+    # One last look, with what was handed back meanwhile run first: the
+    # deadline may have passed while it slept.
+    wx.GetApp().ProcessPendingEvents()
+    if condition():
         return True
     if timeout >= 2:  # shorter pumps on a condition never met are waits on purpose
-        print(f"pump: not true after {time.time() - start:.1f} s of {timeout:g}: {rounds} "
+        print(f"pump: not true after {time.monotonic() - start:.1f} s of {timeout:g}: {rounds} "
               f"rounds, {waiting:.1f} s running events, the longest one {longest:.1f} s")
     return False
 
