@@ -20,6 +20,7 @@ wx = pytest.importorskip("wx")
 from thechatplace import announce, hub, platform_paths, speech  # noqa: E402
 from thechatplace.claude_cli import TurnEvent  # noqa: E402
 from thechatplace.own_store import OwnSession, OwnSessionStore  # noqa: E402
+from thechatplace.providers import copilot_runtime  # noqa: E402
 from thechatplace.sessions import IDLE, NEEDS_YOU  # noqa: E402
 
 from records import (assistant_block, lines, text_block, tool_result, tool_use_block,  # noqa: E402
@@ -15617,7 +15618,7 @@ def test_stop_says_when_copilot_has_already_answered(frame, env, monkeypatch):
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return Stopped((), cancelled=False, answered=True)
+        return Stopped((), copilot_runtime.CHECKING)
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame._codex_states[info.key] = CopilotChatState("cp-chk", "working", "1", "inProgress", checking=True)
     frame._stop_codex_owned(info)
@@ -15668,7 +15669,7 @@ def test_stop_before_the_message_went_says_so(frame, env, monkeypatch):
     monkeypatch.setattr(frame, "_open", info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(before_sending=True))
+                        lambda action, record, *args: Stopped(report=copilot_runtime.BEFORE_SENDING))
     frame._stop_codex_owned(info)
     assert pump(lambda: "Early Copilot: Stopped before your message went to Copilot."
                 in env["feedback"])
@@ -15689,7 +15690,7 @@ def test_stop_again_says_copilot_was_already_asked(frame, env, monkeypatch):
     monkeypatch.setattr(frame, "_open", info)
     monkeypatch.setattr(frame, "_can_edit", lambda chat: True)
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(cancelled=True, already_asked=True))
+                        lambda action, record, *args: Stopped(report=copilot_runtime.ALREADY_ASKED))
     frame._stop_codex_owned(info)
     assert pump(lambda: "Again Copilot: Already asked Copilot to stop; "
                 "The Chat Place closes it if it doesn't." in env["feedback"])
@@ -15713,7 +15714,7 @@ def test_stop_is_worded_from_what_the_runtime_saw_not_the_windows_state(frame, e
     frame._codex_states[info.key] = CopilotChatState("cp-race", "working", "1", "inProgress",
                                                      checking=True, queued=("Two", "Three"))
     monkeypatch.setattr(frame.sessions, "owned_action",
-                        lambda action, record, *args: Stopped(("Three",), cancelled=True))
+                        lambda action, record, *args: Stopped(("Three",), copilot_runtime.CANCELLED))
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)
     assert pump(lambda: frame.reply_text.GetValue() == "Three")
@@ -15740,7 +15741,7 @@ def test_stop_while_checking_gives_back_a_waiting_message(frame, env, monkeypatc
 
     def owned_action(action, record, *args):
         calls.append(action)
-        return Stopped(("Two",), cancelled=False, answered=True) if action == "stop" else None
+        return Stopped(("Two",), copilot_runtime.CHECKING) if action == "stop" else None
     monkeypatch.setattr(frame.sessions, "owned_action", owned_action)
     frame.reply_text.SetValue("")
     frame._stop_codex_owned(info)
