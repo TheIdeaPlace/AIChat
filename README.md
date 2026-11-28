@@ -45,6 +45,10 @@ a read-only box to read by line, word and character; **Ctrl+9** goes straight th
 bar isn't a Tab stop, and your screen reader's own read-status-bar key still works (Orca's
 too).
 
+Text to read in a dialog, such as a message, a tool's details or what Claude asks permission
+for, is in a read-only box you can read by line, word and character, and select and copy from.
+As you reach one, JAWS and NVDA read the line you're on.
+
 ### The session list
 
 - **Session list.** Each item reads its title, its repo folder, its state (needs you, working or

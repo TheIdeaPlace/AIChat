@@ -792,6 +792,10 @@ and Shift+F6 move between the parts and the **status bar**; Ctrl+9 goes straight
 bar. Escape in the messages, the reply box or the status bar takes you back to the session
 list, on the same chat.
 
+Text to read in a dialog, such as a message, a tool's details or what Claude asks permission
+for, is in a read-only box you can read by line, word and character, and select and copy from.
+As you reach one, JAWS and NVDA read the line you're on.
+
 If you haven't started any supported chats yet, the session list is empty and the messages say
 so: start a chat with File, New Session (Ctrl+N), or in a supported desktop app or a terminal,
 and it appears in the list.
