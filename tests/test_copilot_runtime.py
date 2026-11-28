@@ -61,8 +61,9 @@ class Process:
 
 
 @pytest.fixture
-def make(tmp_path):
+def make(tmp_path, request):
     made, gated_ = [], []
+    failed_before = request.session.testsfailed
 
     def build(mode="answer", rules=None, auto_ended=None, gated=False):
         """``gated``: the first prompt waits for ``release(tmp_path)``, for a
@@ -83,8 +84,10 @@ def make(tmp_path):
     for runtime in made:
         runtime.close()
     # Else its first turn just waited out the gate's 30 s, and a failure
-    # would read as a plain timeout.
-    assert all(gate.exists() for gate in gated_), "a gated test never called release()"
+    # would read as a plain timeout. Not after the test failed on its own:
+    # it may simply not have reached release().
+    if request.session.testsfailed == failed_before:
+        assert all(gate.exists() for gate in gated_), "a gated test never called release()"
 
 
 def release(tmp_path):
