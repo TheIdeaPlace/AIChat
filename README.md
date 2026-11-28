@@ -1883,9 +1883,9 @@ sign-in for you. Homebrew (`brew install --cask claude-code`) and WinGet
 **Windows.** Download `TheChatPlace-windows-Setup.exe` from the newest release on
 [the releases page](https://github.com/TheIdeaPlace/AIChat/releases) and run it.
 It installs for you only, with no administrator rights, adds The Chat Place to the Start menu, and
-starts it. The portable zip from the same release runs without installing, from the folder you
-unzip it into, and updates itself there as the installed copy does (see "Updates"), as long as it
-can change that folder.
+starts it. The portable zip from the same release runs without installing. Unzip it into a new,
+empty folder of its own, such as `C:\Users\you\Apps\TheChatPlace`, and it updates itself there as
+the installed copy does (see "Updates").
 
 The app is built for x64; Arm PCs run it under Windows's x64 emulation.
 
@@ -1990,12 +1990,18 @@ wherever you keep it. So does the Linux AppImage: an update replaces the `.AppIm
 it is (asking for your password, through pkexec, only if it's in a folder you can't write to).
 
 **The Windows portable zip** updates the same way too: Velopack replaces the `current` folder
-inside the folder you unzipped it into. Help, Check for Updates says so instead of offering an
-update when it can't change that folder (a read-only drive, say, or one in Program Files): unzip
-it somewhere you can change, such as a folder in Documents. It says so too when the data folder
-is inside that folder (the zip unzipped straight into your profile folder, say), as an update
-would replace it, and when the copy is missing the updater it came with (only `current` was
-copied, say): download it again. A test build (one whose Help, About names a build, such as
+inside the folder you unzipped it into. That folder must be the zip's own: before replacing
+`current`, Velopack closes every program running from anywhere in it, so unzipped into a USB
+stick's root or a folder of other portable apps (NVDA portable, say), an update would close them
+too. Help, Check for Updates says so instead of offering an update when that folder holds anything
+but the zip's own files (`.portable`, `The Chat Place.exe`, `Update.exe`, `current` and the
+`packages` folder updates are downloaded into), or the data folder: unzip it into a new, empty
+folder. It says so too when it can't change that folder (a read-only drive, say, or one in Program
+Files): unzip it into a new folder in your user folder, such as `C:\Users\you\Apps\TheChatPlace`
+(not Documents, which OneDrive may sync and Controlled Folder Access may keep apps out of). And it
+says so when the copy is missing the updater it came with (only `current` was copied, say):
+download it again. An update downloaded earlier isn't installed at start where Check for Updates
+wouldn't offer one. A test build (one whose Help, About names a build, such as
 "build bld05") never updates itself from the portable zip, so its folder and its About box keep
 matching; Check for Updates says it's a test build. An installed test build still updates to the
 release.

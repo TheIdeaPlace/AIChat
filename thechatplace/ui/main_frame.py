@@ -8828,6 +8828,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             except Exception:  # noqa: BLE001 - can't tell: not an installed copy
                 installed = False
             try:
+                # Known once installed_copy has worked out what this copy is.
                 folder = str(self.updates.portable_folder or "")
             except Exception:  # noqa: BLE001 - can't tell: not a portable copy
                 folder = ""

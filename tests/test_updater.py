@@ -274,12 +274,14 @@ def test_mac_app_updates_although_velopack_calls_it_portable(monkeypatch):
 
 @pytest.fixture
 def portable_zip(tmp_path, monkeypatch):
-    """A release's portable zip, unzipped: Update.exe beside current\\."""
+    """A release's portable zip, unzipped into a folder of its own: what
+    0.6.3's holds, Update.exe and the launcher beside current\\."""
     root = tmp_path / "TheChatPlace"
     exe = root / "current" / "TheChatPlace.exe"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
-    (root / "Update.exe").write_text("")
+    for name in (".portable", "Update.exe", "The Chat Place.exe"):
+        (root / name).write_text("")
     monkeypatch.setattr(updater, "PORTABLE_COPIES_EXIST", True)
     monkeypatch.setattr(sys, "executable", str(exe))
     from thechatplace import build_info
@@ -312,8 +314,33 @@ def test_windows_portable_zip_in_a_folder_it_cannot_change_says_so(portable_zip,
     assert result.status == NOT_INSTALLED and manager.downloaded == []
     assert result.describe().startswith(
         "The Chat Place can't update itself here: it can't change the folder it's running from")
-    assert "Unzip it to a folder you can change" in result.describe()
+    home = str(Path.home() / "Apps" / "TheChatPlace")
+    assert f"Unzip it into a new folder you can change, such as {home}," in result.describe()
+    assert "Documents" not in result.describe()   # OneDrive, Controlled Folder Access
     assert result.describe().endswith("The latest release is 0.2.0.")
+
+
+@pytest.mark.parametrize("extra,folder", [("notes.txt", False), ("NVDA", True),
+                                          ("TheChatPlace-windows-Portable.zip", False)])
+def test_windows_portable_zip_in_a_shared_folder_does_not_update(portable_zip, extra, folder):
+    # Velopack stops every program running from anywhere in this folder
+    # before it replaces current\: in a folder of portable apps, NVDA too.
+    (portable_zip / extra).mkdir() if folder else (portable_zip / extra).write_text("")
+    manager = FakeManager(Update("0.2.0"), portable=True)
+    result = service(manager).check()
+    assert result.status == NOT_INSTALLED and manager.downloaded == []
+    home = str(Path.home() / "Apps" / "TheChatPlace")
+    assert result.describe() == (
+        "The Chat Place can't update itself here: it isn't in a folder of its own. Unzip it "
+        f"into a new, empty folder, such as {home}, and it will update itself. The latest "
+        "release is 0.2.0.")
+
+
+def test_windows_portable_zip_with_its_downloads_still_updates(portable_zip):
+    # Velopack's own packages folder, after an earlier download; names in any case.
+    (portable_zip / "packages").mkdir()
+    (portable_zip / "Update.exe").rename(portable_zip / "UPDATE.EXE")
+    assert updater.portable_update_blocker() == ""
 
 
 def test_a_folder_is_writable_only_if_a_file_can_be_made_in_it(tmp_path, monkeypatch):
@@ -324,6 +351,15 @@ def test_a_folder_is_writable_only_if_a_file_can_be_made_in_it(tmp_path, monkeyp
     def refuse(*a, **k):
         raise PermissionError("Access is denied")
     monkeypatch.setattr(updater.os, "open", refuse)
+    assert not updater._can_write(tmp_path)
+
+
+def test_a_folder_that_lets_files_be_made_but_not_removed_is_not_writable(tmp_path,
+                                                                          monkeypatch):
+    # An update would fail there after downloading, so it isn't offered.
+    def refuse(self, *a, **k):
+        raise PermissionError("Access is denied")
+    monkeypatch.setattr(updater.Path, "unlink", refuse)
     assert not updater._can_write(tmp_path)
 
 
@@ -354,14 +390,15 @@ def test_the_write_check_gives_up_at_once_in_a_folder_windows_refuses(tmp_path):
 def test_windows_portable_zip_holding_the_data_folder_does_not_update(portable_zip,
                                                                       monkeypatch):
     # Unzipped straight into the profile folder, where the data folder is too:
-    # an update would replace it. Said before anything is downloaded.
+    # not a folder of its own. Said before anything is downloaded.
     monkeypatch.setattr(updater.platform_paths, "app_data_dir",
-                        lambda: portable_zip / "AppData" / "Roaming" / "TheChatPlace")
+                        lambda: portable_zip / "current" / "data")
     manager = FakeManager(Update("0.2.0"), portable=True)
     result = service(manager).check()
     assert result.status == NOT_INSTALLED and manager.downloaded == []
-    assert result.describe().startswith("The Chat Place can't update itself here: its "
-                                        "settings and sessions are inside the folder")
+    assert result.describe().startswith("The Chat Place can't update itself here: it isn't in "
+                                        "a folder of its own.")
+    assert "replace" not in result.describe()
 
 
 def test_windows_portable_checks_are_made_once(portable_zip, monkeypatch):
@@ -431,11 +468,23 @@ def test_a_mac_or_linux_copy_without_its_updater_says_to_download_it_again(monke
 
 def test_only_a_built_portable_zip_that_updates_has_a_folder_for_its_record(portable_zip,
                                                                              monkeypatch):
-    portable = service(FakeManager(Update("0.2.0"), portable=True))
-    assert portable.portable_folder == ""        # a source run (not frozen)
+    made = []
+
+    def factory(url):
+        made.append(url)
+        return FakeManager(Update("0.2.0"), portable=True)
+    portable = UpdateService("0.1.0", manager_factory=factory, latest=lambda: "0.2.0")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    # Read on the UI thread, so it never makes a Velopack manager itself:
+    # "" until a check (or installed_copy) has worked out what this copy is.
+    assert portable.portable_folder == "" and made == []
+    portable.check()
     assert portable.portable_folder == str(portable_zip.resolve())
-    assert service(FakeManager(Update("0.2.0"))).portable_folder == ""   # installed
+    monkeypatch.setattr(sys, "frozen", False)
+    assert portable.portable_folder == ""        # a source run
+    monkeypatch.setattr(sys, "frozen", True)
+    installed = service(FakeManager(Update("0.2.0")))
+    assert installed.installed_copy and installed.portable_folder == ""
 
 
 def test_each_platform_reads_its_own_feed():
@@ -498,11 +547,67 @@ def test_mac_app_runs_velopack_hooks_but_never_auto_applies_where_it_cannot(monk
             applied.append("ran")
     monkeypatch.setitem(sys.modules, "velopack", types.SimpleNamespace(App=FakeApp))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(updater, "mac_update_blocker", lambda: "")
     updater.bootstrap()
     monkeypatch.setattr(updater, "mac_update_blocker", lambda: "read-only")
     updater.bootstrap()
     assert applied == [True, "ran", False, "ran"]
+
+
+class AutoApplyApp:
+    """Velopack's App, recording whether a waiting update may be applied."""
+    applied = []
+
+    def set_auto_apply_on_startup(self, value):
+        self.applied.append(value)
+        return self
+
+    def run(self):
+        self.applied.append("ran")
+
+
+@pytest.mark.parametrize("change,allowed", [
+    (None, True),                                          # its own folder, writable
+    ("test build", False),
+    ("unwritable", False),
+    ("shared", False),                                     # beside other programs
+])
+def test_a_waiting_update_is_applied_at_start_only_where_help_would_offer_it(
+        portable_zip, monkeypatch, change, allowed):
+    # #747: a portable copy blocked for any reason never applies at start.
+    import types
+    from thechatplace import build_info
+    monkeypatch.setitem(sys.modules, "velopack", types.SimpleNamespace(App=AutoApplyApp))
+    monkeypatch.setattr(AutoApplyApp, "applied", [])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    if change == "test build":
+        monkeypatch.setattr(build_info, "current", lambda: build_info.BuildInfo(label="bld05"))
+    elif change == "unwritable":
+        monkeypatch.setattr(updater, "_can_write", lambda folder: False)
+    elif change == "shared":
+        (portable_zip / "nvda.exe").write_text("")
+    assert updater.auto_apply_allowed() is allowed
+    updater.bootstrap([])
+    assert AutoApplyApp.applied == [allowed, "ran"]
+
+
+def test_velopack_hooks_run_even_if_the_auto_apply_decision_fails(monkeypatch):
+    # An odd or offline drive: nothing is applied, but install, update and
+    # uninstall hooks are still handled.
+    import types
+    monkeypatch.setitem(sys.modules, "velopack", types.SimpleNamespace(App=AutoApplyApp))
+    monkeypatch.setattr(AutoApplyApp, "applied", [])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    def broken(*a, **k):
+        raise OSError("The device is not ready")
+    monkeypatch.setattr(updater, "data_is_outside_install_dir", broken)
+    assert updater.auto_apply_allowed() is False
+    updater.bootstrap([])
+    assert AutoApplyApp.applied == [False, "ran"]
 
 
 def test_windows_never_auto_applies_over_the_data_folder(monkeypatch):
@@ -628,16 +733,29 @@ def test_the_copy_that_updated_says_so_once():
     assert portable_update_started(records, HERE.upper(), "0.1.4") == (True, True)
 
 
-def test_another_copy_on_that_version_says_nothing_and_leaves_the_record():
-    records = {HERE: "0.1.4"}
-    assert portable_update_started(records, THERE, "0.1.4") == (False, False)
+def test_another_copy_on_that_version_says_nothing_and_leaves_the_record(tmp_path):
+    here, there = str(tmp_path / "Tools" / "TCP"), str(tmp_path / "Stick" / "TCP")
+    for folder in (here, there):
+        Path(folder).mkdir(parents=True)
+    records = {here: "0.1.4"}
+    assert portable_update_started(records, there, "0.1.4") == (False, False)
     # ...so the copy that downloaded it still says so when it installs it.
-    assert portable_update_started(records, HERE, "0.1.4") == (True, True)
+    assert portable_update_started(records, here, "0.1.4") == (True, True)
     # Each copy keeps its own; a new download replaces only that copy's.
-    both = portable_update_record(records, THERE, "0.1.5")
-    assert both == {HERE: "0.1.4", THERE: "0.1.5"}
-    assert portable_update_record(both, HERE.lower(), "0.1.6") == {THERE: "0.1.5",
-                                                                   HERE.lower(): "0.1.6"}
+    both = portable_update_record(records, there, "0.1.5")
+    assert both == {here: "0.1.4", there: "0.1.5"}
+    assert portable_update_record(both, here.upper(), "0.1.6") == {there: "0.1.5",
+                                                                   here.upper(): "0.1.6"}
+
+
+def test_records_of_folders_that_are_gone_are_dropped(tmp_path):
+    # A copy that downloaded 0.6.5 and was then deleted: a fresh 0.6.5
+    # unzipped there later mustn't be taken for it.
+    gone, kept = str(tmp_path / "deleted"), str(tmp_path / "kept")
+    Path(kept).mkdir()
+    records = {gone: "0.1.4", kept: "0.1.4"}
+    assert portable_update_record(records, str(tmp_path / "new"), "0.1.5") == {
+        kept: "0.1.4", str(tmp_path / "new"): "0.1.5"}
 
 
 def test_a_source_run_or_test_build_never_reads_a_record():

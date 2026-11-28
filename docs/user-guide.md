@@ -69,8 +69,8 @@ estimated. See Chats on API credits for setup and limits.
 **Windows:** download `TheChatPlace-windows-Setup.exe` from the newest release on the
 [releases page](https://github.com/TheIdeaPlace/AIChat/releases) and run it. It installs for you
 only, needs no administrator rights, adds The Chat Place to the Start menu, and starts it. The
-portable zip from the same release runs without installing, and updates itself in the folder you
-unzip it into, as long as it can change that folder (see "Updates").
+portable zip from the same release runs without installing. Unzip it into a new, empty folder of
+its own, such as `C:\Users\you\Apps\TheChatPlace`, and it updates itself there (see "Updates").
 
 **Mac:** download `TheChatPlace-macos-arm64.dmg`, open it, and drag The Chat Place onto
 Applications. The first time it speaks through VoiceOver, macOS asks whether The Chat Place may
@@ -3546,10 +3546,12 @@ The Help menu's update item always says which version you're running, such as
 such as **Update to 0.1.5 Available**, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.
 
-**The Windows portable zip** updates itself in the folder you unzipped it into. If it can't
-change that folder (a read-only drive, say, or one in Program Files), Check for Updates says so
-instead of offering the update: unzip it somewhere you can change, such as a folder in
-Documents. A test build (Help, About names its build, such as "build bld05") never updates
+**The Windows portable zip** updates itself in the folder you unzipped it into. That folder must
+be its own: an update closes every program running from anywhere in it, so in a folder shared
+with other portable apps (NVDA portable, say) it would close them too. If the folder holds
+anything else, or it can't change the folder (a read-only drive, say, or one in Program Files),
+Check for Updates says so instead of offering the update: unzip it into a new, empty folder in
+your user folder, such as `C:\Users\you\Apps\TheChatPlace`. A test build (Help, About names its build, such as "build bld05") never updates
 itself from the zip, and Check for Updates says it's a test build.
 
 **Stay on the version you have.** In Settings (Ctrl+Comma), clear

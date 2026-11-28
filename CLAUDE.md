@@ -79,9 +79,9 @@ that succeeded. Linux is non-blocking until it has a release or two behind it; t
 over a release without its platform's feed (`updater.latest_published_version`).
 Versions below 1.0 publish as pre-releases. Every platform updates through Velopack
 (`updater.CHANNEL`: `windows`, `osx`, `linux-x64`, `linux-arm64`). Velopack calls every Mac app portable, so the portable check is Windows-only
-(`updater.PORTABLE_COPIES_EXIST`). Applied on a Mac, it would treat every Mac copy as the Windows
-portable zip: the zip's folder checks (made against the wrong folders, so they could switch
-updates off) and its What's New record instead of the installed copy's notice.
+(`updater.PORTABLE_COPIES_EXIST`). Applied on a Mac, it would switch off every Mac update: the
+zip's folder checks would look at `TheChatPlace.app/Contents`, which never has a `current` folder,
+so the write check always fails.
 
 **Test builds for Kelly say which build they are** (2026-11-26). Make one with a hand run of the
 release workflow, unsigned, with `build_label` set to the folder it goes in (`bld05` for
