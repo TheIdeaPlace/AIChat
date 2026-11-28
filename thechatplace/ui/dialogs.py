@@ -6930,12 +6930,14 @@ class ElicitationDialog(wx.Dialog):
         box_flags = wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM
         if request.is_url:
             outer.Add(wx.StaticText(self, label="&Address:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-            # Not wrapped: a long address has no spaces, so the box broke the
-            # line after "Opens host:", and a screen reader reads the line
-            # shown as the box gets focus, without the address (#729's
-            # review). It scrolls sideways instead.
-            self.address_text = _read_only_text(self, request.address_text(), "Address",
-                                                min_height=60, style=wx.TE_DONTWRAP)
+            # One line, in a one-line box: JAWS read a multi-line read-only
+            # box as "Address: edit Read Only, Contains text", without its
+            # text, and reads a one-line box's text as it gets focus (seen in
+            # the test VM, #729's acceptance test). NVDA reads it either way.
+            self.address_text = wx.TextCtrl(self, value=request.address_text(),
+                                            style=wx.TE_READONLY)
+            set_accessible_name(self.address_text, "Address", read_only_box=True)
+            self.address_text.SetInsertionPoint(0)
             outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)

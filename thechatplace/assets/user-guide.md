@@ -2980,7 +2980,7 @@ on or off in the chat itself.
   which stay on while The Chat Place is running. An app is turned on in a copy the same way as a
   server.
 - **Sign In** (Alt+S) asks first, in **Sign In to** and the tool's name. It opens on the Address
-  box, whose first line says where the page is and gives its whole address, for example "Opens
+  box, whose one line says where the page is and gives its whole address, for example "Opens
   mcp.notion.com: https://…". **Open in Browser** (Alt+O) opens it; finish in your browser and
   keep Connected Tools open to hear the result. **Decline** (Alt+D) or Escape opens nothing:
   you hear "Sign-in page was not opened." and are back on Sign In. It works with a

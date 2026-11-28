@@ -635,7 +635,9 @@ def test_the_address_box_says_where_it_really_goes_whatever_the_message_says():
     ("", "(The server gave no address.)")])
 def test_an_address_that_wont_open_is_shown_with_its_hidden_characters_written_out(url, shown):
     text = elicitation_from("e", {**URL_REQUEST, "url": url}).address_text()
-    first, second = text.split("\n")
+    # One line, for a one-line box (#729's acceptance test, under JAWS).
+    assert "\n" not in text
+    first, second = text.split(": ", 1)
     assert "won't open" in first and second == shown
 
 

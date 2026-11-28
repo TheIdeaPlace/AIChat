@@ -94,7 +94,7 @@ reasons for GitHub and everything were checked the same way with Codex 0.163.
    Allowed decisions stay quiet with tool activity off; a denial is announced.
 4. Tools, Connected Tools: select a configured HTTP server that's off and press
    Sign In. The question is titled "Sign In to" and the tool's name, and opens on
-   the Address box, whose first line is "Opens" with the host, then the whole address.
+   the Address box, whose one line is "Opens" with the host, then the whole address.
    Decline or Escape leaves the tool off, creates no chat, says "Sign-in page was not
    opened." and puts you back on Sign In. If you finish sign-in, hear the result;
    Reconnect an enabled tool to use it. Repeat from an externally started Codex chat:

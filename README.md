@@ -1142,7 +1142,7 @@ the copy's tools before each turn, saves them with the copy, and keeps every oth
 app off. Your Codex settings stay as they are. Add a server with Codex in a terminal (`codex
 mcp add`).
 **Sign In** asks first, in **Sign In to** and the tool's name. It opens on the Address box, whose
-first line says where the page is and gives its whole address ("Opens mcp.notion.com:
+one line says where the page is and gives its whole address ("Opens mcp.notion.com:
 https://…"). **Open in Browser** (Alt+O) opens it; finish signing in in your browser. When Codex
 says which sign-in it is, keep the dialog open to hear its result; otherwise press **Refresh**
 when finished. **Decline** (Alt+D) or Escape opens nothing: you hear "Sign-in page was not

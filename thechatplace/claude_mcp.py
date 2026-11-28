@@ -1110,14 +1110,15 @@ class ElicitationRequest(PermissionRequest):
 
     def address_text(self) -> str:
         """What the Address box says, from The Chat Place and not the server:
-        where the page really is, then its whole address, on the first line,
-        which is what a screen reader reads as the box gets focus: with the
-        address on a line of its own, only "Opens mcp.notion.com" was read
-        (#729's acceptance test)."""
+        where the page really is, then its whole address, on one line. The
+        box is a one-line box, the only kind JAWS reads as it gets focus (in
+        the test VM it said only "Contains text" for a multi-line one); with
+        the address on a line of its own, NVDA read only "Opens
+        mcp.notion.com" (#729's acceptance test)."""
         host = web_url_host(self.url)
         if host:
             return f"Opens {host}: {self.url}"
-        return ("The Chat Place won't open this: it isn't a plain web page's address.\n"
+        return ("The Chat Place won't open this, as it isn't a plain web page's address: "
                 + (_visible(self.url) or "(The server gave no address.)"))
 
     def allow_for_session_label(self) -> str:
