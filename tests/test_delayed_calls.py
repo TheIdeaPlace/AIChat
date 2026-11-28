@@ -27,7 +27,7 @@ def _window_sources() -> list:
     """main_frame.py and every file a class MainFrame is built from lives in:
     a delayed call in a mixin is the window's too."""
     from thechatplace.ui.main_frame import MainFrame
-    files = {Path(inspect.getsourcefile(cls)) for cls in MainFrame.__mro__
+    files = {Path(inspect.getsourcefile(cls)).resolve() for cls in MainFrame.__mro__
              if cls.__module__.startswith("thechatplace.ui")}
     return sorted(files)
 
