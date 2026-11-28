@@ -9923,7 +9923,10 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         """``call(*args)`` in ``milliseconds``, as wx.CallLater, but kept so
         stop_timers stops it, and never run once the window is closing or
         gone (#766). A delayed call nothing kept could fire into a window a
-        Mac had scheduled for deletion but not yet deleted."""
+        Mac had scheduled for deletion but not yet deleted. The timer is
+        returned for tests; one stopped through it stays in ``_delayed``
+        until stop_timers, so a caller that needs to cancel one should keep
+        its own attribute that stop_timers stops instead."""
         state = {}
 
         def fire():
