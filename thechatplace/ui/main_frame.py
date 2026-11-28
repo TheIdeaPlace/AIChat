@@ -450,6 +450,8 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # for idle time, so a menu VO+Shift+M scheduled just before Cmd+Q
         # would otherwise still open, on a hidden window that has stopped.
         self._closing = False
+        #: Delayed calls made with ``_later``, which stop_timers stops (#766).
+        self._delayed: set = set()
         self._properties_busy = False  # Session, Properties reading a transcript (#214)
         # Each provider's command-line version for bug reports (#464), found
         # in the background; "checking" until then.
@@ -3339,7 +3341,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             # that first, so this comes a moment after, rather than cut off.
             # Not if the window has gone meanwhile (a timer on a destroyed
             # frame can crash on a Mac).
-            wx.CallLater(1500, lambda: self._gone() or self._feedback(FORMATTED_BROKEN_TEXT))
+            self._later(1500, self._feedback, FORMATTED_BROKEN_TEXT)
         if link:
             wx.CallAfter(self.open_link, link)  # a link to a session in it (#144)
         return shown
@@ -3552,9 +3554,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 return [], "The approval history couldn't be read. Its file was kept as it was."
             # Said once Lists has focus, so a short list isn't taken for all
             # of them; said before, a screen reader drops it as focus moves.
-            wx.CallLater(700, self._feedback,
-                         "The approval history couldn't be read, so only this session's "
-                         "approvals are listed. Its file was kept as it was.")
+            self._later(700, self._feedback,
+                        "The approval history couldn't be read, so only this session's "
+                        "approvals are listed. Its file was kept as it was.")
             saved = ()
         return approvals.merge(saved, live), ""
 
@@ -4511,7 +4513,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if event.GetActive():
             # A timer, not CallAfter: a native message box runs Windows' own
             # loop, which never runs wx's pending calls but does deliver timers.
-            wx.CallLater(1, self._raise_open_modal)
+            self._later(1, self._raise_open_modal)
 
     def _raise_open_modal(self):
         # Only when the main window itself is active and disabled, which is
@@ -8966,7 +8968,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         if self._gone():
             return
         if speaker.busy() and time.monotonic() < deadline:
-            wx.CallLater(200, self._apply_update_when_quiet, deadline, result)
+            self._later(200, self._apply_update_when_quiet, deadline, result)
             return
         self._update_busy = False
         # Applying exits at once; a turn sent, a dialog opened or a reply begun
@@ -9913,6 +9915,32 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             timer = getattr(self, name, None)
             if timer is not None:
                 timer.Stop()
+        for timer in list(self._delayed):
+            timer.Stop()
+        self._delayed.clear()
+
+    def _later(self, milliseconds: int, call, *args) -> wx.CallLater:
+        """``call(*args)`` in ``milliseconds``, as wx.CallLater, but kept so
+        stop_timers stops it, and never run once the window is closing or
+        gone (#766). A delayed call nothing kept could fire into a window a
+        Mac had scheduled for deletion but not yet deleted. The timer is
+        returned for tests; one stopped through it stays in ``_delayed``
+        until stop_timers, so a caller that needs to cancel one should keep
+        its own attribute that stop_timers stops instead."""
+        state = {}
+
+        def fire():
+            state["fired"] = True
+            self._delayed.discard(state.get("timer"))
+            if not self._gone() and not self._closing:
+                call(*args)
+        timer = wx.CallLater(milliseconds, fire)
+        # Kept only while still to come: a stand-in that calls at once (as
+        # some tests use) has already fired.
+        if timer is not None and not state.get("fired"):
+            state["timer"] = timer
+            self._delayed.add(timer)
+        return timer
 
 
 def _active_top_level() -> Optional[wx.Window]:
