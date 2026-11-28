@@ -106,6 +106,133 @@ def pytest_runtest_protocol(item, nextitem):
         timer.cancel()
 
 
+_LIBOBJC = None
+
+
+def _libobjc():
+    global _LIBOBJC
+    if _LIBOBJC is None:
+        import ctypes
+        lib = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+        lib.objc_autoreleasePoolPush.restype = ctypes.c_void_p
+        lib.objc_autoreleasePoolPush.argtypes = []
+        lib.objc_autoreleasePoolPop.restype = None
+        lib.objc_autoreleasePoolPop.argtypes = [ctypes.c_void_p]
+        _LIBOBJC = lib
+    return _LIBOBJC
+
+
+def _window_key(window):
+    """A window's native address and class. A window deleted during the test
+    could in principle give its address to a new one; with the class too,
+    such a leak goes unnoticed only if it's the same kind of window."""
+    try:
+        import wx
+        return (wx.siplib.unwrapinstance(window), type(window).__name__)
+    except Exception:  # noqa: BLE001 - an older wx: the wrapper stands for it
+        return (id(window), type(window).__name__)
+
+
+def _close_left_windows(wx, fake_env, before) -> tuple:
+    """Each top-level window this test made and didn't destroy: closed (a
+    MainFrame as the tests' own close_frame does) and named. Ones it
+    destroyed are left for delete_destroyed. Also whether it's safe to run
+    the event loop to delete them: a leftover dialog may have a timer or a
+    delayed call of its own still set, which could fire into it as it goes,
+    so then the run carries on without, rather than risk a crash."""
+    app = wx.GetApp()
+    left, safe = [], True
+    windows = [w for w in fake_env.top_level_windows()
+               if _window_key(w) not in before and not app.IsScheduledForDestruction(w)]
+    # Main windows first, which run what was handed back before any is
+    # destroyed; then the rest. Nothing is deleted here: the guard does that
+    # once, and only if it's safe.
+    windows.sort(key=lambda w: not hasattr(w, "_pool"))
+    for window in windows:
+        try:
+            left.append(f"{type(window).__name__} {window.GetTitle()!r}")
+            if hasattr(window, "_pool"):
+                fake_env.close_frame(window, delete=False)
+                continue
+            safe = False
+            window.Destroy()
+        except Exception as exc:  # noqa: BLE001 - a half-made frame: close the rest anyway
+            left.append(f"{type(window).__name__} (couldn't close: {exc})")
+            safe = False
+            try:
+                window.Destroy()
+            except Exception:  # noqa: BLE001
+                pass
+    return left, safe
+
+
+def _hub_threads_left(before) -> list:
+    """A MainFrame's pool threads ("hub_N") this test started and didn't end."""
+    import threading
+    left = []
+    for thread in threading.enumerate():
+        if thread.ident in before or not thread.name.startswith("hub"):
+            continue
+        thread.join(timeout=5)  # a pool shut down without waiting is still finishing
+        if thread.is_alive():
+            left.append(thread.name)
+    return left
+
+
+@pytest.fixture(autouse=True)
+def _windows_gone_after_each_test(monkeypatch):
+    """Every test ends with its windows deleted and their threads ended, and
+    on a Mac with what AppKit made for them released (#757).
+
+    The tests drive wx with no event loop. So nothing did what a running
+    app does after each event: delete the windows ``Destroy()`` scheduled
+    (wx does that in idle time), and drain the main thread's autorelease
+    pool. AppKit's autoreleased objects were never released. In a full
+    macOS CI run, native windows piled up to 336 (all hidden: combo box lists
+    and text input popups), the process's Mach ports to 11,000 and its size
+    to 2.5 GB, against 2 windows, 400 ports and 0.7 GB with this in place.
+    That pile is the likely cause of window creation sometimes waiting
+    forever on the window server (#757): each hang came after it started.
+    Each test now runs in a pool of its own, drained once its windows are
+    deleted.
+
+    A window left undestroyed, or a frame's pool left running, fails the
+    test: the tests close frames with ``fake_env.close_frame``.
+
+    It asks for ``monkeypatch`` so that its end comes before the test's
+    patches are undone: a window still being deleted never reaches the
+    real speech, paths or clipboard."""
+    import threading
+    pool = _libobjc().objc_autoreleasePoolPush() if sys.platform == "darwin" else None
+    wx = sys.modules.get("wx")
+    before = set()
+    if wx is not None and wx.GetApp() is not None:
+        import fake_env  # wx's own list of windows, which a test may replace
+        before = {_window_key(w) for w in fake_env.top_level_windows()}
+    threads_before = {t.ident for t in threading.enumerate()}
+    problems = []
+    try:
+        yield
+    finally:
+        try:
+            wx = sys.modules.get("wx")
+            if wx is not None and wx.GetApp() is not None:
+                import fake_env
+                left, safe = _close_left_windows(wx, fake_env, before)
+                if left:
+                    problems.append(f"windows left open: {left}")
+                if safe and not fake_env.delete_destroyed():
+                    problems.append("destroyed windows were never deleted")
+            threads = _hub_threads_left(threads_before)
+            if threads:
+                problems.append(f"a window's pool left running: {threads}")
+        finally:
+            if pool is not None:
+                _libobjc().objc_autoreleasePoolPop(pool)
+    if problems:
+        pytest.fail("; ".join(problems) + " (#757: close frames with fake_env.close_frame)")
+
+
 @pytest.fixture(autouse=True)
 def _isolated_codex_diagnostics(monkeypatch, tmp_path):
     from thechatplace import platform_paths

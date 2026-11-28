@@ -502,11 +502,8 @@ def build_frame(env, empty: bool = False):
 
 
 def close_frame(frame):
-    frame.stop_timers()
-    frame._pool.shutdown(wait=True)
-    wx.GetApp().ProcessPendingEvents()
-    frame.Destroy()
-    wx.GetApp().ProcessPendingEvents()
+    import fake_env
+    fake_env.close_frame(frame)  # the tests' one way, so the window is really gone (#757)
 
 
 # -- surfaces -------------------------------------------------------------------------------

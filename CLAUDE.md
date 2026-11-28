@@ -206,6 +206,10 @@ WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachment
   (`spoken`/`feedback` recorders), clipboard, sign-in, `fetch_commands`, `open_url` and the
   formatted view. New UI tests should use its `env` fixture (from `tests/fake_env.py`) so no test
   touches real `%APPDATA%`, real `claude`, or speaks aloud.
+- **Close a test's `MainFrame` with `fake_env.close_frame`** (#757). The tests run wx with no
+  event loop; `conftest.py`'s autouse guard deletes each test's destroyed windows, drains a
+  per-test autorelease pool on a Mac, and fails a test that leaves a window open or a frame's
+  pool running. Without it the macOS run piled up native windows and Mach ports and hung.
 - **Linux is never tested by hand for a release** (Kelly's rule). CI's non-blocking `Orca (Linux)`
   job runs real Orca headless (`tools/linux_a11y_session.sh`): `tools/orca_speech.sh` checks what
   Orca says for each key step, and `tools/orca_names.py` fails on any unnamed control in the probe's
