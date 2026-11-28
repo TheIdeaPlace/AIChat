@@ -61,12 +61,18 @@ class Process:
 
 
 @pytest.fixture
-def make(tmp_path):
-    made = []
+def make(tmp_path, request):
+    made, gated_ = [], []
+    failed_before = request.session.testsfailed
 
-    def build(mode="answer", rules=None, auto_ended=None):
+    def build(mode="answer", rules=None, auto_ended=None, gated=False):
+        """``gated``: the first prompt waits for ``release(tmp_path)``, for a
+        test that queues a message behind it (#769)."""
         env = dict(os.environ, FAKE_COPILOT_SESSIONS=str(tmp_path / "sessions"),
                    FAKE_COPILOT_LOG=str(tmp_path / "received.jsonl"))
+        if gated:
+            env["FAKE_COPILOT_GATE"] = str(tmp_path / "gate")
+            gated_.append(tmp_path / "gate")
         updates = []
         runtime = CopilotChatRuntime(updates.append, start=lambda: Process(mode, env),
                                      sessions_dir=tmp_path / "sessions", billing_wait=1.0,
@@ -77,6 +83,20 @@ def make(tmp_path):
     yield build
     for runtime in made:
         runtime.close()
+    # Else its first turn just waited out the gate's 30 s, and a failure
+    # would read as a plain timeout. Not after the test failed on its own:
+    # it may simply not have reached release().
+    if request.session.testsfailed == failed_before:
+        assert all(gate.exists() for gate in gated_), "a gated test never called release()"
+
+
+def release(tmp_path):
+    """Let a gated fake's first prompt go on (#769). Until then its turn is
+    still running, so a message sent meanwhile waits behind it. Without it,
+    a fake that answers at once could finish the turn, and its billing check
+    stop the chat, before the test's next line sent the message meant to
+    wait: the send was refused instead."""
+    (tmp_path / "gate").write_text("", encoding="utf-8")
 
 
 def wait(predicate, timeout=10):
@@ -133,10 +153,11 @@ def test_the_client_offers_copilot_no_files_or_terminal(make, tmp_path):
 
 
 def test_a_message_sent_while_working_waits_its_turn(make, tmp_path):
-    runtime, _ = make()
+    runtime, _ = make(gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
@@ -373,10 +394,11 @@ def test_find_copilot_never_takes_a_script(tmp_path):
 
 @pytest.mark.parametrize("mode", ["flip", "curmode"])
 def test_a_queued_message_isnt_sent_after_copilot_stops_asking(make, tmp_path, mode):
-    runtime, _ = make(mode)
+    runtime, _ = make(mode, gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
-    runtime.send(chat, "Second")
+    assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).outcome not in ("", "inProgress"))
     state = runtime.snapshot(chat)
     # The running turn is stopped at once, and the waiting message comes back.
@@ -644,10 +666,11 @@ def test_a_sign_in_that_stops_working_says_what_to_do(make, tmp_path):
     """A prompt refused for want of a sign-in says to sign in. Copilot had
     already logged it (it may even have acted), so it isn't given back, nor
     taken for another Copilot's message; the one waiting comes back unsent."""
-    runtime, _ = make("expired")
+    runtime, _ = make("expired", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True  # queued behind it
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).outcome == "failed")
     state = runtime.snapshot(chat)
     assert state.notice == copilot_acp.NOT_SIGNED_IN_SENT
@@ -900,10 +923,11 @@ def test_a_permission_request_for_an_idle_chat_is_cancelled(make, tmp_path):
 def test_a_billing_stop_gives_back_its_own_chats_waiting_messages(make, tmp_path):
     """The chat billed elsewhere doesn't carry on with its waiting message.
     (Another running chat's: see the test after Kelly's second review.)"""
-    runtime, _ = make("byok")
+    runtime, _ = make("byok", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "Hello")
-    runtime.send(chat, "Waiting one")
+    assert runtime.send(chat, "Waiting one") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).problem
                 and runtime.snapshot(chat).outcome not in ("", "inProgress"))
     assert runtime.snapshot(chat).unsent == ("Waiting one",)
@@ -1288,10 +1312,11 @@ def test_our_own_turns_dont_look_like_use_elsewhere(make, tmp_path):
 
 
 def test_another_copilot_sending_during_a_turn_is_noticed(make, tmp_path):
-    runtime, _ = make("twousers")
+    runtime, _ = make("twousers", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "One")
     assert runtime.send(chat, "Waiting") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed")
     state = runtime.snapshot(chat)
     assert state.unsent == ("Waiting",) and "used outside" in state.notice
@@ -1348,13 +1373,14 @@ def test_a_reopened_chat_stays_ready_after_its_next_turn(make, tmp_path):
 
 
 def test_a_chat_found_in_use_elsewhere_after_reopening_is_noticed(make, tmp_path):
-    runtime, _ = make("inuselater")
+    runtime, _ = make("inuselater", gated=True)
     native = "11111111-2222-3333-4444-555555555555"
     write_workspace(tmp_path, native, "thechatplace")
     runtime.adopt(native)
     runtime.prepare(native, str(tmp_path))
     runtime.send(native, "Hello")
     assert runtime.send(native, "Waiting") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(native).outcome == "completed")
     state = runtime.snapshot(native)
     assert state.unsent == ("Waiting",) and "used outside" in state.notice
@@ -1421,7 +1447,7 @@ def test_a_terminal_line_cut_at_a_turns_end_is_still_seen(make, tmp_path, monkey
 def test_what_a_terminal_writes_before_a_queued_turn_starts_is_seen(make, tmp_path, monkeypatch):
     """The hook search at a turn's end takes a while; a terminal message
     written meanwhile falls in the next (queued) turn's stretch, not between."""
-    runtime, _ = make()
+    runtime, _ = make(gated=True)
     chat = runtime.create(str(tmp_path))
     log = tmp_path / "sessions" / chat / "events.jsonl"
     real = runtime._hooks_refusal
@@ -1437,6 +1463,7 @@ def test_what_a_terminal_writes_before_a_queued_turn_starts_is_seen(make, tmp_pa
     monkeypatch.setattr(runtime, "_hooks_refusal", search_while_a_terminal_writes)
     runtime.send(chat, "One")
     assert runtime.send(chat, "Two") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
@@ -1534,7 +1561,7 @@ def test_a_queued_message_isnt_sent_once_another_copilot_has_the_chat(make, tmp_
     """A terminal opens the chat while a turn runs: Copilot logs nothing of
     it until that terminal's first prompt, but its lock is there, so the
     waiting message comes back rather than going."""
-    runtime, _ = make()
+    runtime, _ = make(gated=True)
     chat = runtime.create(str(tmp_path))
     folder = tmp_path / "sessions" / chat
     real = runtime._check_billing
@@ -1545,6 +1572,7 @@ def test_a_queued_message_isnt_sent_once_another_copilot_has_the_chat(make, tmp_
     monkeypatch.setattr(runtime, "_check_billing", a_terminal_opens_it)
     runtime.send(chat, "One")
     assert runtime.send(chat, "Two") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
     assert runtime.snapshot(chat).unsent == ("Two",) and prompts_sent(tmp_path) == ["One"]
@@ -1648,10 +1676,11 @@ def test_every_running_process_has_its_real_start_on_windows():
 def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
     """The window hears turn 1 complete, with its reply, before turn 2 starts:
     one update for both skipped turn 1's announcement."""
-    runtime, updates = make("slow")
+    runtime, updates = make("slow", gated=True)
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: runtime.snapshot(chat).turn_id == "2"
                 and runtime.snapshot(chat).outcome == "completed"
                 and not runtime._chats[chat].busy)
@@ -1665,7 +1694,7 @@ def test_a_turn_with_a_message_waiting_is_heard_to_end_first(make, tmp_path):
 def test_a_stop_between_two_turns_sends_nothing_more(make, tmp_path, monkeypatch):
     """Stop pressed just as one turn ends and the waiting message's begins:
     that message comes back unsent and never reaches Copilot."""
-    runtime, _ = make("slow")
+    runtime, _ = make("slow", gated=True)
     chat = runtime.create(str(tmp_path))
     real = runtime._deliver
     stopped = []
@@ -1677,6 +1706,7 @@ def test_a_stop_between_two_turns_sends_nothing_more(make, tmp_path, monkeypatch
     monkeypatch.setattr(runtime, "_deliver", stop_in_the_gap)
     runtime.send(chat, "First")
     assert runtime.send(chat, "Second") is True
+    release(tmp_path)
     assert wait(lambda: stopped and runtime.snapshot(chat).turn_id == "2"
                 and not runtime._chats[chat].busy)
     assert runtime.snapshot(chat).unsent == ("Second",)
@@ -1730,10 +1760,11 @@ def test_a_new_chat_listed_before_its_log_is_never_untitled(make, tmp_path):
 def test_stop_while_an_answer_is_checked_takes_back_the_waiting_message(make, tmp_path):
     """Kelly's review of #372: once Copilot has answered, Stop cancels
     nothing, but it still takes back what's waiting, so it isn't sent."""
-    runtime, updates = make("nolog")  # the billing check then waits a moment
+    runtime, updates = make("nolog", gated=True)  # the billing check then waits a moment
     chat = runtime.create(str(tmp_path))
     runtime.send(chat, "One")
     assert runtime.send(chat, "Two") is True
+    release(tmp_path)
     assert wait(lambda: any(u.checking for u in updates))
     # Not cancelled: the window words Stop from this, not its own state,
     # which can lag behind (Kelly, #372).

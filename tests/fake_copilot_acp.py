@@ -75,6 +75,9 @@ completed, with a shell_exit.
 FAKE_COPILOT_SESSIONS names the folder session logs are written under, as
 Copilot writes ~/.copilot/session-state/<id>/events.jsonl.
 FAKE_COPILOT_LOG, if set, gets every message received, one per line.
+FAKE_COPILOT_GATE, if set, is a file the first prompt waits for (up to 30
+seconds) before it goes on: a test that queues a second message behind the
+first creates it once that's done, so the first turn can't end before (#769).
 """
 import json
 import os
@@ -208,6 +211,11 @@ def prompt(message_id, session, text=""):
               "error": {"code": -32000, "message": "Authentication required"}})
         return
     log_event(session, "user.message", {"content": "synthetic"})
+    gate = os.environ.get("FAKE_COPILOT_GATE", "")
+    if gate and turns[0] == 1:
+        end = time.monotonic() + 30
+        while not os.path.exists(gate) and time.monotonic() < end:
+            time.sleep(0.01)
     if MODE == "expired":
         time.sleep(1.0)  # long enough for a second message to be queued
         send({"jsonrpc": "2.0", "id": message_id,
