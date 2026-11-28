@@ -62,11 +62,21 @@ def _report_hang(config, nodeid):
     if sys.platform == "darwin" and os.path.exists("/usr/bin/sample"):
         err.write("\nNative stacks (sample):\n")
         err.flush()
-        try:
-            subprocess.run(["/usr/bin/sample", str(os.getpid()), "3"], stdout=err, stderr=err,
-                           stdin=subprocess.DEVNULL, timeout=60)
-        except Exception as exc:  # noqa: BLE001
-            err.write(f"sample failed: {exc}\n")
+        # The window server too, and whether the display is asleep: the first
+        # hang caught was the main thread waiting on the window server for a
+        # new window's fence (#757). Only on CI, where sudo needs no password;
+        # -n makes it fail at once anywhere else.
+        for command in (["/usr/bin/sample", str(os.getpid()), "3"],
+                        ["/usr/bin/pmset", "-g"], ["/usr/bin/pmset", "-g", "assertions"],
+                        ["/usr/bin/sudo", "-n", "/usr/bin/sample", "WindowServer", "2"]):
+            err.write(f"\n$ {' '.join(command)}\n")
+            err.flush()
+            try:
+                subprocess.run(command, stdout=err, stderr=err, stdin=subprocess.DEVNULL,
+                               timeout=60)
+            except Exception as exc:  # noqa: BLE001
+                err.write(f"failed: {exc}\n")
+            err.flush()
     err.flush()
     os._exit(3)
 
