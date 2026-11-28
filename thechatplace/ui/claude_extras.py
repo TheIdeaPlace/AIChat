@@ -18,6 +18,7 @@ from ..aside import (COMPACTED, COMPACTED_SINCE, COWORK_REFUSED, NOTHING_FINISHE
 from ..chat_options import OptionsChange, choices_from_init
 from ..claude_cli import ResumeRefused
 from ..speech import speaker
+from .a11y import give_focus
 from .dialogs import AskAsideDialog, ChatOptionsDialog
 
 
@@ -46,11 +47,9 @@ def _aside_with_cost(text: str, cost: str, failed: bool) -> str:
     return f"{text.rstrip()} {cost_sentence(cost)}"
 
 
-def _give_focus_back(window) -> None:
-    """Only if Windows hasn't put it back already: setting it again had a
-    screen reader say the row twice (#468)."""
-    if window and wx.Window.FindFocus() is not window:
-        window.SetFocus()
+#: Only if Windows hasn't put it back already: setting it again had a screen
+#: reader say the row twice (#468).
+_give_focus_back = give_focus
 
 
 class ClaudeExtras:

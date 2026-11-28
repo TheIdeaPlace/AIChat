@@ -26,7 +26,8 @@ from ..ui_text import (CODEX_DEFAULT, choose_access_key, codex_effort_label, key
                        shortcuts_text)
 from . import gtk_a11y, mac_a11y
 from .sizes import SCREEN_MARGIN, dialog_size, dip, dip_width, screen_area
-from .a11y import refresh_list_item, set_accessible_name, set_list_items_accessible
+from .a11y import (give_focus, give_focus_later, refresh_list_item, set_accessible_name,
+                   set_list_items_accessible)
 from .notify import SETTING_LABEL as NOTIFY_SETTING_LABEL, SETTING_NAME as NOTIFY_SETTING_NAME
 
 #: Settings' Claude in Chrome check box (#319). The note Claude is given
@@ -79,7 +80,7 @@ class UnpricedApiDialog(wx.Dialog):
             else:
                 event.Skip()
         self.warning.Bind(wx.EVT_KEY_DOWN, key)
-        wx.CallAfter(self.warning.SetFocus)
+        give_focus_later(self.warning)
 
 
 class UsageCreditsDialog(wx.Dialog):
@@ -155,7 +156,7 @@ class ShortcutsDialog(wx.Dialog):
         sizer.Add(close, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        wx.CallAfter(text.SetFocus)
+        give_focus_later(text)
 
 
 def permission_note() -> str:
@@ -980,7 +981,7 @@ class NewSessionDialog(wx.Dialog):
         gh = workplaces.find_gh()
         if not gh:
             wx.MessageBox(workplaces.GH_MISSING, "From GitHub", wx.OK | wx.ICON_WARNING, self)
-            self.github_btn.SetFocus()
+            give_focus(self.github_btn)
             return
         dialog = GitHubRepoDialog(self, gh, self._clone_root, self._feedback)
         try:
@@ -997,7 +998,7 @@ class NewSessionDialog(wx.Dialog):
 
     def _warn(self, text: str, control):
         wx.MessageBox(text, self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
-        control.SetFocus()
+        give_focus(control)
 
     def _on_ok(self, _event):
         if self._making:
@@ -1482,7 +1483,7 @@ class GitHubRepoDialog(wx.Dialog):
         self.Bind(wx.EVT_CLOSE, lambda e: self._on_cancel(None))
         self._filter()
         threading.Thread(target=self._load, name="gh-repos", daemon=True).start()
-        wx.CallAfter(lambda: self and self.search.SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.search))
 
     def _load(self):
         try:
@@ -1563,7 +1564,7 @@ class GitHubRepoDialog(wx.Dialog):
             wx.MessageBox(f"{target} already exists and isn't a clone of {repo}, so it "
                           "wasn't changed. Browse to it, or clone it yourself somewhere "
                           "else.", self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
-            self.search.SetFocus()
+            give_focus(self.search)
             return
         self.status.SetLabel(f"Cloning {repo} into {target}… Cancel stops it.")
         self._feedback(f"Cloning {repo} into {target}. Cancel stops it.")
@@ -1590,7 +1591,7 @@ class GitHubRepoDialog(wx.Dialog):
         self.status.SetLabel(error or "Cancelled.")
         if error:
             wx.MessageBox(error, self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
-        self.search.SetFocus()
+        give_focus(self.search)
 
     def _on_cancel(self, _event):
         if self._clone is not None:
@@ -1912,7 +1913,7 @@ class SettingsDialog(wx.Dialog):
             self.rate_choice.SetSelection(0)
         self.engine_choice.Bind(wx.EVT_CHOICE, lambda e: self._update_rate_state())
         self._update_rate_state()
-        wx.CallAfter(self.level.SetFocus)
+        give_focus_later(self.level)
 
     def _open_retention_settings(self, _event):
         path = platform_paths.claude_home() / 'settings.json'
@@ -2066,7 +2067,7 @@ class MessageDialog(wx.Dialog):
             position = answer_start(self.text.GetValue(), start_tail, self.text.GetLastPosition())
         self.text.SetInsertionPoint(position)
         self.text.ShowPosition(position)
-        wx.CallAfter(self.text.SetFocus)
+        give_focus_later(self.text)
 
 
 class UpdateInstalledDialog(wx.Dialog):
@@ -2829,7 +2830,7 @@ def _show_kept_page(page, owner, title, page_html, start_at):
     _let_waiting_keys_through()
     view = getattr(page, "view", None)
     if view is not None:
-        wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+        wx.CallAfter(lambda: page and page.IsModal() and give_focus(view))
     import time
     opened = time.monotonic()
     result = _run_kept(page, came_from)
@@ -2839,7 +2840,7 @@ def _show_kept_page(page, owner, title, page_html, start_at):
         # Closed before anything could happen: a stray key, not you. Once more.
         _let_waiting_keys_through()
         if view is not None:
-            wx.CallAfter(lambda: page and page.IsModal() and view.SetFocus())
+            wx.CallAfter(lambda: page and page.IsModal() and give_focus(view))
         result = _run_kept(page, came_from)
     link, failed = page.app_link, page.failed
     page.park()
@@ -3055,7 +3056,7 @@ class PermissionDialog(wx.Dialog):
             self.Bind(wx.EVT_BUTTON, lambda e, c=choice: self._choose(c), id=button_id)
         self.deny_button = deny
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
-        wx.CallAfter(self.request_text.SetFocus)
+        give_focus_later(self.request_text)
 
     def _on_char_hook(self, event):
         if not answer_box_key(event, [self.reason], self.deny_button):
@@ -3148,7 +3149,7 @@ class CodexPermissionDialog(wx.Dialog):
         sizer.Add(row, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
-        wx.CallAfter(self.request_text.SetFocus)
+        give_focus_later(self.request_text)
 
     def _choose(self, choice):
         self.choice = choice
@@ -3239,7 +3240,7 @@ class ChatPermissionsDialog(wx.Dialog):
             self._native = getattr(host, "native_pending", "")
             native(self._native_ready)
         self._show_note()
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     # -- what it shows ----------------------------------------------------------
 
@@ -3330,7 +3331,7 @@ class ChatPermissionsDialog(wx.Dialog):
 
     def _tell(self, text: str, icon=wx.ICON_INFORMATION, back_to=None):
         wx.MessageBox(text, self.GetTitle(), wx.OK | icon, self)
-        (back_to or self.list).SetFocus()
+        give_focus(back_to or self.list)
 
     def _still_busy(self, back_to=None) -> bool:
         if self.busy:
@@ -3722,7 +3723,7 @@ class QuestionDialog(wx.Dialog):
             if not self._answer_for(_controls, other_text):
                 wx.MessageBox(f"Choose an answer for: {question['question']}",
                               self.GetTitle(), wx.OK | wx.ICON_WARNING, self)
-                (_controls[0] if _controls else other_text).SetFocus()
+                give_focus(_controls[0] if _controls else other_text)
                 return
         self.EndModal(wx.ID_OK)
 
@@ -3830,7 +3831,7 @@ class PlanDialog(wx.Dialog):
         keep.Bind(wx.EVT_BUTTON, lambda e: self._finish(PLAN_KEEP))
         self.approve_button, self.hold_button, self.keep_button = approve, hold, keep
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
-        wx.CallAfter(self.plan_text.SetFocus)
+        give_focus_later(self.plan_text)
 
     def _on_char_hook(self, event):
         if not answer_box_key(event, [self.note], self.keep_button):
@@ -3864,7 +3865,7 @@ class PlanDialog(wx.Dialog):
                           title, wx.OK | wx.ICON_INFORMATION, self)
             self._formatted_gone()
             return
-        (self.formatted_button or self.plan_text).SetFocus()
+        give_focus(self.formatted_button or self.plan_text)
 
     def _formatted_gone(self):
         """No formatted view for the rest of the run (#693): the button goes
@@ -3914,7 +3915,7 @@ class ManageGroupsDialog(wx.Dialog):
         self.rename_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_rename())
         self.delete_btn.Bind(wx.EVT_BUTTON, lambda e: self.on_delete())
         self._fill()
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     def _row(self, name: str) -> str:
         count = self._counts.get(name, 0)
@@ -4024,7 +4025,7 @@ class CommandPickerDialog(wx.Dialog):
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._choose())
         insert.Bind(wx.EVT_BUTTON, lambda e: self._choose())
         self._filter()
-        wx.CallAfter(self.search.SetFocus)
+        give_focus_later(self.search)
 
     @staticmethod
     def row(command) -> str:
@@ -4119,14 +4120,14 @@ class BugReportDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_CANCEL)
         self.open_btn.Bind(wx.EVT_BUTTON, lambda e: self._finish("open"))
         copy.Bind(wx.EVT_BUTTON, lambda e: self._finish("copy"))
-        wx.CallAfter(self.summary.SetFocus)
+        give_focus_later(self.summary)
 
     def _finish(self, action: str):
         for control, what in ((self.summary, "a summary"), (self.happened, "what happened")):
             if not control.GetValue().strip():
                 wx.MessageBox(f"Please write {what} first.", self.GetTitle(),
                               wx.OK | wx.ICON_INFORMATION, self)
-                control.SetFocus()
+                give_focus(control)
                 return
         self.action = action
         self.EndModal(wx.ID_OK)
@@ -4194,7 +4195,7 @@ class LinesDialog(wx.Dialog):
         copy_all.Bind(wx.EVT_BUTTON, lambda e: self.copy_all())
         if self._lines:
             self.list.SetSelection(0)
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     def _on_char_hook(self, event):
         if event.GetKeyCode() in (ord("C"), ord("c")) and event.ControlDown() \
@@ -4307,7 +4308,7 @@ class AboutYouDialog(wx.Dialog):
         self.copy_btn.Bind(wx.EVT_BUTTON, lambda e: self.copy_selected())
         reload_btn.Bind(wx.EVT_BUTTON, lambda e: self.reload())
         self._fill_kinds()
-        wx.CallAfter(self.kinds.SetFocus)
+        give_focus_later(self.kinds)
 
     def reload(self):
         """Read everything again (in the background), keeping your place
@@ -4523,7 +4524,7 @@ class SessionColumnsDialog(wx.Dialog):
         self.shown.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.remove())
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self._fill(shown_index=0, available_index=0)
-        wx.CallAfter(self.shown.SetFocus)
+        give_focus_later(self.shown)
 
     # -------------------------------------------------------------- state
 
@@ -4694,7 +4695,7 @@ class PromptEditDialog(wx.Dialog):
         # problem, it starts at the field that has it.
         if focus_name is None:
             focus_name = not name
-        wx.CallAfter((self.name if focus_name else self.text).SetFocus)
+        give_focus_later(self.name if focus_name else self.text)
 
     def _on_key(self, event):
         if (event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
@@ -4847,7 +4848,7 @@ class RelayDialog(wx.Dialog):
         send.Bind(wx.EVT_BUTTON, lambda e: self._send())
         self.targets.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._send())
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        wx.CallAfter(self.targets.SetFocus)
+        give_focus_later(self.targets)
 
     def _on_key(self, event):
         enter = event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
@@ -4872,7 +4873,7 @@ class RelayDialog(wx.Dialog):
             else self._check(index, text)
         if problem:
             wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
-            self.text.SetFocus()
+            give_focus(self.text)
             return
         joint = self.joint_option is not None and self.joint_option.GetValue()
         if joint:
@@ -4881,7 +4882,7 @@ class RelayDialog(wx.Dialog):
                 wx.MessageBox(f"An agent conversation can't be started: {why.full}. Choose Just "
                               "send it, or another chat.", self.GetTitle(),
                               wx.OK | wx.ICON_INFORMATION, self)
-                self.joint_option.SetFocus()
+                give_focus(self.joint_option)
                 return
             self.joint_title = " ".join(self.joint_title_box.GetValue().split())
         self.joint_chosen = joint
@@ -5059,7 +5060,7 @@ class AgentConversationDialog(wx.Dialog):
         self._sync()
         self.first.SetSelection(0)
         body.FitInside()
-        wx.CallAfter(self.template.SetFocus)
+        give_focus_later(self.template)
 
     def _slots(self):
         """The agents chosen: two, or three with a third."""
@@ -5211,7 +5212,7 @@ class AgentConversationDialog(wx.Dialog):
         problem, control = self._problem()
         if problem:
             wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
-            control.SetFocus()
+            give_focus(control)
             return
         members = []
         slots = self._slots()
@@ -5303,7 +5304,7 @@ class PromptsDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
         self._fill(0)
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     # -- the list -------------------------------------------------------------
 
@@ -5343,7 +5344,7 @@ class PromptsDialog(wx.Dialog):
             return False
         wx.MessageBox(f"There's no prompt to {doing}. New makes one.", self.GetTitle(),
                       wx.OK | wx.ICON_INFORMATION, self)
-        self.list.SetFocus()
+        give_focus(self.list)
         return True
 
     def _on_list_key(self, event):
@@ -5436,7 +5437,7 @@ class PromptsDialog(wx.Dialog):
         except (ValueError, OSError) as exc:
             wx.MessageBox(f"Couldn't move the prompt: {exc}", self.GetTitle(),
                           wx.OK | wx.ICON_WARNING, self)
-            self.list.SetFocus()
+            give_focus(self.list)
             return
         name = self.store.get(moved).name
         if moved == index:
@@ -5453,7 +5454,7 @@ class PromptsDialog(wx.Dialog):
         if self._use_refused:
             wx.MessageBox(self._use_refused, self.GetTitle(),
                           wx.OK | wx.ICON_INFORMATION, self)
-            self.list.SetFocus()
+            give_focus(self.list)
             return
         self.chosen = self.store.get(self._selected())
         self.EndModal(wx.ID_OK)
@@ -5773,7 +5774,7 @@ class ListsDialog(wx.Dialog):
         self._index = lists.CATEGORY_IDS.index(category) if category in lists.CATEGORY_IDS else 0
         self._fill_all()
         self._show_kind(self._index)
-        wx.CallAfter(lambda: self and self.current().list.SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.current().list))
 
     @property
     def category(self) -> str:
@@ -5924,7 +5925,7 @@ class FindResultsDialog(wx.Dialog):
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         if self._matches:
             self.list.SetSelection(0)
-        wx.CallAfter(lambda: self and self.list.SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.list))
 
     def _on_list_key(self, event):
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
@@ -6025,7 +6026,7 @@ class BackupScheduleDialog(wx.Dialog):
         self.SetEscapeId(wx.ID_CANCEL)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         self._sync()
-        wx.CallAfter(self.every.SetFocus)
+        give_focus_later(self.every)
 
     def _sync(self):
         on = self.every.GetSelection() != 0
@@ -6088,13 +6089,13 @@ class BackupScheduleDialog(wx.Dialog):
             problem = self._backup.schedule_folder_problem(folder)
             if problem:
                 wx.MessageBox(problem, "Backup Schedule", wx.OK | wx.ICON_WARNING, self)
-                self.folder.SetFocus()
+                give_focus(self.folder)
                 return
             warning = self._backup.schedule_folder_warning(folder)
             if warning and wx.MessageBox(warning, "Backup Schedule",
                                          wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
                                          self) != wx.YES:
-                self.folder.SetFocus()
+                give_focus(self.folder)
                 return
             # Encrypting with no passphrase kept yet: ask for one now.
             if (self.encrypt.GetValue() and not self._has_passphrase
@@ -6169,7 +6170,7 @@ class ChatChooserDialog(wx.Dialog):
         self.SetSizer(sizer)
         self.SetEscapeId(wx.ID_CANCEL)
         self._update_go()
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     def _add_options(self, sizer):
         """Controls between the list and the buttons; none by default."""
@@ -6232,7 +6233,7 @@ class ChatChooserDialog(wx.Dialog):
         if not self._count():
             wx.MessageBox(f"Choose at least one chat to {self._verb.lower()}, or Cancel.",
                           self._title, wx.OK | wx.ICON_INFORMATION, self)
-            self.list.SetFocus()
+            give_focus(self.list)
             return
         event.Skip()
 
@@ -6355,7 +6356,7 @@ class RewindDialog(wx.Dialog):
                     self.Unbind(wx.EVT_IDLE, handler=unlink)
             self.Bind(wx.EVT_IDLE, unlink)
         self._describe()
-        wx.CallAfter(lambda: self and self.what.SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.what))
 
     def selected(self) -> str:
         return self._choices[max(0, self.what.GetSelection())]
@@ -6403,7 +6404,7 @@ class RewindDialog(wx.Dialog):
         if not self._plan.allowed(choice):
             wx.MessageBox(self._plan.describe(choice), self.GetTitle(),
                           wx.OK | wx.ICON_INFORMATION, self)
-            self.what.SetFocus()
+            give_focus(self.what)
             return
         self.choice = choice
         _end_modal(self, wx.ID_OK)
@@ -6502,7 +6503,7 @@ class ConnectedToolsDialog(wx.Dialog):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
         set_list_items_accessible(self.list, self._list_name, lambda index: None)
         self.reload()
-        wx.CallAfter(self.list.SetFocus)
+        give_focus_later(self.list)
 
     # -- what it shows ----------------------------------------------------------
 
@@ -6560,13 +6561,20 @@ class ConnectedToolsDialog(wx.Dialog):
         self.details.ChangeValue("\n".join(lines))
         self.details.SetInsertionPoint(0)
 
-    def _fill(self, rows, select: int = 0):
+    def _fill(self, rows, select: int = 0, name: str = ""):
+        """Show ``rows``, on the row of the tool named ``name`` when it's
+        still there, else on row ``select``: a refresh can add a row above
+        the one you were on (a server set up meanwhile, Codex's apps), and
+        the row number alone then put you on another tool (#729's review)."""
         self.rows = list(rows or [])
         self.loaded = True
         self.load_error = ""
         if self.rows:
             self.list.Set([r.text() for r in self.rows])
-            self.list.SetSelection(max(0, min(select, len(self.rows) - 1)))
+            named = next((i for i, r in enumerate(self.rows)
+                          if name and getattr(r, "name", None) == name), None)
+            self.list.SetSelection(named if named is not None
+                                   else max(0, min(select, len(self.rows) - 1)))
         else:
             self.list.Set([getattr(self.host, 'provider_name', 'Claude') +
                            " has no connected tools in this chat's folder."])
@@ -6592,7 +6600,9 @@ class ConnectedToolsDialog(wx.Dialog):
         new (Codex's ChatGPT app catalog, after an app is set up; #729). A
         refresh after a server's sign-in passes False: a sign-in can't change
         the catalog, and fetching it again takes most of a minute."""
-        self.reload(self.list.GetSelection(), announce=True, read_again=read_again)
+        server = self._selected()
+        self.reload(self.list.GetSelection(), announce=True, read_again=read_again,
+                    name=getattr(server, "name", ""))
 
     def refresh_when_free(self):
         """A refresh nobody pressed (a sign-in finished, #729's review):
@@ -6605,7 +6615,9 @@ class ConnectedToolsDialog(wx.Dialog):
             return
         self.on_refresh(read_again=False)
 
-    def reload(self, select: int = 0, announce: bool = False, read_again: bool = False):
+    def reload(self, select: int = 0, announce: bool = False, read_again: bool = False,
+               name: str = ""):
+        """Read the list afresh, on the tool named ``name`` (else row ``select``)."""
         from ..claude_mcp import tools_summary
         if self.busy:
             self._tell(self.busy, back_to=self.refresh_btn, title=self._title(self.refresh_btn))
@@ -6624,7 +6636,7 @@ class ConnectedToolsDialog(wx.Dialog):
             if error:
                 self._failed(error)
             else:
-                self._fill(rows, select)
+                self._fill(rows, select, name)
             if announce:
                 self._feedback(self.load_error or tools_summary(self.rows))
         if read_again and hasattr(self.host, 'read_again'):
@@ -6675,7 +6687,7 @@ class ConnectedToolsDialog(wx.Dialog):
         once for each window (#729's acceptance test)."""
         wx.MessageBox(text, title or self.TITLE, wx.OK | icon, self)
         if self._alive():
-            (back_to or self.list).SetFocus()
+            give_focus(back_to or self.list)
 
     @staticmethod
     def _title(button, server=None, verb: str = "") -> str:
@@ -6792,7 +6804,7 @@ class ConnectedToolsDialog(wx.Dialog):
                 self._tell(f"Couldn't reconnect {server.label}. {error}", wx.ICON_WARNING,
                            back_to=self.reconnect_btn, title=title)
                 return
-            self._fill(rows, index)
+            self._fill(rows, index, server.name)
             now = next((r for r in self.rows if r.name == server.name), None)
             self._tell(now.text() if now is not None else f"{server.label} reconnected.",
                        back_to=self.list, title=title)
@@ -6827,9 +6839,9 @@ class ConnectedToolsDialog(wx.Dialog):
             if error:
                 self._tell(error, wx.ICON_WARNING, back_to=self.toggle_btn, title=title)
                 return
-            self._fill(rows, index)
+            self._fill(rows, index, server.name)
             if focus is not None and focus.GetTopLevelParent() is self:
-                focus.SetFocus()
+                give_focus(focus)
         self.host.set_off(server, not server.off_for_chat, done)
 
     def on_toggle_new_chats(self):
@@ -6860,9 +6872,9 @@ class ConnectedToolsDialog(wx.Dialog):
                 self.list.SetSelection(index)
                 self._show_selected()
             else:
-                self._fill(rows, index)
+                self._fill(rows, index, server.name)
             if focus is not None and focus.GetTopLevelParent() is self:
-                focus.SetFocus()
+                give_focus(focus)
         self.host.set_off_for_new(server, not server.off_for_new, done)
 
 
@@ -7179,7 +7191,7 @@ class ElicitationDialog(wx.Dialog):
         if problem:
             wx.MessageBox(problem, self.GetTitle(), wx.OK | wx.ICON_INFORMATION, self)
             target = self.control_for(wrong) if wrong else None
-            (target or self.send_btn).SetFocus()
+            give_focus(target or self.send_btn)
             return
         self.action, self.content = ACCEPT, content
         self.EndModal(wx.ID_OK)
@@ -7329,7 +7341,7 @@ class ChatOptionsDialog(wx.Dialog):
             elif choices is None:
                 wx.CallAfter(self._feedback, "Choose an existing folder first to see its "
                                              "agents and output styles.")
-        wx.CallAfter(lambda: self and (self.instructions if provider in ('codex', 'codex-api') else self.agent).SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.instructions if provider in ('codex', 'codex-api') else self.agent))
 
     # -- the agent and style choices
 

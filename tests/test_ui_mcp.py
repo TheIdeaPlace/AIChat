@@ -221,6 +221,85 @@ def test_refresh_stays_on_the_row_and_says_the_result(frame, env, monkeypatch):
     _connected_tools(frame, monkeypatch, drive)
 
 
+class _MovingRows:
+    """A Connected Tools host whose every answer can put a new tool above the
+    others, as a server added meanwhile or Codex's apps can."""
+
+    can_turn_off = True
+
+    def __init__(self, *answers):
+        self.answers = [list(a) for a in answers]
+
+    def _next(self):
+        return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+    def load(self, done):
+        done(self._next(), "")
+
+    def reconnect(self, server, done):
+        done(self._next(), "")
+
+    def set_off(self, server, off, done):
+        done(self._next(), "")
+
+    def note(self):
+        return "A note."
+
+
+@pytest.mark.parametrize("action", ["refresh", "reconnect", "turn off"])
+def test_refresh_reconnect_and_turn_off_stay_on_the_same_tool_when_a_row_comes_above(
+        frame, env, action):
+    """By the tool's name, not the row number: a row added above had put you
+    on another tool (#729's review)."""
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    alpha, beta = McpServer("alpha", "connected"), McpServer("beta", "connected")
+    added = McpServer("aardvark", "connected")
+    host = _MovingRows([alpha, beta], [added, alpha, beta])
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.list.SetSelection(1)  # beta
+        {"refresh": dialog.on_refresh, "reconnect": dialog.on_reconnect,
+         "turn off": dialog.on_toggle}[action]()
+        assert pump(lambda: not dialog.busy, timeout=10)
+        assert dialog.list.GetCount() == 3
+        assert dialog._selected().name == "beta"
+    finally:
+        dialog.Destroy()
+
+
+def test_connected_tools_sets_no_focus_where_windows_has_put_it_already(frame, env, monkeypatch):
+    """As it opens on the list, and after a message box: setting it again
+    had NVDA read the first row twice (#729's review)."""
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    dialog = ConnectedToolsDialog(frame, "Chat", _MovingRows([McpServer("alpha", "connected")]))
+    try:
+        calls = []
+        dialog.list.SetFocus = lambda: calls.append("list")
+        dialog.refresh_btn.SetFocus = lambda: calls.append("refresh")
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dialog.list))
+        pump(lambda: False, timeout=0.3)  # the constructor's deferred focus
+        dialog._tell("A box.")
+        assert calls == []
+        dialog._tell("A box.", back_to=dialog.refresh_btn)
+        assert calls == ["refresh"]
+    finally:
+        dialog.Destroy()
+
+
+def test_a_tool_gone_after_a_refresh_leaves_the_selection_on_its_row_number(frame, env):
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    alpha, beta, gamma = (McpServer(n, "connected") for n in ("alpha", "beta", "gamma"))
+    host = _MovingRows([alpha, beta, gamma], [alpha, gamma])
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    try:
+        dialog.list.SetSelection(1)  # beta, which goes
+        dialog.on_refresh()
+        assert pump(lambda: not dialog.busy, timeout=10)
+        assert dialog.list.GetSelection() == 1 and dialog._selected().name == "gamma"
+    finally:
+        dialog.Destroy()
+
+
 def test_opening_the_dialog_says_nothing_of_its_own(frame, env, monkeypatch):
     select(frame, "Tools probe")
     count = len(env["feedback"])

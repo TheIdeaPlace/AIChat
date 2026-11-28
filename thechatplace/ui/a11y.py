@@ -39,6 +39,26 @@ class _ReadOnlyBoxAccessible(_NamedAccessible):
         return (wx.ACC_OK, "")
 
 
+def give_focus(window) -> None:
+    """Put the keyboard focus on ``window``, unless it's there already.
+
+    Windows often has put it there by itself: on a dialog's first control as
+    the dialog opens, and back where it was as a message box closes. Setting
+    it again had screen readers read the control twice: NVDA said Connected
+    Tools' first row twice (#468, #729). Every "focus goes here" in a dialog
+    goes through this, so none of them can.
+    """
+    if window and wx.Window.FindFocus() is not window:
+        window.SetFocus()
+
+
+def give_focus_later(window) -> None:
+    """``give_focus`` once the events already queued have run: from a
+    dialog's constructor, after Windows has given the dialog its first focus
+    as it opens. A window destroyed meanwhile is left alone."""
+    wx.CallAfter(give_focus, window)
+
+
 def set_accessible_name(control: wx.Window, label: str, read_only_box: bool = False) -> None:
     """Name a control for JAWS and NVDA. ``read_only_box``: it's a read-only
     box of text, which mustn't be parsed for an access key.

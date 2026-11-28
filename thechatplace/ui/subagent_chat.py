@@ -20,7 +20,7 @@ from .. import announce
 from ..subagents import RUNNING, STATUS_WORDS, Subagent
 from ..transcript import ChatMessage, TranscriptReader
 from ..ui_text import key_name
-from .a11y import (refresh_list_item, set_accessible_name, set_list_items_accessible,
+from .a11y import (give_focus, refresh_list_item, set_accessible_name, set_list_items_accessible,
                    set_voiceover_menu)
 from .dialogs import press_focused_button_on_a_mac
 from .sizes import dialog_size
@@ -93,7 +93,7 @@ class SubagentChatDialog(wx.Dialog):
         self.Bind(wx.EVT_WINDOW_DESTROY, stop_timer)
         self._fill(newest=True)
         self.timer.Start(REFRESH_MS if subagent.status == RUNNING else FINISHED_REFRESH_MS)
-        wx.CallAfter(lambda: self and self.list.SetFocus())
+        wx.CallAfter(lambda: self and give_focus(self.list))
 
     # -- the list ------------------------------------------------------------
 

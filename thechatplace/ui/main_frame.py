@@ -108,7 +108,7 @@ from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_
                        release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
-from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
+from .a11y import (announce_list_emptied, give_focus, refresh_list_item, set_accessible_name,
                    set_empty_list_text, set_list_items_accessible, set_voiceover_menu)
 from .notify import Notifier
 from .statusbar import StatusParts
@@ -5156,8 +5156,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
                 self._modal(ConnectedToolsDialog(self, info.title, host, feedback=self._feedback))
             finally:
                 host.close()
-            if focus and wx.Window.FindFocus() is not focus:
-                focus.SetFocus()
+            give_focus(focus)
             return
         if info.provider != "claude":
             self._feedback(f"Connected Tools is for Claude and Codex chats. {info.title} is a "
@@ -5179,8 +5178,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             host.close()  # the idle Claude Code ends with the dialog
         # Only if Windows hasn't put it back already: setting it again had a
         # screen reader say the message twice (#468).
-        if returning_to and wx.Window.FindFocus() is not returning_to:
-            returning_to.SetFocus()
+        give_focus(returning_to)
 
     def _say_mcp_problems(self, session_id: str, title: str, servers) -> None:
         """At a turn's start: the connected tools Claude can't use (they need
