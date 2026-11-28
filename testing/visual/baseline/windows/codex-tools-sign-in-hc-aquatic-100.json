@@ -42,11 +42,11 @@
     10,
     26,
     648,
-    60
+    23
    ],
    "best": [
-    127,
-    60
+    110,
+    23
    ],
    "depth": 0,
    "parent": -1,
@@ -60,7 +60,7 @@
    "label": "&Message:",
    "rect": [
     8,
-    100,
+    63,
     50,
     16
    ],
@@ -79,9 +79,9 @@
    "label": "Open in Browser opens the address above, where you sign in to project-notes. Decline leaves it unopened.",
    "rect": [
     10,
-    118,
+    81,
     648,
-    178
+    215
    ],
    "best": [
     127,

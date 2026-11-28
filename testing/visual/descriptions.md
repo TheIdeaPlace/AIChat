@@ -1188,7 +1188,7 @@ A 680 by 522 dialog titled "trip-planner asks: Visual probe". The probe's form h
 
 ## elicitation-url: A connected tool asks you to open a web page (#468)
 
-A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a read-only box, 648 by 60, with the text cursor in it and one line: "Opens example.com: https://example.com/sign-in?session=probe". **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that first line, and the box doesn't wrap, so a horizontal scroll bar runs along its bottom, with room above it for two lines (the "won't open this" text has two); it was two lines, "Opens example.com" then the address. "Message:" heads a second read-only box, 648 by 178, with "Open this page to finish signing in." Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
+A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a one-line read-only box, 648 by 23, grey like Windows' other read-only boxes, with the text cursor in it: "Opens example.com: https://example.com/sign-in?session=probe". **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that one line, in a one-line box, which JAWS reads as it gets focus (a multi-line one was read only as "Contains text"); it was a 60-tall box of two lines, "Opens example.com" then the address. A longer address runs past the box's right edge. "Message:" heads a second read-only box, now 648 by 215 (it takes the room the Address box gave up), with "Open this page to finish signing in." The Address text is black on #F0F0F0 (18.4:1), white on #202020 in High Contrast Aquatic (16.3:1), measured at commit ddc4d7f6. Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
 
 **What looks off:** The Message box is mostly empty for one line.
 
@@ -1346,17 +1346,18 @@ Measured at commit f934d4f9: list and Details text black on white (21:1), button
 ## codex-tools-sign-in: Connected Tools' Sign In asks before opening a page (#598, #729)
 
 A 680 by 380 dialog titled "Sign In to project-notes", the question Sign In asks before it opens a
-server's sign-in page. "Address:" heads a read-only box, 648 by 60, with the text cursor in it and
-one line that runs past its right edge: "Opens notes.example: https://notes.example/authorize?
-response_type=code&client_id=probe-client&redirect_uri=http…". The box doesn't wrap, so the
-address stays on the host's line, and a horizontal scroll bar runs along the box's bottom.
-"Message:" heads a second read-only box, 648 by 178: "Open in Browser opens the address above,
-where you sign in to project-notes. Decline leaves it unopened." At the bottom right: Open in
-Browser and Decline (the default, outlined in blue). There's no Answer Later: nothing waits on this
-answer, and Escape declines.
+server's sign-in page. "Address:" heads a one-line read-only box, 648 by 23, grey, with the text
+cursor in it and a line that runs past its right edge: "Opens notes.example:
+https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%…".
+It's a one-line box so that JAWS reads the host and the whole address as it gets focus (seen in
+the test VM; a multi-line box was read as "Contains text"). "Message:" heads a second read-only
+box, 648 by 215: "Open in Browser opens the address above, where you sign in to project-notes.
+Decline leaves it unopened." At the bottom right: Open in Browser and Decline (the default,
+outlined in blue). There's no Answer Later: nothing waits on this answer, and Escape declines.
 
-Measured at commit f934d4f9: Address and Message text black on white (21:1), button text black on
-#FDFDFD (20.65:1). High Contrast Aquatic: white on #202020 (16.29:1), and Decline filled aqua
-#8EE3F0 with #263B50 text (7.89:1).
+Measured at commit ddc4d7f6: Address text black on #F0F0F0 (18.43:1), Message text black on white
+(21:1), button text black on #FDFDFD (20.65:1). High Contrast Aquatic: white on #202020 (16.29:1),
+and Decline filled aqua #8EE3F0 with #263B50 text (7.89:1).
 
-**What looks off:** Nothing; the address being cut at the right edge is the scroll bar's job.
+**What looks off:** Nothing; a long address runs past the box's right edge, and Home and End reach
+it all.
