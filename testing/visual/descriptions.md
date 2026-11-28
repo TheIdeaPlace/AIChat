@@ -7,6 +7,7 @@ Columns, the help pages and the main window.
 Regenerate it with `tools/ui_review_prompt.md` whenever screens change.
 Updated on 2026-11-02 for 0.5 (#468) from light-100 and hc-aquatic-100 pictures of every screen changed or added: the Lists dialog's Subagents kind, Chat Options, the connected-tool forms, Rewind to Here, Stop Background Task, a subagent's conversation and what fills the context. The 0.5 pictures are from the probe run at commit 9e97c5b.
 Updated on 2026-11-03 for 0.5 (#468) from light-100 and hc-aquatic-100 pictures of every screen changed or added since: Continue Here's Folder box in its three dialogs, the connected-tool form, Rewind to Here and its warning, and the settings that lost their underlined letter when turned off. In the same run the High Contrast Aquatic main-window pictures lost the one-pixel black line under the menu bar: that row is now #202020, like the window. Nothing else in them moved.
+Updated on 2026-11-28 for #763 from light-100 and hc-aquatic-100 pictures (probe run at commit 3a47d696, compared with one at 16810318 before the change) of the 31 screens with a read-only box: every read-only box of text is now a plain multi-line box, not a rich one. They look as before (white, or the Folder box's button grey, the same text in the same place, give or take a pixel), except that the one with focus now shows its text cursor and the blue focus line at its foot, and the web page request's Address box (below). Nothing moved anywhere else, and nothing is cut off.
 
 **Since 0.1.6, in every main-window picture:** each session row now says which AI it is
 straight after the title ("Fix the flaky upload test, Claude, AIChat, needs you: ..."), so
@@ -1188,7 +1189,7 @@ A 680 by 522 dialog titled "trip-planner asks: Visual probe". The probe's form h
 
 ## elicitation-url: A connected tool asks you to open a web page (#468)
 
-A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a one-line read-only box, 648 by 23, grey like Windows' other read-only boxes, with the text cursor in it: "Opens example.com: https://example.com/sign-in?session=probe". **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that one line, in a one-line box, which JAWS reads as it gets focus (a multi-line one was read only as "Contains text"); it was a 60-tall box of two lines, "Opens example.com" then the address. A longer address runs past the box's right edge. "Message:" heads a second read-only box, now 648 by 215 (it takes the room the Address box gave up), with "Open this page to finish signing in." The Address text is black on #F0F0F0 (18.4:1), white on #202020 in High Contrast Aquatic (16.3:1), measured at commit ddc4d7f6. Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
+A 680 by 380 dialog titled "notes (from the probe-tools plugin) asks: Visual probe". "Address:" heads a white read-only box, 648 by 44, with the text cursor in its one line, "Opens example.com: https://example.com/sign-in?session=probe", a sideways scroll bar under it and the blue focus line at its foot. **Since #729's acceptance fixes (2026-11-27):** the host and the whole address share that one line. **Since #763 (2026-11-28):** it's a multi-line box holding that line, not the one-line grey box (648 by 23) that Tab and Shift+Tab went past; JAWS reads the line with the box's name. A longer address runs past the box's right edge. "Message:" heads a second read-only box, 648 by 194, with "Open this page to finish signing in." All the boxes' text is black on white (21:1), white on #202020 in High Contrast Aquatic (16.3:1), measured at commit 3a47d696. Open in Browser, Decline (the default, outlined in blue) and Answer Later are at the bottom right. Text is black on white (21:1). In High Contrast Aquatic it is white on #202020 (16.3:1), and Decline is filled aqua with #263B50 text (7.9:1).
 
 **What looks off:** The Message box is mostly empty for one line.
 
@@ -1346,18 +1347,18 @@ Measured at commit f934d4f9: list and Details text black on white (21:1), button
 ## codex-tools-sign-in: Connected Tools' Sign In asks before opening a page (#598, #729)
 
 A 680 by 380 dialog titled "Sign In to project-notes", the question Sign In asks before it opens a
-server's sign-in page. "Address:" heads a one-line read-only box, 648 by 23, grey, with the text
-cursor in it and a line that runs past its right edge: "Opens notes.example:
-https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%…".
-It's a one-line box so that JAWS reads the host and the whole address as it gets focus (seen in
-the test VM; a multi-line box was read as "Contains text"). "Message:" heads a second read-only
-box, 648 by 215: "Open in Browser opens the address above, where you sign in to project-notes.
-Decline leaves it unopened." At the bottom right: Open in Browser and Decline (the default,
-outlined in blue). There's no Answer Later: nothing waits on this answer, and Escape declines.
+server's sign-in page. "Address:" heads a white read-only box, 648 by 44: one line of text over a
+sideways scroll bar, with the focus line under it, "Opens notes.example:
+https://notes.example/authorize?response_type=code&client_id=probe-client&redirect_uri=http%…"
+running past its right edge. **Since #763 (2026-11-28):** it's a multi-line box holding one line,
+as the one-line grey box (648 by 23) was left out of the Tab order; JAWS now reads the line with
+the box's name. "Message:" heads a second read-only box, 648 by 194: "Open in Browser opens the
+address above, where you sign in to project-notes. Decline leaves it unopened." At the bottom
+right: Open in Browser and Decline (the default, outlined in blue). There's no Answer Later:
+nothing waits on this answer, and Escape declines.
 
-Measured at commit ddc4d7f6: Address text black on #F0F0F0 (18.43:1), Message text black on white
-(21:1), button text black on #FDFDFD (20.65:1). High Contrast Aquatic: white on #202020 (16.29:1),
-and Decline filled aqua #8EE3F0 with #263B50 text (7.89:1).
+Measured at commit 3a47d696: Address and Message text black on white (21:1). High Contrast
+Aquatic: white on #202020 (16.29:1), and Decline filled aqua #8EE3F0 with #263B50 text (7.89:1).
 
-**What looks off:** Nothing; a long address runs past the box's right edge, and Home and End reach
-it all.
+**What looks off:** Nothing; a long address runs past the box's right edge, and the scroll bar,
+Home and End reach it all.

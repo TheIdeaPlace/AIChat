@@ -467,7 +467,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "View, What AI Knows About You: Claude"
+   "about": "Tools, What AI Knows About You: Claude"
   },
   "session-columns": {
    "kind": "dialog",
@@ -495,7 +495,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Prompts"
+   "about": "Chat, Prompts"
   },
   "prompt-edit": {
    "kind": "dialog",
@@ -957,7 +957,7 @@
    ],
    "capture": "PrintWindow",
    "problems": [],
-   "about": "File, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
+   "about": "Chat, Chat Settings, Chat Permissions: a Codex chat, nothing kept, and Codex's saved rules"
   },
   "codex-permission-kept": {
    "kind": "dialog",
@@ -2218,6 +2218,20 @@
    "capture": "PrintWindow",
    "problems": [],
    "about": "Connected Tools' Sign In asks before opening a sign-in page"
+  },
+  "openai-unpriced-confirm": {
+   "kind": "dialog",
+   "png": "openai-unpriced-confirm-light-100.png",
+   "json": "openai-unpriced-confirm-light-100.json",
+   "title": "Send with price unknown?",
+   "class": "UnpricedApiDialog",
+   "size": [
+    600,
+    340
+   ],
+   "capture": "PrintWindow",
+   "problems": [],
+   "about": "Mandatory price-unknown warning, Cancel default"
   }
  },
  "seconds": 278.6,
