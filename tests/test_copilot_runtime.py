@@ -2576,6 +2576,7 @@ def test_a_prompt_that_meets_a_full_queue_comes_back_without_a_deadlock(make, tm
     connection = runtime._connection
     full = queue.Queue(maxsize=1)
     full.put_nowait(b"")
+    connection._outgoing.put_nowait(None)  # the writer thread ends, not left waiting
     connection._outgoing = full  # as if Copilot had stopped reading
     runtime.send(chat, "Hello")
     assert wait(lambda: not runtime._chats[chat].busy), "the turn never ended"
