@@ -346,28 +346,33 @@ def close_frame(window) -> None:
     the end on macOS), what they handed back run while the window is whole
     (on a Mac a destroyed one is still half there), then its sounds, session
     tools and providers closed and the speaker no longer pointed at it, as
-    ``MainFrame._on_close`` does. A test that already closed it (so
-    ``_on_close`` ran) leaves only its pool and provider cleanup to end."""
+    ``MainFrame._on_close`` does. If a test already closed it, so
+    ``_on_close`` ran, those closes aren't done twice: its provider cleanup
+    is waited for instead. Whatever was done, the window is never deleted
+    before what was handed back to it has run: skipping that, for a window
+    a test had closed, crashed a later test on every platform."""
+    cleanup = window._provider_cleanup  # _on_close starts it
     window._pool.shutdown(wait=True)
-    cleanup = getattr(window, "_provider_cleanup", None)
-    if not window or cleanup is not None:  # _on_close starts the provider cleanup
+    if not window:  # already deleted: nothing of it is left to close
         if cleanup is not None:
             cleanup.join(timeout=10)
-        if window and not wx.GetApp().IsScheduledForDestruction(window):
-            window.Destroy()
-        delete_destroyed()
         return
+    app = wx.GetApp()
     window._closing = True
     window._runners.clear()
     window.stop_timers()
-    wx.GetApp().ProcessPendingEvents()
-    window._sound_close()
-    window._notifier.close()
-    window._close_session_tools()
-    window.sessions.close()  # on this thread, not the app's cleanup thread: it's ended here
-    if speech.speaker.window_announcer == window._announce_through_window:
-        speech.speaker.window_announcer = None
-    window.Destroy()
+    app.ProcessPendingEvents()
+    if cleanup is not None:
+        cleanup.join(timeout=10)
+    else:
+        window._sound_close()
+        window._notifier.close()
+        window._close_session_tools()
+        window.sessions.close()  # on this thread, not the app's cleanup thread: it's ended here
+        if speech.speaker.window_announcer == window._announce_through_window:
+            speech.speaker.window_announcer = None
+    if not app.IsScheduledForDestruction(window):
+        window.Destroy()
     delete_destroyed()
 
 
