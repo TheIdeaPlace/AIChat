@@ -47,11 +47,18 @@ class _ReadOnlyBoxAccessible(_NamedAccessible):
 
     def GetName(self, childId):
         status, label = super().GetName(childId)
-        if childId or not platform_paths.jaws_running():
+        box = self.GetWindow()
+        # A box with no up-and-down scroll bar (the Address box, a Folder
+        # box) JAWS reads itself as it gets focus, as it does a one-line
+        # box: the line in the name was then said twice (#763, in the VM).
+        if childId or not platform_paths.jaws_running() or box.HasFlag(wx.TE_NO_VSCROLL):
             return (status, label)
-        line = current_line(self.GetWindow())
+        line = current_line(box)
         if len(line) > self.LINE_MOST:
-            line = line[:self.LINE_MOST].rsplit(" ", 1)[0] + "…"
+            cut = line[:self.LINE_MOST]
+            # At a word, unless there's none near the end (an address).
+            at = cut.rfind(" ")
+            line = (cut[:at] if at > self.LINE_MOST // 2 else cut) + "…"
         return (status, f"{label}, {line}" if line else label)
 
     def GetKeyboardShortcut(self, childId):

@@ -90,6 +90,28 @@ def test_jaws_hears_the_line_in_the_name_and_nvda_doesnt(box, monkeypatch):
     assert _msaa_name(box) == "Details"
 
 
+@msaa
+def test_a_box_jaws_reads_itself_gets_no_line_and_a_long_address_is_cut_whole(app, monkeypatch):
+    """JAWS reads a box with no up-and-down scroll bar itself (the Address
+    box, #763), so the line isn't added; a long line with no spaces is cut
+    at the most, not at its one early space."""
+    import wx
+    from thechatplace import platform_paths
+    from thechatplace.ui.dialogs import _read_only_text
+    monkeypatch.setattr(platform_paths, "jaws_running", lambda: True)
+    frame = wx.Frame(None)
+    try:
+        address = "Opens example.com: https://example.com/" + "a" * 400
+        own = _read_only_text(frame, address, "Address", style=wx.TE_DONTWRAP | wx.TE_NO_VSCROLL)
+        assert own._hub_accessible.GetName(0)[1] == "Address"
+        box = _read_only_text(frame, address, "Details")
+        name = box._hub_accessible.GetName(0)[1]
+        assert name.startswith("Details, Opens example.com: https://example.com/aaa")
+        assert name.endswith("…") and len(name) == len("Details, ") + 250 + 1
+    finally:
+        frame.Destroy()
+
+
 def test_jaws_running_is_false_off_windows(monkeypatch):
     from thechatplace import platform_paths
     real = platform_paths.jaws_running.__wrapped__  # conftest's _no_jaws keeps it
