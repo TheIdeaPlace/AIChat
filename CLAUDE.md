@@ -79,7 +79,9 @@ that succeeded. Linux is non-blocking until it has a release or two behind it; t
 over a release without its platform's feed (`updater.latest_published_version`).
 Versions below 1.0 publish as pre-releases. Every platform updates through Velopack
 (`updater.CHANNEL`: `windows`, `osx`, `linux-x64`, `linux-arm64`). Velopack calls every Mac app portable, so the portable check is Windows-only
-(`updater.PORTABLE_COPIES_EXIST`); applying it on a Mac silently stops all Mac updates.
+(`updater.PORTABLE_COPIES_EXIST`). Applied on a Mac, it would switch off every Mac update: the
+zip's folder checks would look at `TheChatPlace.app/Contents`, which never has a `current` folder,
+so the write check always fails.
 
 **Test builds for Kelly say which build they are** (2026-11-26). Make one with a hand run of the
 release workflow, unsigned, with `build_label` set to the folder it goes in (`bld05` for
@@ -190,8 +192,9 @@ menu item goes there, with its handler in `MainFrame._command_handlers`, never s
 (the `LAYOUT` and `SHORTCUTS` lists, which the Help dialog and the README both show).
 
 **Other modules:** `build_info.py` (which build this is, for About, bug reports and the smoke
-test), `updater.py` (Velopack updates for installed copies only, which refuse to run
-if the data folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
+test), `updater.py` (Velopack updates for built copies, including the Windows portable zip
+unless it's a test build or can't write its folder (#747); an update is refused if the data
+folder is inside the install folder), `rendering.py` (markdown to safe HTML for the
 WebView2 formatted view), `usage.py`, `changes.py`, `codeblocks.py`, `attachments.py`, `export.py`,
 `bugreport.py`, `signin.py`, `sound_events.py` (which sound for which event; `ui/sound_host.py` and
 `ui/sounds_dialog.py` are its window side, and app-kit's `theideaplace_appkit.sounds` plays them).

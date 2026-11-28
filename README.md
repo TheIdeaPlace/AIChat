@@ -1883,8 +1883,9 @@ sign-in for you. Homebrew (`brew install --cask claude-code`) and WinGet
 **Windows.** Download `TheChatPlace-windows-Setup.exe` from the newest release on
 [the releases page](https://github.com/TheIdeaPlace/AIChat/releases) and run it.
 It installs for you only, with no administrator rights, adds The Chat Place to the Start menu, and
-starts it. The portable zip from the same release runs without installing, but doesn't update
-itself.
+starts it. The portable zip from the same release runs without installing. Unzip it into a new,
+empty folder of its own, such as `C:\Users\you\Apps\TheChatPlace`, and it updates itself there as
+the installed copy does (see "Updates").
 
 The app is built for x64; Arm PCs run it under Windows's x64 emulation.
 
@@ -1939,7 +1940,7 @@ section lists everything that's left behind.
 
 ## Updates
 
-The installed app checks for a new version a few seconds after it starts, and whenever you choose
+The app (installed, or the Windows portable zip) checks for a new version a few seconds after it starts, and whenever you choose
 Help, Check for Updates. At start the check only speaks up when there is a new version, and then
 only says so: it never asks you anything you didn't ask for. From Help it always says what it found ("up to
 date", "no release has been published yet", or an error), even with announcements set to silent.
@@ -1970,10 +1971,12 @@ in 0.1.5** (Alt+W), which opens that version's release notes on GitHub
 (`https://github.com/TheIdeaPlace/AIChat/releases/tag/v0.1.5`) and closes the dialog; **Close**
 (Alt+C) or Escape just closes it. It waits until the main window is in front with no other dialog
 open (a warning about a damaged file, say), so it never lands on top of another one; if that
-doesn't happen within half an hour, the status bar says it instead. It's shown only by an
-installed copy, only when the version is newer than the one that last started (recorded as
-`last_run_version` in `speech.json` in the data folder), and never on a first run, after a
-downgrade, from the portable zip or from source. Turn it off in Settings with "Tell me when an
+doesn't happen within half an hour, the status bar says it instead. An installed copy shows it
+only when the version is newer than the one that last started (recorded as `last_run_version` in
+`speech.json` in the data folder), and never on a first run or after a downgrade. The portable zip
+shows it only when that copy is running the version it updated itself to (recorded with its
+folder, in `portable_updates`, just before the update is installed), never because you unzipped
+a different copy, and a test build never shows it. It's never shown from source. Turn it off in Settings with "Tell me when an
 update has been installed, with a link to what's new" (Alt+T).
 
 From Help, a new version is offered in a Yes/No dialog where No is the default. If you choose Yes,
@@ -1986,9 +1989,27 @@ The Mac app updates the same way. Velopack's updater is inside the app itself, s
 wherever you keep it. So does the Linux AppImage: an update replaces the `.AppImage` file where
 it is (asking for your password, through pkexec, only if it's in a folder you can't write to).
 
+**The Windows portable zip** updates the same way too: Velopack replaces the `current` folder
+inside the folder you unzipped it into. That folder must be the zip's own: before replacing
+`current`, Velopack closes every program running from anywhere in it, so unzipped into a USB
+stick's root or a folder of other portable apps (NVDA portable, say), an update would close them
+too. Help, Check for Updates says so instead of offering an update when that folder holds anything
+but the zip's own files (`.portable`, `The Chat Place.exe`, `Update.exe`, `current` and the
+`packages` folder updates are downloaded into), or the data folder: unzip it into a new, empty
+folder. It says so too when it can't change that folder (a read-only drive, say, or one in Program
+Files): unzip it into a new folder in your user folder, such as `C:\Users\you\Apps\TheChatPlace`
+(not Documents, which OneDrive may sync and Controlled Folder Access may keep apps out of). And it
+says so when the copy is missing the updater it came with (only `current` was copied, say):
+download it again. An update downloaded earlier isn't installed at start where Check for Updates
+wouldn't offer one. A test build (one whose Help, About names a build, such as
+"build bld05") never updates itself from the portable zip, so its folder and its About box keep
+matching; Check for Updates says it's a test build. An installed test build still updates to the
+release.
+
 **Updating never touches your sessions or settings.** On Windows the app lives in
-`%LOCALAPPDATA%\TheChatPlace`, which Velopack replaces on update and removes on uninstall, and
-your data is in `%APPDATA%\TheChatPlace`. On a Mac, Velopack replaces the app itself, and your
+`%LOCALAPPDATA%\TheChatPlace`, which Velopack replaces on update and removes on uninstall (the
+portable zip's in the `current` folder where you unzipped it), and your data is in
+`%APPDATA%\TheChatPlace`. On a Mac, Velopack replaces the app itself, and your
 data is in `~/Library/Application Support/TheChatPlace`. On Linux, Velopack replaces the
 AppImage, and your data is in `~/.config/TheChatPlace`. The updater refuses to run if the data
 were ever inside what it replaces. What the updater did is logged in `update.log` in the data

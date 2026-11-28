@@ -77,7 +77,8 @@ estimated. See Chats on API credits for setup and limits.</p>
 <p><strong>Windows:</strong> download <code>TheChatPlace-windows-Setup.exe</code> from the newest release on the
 <a href="https://github.com/TheIdeaPlace/AIChat/releases">releases page</a> and run it. It installs for you
 only, needs no administrator rights, adds The Chat Place to the Start menu, and starts it. The
-portable zip from the same release runs without installing, but doesn't update itself.</p>
+portable zip from the same release runs without installing. Unzip it into a new, empty folder of
+its own, such as <code>C:\Users\you\Apps\TheChatPlace</code>, and it updates itself there (see "Updates").</p>
 <p><strong>Mac:</strong> download <code>TheChatPlace-macos-arm64.dmg</code>, open it, and drag The Chat Place onto
 Applications. The first time it speaks through VoiceOver, macOS asks whether The Chat Place may
 control VoiceOver: allow it, and turn on "Allow VoiceOver to be controlled with AppleScript" in
@@ -3478,7 +3479,7 @@ shows up when it does.</p>
   say-so, so it still asks you before anything that needs your permission.</li>
 </ul>
 <h2 id="updates">Updates</h2>
-<p>The installed app checks for a new version shortly after it starts, and says so only if there is
+<p>The app (installed, or the Windows portable zip) checks for a new version shortly after it starts, and says so only if there is
 one. <strong>Help, Check for Updates</strong> asks right away and offers to install it (No is the default). It
 won't install while any provider is working in one of its chats, and it warns you about a reply
 you haven't sent. Updating never touches your chats or settings.</p>
@@ -3486,6 +3487,13 @@ you haven't sent. Updating never touches your chats or settings.</p>
 <strong>Check for Updates (running 0.1.4)</strong>. When a newer version has been found, it says so instead,
 such as <strong>Update to 0.1.5 Available</strong>, and choosing it offers the update. Alt+H, U reaches it
 either way. The status bar's update button does the same.</p>
+<p><strong>The Windows portable zip</strong> updates itself in the folder you unzipped it into. That folder must
+be its own: an update closes every program running from anywhere in it, so in a folder shared
+with other portable apps (NVDA portable, say) it would close them too. If the folder holds
+anything else, or it can't change the folder (a read-only drive, say, or one in Program Files),
+Check for Updates says so instead of offering the update: unzip it into a new, empty folder in
+your user folder, such as <code>C:\Users\you\Apps\TheChatPlace</code>. A test build (Help, About names its build, such as "build bld05") never updates
+itself from the zip, and Check for Updates says it's a test build.</p>
 <p><strong>Stay on the version you have.</strong> In Settings (Ctrl+Comma), clear
 <strong>Check for updates when The Chat Place starts</strong> (Alt+D). The Chat Place then doesn't look for new versions or offer you one,
 so it stays on this version until you decide. Nothing is ever downloaded or installed on its own:
@@ -3503,7 +3511,8 @@ still there if you update again later. Use 0.4.1 rather than an earlier version,
 This version does the same if you go back to it from a later one.</p>
 <p>The first time The Chat Place starts after an update, <strong>The Chat Place Update Installed</strong> says
 which version you now have. <strong>See what's new</strong> (Alt+W) opens that version's release notes in your
-browser; <strong>Close</strong> or Escape goes back to the app. To stop it appearing, clear "Tell me when an
+browser; <strong>Close</strong> or Escape goes back to the app. The portable zip says it only after it updated
+itself, not when you unzip a different version. To stop it appearing, clear "Tell me when an
 update has been installed, with a link to what's new" in Settings (Ctrl+Comma).</p>
 <h2 id="uninstalling">Uninstalling</h2>
 <p>Quit The Chat Place first.</p>

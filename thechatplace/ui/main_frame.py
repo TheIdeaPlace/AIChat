@@ -105,7 +105,7 @@ from ..transcript import (ASSISTANT, COMPACTION, COMMAND_ERROR, COMMAND_OUTPUT, 
                           ChatMessage,
                           clean_command_output)
 from ..updater import (AVAILABLE, FAILED, CheckResult, UpdateService, installed_notice,
-                       release_notes_url)
+                       portable_update_record, portable_update_started, release_notes_url)
 from . import gtk_a11y, mac_a11y
 from .sizes import dialog_size, dip
 from .a11y import (announce_list_emptied, refresh_list_item, set_accessible_name,
@@ -8824,25 +8824,39 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
 
         def work():
             try:
-                installed = bool(self.updates.can_update)
+                installed = bool(self.updates.installed_copy)
             except Exception:  # noqa: BLE001 - can't tell: not an installed copy
                 installed = False
-            wx.CallAfter(self._on_update_installed_known, installed)
+            try:
+                # Known once installed_copy has worked out what this copy is.
+                folder = str(self.updates.portable_folder or "")
+            except Exception:  # noqa: BLE001 - can't tell: not a portable copy
+                folder = ""
+            wx.CallAfter(self._on_update_installed_known, installed, folder)
         try:
             self._pool.submit(work)
         except RuntimeError:
             pass  # closing
 
-    def _on_update_installed_known(self, installed: bool):
+    def _on_update_installed_known(self, installed: bool, folder: str = ""):
+        """``folder``: this copy's, if it's a portable zip that updates
+        itself, whose own update record (#747) is the only one it reads."""
         if not self or self._closing:
             return
+        updated_here, done = portable_update_started(self.speech.portable_updates, folder,
+                                                     __version__)
         decision = installed_notice(self.speech.last_run_version, __version__, installed,
-                                    self.speech.update_installed_notice)
-        if decision.record and not self.speech.unreadable:
+                                    self.speech.update_installed_notice, updated_here)
+        if (decision.record or done) and not self.speech.unreadable:
             # Never over a settings file that couldn't be read: that would
             # replace every setting with the defaults. Recorded before anything is shown, so it's shown once even if
             # The Chat Place is closed before the dialog appears.
-            self.speech.last_run_version = __version__
+            if decision.record:
+                self.speech.last_run_version = __version__
+            if done:
+                self.speech.portable_updates = {
+                    where: version for where, version in self.speech.portable_updates.items()
+                    if where.casefold() != folder.casefold()}
             try:
                 self.speech.save()
             except OSError:
@@ -8930,6 +8944,7 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
             self._say(f"Couldn't download The Chat Place {result.version}. Try Help, "
                       f"{self._update_item_spoken()} again later.", force=True)
             return
+        self._record_update_applied(result.version)
         later = self._install_later_text(result)
         # The download took a while; things may have changed since the yes.
         if self._active_owned_turn_count() or self._modal_open():
@@ -8951,6 +8966,26 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # speech process so nothing of ours is left running in the install
         # folder Velopack replaces. Applying exits the process.
         self._apply_update_when_quiet(time.monotonic() + APPLY_SPEECH_WAIT_S, result)
+
+    def _record_update_applied(self, version: str):
+        """Record the version about to be applied, now or at the next start,
+        so the portable zip's first start on it says it was updated (#747).
+        Only a portable copy that updates itself keeps one, under its folder;
+        the check that found the update has already worked that out."""
+        if self.speech.unreadable:
+            return  # never over a settings file that couldn't be read
+        try:
+            folder = str(self.updates.portable_folder or "")
+        except Exception:  # noqa: BLE001 - can't tell: not a portable copy
+            folder = ""
+        if not folder:
+            return
+        self.speech.portable_updates = portable_update_record(self.speech.portable_updates,
+                                                              folder, version)
+        try:
+            self.speech.save()
+        except OSError:
+            pass  # the update still installs; only its notice is lost
 
     @staticmethod
     def _install_later_text(result: CheckResult) -> str:

@@ -386,6 +386,9 @@ def test_install_and_uninstall_hooks_register_and_remove(fake_velopack, monkeypa
     updater.bootstrap([])
     hooks = {name: args[0] for name, args in fake_velopack.made[0].calls if args}
     done = []
+    # An installed copy; the portable zip, which Velopack updates too, never
+    # registers (test_updater, #747).
+    monkeypatch.setattr(updater, "is_installed_copy", lambda version: True)
     monkeypatch.setattr(links, "ensure_registered",
                         lambda installed, exe: done.append(("register", installed)) or "ok")
     monkeypatch.setattr(links, "remove_registration",

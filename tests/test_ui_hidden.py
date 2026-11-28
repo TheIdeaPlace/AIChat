@@ -1384,6 +1384,8 @@ def test_a_turn_ending_in_an_unloaded_session_marks_it_and_leaves_the_loaded_one
 
 
 class FakeUpdates:
+    portable_folder = ""   # not a portable zip, so no What's New record (#747)
+
     def __init__(self, result, download_ok=True, apply_ok=True, during_download=None):
         self.result = result
         self.download_ok = download_ok
@@ -7953,12 +7955,13 @@ def test_help_update_item_names_the_running_version_then_the_update(frame, env, 
 
 
 class NoticeUpdates:
-    def __init__(self, installed):
-        self.can_update = installed
+    def __init__(self, installed, folder=""):
+        self.installed_copy = installed
+        self.portable_folder = folder
 
 
-def run_notice(frame, installed=True):
-    frame.updates = NoticeUpdates(installed)
+def run_notice(frame, installed=True, folder=""):
+    frame.updates = NoticeUpdates(installed, folder)
     frame.check_update_installed()
     frame._pool.submit(lambda: None).result()
     pump(lambda: False, timeout=0.2)
@@ -7994,6 +7997,67 @@ def test_update_installed_notice_decision(frame, env, notice, previous, installe
     assert frame.speech.last_run_version == recorded
     if recorded != previous:
         assert SpeechSettings.load(env["tmp"] / "speech.json").last_run_version == recorded
+
+
+ZIP_HERE = r"D:\Tools\TheChatPlace"
+ZIP_THERE = r"E:\Stick\TheChatPlace"
+
+
+@pytest.mark.parametrize("folder,records,shown,left", [
+    # The portable zip that updated itself to 0.1.4: told once.
+    (ZIP_HERE, {ZIP_HERE: "0.1.4"}, ["0.1.4"], {}),
+    # Another copy already on 0.1.4: nothing, and the record waits for its copy.
+    (ZIP_THERE, {ZIP_HERE: "0.1.4"}, [], {ZIP_HERE: "0.1.4"}),
+    # Someone unzipped a different copy: no record, nothing said.
+    (ZIP_HERE, {}, [], {}),
+    # A source run or a test build has no folder, so never reads one.
+    ("", {ZIP_HERE: "0.1.4"}, [], {ZIP_HERE: "0.1.4"}),
+    # This copy's record of an update it has long since passed.
+    (ZIP_HERE, {ZIP_HERE: "0.1.2", ZIP_THERE: "0.1.4"}, [], {ZIP_THERE: "0.1.4"}),
+])
+def test_portable_update_installed_notice_needs_its_own_update(frame, env, notice, folder,
+                                                                records, shown, left):
+    # #747: a portable copy tells only when it's running the update it applied.
+    from thechatplace.speech import SpeechSettings
+    frame.speech.last_run_version = "0.1.3"
+    frame.speech.portable_updates = dict(records)
+    run_notice(frame, installed=False, folder=folder)
+    assert notice == shown
+    assert frame.speech.last_run_version == "0.1.3"   # never recorded by the zip
+    assert frame.speech.portable_updates == left
+    if left != records:   # done with: gone from the file too
+        assert SpeechSettings.load(env["tmp"] / "speech.json").portable_updates == left
+
+
+def test_installed_copy_leaves_the_portable_zips_records_alone(frame, env, notice):
+    frame.speech.last_run_version = "0.1.3"
+    frame.speech.portable_updates = {ZIP_HERE: "0.1.4"}
+    run_notice(frame, installed=True)
+    assert notice == ["0.1.4"]
+    assert frame.speech.portable_updates == {ZIP_HERE: "0.1.4"}
+
+
+@pytest.mark.parametrize("folder,recorded", [
+    (ZIP_HERE, {ZIP_HERE: "0.1.4"}),   # the portable zip that updates itself
+    ("", {}),                          # an installed copy, a test build or a source run
+])
+def test_downloaded_update_is_recorded_before_it_is_applied(frame, env, monkeypatch, folder,
+                                                            recorded):
+    # Applied now or at the next start, the version is recorded first (#747).
+    from thechatplace.speech import SpeechSettings
+    from thechatplace.updater import AVAILABLE, CheckResult
+    result = CheckResult(AVAILABLE, "0.1.3", "0.1.4")
+    frame.updates = FakeUpdates(result)
+    frame.updates.portable_folder = folder
+    frame.speech.portable_updates = {}
+    monkeypatch.setattr(frame, "_active_owned_turn_count", lambda: 1)  # installs later
+    frame._on_update_downloaded(result, False)
+    assert frame.speech.portable_updates == {}
+    frame._on_update_downloaded(result, True)
+    assert frame.speech.portable_updates == recorded
+    if recorded:
+        assert SpeechSettings.load(env["tmp"] / "speech.json").portable_updates == recorded
+    assert "installed the next time" in env["spoken"][-1]
 
 
 def test_update_installed_notice_survives_a_failed_settings_save(frame, env, notice,
