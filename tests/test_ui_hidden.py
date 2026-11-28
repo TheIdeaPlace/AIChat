@@ -462,13 +462,14 @@ def test_return_on_a_focused_button_presses_it_on_a_mac(frame, monkeypatch):
     assert len(pressed) == 2  # Windows presses the button itself
 
 
-def test_message_dialog_is_a_labelled_read_only_rich_edit(frame):
+def test_message_dialog_is_a_labelled_plain_read_only_box(frame):
+    # Plain, as every box of text to read (#763).
     from thechatplace.ui.dialogs import MessageDialog
     dialog = MessageDialog(frame, "Claude", "Line one\nLine two")
     try:
         assert dialog.text.GetValue() == "Line one\nLine two"
-        assert not dialog.text.IsEditable()
-        assert dialog.text.GetWindowStyle() & wx.TE_RICH2
+        assert not dialog.text.IsEditable() and dialog.text.IsMultiLine()
+        assert not dialog.text.GetWindowStyle() & (wx.TE_RICH2 | wx.TE_RICH)
         assert dialog.text.GetName() == "Claude"
         assert dialog.GetEscapeId() == wx.ID_CANCEL
     finally:

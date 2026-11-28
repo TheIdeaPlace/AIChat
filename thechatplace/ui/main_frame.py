@@ -144,7 +144,7 @@ from .dialogs import (ALLOW, ALLOW_SESSION, ID_PLAIN_TEXT, PLAN_HOLD, AboutYouDi
                       ManageGroupsDialog, PromptsDialog, QuestionDialog, SessionColumnsDialog,
                       PropertiesDialog, SettingsDialog, ShortcutsDialog, UpdateInstalledDialog, UsageDialog,
                       formatted_view_available, FORMATTED_BROKEN_TEXT, show_formatted_page, press_focused_button_on_a_mac,
-                      remove_whole_chat_page,
+                      remove_whole_chat_page, READ_ONLY_BOX_STYLE,
                       single_choice_dialog)
 
 APP_NAME = "The Chat Place"
@@ -988,9 +988,9 @@ class MainFrame(CodexChats, RelayChats, RewindChats, AgentChats, SessionToolsHos
         # explanation is what's heard on tabbing to where the reply box would be.
         dsizer.Add(wx.StaticText(self.desktop_reply, label="About replying:"), 0, wx.BOTTOM, 4)
         self.desktop_note = wx.TextCtrl(
-            self.desktop_reply, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
+            self.desktop_reply, style=READ_ONLY_BOX_STYLE,
             value=_DESKTOP_NOTE)
-        set_accessible_name(self.desktop_note, "About replying")
+        set_accessible_name(self.desktop_note, "About replying", read_only_box=True)
         self.desktop_note.SetMinSize(dip(self, -1, 120))
         dsizer.Add(self.desktop_note, 1, wx.EXPAND)
         drow = wx.BoxSizer(wx.HORIZONTAL)

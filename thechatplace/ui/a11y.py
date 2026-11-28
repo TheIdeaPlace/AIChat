@@ -5,6 +5,7 @@ import re
 
 import wx
 
+from .. import platform_paths
 from . import gtk_a11y, mac_a11y
 
 
@@ -31,12 +32,37 @@ class _NamedAccessible(wx.Accessible):
 class _ReadOnlyBoxAccessible(_NamedAccessible):
     """A read-only box holds text to read, which isn't a label: Windows took
     the "&" in a server's "Pick & choose" for an access key and reported a
-    shortcut of "Alt+ ". It has no shortcut of its own."""
+    shortcut of "Alt+ ". It has no shortcut of its own.
+
+    While JAWS runs, its name ends with the line the caret is on (#763).
+    JAWS 2027 reads no text at all as focus lands on a multi-line box, plain
+    or rich, editable or not, whatever its value, description or role says:
+    only "Details, read only edit" (seen in the test VM). It does read the
+    name, so the line goes there, as NVDA reads it itself. Not for NVDA,
+    which would read the line twice."""
+
+    def GetName(self, childId):
+        status, label = super().GetName(childId)
+        if childId or not platform_paths.jaws_running():
+            return (status, label)
+        line = current_line(self.GetWindow())
+        return (status, f"{label}, {line}" if line else label)
 
     def GetKeyboardShortcut(self, childId):
         if childId:
             return (wx.ACC_NOT_IMPLEMENTED, "")
         return (wx.ACC_OK, "")
+
+
+def current_line(box) -> str:
+    """The line the caret is on in a text box, as shown (a wrapped line is
+    one of its parts, as a screen reader's Say Line reads it), stripped; ""
+    if there's none or it can't be told."""
+    try:
+        found, _column, line = box.PositionToXY(box.GetInsertionPoint())
+        return box.GetLineText(line).strip() if found else ""
+    except Exception:  # noqa: BLE001 - never break a screen reader's question
+        return ""
 
 
 def give_focus(window) -> None:

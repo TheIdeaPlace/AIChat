@@ -1189,9 +1189,11 @@ def test_a_message_cant_get_ahead_of_the_address_or_pose_as_it(frame, env):
         children = list(dialog.GetChildren())
         assert children.index(dialog.address_text) < children.index(dialog.message_text)
         assert dialog.address_text.GetName() == "Address"
-        # A one-line box, which JAWS reads as it gets focus; it said only
-        # "Contains text" for a multi-line one (#729's acceptance test).
-        assert not dialog.address_text.IsMultiLine() and not dialog.address_text.IsEditable()
+        # A multi-line box, as Tab skipped a one-line read-only one, holding
+        # one line, which is all read as it gets focus (#763).
+        assert dialog.address_text.IsMultiLine() and not dialog.address_text.IsEditable()
+        assert "\n" not in dialog.address_text.GetValue()
+        assert dialog.address_text.AcceptsFocusFromKeyboard()
     finally:
         dialog.Destroy()
 

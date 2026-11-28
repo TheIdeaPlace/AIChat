@@ -1853,7 +1853,7 @@ def d_codex_tools_read_only(frame, env):
 def d_codex_tools_sign_in(frame, env):
     """Connected Tools' Sign In asks before opening a server's sign-in page
     (#598), titled for what it is, with where it goes and the whole address on
-    the Address box's first line, and no Answer Later (#729's acceptance
+    the Address box's one line, and no Answer Later (#729's acceptance
     test). The dialog the host itself builds."""
     from thechatplace.providers.codex_tools import CodexTool
     from thechatplace.ui.codex_tools_host import sign_in_dialog

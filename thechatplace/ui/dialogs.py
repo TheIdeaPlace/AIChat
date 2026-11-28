@@ -59,8 +59,8 @@ class UnpricedApiDialog(wx.Dialog):
             f'An allowance of up to ${allowance:,.2f} will be held for each message against your overall limit. '
             'This allowance limits later sends; it cannot limit what this message costs. '
             'Stop keeps the allowance when the cost is unknown.',
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.warning, 'Price unknown warning')
+            style=READ_ONLY_BOX_STYLE)
+        set_accessible_name(self.warning, 'Price unknown warning', read_only_box=True)
         self.cancel = wx.Button(self, wx.ID_CANCEL, 'Cancel')
         self.send = wx.Button(self, wx.ID_OK, '&Send on API credits')
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -148,8 +148,8 @@ class ShortcutsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label="&Shortcuts:"), 0, wx.LEFT | wx.TOP, 8)
         text = wx.TextCtrl(self, value=shortcuts_text(keys=keys),
-                           style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(text, "Keyboard shortcuts")
+                           style=READ_ONLY_BOX_STYLE)
+        set_accessible_name(text, "Keyboard shortcuts", read_only_box=True)
         sizer.Add(text, 1, wx.EXPAND | wx.ALL, 8)
         close = wx.Button(self, wx.ID_CANCEL, "&Close")
         close.SetDefault()
@@ -541,10 +541,10 @@ class NewSessionDialog(wx.Dialog):
         about = "About continuing" if continue_from else "About permissions"
         outer.Add(wx.StaticText(self, label=f"{about.replace('About ', 'About &')}:"),
                   0, wx.LEFT, 10)
-        note = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
+        note = wx.TextCtrl(self, style=READ_ONLY_BOX_STYLE,
                            # Fable's note too, on a plan with it (#722).
                            value=self._claude_note())
-        set_accessible_name(note, about)
+        set_accessible_name(note, about, read_only_box=True)
         self.note = note  # sized to its text once it has its width, below
         outer.Add(note, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
@@ -1880,8 +1880,8 @@ class SettingsDialog(wx.Dialog):
                   0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
         self.retention = wx.TextCtrl(body, value=describe_retention(),
                                     size=(-1, self.FromDIP(110)),
-                                    style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.retention, "History retention and kept copies")
+                                    style=READ_ONLY_BOX_STYLE)
+        set_accessible_name(self.retention, "History retention and kept copies", read_only_box=True)
         self.retention.SetInsertionPoint(0)
         outer.Add(self.retention, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         self.retention_settings = wx.Button(body, label="Open Claude's retention settings")
@@ -2037,10 +2037,10 @@ class SettingsDialog(wx.Dialog):
 class MessageDialog(wx.Dialog):
     """One message's full text, read-only, to read by line, word and character.
 
-    A RichEdit, like the reply box: checked in the vmtest VM, a RichEdit takes
-    its accessible name from the label before it, where a plain multiline
-    EDIT reports its contents instead. Escape (or Close) returns to the list,
-    on the same message.
+    A plain read-only box, as every box of text to read is
+    (READ_ONLY_BOX_STYLE, #763): its name is the one given here, which JAWS
+    reads with the caret's line. Escape (or Close) returns to the list, on
+    the same message.
     """
 
     def __init__(self, parent, speaker_label: str, text: str, title: str = "",
@@ -2054,8 +2054,8 @@ class MessageDialog(wx.Dialog):
         label = f"{speaker_label}:"
         sizer.Add(wx.StaticText(self, label="&" + label), 0, wx.LEFT | wx.TOP, 8)
         self.text = wx.TextCtrl(self, value=text,
-                                style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.text, label.rstrip(":"))
+                                style=READ_ONLY_BOX_STYLE)
+        set_accessible_name(self.text, label.rstrip(":"), read_only_box=True)
         sizer.Add(self.text, 1, wx.EXPAND | wx.ALL, 8)
         close = wx.Button(self, wx.ID_CANCEL, "&Close")
         sizer.Add(close, 0, wx.ALIGN_RIGHT | wx.ALL, 8)
@@ -2985,10 +2985,24 @@ class WrappingText(wx.StaticText):
             self._laying_out = False
 
 
+#: Every read-only box of text to read (#763): a plain multi-line edit box,
+#: not a rich one. Compared in the test VM, with the same keys under JAWS
+#: 2027 and NVDA 2026.2: NVDA called a rich box "edit multi line", not read
+#: only, where a plain one is "edit read only multi line"; JAWS said the
+#: dialog's title again and "edit Read Only, Contains text" for a rich one,
+#: and named it from the label before it, not from its accessible name, so
+#: the line _ReadOnlyBoxAccessible adds for JAWS never reached it. UI
+#: Automation calls a rich box "RichEdit Control" too (ANSWER_BOX_STYLE).
+#: Neither screen reader reads a one-line read-only box's text by Tab: wx
+#: leaves it out of the Tab order. Multi-line, then, always.
+READ_ONLY_BOX_STYLE = wx.TE_MULTILINE | wx.TE_READONLY
+
+
 def _read_only_text(parent, value: str, name: str, min_height: int = 160,
                     style: int = 0) -> wx.TextCtrl:
-    text = wx.TextCtrl(parent, value=value,
-                       style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | style)
+    """A read-only box of text to read by line, word and character, in the
+    Tab order, named ``name`` for screen readers (READ_ONLY_BOX_STYLE)."""
+    text = wx.TextCtrl(parent, value=value, style=READ_ONLY_BOX_STYLE | style)
     set_accessible_name(text, name, read_only_box=True)
     text.SetMinSize(dip(parent, -1, min_height))
     text.SetInsertionPoint(0)
@@ -3663,7 +3677,7 @@ class QuestionDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        self.question_text.SetFocus()
+        give_focus(self.question_text)
 
     def _on_option_focus(self, event):
         event.Skip()
@@ -6010,8 +6024,8 @@ class BackupScheduleDialog(wx.Dialog):
         # Read-only text a screen reader can review by line, as Settings'
         # Speech problem box is.
         self.about = wx.TextCtrl(self, value=text,
-                                 style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        set_accessible_name(self.about, "About scheduled backups")
+                                 style=READ_ONLY_BOX_STYLE)
+        set_accessible_name(self.about, "About scheduled backups", read_only_box=True)
         self.about.SetMinSize(dip(self, -1, 110))
         sizer.Add(self.about, 1, wx.EXPAND | wx.ALL, 8)
 
@@ -6325,7 +6339,7 @@ class RewindDialog(wx.Dialog):
         sizer.Add(happens_label, 0, wx.LEFT | wx.RIGHT, 8)
         # Read-only text, not a label, so it's in the Tab order and read by
         # line like the other notes.
-        self.happens = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.happens = wx.TextCtrl(self, style=READ_ONLY_BOX_STYLE)
         set_accessible_name(self.happens, "What happens", read_only_box=True)
         self.happens.SetMinSize(dip(self, -1, 180))
         sizer.Add(self.happens, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -6942,14 +6956,15 @@ class ElicitationDialog(wx.Dialog):
         box_flags = wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM
         if request.is_url:
             outer.Add(wx.StaticText(self, label="&Address:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-            # One line, in a one-line box: JAWS read a multi-line read-only
-            # box as "Address: edit Read Only, Contains text", without its
-            # text, and reads a one-line box's text as it gets focus (seen in
-            # the test VM, #729's acceptance test). NVDA reads it either way.
-            self.address_text = wx.TextCtrl(self, value=request.address_text(),
-                                            style=wx.TE_READONLY)
-            set_accessible_name(self.address_text, "Address", read_only_box=True)
-            self.address_text.SetInsertionPoint(0)
+            # Its text is one line, so the line a screen reader reads as the
+            # box gets focus is all of it: NVDA reads that line, and JAWS the
+            # name, which ends with it (READ_ONLY_BOX_STYLE, #763). Not
+            # wrapped, as a long address has no spaces: the box broke the
+            # line after "Opens host:" (#729's review). Not a one-line box:
+            # Tab and Shift+Tab went past one, and NVDA read it twice as the
+            # dialog opened (#763).
+            self.address_text = _read_only_text(self, request.address_text(), "Address",
+                                                min_height=60, style=wx.TE_DONTWRAP)
             outer.Add(self.address_text, 0, box_flags, 8)
         elif problem:
             outer.Add(wx.StaticText(self, label="&Note:"), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
@@ -7123,7 +7138,7 @@ class ElicitationDialog(wx.Dialog):
 
     def _on_init_dialog(self, event):
         event.Skip()
-        (self.address_text or self.note_text or self.message_text).SetFocus()
+        give_focus(self.address_text or self.note_text or self.message_text)
 
     def _focus(self):
         return wx.Window.FindFocus()

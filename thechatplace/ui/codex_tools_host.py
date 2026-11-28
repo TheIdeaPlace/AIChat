@@ -58,7 +58,7 @@ COULD_NOT_RECONNECT = ("Codex didn't say why. Close Connected Tools, open it aga
 def sign_in_dialog(parent, server, url, feedback=None):
     """The question before Sign In opens a page (#598, #729): "Sign In to
     notion", or "Connect" for a ChatGPT app, opening on the Address box,
-    whose first line says where the page is and what its whole address is.
+    whose one line says where the page is and what its whole address is.
     Nothing waits on the answer, so there's no Answer Later: Escape declines.
     The probe builds it here too, so its picture is the real one."""
     from ..claude_mcp import elicitation_from
@@ -132,8 +132,9 @@ class CodexConnectedTools:
             # says the row's notice. &O still, as the other labels have it.
             return 'Change T&ool'
         if not self.can_turn_off:
-            # Not shown: the dialog hides it in a chat started elsewhere
-            # (#729's acceptance test). Named for the title of Delete's box.
+            # Not shown: the dialog hides and disables it in a chat started
+            # elsewhere (#729's acceptance test), and Delete's box there is
+            # titled "Tools", so this label is never seen or heard.
             return 'Turn &Off for This Chat'
         return 'Copy with Tool &On' if server and server.off_for_chat else 'Copy with Tool &Off'
 
