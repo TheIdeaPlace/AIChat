@@ -41,11 +41,17 @@ class _ReadOnlyBoxAccessible(_NamedAccessible):
     name, so the line goes there, as NVDA reads it itself. Not for NVDA,
     which would read the line twice."""
 
+    #: The most of the line that goes in the name, cut at a word: a long
+    #: paragraph or command is read in the box itself, by line.
+    LINE_MOST = 250
+
     def GetName(self, childId):
         status, label = super().GetName(childId)
         if childId or not platform_paths.jaws_running():
             return (status, label)
         line = current_line(self.GetWindow())
+        if len(line) > self.LINE_MOST:
+            line = line[:self.LINE_MOST].rsplit(" ", 1)[0] + "…"
         return (status, f"{label}, {line}" if line else label)
 
     def GetKeyboardShortcut(self, childId):
@@ -63,15 +69,26 @@ def current_line(box) -> str:
     before the box had its width, and the shown line was "Claude wants to"
     (#763, in the test VM)."""
     try:
-        # GetRange gives the text with "\n" breaks, whatever the box counts
-        # a break as, so its length is the caret's place in GetValue.
-        before = box.GetRange(0, box.GetInsertionPoint())
-        text = box.GetValue()
-        start = before.rfind("\n") + 1
-        end = text.find("\n", len(before))
+        text = box.GetValue()  # once: a whole chat can be in the box
+        at = _text_index(text, box.GetInsertionPoint(), box.GetLastPosition())
+        start = text.rfind("\n", 0, at) + 1
+        end = text.find("\n", at)
         return text[start:end if end >= 0 else len(text)].strip()
     except Exception:  # noqa: BLE001 - never break a screen reader's question
         return ""
+
+
+def _text_index(text: str, position: int, last_position: int) -> int:
+    """Where box ``position`` is in ``text`` (the box's GetValue). A plain
+    Windows box counts each line break as two places ("\\r\\n"), which its
+    last position shows; other boxes count one."""
+    if last_position == len(text) or "\n" not in text:
+        return min(position, len(text))
+    index = places = 0
+    while index < len(text) and places < position:
+        places += 2 if text[index] == "\n" else 1
+        index += 1
+    return index
 
 
 def give_focus(window) -> None:
@@ -79,9 +96,11 @@ def give_focus(window) -> None:
 
     Windows often has put it there by itself: on a dialog's first control as
     the dialog opens, and back where it was as a message box closes. Setting
-    it again had screen readers read the control twice: NVDA said Connected
-    Tools' first row twice (#468, #729). Every "focus goes here" in a dialog
-    goes through this, so none of them can.
+    it again could have a screen reader read the control twice (#468), and
+    every "focus goes here" in a dialog goes through this (#729's review).
+    Win32's SetFocus already does nothing for the window that has focus, so
+    on Windows this mostly tidies up; Connected Tools' first row read twice
+    was the list filling as the dialog opened (ConnectedToolsDialog.ShowModal).
     """
     if window and wx.Window.FindFocus() is not window:
         window.SetFocus()
@@ -147,6 +166,10 @@ def _msaa_name(control: wx.Window):
     accessible = getattr(control, "_hub_accessible", None)
     if accessible is None:
         return None
+    if isinstance(accessible, _ReadOnlyBoxAccessible):
+        # Its label, not the line JAWS hears with it: the label before the
+        # box would be read with the line too (#763's review).
+        return accessible._label or None
     try:
         status, name = accessible.GetName(0)
     except Exception:  # noqa: BLE001 - never break the screen reader

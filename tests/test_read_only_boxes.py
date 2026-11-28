@@ -79,9 +79,40 @@ def test_jaws_hears_the_line_in_the_name_and_nvda_doesnt(box, monkeypatch):
     # A child (there are none) is left to wx.
     import wx
     assert accessible.GetName(1)[0] == wx.ACC_NOT_IMPLEMENTED
+    # A long line is cut at a word.
+    box.ChangeValue("word " * 200)
+    box.SetInsertionPoint(0)
+    name = accessible.GetName(0)[1]
+    assert name.startswith("Details, word word") and name.endswith("word…")
+    assert len(name) <= len("Details, ") + accessible.LINE_MOST + 1
+    # The label before the box gets the label alone, not the line (#763's review).
+    from thechatplace.ui.a11y import _msaa_name
+    assert _msaa_name(box) == "Details"
 
 
 def test_jaws_running_is_false_off_windows(monkeypatch):
     from thechatplace import platform_paths
+    real = platform_paths.jaws_running.__wrapped__  # conftest's _no_jaws keeps it
     monkeypatch.setattr(platform_paths.sys, "platform", "linux")
+    assert real() is False
+
+
+def test_no_test_hears_whether_jaws_runs_here():
+    from thechatplace import platform_paths
     assert platform_paths.jaws_running() is False
+
+
+def test_the_line_in_the_name_is_cut_at_a_word_when_long():
+    from thechatplace.ui.a11y import _ReadOnlyBoxAccessible
+    assert _ReadOnlyBoxAccessible.LINE_MOST <= 300
+
+
+@pytest.mark.parametrize("text, position, last, index", [
+    ("one\ntwo", 5, 8, 4),     # a plain Windows box: the break counts two
+    ("one\ntwo", 4, 7, 4),     # a box that counts it one
+    ("one", 2, 3, 2),
+    ("a\nb\nc", 6, 7, 4),      # the start of "c"
+    ("", 0, 0, 0)])
+def test_a_box_position_is_found_in_its_text(text, position, last, index):
+    from thechatplace.ui.a11y import _text_index
+    assert _text_index(text, position, last) == index

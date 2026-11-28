@@ -1730,8 +1730,8 @@ class SettingsDialog(wx.Dialog):
         if problem:
             self.speech_problem = wx.TextCtrl(
                 body, value=f"Last announcement {problem}.",
-                style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
-            set_accessible_name(self.speech_problem, "Speech problem")
+                style=READ_ONLY_BOX_STYLE | wx.TE_NO_VSCROLL, size=dip(self, -1, 44))
+            set_accessible_name(self.speech_problem, "Speech problem", read_only_box=True)
             grid.AddSpacer(0)
             grid.Add(self.speech_problem, 0, wx.EXPAND)
 
@@ -6519,6 +6519,22 @@ class ConnectedToolsDialog(wx.Dialog):
         self.reload()
         give_focus_later(self.list)
 
+    #: How long opening waits for the list's first reading, in seconds.
+    FIRST_LOAD_WAIT = 1.0
+
+    def ShowModal(self):
+        """Opens once the list is read, if that takes no more than
+        FIRST_LOAD_WAIT: the rows coming in just as the list first had focus
+        had NVDA read the first row twice, once for the focus and once for
+        the fill (seen in the test VM on a session's first open, #729's
+        review). A slower reading opens on "Reading..." and the rows are
+        read as they come, which is right."""
+        deadline = time.monotonic() + self.FIRST_LOAD_WAIT
+        while not self.loaded and time.monotonic() < deadline and self._alive():
+            wx.GetApp().Yield(True)
+            time.sleep(0.02)
+        return super().ShowModal()
+
     # -- what it shows ----------------------------------------------------------
 
     def _alive(self) -> bool:
@@ -7184,8 +7200,8 @@ class ElicitationDialog(wx.Dialog):
             return
         if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             focus = self._focus()
-            # Here, not left to the default button: a read-only rich edit keeps
-            # Enter for itself, so nothing was sent and nothing was said. A
+            # Here, not left to the default button: a multi-line read-only box
+            # keeps Enter for itself, so nothing was sent and nothing was said. A
             # key that does nothing and says nothing sounds like a broken one.
             if self._in_read_only_box(focus) and (self.request.is_url or self.send_btn is None):
                 self._feedback(self._where_to_go())

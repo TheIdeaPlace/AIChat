@@ -174,6 +174,18 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _no_jaws(monkeypatch):
+    """Whether JAWS runs on the PC or VM running the suite mustn't change a
+    read-only box's name (#763's review): a test that wants JAWS sets it."""
+    from thechatplace import platform_paths
+
+    def no_jaws():
+        return False
+    no_jaws.__wrapped__ = platform_paths.jaws_running  # the real one, for its own tests
+    monkeypatch.setattr(platform_paths, "jaws_running", no_jaws)
+
+
+@pytest.fixture(autouse=True)
 def _no_build_label(monkeypatch):
     """A labelled test build runs the suite with TCP_BUILD_LABEL set (build_info):
     no test may see it, or the release-tag checks refuse the label."""

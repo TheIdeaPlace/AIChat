@@ -286,6 +286,29 @@ def test_connected_tools_sets_no_focus_where_windows_has_put_it_already(frame, e
         dialog.Destroy()
 
 
+@pytest.mark.parametrize("answers_in, loaded_when_shown", [(0.05, True), (5.0, False)])
+def test_connected_tools_opens_with_its_rows_when_they_come_quickly(frame, env, monkeypatch,
+                                                                     answers_in, loaded_when_shown):
+    """Rows filled in just as the list first had focus were read twice by
+    NVDA (#729's review), so opening waits a moment for them; a slow list
+    opens on "Reading..." as before."""
+    from thechatplace.ui.dialogs import ConnectedToolsDialog
+    host = _MovingRows([McpServer("alpha", "connected")])
+    later = host.load
+    host.load = lambda done: wx.CallLater(int(answers_in * 1000), later, done)
+    dialog = ConnectedToolsDialog(frame, "Chat", host)
+    dialog.FIRST_LOAD_WAIT = 0.5
+    seen = []
+    monkeypatch.setattr(wx.Dialog, "ShowModal",
+                        lambda self: seen.append((self.loaded, self.list.GetString(0))) or wx.ID_CANCEL)
+    try:
+        dialog.ShowModal()
+        assert seen[0][0] is loaded_when_shown
+        assert ("alpha" in seen[0][1]) is loaded_when_shown
+    finally:
+        dialog.Destroy()
+
+
 def test_a_tool_gone_after_a_refresh_leaves_the_selection_on_its_row_number(frame, env):
     from thechatplace.ui.dialogs import ConnectedToolsDialog
     alpha, beta, gamma = (McpServer(n, "connected") for n in ("alpha", "beta", "gamma"))
