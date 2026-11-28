@@ -134,7 +134,22 @@ def test_the_line_in_the_name_is_cut_at_a_word_when_long():
     ("one\ntwo", 4, 7, 4),     # a box that counts it one
     ("one", 2, 3, 2),
     ("a\nb\nc", 6, 7, 4),      # the start of "c"
+    ("one\ntwo", 3, 8, 3),     # the end of the first line
+    ("\U0001F600a\nb", 5, 6, 3),  # an emoji counts two places too
+    ("\U0001F600ab", 3, 4, 2),
     ("", 0, 0, 0)])
 def test_a_box_position_is_found_in_its_text(text, position, last, index):
     from thechatplace.ui.a11y import _text_index
     assert _text_index(text, position, last) == index
+
+
+def test_finding_the_caret_in_a_whole_chat_is_quick():
+    """JAWS asks for a name several times as focus lands, on the UI thread
+    (#763's review): 1.6 million characters took 0.2 seconds a character at a time."""
+    import time
+    from thechatplace.ui.a11y import _text_index
+    text = ("A line of a long reply, as a whole chat has.\n" * 36000)
+    last = len(text) + text.count("\n")
+    started = time.perf_counter()
+    assert _text_index(text, last - 3, last) == len(text) - 2  # before the last "."
+    assert time.perf_counter() - started < 0.1

@@ -48,10 +48,12 @@ class _ReadOnlyBoxAccessible(_NamedAccessible):
     def GetName(self, childId):
         status, label = super().GetName(childId)
         box = self.GetWindow()
-        # A box with no up-and-down scroll bar (the Address box, a Folder
-        # box) JAWS reads itself as it gets focus, as it does a one-line
-        # box: the line in the name was then said twice (#763, in the VM).
-        if childId or not platform_paths.jaws_running() or box.HasFlag(wx.TE_NO_VSCROLL):
+        # A box of one unwrapped line with no up-and-down scroll bar (the
+        # Address box) JAWS reads itself as it gets focus, as it does a
+        # one-line box: the line in the name was then said twice (#763, in
+        # the VM). Only that kind: wrapping ones weren't shown to be read.
+        one_line = box.HasFlag(wx.TE_NO_VSCROLL) and box.HasFlag(wx.TE_DONTWRAP)
+        if childId or not platform_paths.jaws_running() or one_line:
             return (status, label)
         line = current_line(box)
         if len(line) > self.LINE_MOST:
@@ -85,17 +87,40 @@ def current_line(box) -> str:
         return ""
 
 
+#: A character a Windows box counts as two places (beyond 16 bits).
+_WIDE = re.compile("[\U00010000-\U0010FFFF]")
+
+
 def _text_index(text: str, position: int, last_position: int) -> int:
     """Where box ``position`` is in ``text`` (the box's GetValue). A plain
-    Windows box counts each line break as two places ("\\r\\n"), which its
-    last position shows; other boxes count one."""
-    if last_position == len(text) or "\n" not in text:
+    Windows box counts each line break as two places ("\\r\\n") and a
+    character beyond 16 bits (most emoji) as two, which its last position
+    shows; other boxes count each as one. Line by line, so a whole chat
+    with the caret near its end is quick (#763's review)."""
+    def wide(part: str) -> int:
+        return len(_WIDE.findall(part))
+    if last_position == len(text):
         return min(position, len(text))
+    breaks_count = last_position - len(text) - wide(text) == text.count("\n")
     index = places = 0
-    while index < len(text) and places < position:
-        places += 2 if text[index] == "\n" else 1
+    while index < len(text):
+        end = text.find("\n", index)
+        line_end = len(text) if end < 0 else end
+        line = text[index:line_end]
+        line_places = len(line) + wide(line)
+        if places + line_places >= position:
+            break
+        places += line_places + (2 if breaks_count else 1)
+        index = line_end + 1
+        if end < 0:
+            return len(text)
+    # Within the caret's line.
+    for c in text[index:]:
+        if places >= position or c == "\n":
+            break
+        places += 2 if ord(c) > 0xFFFF else 1
         index += 1
-    return index
+    return min(index, len(text))
 
 
 def give_focus(window) -> None:

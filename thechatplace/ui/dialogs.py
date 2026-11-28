@@ -6531,10 +6531,11 @@ class ConnectedToolsDialog(wx.Dialog):
         read as they come, which is right."""
         deadline = time.monotonic() + self.FIRST_LOAD_WAIT
         while not self.loaded and time.monotonic() < deadline and self._alive():
-            # The host answers from its thread through wx.CallAfter: a
-            # pending event, which this runs whether or not a loop is.
+            # Both hosts answer through wx.CallAfter: a pending event, which
+            # this runs. Not a yield: keys and menu commands would reach the
+            # main window while this dialog isn't shown yet, and a second
+            # Connected Tools could open inside this one (#729's review).
             wx.GetApp().ProcessPendingEvents()
-            wx.YieldIfNeeded()
             time.sleep(0.02)
         return super().ShowModal()
 

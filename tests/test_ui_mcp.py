@@ -306,6 +306,13 @@ def test_connected_tools_opens_with_its_rows_when_they_come_quickly(frame, env, 
     dialog = ConnectedToolsDialog(frame, "Chat", host)
     dialog.FIRST_LOAD_WAIT = 0.5
     seen = []
+
+    def no_yield(*_args, **_kwargs):
+        # Keys and menu commands would reach the main window meanwhile (#729's review).
+        raise AssertionError("the wait yielded to the main window")
+    monkeypatch.setattr(wx, "YieldIfNeeded", no_yield)
+    monkeypatch.setattr(wx, "SafeYield", no_yield)
+    monkeypatch.setattr(wx.App, "Yield", no_yield)
     monkeypatch.setattr(wx.Dialog, "ShowModal",
                         lambda self: seen.append((self.loaded, self.list.GetString(0))) or wx.ID_CANCEL)
     try:
