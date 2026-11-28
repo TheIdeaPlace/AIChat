@@ -88,6 +88,9 @@ MAX_TEXT_CHARS = 65_536
 MAX_REQUESTS = 8
 #: How long Copilot gets to honour Stop before its process is closed.
 CANCEL_GRACE_SECONDS = 15.0
+#: Makes the clock a cancel starts; a test can swap it without touching
+#: threading.Timer for the whole process.
+_Timer = threading.Timer
 #: Streamed text is shown at most this often, so a long answer in many tiny
 #: chunks can't flood the window or hold up the reader thread.
 CHUNK_NOTIFY_SECONDS = 0.05
@@ -2367,8 +2370,30 @@ class CopilotChatRuntime:
             elif turn.stop == NOT_STOPPED:
                 turn.stop = ASKED
             report = _stop_report(turn.prompt, before, turn.stop)
+            # An automatic stop (Copilot stopped asking before it acts, or
+            # billing couldn't be confirmed) has nobody to press Stop again:
+            # if its cancel couldn't be sent, Copilot is closed instead, as
+            # for one that ignores a cancel (review of #758).
+            close = hold and report == COULDNT_ASK and connection is not None
+            if close:
+                self._closing(chat, connection,
+                              "The Chat Place couldn't ask Copilot to stop, so it closed it. "
+                              "Open the chat again to carry on.",
+                              "Copilot was closed because another chat couldn't be stopped. "
+                              "Open this chat again to carry on.")
+        if close:
+            connection.close()
         self._notify(chat)
         return Stopped(waiting, report)
+
+    def _closing(self, chat: _Chat, connection, notice: str, others: str) -> None:
+        """With the lock held, before ``connection`` is closed to end
+        ``chat``'s turn: say why in it, and in every other chat whose turn
+        ends with it."""
+        chat.notice = notice
+        for other in self._chats.values():
+            if other is not chat and other.connection is connection and other.busy:
+                other.notice = others
 
     def _cancel(self, chat: _Chat, turn: _Turn) -> str:
         """Ask Copilot to cancel ``turn``, whose prompt is queued, and start
@@ -2379,7 +2404,7 @@ class CopilotChatRuntime:
         connection = turn.connection
         if connection is None or connection.closed:
             return CANCEL_NOT_SENT
-        timer = threading.Timer(self._cancel_grace, self._cancel_overdue, args=(chat, turn))
+        timer = _Timer(self._cancel_grace, self._cancel_overdue, args=(chat, turn))
         timer.daemon = True  # never keeps the app open after it quits
         # Started before the cancel goes, so a clock that can't start sends
         # nothing; it can't act before this locked step has recorded the
@@ -2405,12 +2430,11 @@ class CopilotChatRuntime:
             overdue = (chat.turn is turn and turn.prompt == QUEUED
                        and turn.stop == CANCEL_SENT and chat.connection is connection)
             if overdue:
-                chat.notice = ("Copilot didn't stop when asked, so The Chat Place closed it. "
-                               "Open the chat again to carry on.")
-                for other in self._chats.values():
-                    if other is not chat and other.connection is connection and other.busy:
-                        other.notice = ("Copilot was closed because another chat didn't stop "
-                                        "when asked. Open this chat again to carry on.")
+                self._closing(chat, connection,
+                              "Copilot didn't stop when asked, so The Chat Place closed it. "
+                              "Open the chat again to carry on.",
+                              "Copilot was closed because another chat didn't stop "
+                              "when asked. Open this chat again to carry on.")
         if overdue:
             connection.close()
 

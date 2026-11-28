@@ -2512,10 +2512,78 @@ def test_a_clock_that_cant_start_sends_no_cancel(make, tmp_path, monkeypatch):
     class NoClock(threading.Timer):
         def start(self):
             raise RuntimeError("can't start new thread")
-    monkeypatch.setattr(copilot_runtime.threading, "Timer", NoClock)
+    monkeypatch.setattr(copilot_runtime, "_Timer", NoClock)
     assert runtime.stop(chat) == Stopped((), COULDNT_ASK)
     assert notified == []
     assert runtime._chats[chat].turn.timer is None
+
+
+def test_a_cancel_that_breaks_as_it_goes_leaves_no_clock(make, tmp_path, monkeypatch):
+    """Review of #758: something other than Copilot closing goes wrong as
+    the cancel is queued. The clock already started is called off, and
+    Stop says it couldn't ask."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    clocks = []
+
+    class Watched(threading.Timer):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            clocks.append(self)
+    monkeypatch.setattr(copilot_runtime, "_Timer", Watched)
+
+    def broken(method, params):
+        raise RuntimeError("something else")
+    runtime._connection.notify = broken
+    assert runtime.stop(chat) == Stopped((), COULDNT_ASK)
+    turn = runtime._chats[chat].turn
+    assert turn.stop == copilot_runtime.CANCEL_FAILED and turn.timer is None
+    assert len(clocks) == 1 and clocks[0].finished.is_set()  # called off
+    assert not runtime._connection.closed  # a Stop you pressed: you can press it again
+
+
+def test_an_automatic_stop_that_cant_ask_closes_copilot(make, tmp_path):
+    """Review of #758: an automatic stop (here, Copilot stopped asking
+    before it acts) has nobody to press Stop again, so if its cancel can't
+    be sent, Copilot is closed, as when it ignores a cancel, and the chat
+    says why."""
+    runtime, _ = make("hang")
+    chat = runtime.create(str(tmp_path))
+    runtime.send(chat, "Long job")
+    assert wait(lambda: runtime.snapshot(chat).replies)
+    connection = runtime._connection
+
+    def broken(*args):
+        raise RuntimeError("no thread for the timer")
+    runtime._cancel = broken
+    assert runtime.stop(chat, hold=True) == Stopped((), COULDNT_ASK)
+    assert connection.closed
+    assert wait(lambda: not runtime._chats[chat].busy)
+    assert "couldn't ask Copilot to stop, so it closed it" in runtime.snapshot(chat).notice
+
+
+def test_a_prompt_that_meets_a_full_queue_comes_back_without_a_deadlock(make, tmp_path):
+    """Review of #758: the turn queues its prompt with the runtime's lock
+    held. When Copilot has stopped reading (the queue is full), copilot_acp
+    closes it on a thread of its own, whose _on_closed takes that lock:
+    the turn must still end, with its message back unsent."""
+    import queue
+    runtime, _ = make()
+    chat = runtime.create(str(tmp_path))
+    idle = runtime.create(str(tmp_path))
+    connection = runtime._connection
+    full = queue.Queue(maxsize=1)
+    full.put_nowait(b"")
+    connection._outgoing = full  # as if Copilot had stopped reading
+    runtime.send(chat, "Hello")
+    assert wait(lambda: not runtime._chats[chat].busy), "the turn never ended"
+    assert connection.closed
+    assert runtime.snapshot(chat).unsent == ("Hello",)
+    assert runtime._chats[chat].turn.prompt == copilot_runtime.FINISHED
+    # _on_closed ran, on its own thread, and told the idle chat.
+    assert wait(lambda: "Copilot stopped" in (runtime.snapshot(idle).notice or ""))
 
 
 def test_a_clock_from_an_earlier_turn_closes_nothing(make, tmp_path):
