@@ -130,13 +130,13 @@ def _window_key(window):
         return id(window)
 
 
-def _close_left_windows(wx, before) -> list:
+def _close_left_windows(wx, fake_env, before) -> list:
     """Each top-level window this test made and didn't destroy: closed, as
     the tests' own close_frame does, and named. Ones it destroyed are left
     to settle, which deletes them."""
     app = wx.GetApp()
     left = []
-    for window in list(wx.GetTopLevelWindows()):
+    for window in list(fake_env.top_level_windows()):
         if _window_key(window) in before or app.IsScheduledForDestruction(window):
             continue
         left.append(f"{type(window).__name__} {window.GetTitle()!r}")
@@ -186,8 +186,10 @@ def _windows_gone_after_each_test(monkeypatch):
     import threading
     pool = _libobjc().objc_autoreleasePoolPush() if sys.platform == "darwin" else None
     wx = sys.modules.get("wx")
-    before = ({_window_key(w) for w in wx.GetTopLevelWindows()}
-              if wx is not None and wx.GetApp() is not None else set())
+    before = set()
+    if wx is not None and wx.GetApp() is not None:
+        import fake_env  # wx's own list of windows, which a test may replace
+        before = {_window_key(w) for w in fake_env.top_level_windows()}
     threads_before = {t.ident for t in threading.enumerate()}
     problems = []
     try:
@@ -196,10 +198,10 @@ def _windows_gone_after_each_test(monkeypatch):
         try:
             wx = sys.modules.get("wx")
             if wx is not None and wx.GetApp() is not None:
-                left = _close_left_windows(wx, before)
+                import fake_env
+                left = _close_left_windows(wx, fake_env, before)
                 if left:
                     problems.append(f"windows left open: {left}")
-                import fake_env
                 if not fake_env.settle():
                     problems.append("destroyed windows were never deleted")
             threads = _hub_threads_left(threads_before)

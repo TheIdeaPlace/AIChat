@@ -306,6 +306,13 @@ def add_transcript(env, cwd, cli, records):
     return path
 
 
+#: wx's own, kept before any test replaces them: a test that fakes the list
+#: of windows (to stand in a modal dialog) still has its frame closed, after
+#: it, by these.
+top_level_windows = wx.GetTopLevelWindows
+_yield_if_needed = wx.YieldIfNeeded
+
+
 def settle(rounds: int = 20) -> bool:
     """Do what wx's event loop would do between events: run the queued
     calls, then its idle time, when it deletes each window ``Destroy()``
@@ -317,12 +324,12 @@ def settle(rounds: int = 20) -> bool:
         return True
 
     def scheduled():
-        return any(app.IsScheduledForDestruction(w) for w in wx.GetTopLevelWindows())
+        return any(app.IsScheduledForDestruction(w) for w in top_level_windows())
     if not scheduled() and not app.HasPendingEvents():
         return True  # a test with no windows: nothing to run
     for _ in range(rounds):
         app.ProcessPendingEvents()
-        wx.YieldIfNeeded()
+        _yield_if_needed()
         if not scheduled():
             return True
     return False
