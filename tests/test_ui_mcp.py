@@ -293,9 +293,16 @@ def test_connected_tools_opens_with_its_rows_when_they_come_quickly(frame, env, 
     NVDA (#729's review), so opening waits a moment for them; a slow list
     opens on "Reading..." as before."""
     from thechatplace.ui.dialogs import ConnectedToolsDialog
+    import threading
     host = _MovingRows([McpServer("alpha", "connected")])
     later = host.load
-    host.load = lambda done: wx.CallLater(int(answers_in * 1000), later, done)
+
+    def load(done):
+        # As the Codex host answers: from a thread, through wx.CallAfter.
+        timer = threading.Timer(answers_in, lambda: wx.CallAfter(later, done))
+        timer.daemon = True
+        timer.start()
+    host.load = load
     dialog = ConnectedToolsDialog(frame, "Chat", host)
     dialog.FIRST_LOAD_WAIT = 0.5
     seen = []

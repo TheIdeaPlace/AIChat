@@ -6531,7 +6531,10 @@ class ConnectedToolsDialog(wx.Dialog):
         read as they come, which is right."""
         deadline = time.monotonic() + self.FIRST_LOAD_WAIT
         while not self.loaded and time.monotonic() < deadline and self._alive():
-            wx.GetApp().Yield(True)
+            # The host answers from its thread through wx.CallAfter: a
+            # pending event, which this runs whether or not a loop is.
+            wx.GetApp().ProcessPendingEvents()
+            wx.YieldIfNeeded()
             time.sleep(0.02)
         return super().ShowModal()
 

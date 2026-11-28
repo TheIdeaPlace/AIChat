@@ -1388,4 +1388,7 @@ def test_app_inventory_still_has_a_bounded_wait(server):
         with pytest.raises(CodexRpcError, match="timed out"):
             connection.request("app/list", {"mode": "hang"})
         assert not connection.closed
+        # The next answer gets a normal wait: 0.1 seconds timed out on a
+        # busy macOS runner too (the release build at c2cfea5b).
+        connection._timeout = 10
         assert connection.request("thread/list", {}) == {"echo": {}}
